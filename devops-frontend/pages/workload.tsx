@@ -329,7 +329,7 @@ export default function DevOpsWorkload() {
   return (
     <>
       <Head>
-        <title>Workload - SetuOps DevOps</title>
+        <title>Workload - OpsTrellis DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

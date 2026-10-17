@@ -148,18 +148,18 @@ export default function NewIncidentPage() {
   const requestedRequestId = useMemo(() => parsePositiveIntQuery(router.query.request_id), [router.query.request_id]);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('setuops-incident-note');
+    const saved = sessionStorage.getItem('opstrellis-incident-note');
     if (saved) setNotes(saved);
   }, []);
 
   useEffect(() => {
     const lower = notes.toLowerCase();
     if (/(password|secret|token)/.test(lower)) {
-      sessionStorage.removeItem('setuops-incident-note');
+      sessionStorage.removeItem('opstrellis-incident-note');
       return;
     }
-    if (notes.trim()) sessionStorage.setItem('setuops-incident-note', notes);
-    else sessionStorage.removeItem('setuops-incident-note');
+    if (notes.trim()) sessionStorage.setItem('opstrellis-incident-note', notes);
+    else sessionStorage.removeItem('opstrellis-incident-note');
   }, [notes]);
 
   useEffect(() => {

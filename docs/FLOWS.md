@@ -1,4 +1,4 @@
-# SetuOps — Current flows
+# OpsTrellis — Current flows
 
 This is how the product works today. One Next.js portal (`devops-frontend`) talks to one Go API. There is no separate user portal and no separate admin portal. Sign-up is not a page. People, groups, and sign-in settings live under **Portal Access** in the same shell.
 
@@ -245,6 +245,33 @@ Someone who is only the assigned manager can open Maintenance even when their gr
 ### Notices that are still in the API
 
 `POST /api/maintenance/notices` is the older preview / approve / publish / cancel contract. The Maintenance screens do not call it. A notice still requires a valid timezone and the same public-text rules. It does not run the three-step chain and it does not email.
+
+---
+
+## Kubernetes access
+
+Kubernetes is opened from **Infrastructure → Kubernetes**. Who can see a cluster, and who can change it, is set on the group in **Portal Access → Groups**.
+
+There are two levels:
+
+| Level | Where | Values |
+| --- | --- | --- |
+| Group | The group’s Kubernetes control | None, Read, or Write |
+| Project | Each project that group is linked to | None, Read, or Write |
+
+A person on one project gets the **lower** of the group level and that project link. If they belong to more than one group, they get the **higher** of those results. An admin (`users.role = admin`) can see every project and can write. A DevOps manager flag does not skip this.
+
+| Result | What they can do |
+| --- | --- |
+| None | That project’s clusters stay off the list. The project link itself stays, so on-call and other uses of the link are unchanged. |
+| Read | Cluster list, workloads, pods, restart counts, logs, and error or warning filters. |
+| Write | Read, plus restart, scale, resume, terminal, and cluster onboard. A deployment freeze still blocks a write with **409**. |
+
+A group that has never been given a level defaults to **Read** when it is a DevOps group and **None** when it is a portal group. A project link that has never been given a level defaults to **Read**. Write has to be chosen at both levels before a restart is allowed. Until that is saved, restart, scale, terminal, and onboard are refused.
+
+The Kubernetes page checkbox under Sections still has to be on. This control does not replace it.
+
+Adding a project from this control also creates the group’s project link. Choosing None on a project that is already linked does not remove that link.
 
 ---
 

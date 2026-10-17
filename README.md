@@ -1,15 +1,15 @@
-# SetuOps
+# OpsTrellis
 
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![Features](https://img.shields.io/badge/Docs-All%20features-0A7-000000)](./docs/FEATURES.md)
 [![API](https://img.shields.io/badge/Docs-Full%20API-2088FF)](./docs/API.md)
 
-SetuOps is the control plane for **infrastructure requests**, **approvals**, **application deploys**, **on-call**, **IAM access**, **maintenance windows**, and **post-release health**.
+OpsTrellis is the control plane for **infrastructure requests**, **approvals**, **application deploys**, **on-call**, **IAM access**, **maintenance windows**, and **post-release health**.
 
 One portal (`devops-frontend`). One Go API. One Postgres record for a request, a Change Request (`CHG…`), an Incident (`INC…`), a Problem, or a Maintenance window (`MNT…`). IAM access requests (`AR-…`) stay in memory until the API restarts.
 
-The display name is **SetuOps**. GitHub check IDs still use `infragate/*`.
+The display name is **OpsTrellis**. GitHub check IDs still use `infragate/*`.
 
 ---
 
@@ -46,7 +46,7 @@ flowchart LR
     end
 
     subgraph Portals
-        DevOps["SetuOps portal<br/>devops-frontend :3002"]
+        DevOps["OpsTrellis portal<br/>devops-frontend :3002"]
     end
 
     API["Go API :8080"]

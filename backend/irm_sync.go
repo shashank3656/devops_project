@@ -383,7 +383,7 @@ func pushOpsgenieIncident(item requestIncident) {
 	default:
 		return
 	}
-	body, _ := json.Marshal(map[string]any{"note": "Updated from SetuOps " + item.IncidentNumber})
+	body, _ := json.Marshal(map[string]any{"note": "Updated from OpsTrellis " + item.IncidentNumber})
 	req, err := http.NewRequest(http.MethodPost, "https://api.opsgenie.com/v2/alerts/"+urlPathEscape(item.ExternalID)+"/"+action+"?identifierType=id", bytes.NewReader(body))
 	if err != nil {
 		return

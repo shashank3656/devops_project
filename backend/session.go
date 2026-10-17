@@ -4,9 +4,9 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	devSessionSecretFallback = "setuops-dev-session-secret-not-for-production"
+	devSessionSecretFallback = "opstrellis-dev-session-secret-not-for-production"
 	legacySessionTokenSep    = ":"
 	sessionHMACAlg           = "HS256"
 )
@@ -38,7 +38,7 @@ var revokedSessions = struct {
 }{until: map[string]int64{}}
 
 func isProductionRuntime() bool {
-	env := strings.ToLower(strings.TrimSpace(firstNonEmptyEnv("APP_ENV", "SETUOPS_ENV", "GO_ENV")))
+	env := strings.ToLower(strings.TrimSpace(firstNonEmptyEnv("APP_ENV", "OPSTRELLIS_ENV", "SETUOPS_ENV", "GO_ENV")))
 	return env == "production" || env == "prod"
 }
 

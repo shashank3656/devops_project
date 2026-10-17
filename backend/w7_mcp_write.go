@@ -35,7 +35,7 @@ func mcpActorCanWrite(userID int, managerOnly bool) error {
 
 func mcpRefuseApply(text string) error {
 	if queryAsksToApply(text) {
-		return fmt.Errorf("SetuOps will not apply terraform, kubectl, or helm from MCP")
+		return fmt.Errorf("OpsTrellis will not apply terraform, kubectl, or helm from MCP")
 	}
 	return nil
 }
@@ -105,7 +105,7 @@ func mcpRequestRollback(args map[string]any, userID int) (string, error) {
 		"change":  item,
 		"plan":    plan,
 		"applied": false,
-		"reason":  firstNonEmpty(reason, "MCP requested rollback CHG; SetuOps does not apply the revision."),
+		"reason":  firstNonEmpty(reason, "MCP requested rollback CHG; OpsTrellis does not apply the revision."),
 	})
 }
 

@@ -192,8 +192,8 @@ func listEnabledInboundCredentials(kind string) []inboundCredential {
 }
 
 func inboundSecretMatches(secret string, headers http.Header, body []byte) bool {
-	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-SetuOps-Secret", "X-Webhook-Secret")
-	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-SetuOps-Signature")
+	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-OpsTrellis-Secret", "X-Webhook-Secret")
+	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-OpsTrellis-Signature")
 	if provided != "" && secretEqual(provided, secret) {
 		return true
 	}
@@ -218,8 +218,8 @@ func inboundWebhookAuthorized(kind inboundWebhookKind, headers http.Header, body
 	if len(secrets) == 0 {
 		return false
 	}
-	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-SetuOps-Secret", "X-Webhook-Secret")
-	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-SetuOps-Signature")
+	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-OpsTrellis-Secret", "X-Webhook-Secret")
+	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-OpsTrellis-Signature")
 	for _, secret := range secrets {
 		if provided != "" && secretEqual(provided, secret) {
 			return true

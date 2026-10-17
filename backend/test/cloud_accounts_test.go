@@ -41,7 +41,7 @@ func TestPublicCloudTestErrorTruncates(t *testing.T) {
 }
 
 func TestAWSAccountIDFromRoleARN(t *testing.T) {
-	got := awsAccountIDFromRoleARN("arn:aws:iam::123456789012:role/SetuOpsRead")
+	got := awsAccountIDFromRoleARN("arn:aws:iam::123456789012:role/OpsTrellisRead")
 	if got != "123456789012" {
 		t.Fatalf("unexpected account id %q", got)
 	}

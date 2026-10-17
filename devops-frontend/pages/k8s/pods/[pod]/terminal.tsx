@@ -771,6 +771,7 @@ export default function DevOpsK8sPodTerminalPage() {
                   We attach this reason to the audit log, along with the pod, container, shell, and launch timestamp.
                 </p>
                 <div className="k8s-terminal-panel__actions">
+                  {detail?.k8s_access === 'write' ? (
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -779,6 +780,9 @@ export default function DevOpsK8sPodTerminalPage() {
                   >
                     {launching ? 'Launching...' : 'Launch audited session'}
                   </button>
+                  ) : (
+                    <p className="k8s-detail-card__meta">Write access is not granted for this project.</p>
+                  )}
                   <button type="button" className="btn btn-secondary" onClick={handleCopy}>
                     {copyState === 'copied' ? 'Copied' : 'Copy command'}
                   </button>

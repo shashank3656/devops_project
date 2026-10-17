@@ -113,7 +113,7 @@ func awsAccountIDFromRoleARN(roleARN string) string {
 }
 
 func awsValidateOnlyMode() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("SETUOPS_AWS_VALIDATE_ONLY")), "true")
+	return strings.EqualFold(strings.TrimSpace(firstNonEmptyEnv("OPSTRELLIS_AWS_VALIDATE_ONLY", "SETUOPS_AWS_VALIDATE_ONLY")), "true")
 }
 
 func awsBaseConfig(ctx context.Context) (aws.Config, bool) {
@@ -150,7 +150,7 @@ func liveAWSAssumeRoleTest(ctx context.Context, baseCfg aws.Config, roleARN, ext
 	client := sts.NewFromConfig(baseCfg)
 	input := &sts.AssumeRoleInput{
 		RoleArn:         aws.String(roleARN),
-		RoleSessionName: aws.String("setuops-cloud-account-test"),
+		RoleSessionName: aws.String("opstrellis-cloud-account-test"),
 		DurationSeconds: aws.Int32(900),
 	}
 	if strings.TrimSpace(externalID) != "" {

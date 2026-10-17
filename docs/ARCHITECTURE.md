@@ -1,6 +1,6 @@
 # Architecture
 
-SetuOps is one web portal (`devops-frontend`) and one Go API. Requesters, operators, managers, and admins share that shell. Section grants decide what they see. The diagrams below that still say “three portals” describe the earlier split; the current screen flows are in [FLOWS.md](./FLOWS.md).
+OpsTrellis is one web portal (`devops-frontend`) and one Go API. Requesters, operators, managers, and admins share that shell. Section grants decide what they see. The diagrams below that still say “three portals” describe the earlier split; the current screen flows are in [FLOWS.md](./FLOWS.md).
 
 ## Diagram Index
 
@@ -26,7 +26,7 @@ flowchart LR
     end
 
     subgraph Portals
-        DevOpsPortal["SetuOps portal"]
+        DevOpsPortal["OpsTrellis portal"]
     end
 
     subgraph ControlPlane
@@ -104,7 +104,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    DevOps["SetuOps portal<br/>devops-frontend/"]
+    DevOps["OpsTrellis portal<br/>devops-frontend/"]
     API["Backend API<br/>backend/"]
     DB["PostgreSQL"]
     Redis["Redis"]
@@ -172,7 +172,7 @@ Those objects are what the one portal reads and writes.
 | Component | Default Port |
 | --- | --- |
 | Backend API | `8080` |
-| SetuOps portal | `3002` |
+| OpsTrellis portal | `3002` |
 
 ## Helm Ingress Model
 

@@ -149,7 +149,7 @@ export function k8sClusterSetupSteps(cloud: string, authMode: string): K8sSetupS
         },
         {
           title: 'Grant sts:AssumeRole',
-          detail: 'For eks_iam, create a role the SetuOps API can assume with a unique external ID. Paste role ARN + external ID — not access keys.',
+          detail: 'For eks_iam, create a role the OpsTrellis API can assume with a unique external ID. Paste role ARN + external ID — not access keys.',
         },
         {
           title: 'Test connection',

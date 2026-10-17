@@ -94,7 +94,7 @@ export default function NewWebhookPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Create webhook - SetuOps</title></Head>
+      <Head><title>Create webhook - OpsTrellis</title></Head>
       <div className="portal-page">
         <PageHeader
           eyebrow="Operations"

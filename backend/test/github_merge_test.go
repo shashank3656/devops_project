@@ -277,7 +277,7 @@ func TestBuildBundledRequestFilesPreservesSingleStorageConfigWithoutEntryConfig(
 	baseFilePath := "project/setuops/devteam/gcp/envs/dev/storage/sgztnjfhbd/request.json"
 	content := []byte(`{
 	  "application_id": "SGZtnJFHBD",
-	  "client_name": "SetuOps",
+	  "client_name": "OpsTrellis",
 	  "cloud": "gcp",
 	  "config": {
 	    "application_id": "SGZtnJFHBD",

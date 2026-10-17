@@ -101,9 +101,11 @@ export default function DevOpsK8sWorkspacePage() {
                 <Link href={buildK8sHref('/k8s', { project_id: scope.project_id, environment: scope.environment })} className="btn btn-secondary">
                   Cluster catalog
                 </Link>
-                <Link href={buildK8sHref('/k8s/onboard/new', { project_id: scope.project_id, environment: scope.environment })} className="btn btn-primary">
-                  Onboard cluster
-                </Link>
+                {detail?.k8s_access === 'write' ? (
+                  <Link href={buildK8sHref('/k8s/onboard/new', { project_id: scope.project_id, environment: scope.environment })} className="btn btn-primary">
+                    Onboard cluster
+                  </Link>
+                ) : null}
               </div>
             </div>
           ) : loading ? (

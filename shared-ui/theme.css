@@ -1,5 +1,5 @@
 /*
- * SetuOps product theme — loaded LAST in every portal _app.
+ * OpsTrellis product theme — loaded LAST in every portal _app.
  * Rules are scoped under html[data-theme] so they outrank the stacked legacy
  * overrides in each portal's globals.css without resorting to !important.
  */
@@ -615,14 +615,7 @@ html[data-theme] .devops-sidebar-new__brand-word--primary {
 html[data-theme] .devops-sidebar-new__brand-mark {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background: var(--ig-accent);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 14px;
+  display: block;
   flex-shrink: 0;
 }
 
@@ -6173,10 +6166,6 @@ html[data-theme] .devops-sidebar-new__section-meta {
   color: #d5d8e0;
 }
 
-html[data-theme] .devops-sidebar-new__brand-mark {
-  background: #1f9d6a;
-}
-
 html[data-theme] .devops-sidebar-new__link:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
@@ -6966,24 +6955,22 @@ html[data-theme] .login-page__brand {
 html[data-theme] .login-page__mark {
   display: flex;
   align-items: center;
+  gap: 12px;
   margin: 0 0 28px;
 }
 
-html[data-theme] .login-page__mark span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  background: linear-gradient(145deg, #5eead4, #14b8a6 55%, #5c4db5);
-  color: #fff;
-  box-shadow: 0 10px 28px rgba(20, 184, 166, 0.45);
+html[data-theme] .login-page__mark img {
+  width: 44px;
+  height: 44px;
+  display: block;
+  flex-shrink: 0;
 }
 
-html[data-theme] .login-page__mark svg {
-  width: 26px;
-  height: 26px;
+html[data-theme] .login-page__mark-word {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #fff;
 }
 
 html[data-theme] .login-page__title {
@@ -8327,4 +8314,99 @@ html[data-theme] .alert-trends--three {
   html[data-theme] .alert-trends--three {
     grid-template-columns: 1fr;
   }
+}
+
+.k8s-summary-card.is-clusters,
+.k8s-summary-card.is-namespaces,
+.k8s-summary-card.is-workloads,
+.k8s-summary-card.is-services,
+.k8s-summary-card.is-storage {
+  border-left-width: 3px;
+}
+
+.k8s-summary-card.is-clusters {
+  background: color-mix(in srgb, #3b82f6 18%, transparent);
+  border-color: color-mix(in srgb, #3b82f6 42%, transparent);
+}
+
+.k8s-summary-card.is-clusters .k8s-summary-card__value {
+  color: #93c5fd;
+}
+
+.k8s-summary-card.is-namespaces {
+  background: color-mix(in srgb, #14b8a6 18%, transparent);
+  border-color: color-mix(in srgb, #14b8a6 42%, transparent);
+}
+
+.k8s-summary-card.is-namespaces .k8s-summary-card__value {
+  color: #5eead4;
+}
+
+.k8s-summary-card.is-workloads {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  border-color: color-mix(in srgb, #f59e0b 42%, transparent);
+}
+
+.k8s-summary-card.is-workloads .k8s-summary-card__value {
+  color: #fcd34d;
+}
+
+.k8s-summary-card.is-services {
+  background: color-mix(in srgb, #a855f7 18%, transparent);
+  border-color: color-mix(in srgb, #a855f7 42%, transparent);
+}
+
+.k8s-summary-card.is-services .k8s-summary-card__value {
+  color: #d8b4fe;
+}
+
+.k8s-summary-card.is-storage {
+  background: color-mix(in srgb, #94a3b8 18%, transparent);
+  border-color: color-mix(in srgb, #94a3b8 42%, transparent);
+}
+
+.k8s-summary-card.is-storage .k8s-summary-card__value {
+  color: #cbd5e1;
+}
+
+.k8s-data-pill.is-aws {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  border-color: color-mix(in srgb, #f59e0b 40%, transparent);
+  color: #fcd34d;
+}
+
+.k8s-data-pill.is-azure {
+  background: color-mix(in srgb, #3b82f6 18%, transparent);
+  border-color: color-mix(in srgb, #3b82f6 40%, transparent);
+  color: #93c5fd;
+}
+
+.k8s-data-pill.is-gcp {
+  background: color-mix(in srgb, #14b8a6 18%, transparent);
+  border-color: color-mix(in srgb, #14b8a6 40%, transparent);
+  color: #5eead4;
+}
+
+.k8s-data-pill.is-dev {
+  background: color-mix(in srgb, #14b8a6 16%, transparent);
+  border-color: color-mix(in srgb, #14b8a6 36%, transparent);
+  color: #5eead4;
+}
+
+.k8s-data-pill.is-uat {
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+  border-color: color-mix(in srgb, #f59e0b 36%, transparent);
+  color: #fcd34d;
+}
+
+.k8s-data-pill.is-prod {
+  background: color-mix(in srgb, #e11d48 16%, transparent);
+  border-color: color-mix(in srgb, #e11d48 40%, transparent);
+  color: #fda4af;
+}
+
+.k8s-data-pill.is-unknown {
+  background: color-mix(in srgb, #94a3b8 14%, transparent);
+  border-color: color-mix(in srgb, #94a3b8 32%, transparent);
+  color: #cbd5e1;
 }

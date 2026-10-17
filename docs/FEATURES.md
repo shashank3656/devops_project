@@ -1,4 +1,4 @@
-# SetuOps — All features and how they work
+# OpsTrellis — All features and how they work
 
 This is the product feature catalog. Every shipped surface is listed here with **what it is**, **who uses it**, **how it works**, and **where it lives**.
 
@@ -7,19 +7,19 @@ How the live screens behave is in [FLOWS.md](./FLOWS.md). The matching HTTP cont
 - Portal hub: https://app.notion.com/p/3e50f430ed10816699fec83b1b270288
 - Change / Incident / Health BRD: https://app.notion.com/p/3e50f430ed1081adb731c7f64bdfa1b2
 
-The display name is **SetuOps**. GitHub check IDs still use `infragate/*`.
+The display name is **OpsTrellis**. GitHub check IDs still use `infragate/*`.
 
 ---
 
 ## How to read this
 
-SetuOps is one Go API and one Next.js portal, `devops-frontend` (port 3002, browser token `devops_token`). The separate `frontend/` and `admin-frontend/` apps are not in this tree. Requesters, operators, managers, and admins use the same shell. Section grants decide which sidebar groups they see. There is no Sign up page. People, groups, and sign-in settings are **Portal Access**.
+OpsTrellis is one Go API and one Next.js portal, `devops-frontend` (port 3002, browser token `devops_token`). The separate `frontend/` and `admin-frontend/` apps are not in this tree. Requesters, operators, managers, and admins use the same shell. Section grants decide which sidebar groups they see. There is no Sign up page. People, groups, and sign-in settings are **Portal Access**.
 
 The tables later in this file that name a User portal or an Admin portal describe the earlier split. For on-call, IAM, change requests, incidents, problems, maintenance, and webhooks, follow [FLOWS.md](./FLOWS.md).
 
 Landing pages are **catalogs**. Forms open only after Onboard / Create / Edit.
 
-Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `setuops-workspace-scope` and in the URL. The ScopeBar at the top of each portal stays visible on tablet and mobile. Changing project or environment updates tickets, changes, incidents, and Kubernetes lists. Clear empties both the URL and the local workspace key. List pages show active filter chips above the table.
+Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `opstrellis-workspace-scope` and in the URL. The ScopeBar at the top of each portal stays visible on tablet and mobile. Changing project or environment updates tickets, changes, incidents, and Kubernetes lists. Clear empties both the URL and the local workspace key. List pages show active filter chips above the table.
 
 ---
 
@@ -28,7 +28,7 @@ Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `s
 ### Path A — Infrastructure request (ticket)
 
 1. User picks a project, cloud, environment, and a template (or custom JSON).
-2. SetuOps stores a request. Approval rules decide if a **team manager** must sign first.
+2. OpsTrellis stores a request. Approval rules decide if a **team manager** must sign first.
 3. If a manager is required, status is `pending_user_manager`. After that sign-off, status becomes `pending_devops_approval`.
 4. DevOps reviews the ticket (cost, policy, Terraform plan, PR impact) and approves or rejects.
 5. Approve opens a **GitOps PR** with `request.json` in the project's GitOps repo.
@@ -38,7 +38,7 @@ Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `s
 ### Path B — Application deploy (Change Request)
 
 1. Application CI merges to `main` and POSTs `/api/webhooks/change`.
-2. SetuOps creates or updates a Change Request (`CHG0000123`). Same `repo + sha + environment` is idempotent.
+2. OpsTrellis creates or updates a Change Request (`CHG0000123`). Same `repo + sha + environment` is idempotent.
 3. Environment is optional on the webhook. If omitted, the **Services** catalog (`service_map`) fills service, project, and environment.
 4. DevOps can also create a CHG by hand on `/changes/new`. Users and Admins never create CHGs.
 5. A watch window starts. The watcher compares baseline vs latest latency/errors.
@@ -54,7 +54,7 @@ Workspace scope (`project_id`, `environment`) is stored in `localStorage` key `s
 | Catalog-first | List pages show existing records. Create / Onboard / Edit is a separate route. |
 | ScopeBar | Filters catalogs by project and environment across all three portals. |
 | Golden path / template | A saved request shape (cloud + service + fields). Users pick one instead of writing Terraform. |
-| GitOps project | Mapping from a SetuOps project to a GitHub repo/path where `request.json` is written. |
+| GitOps project | Mapping from a OpsTrellis project to a GitHub repo/path where `request.json` is written. |
 | Service map | CMDB-lite. A named service belongs to a project and (optionally) a default environment. Feeds the CHG form dropdown and webhook fill-in. |
 | Change Request | Record of an application deploy. Numbered `CHG%07d`. Owned by DevOps. Readable in Admin (all) and User (visible projects only). Unmapped CHGs (no `project_id`) are hidden from the user portal. |
 | Incident | Page from a person, Grafana, logger, or the watcher. Numbered `INC…`. `request_id` is optional (alert-driven incidents are not ticket-tied). |
@@ -218,7 +218,7 @@ Primary nav: Home, Requests, **ITSM**, then (managers only) Deployments, Kuberne
 
 ### Cloud workspace (NF-01 + BRD-07)
 
-SetuOps **Cloud workspace** is two linked catalogs in the DevOps portal: **Accounts** (trust + onboarding) and **Inventory** (read-only resource catalog). Credentials and connection tests stay on the **API host**; portals never receive keys, external IDs, or secret refs in API responses.
+OpsTrellis **Cloud workspace** is two linked catalogs in the DevOps portal: **Accounts** (trust + onboarding) and **Inventory** (read-only resource catalog). Credentials and connection tests stay on the **API host**; portals never receive keys, external IDs, or secret refs in API responses.
 
 #### End goal
 
@@ -432,7 +432,7 @@ See **Kubernetes workspace (NF-02)** above for navigation and secure onboarding.
 | Infra CI | `POST /api/webhooks/ci` | Terraform plan, Infracost, apply success/fail on a ticket. |
 | GitHub | `POST /api/webhooks/github` | PR events for Deploy intel briefs and check runs. |
 | Slack / Teams commands | `POST /api/webhooks/slack`, `/api/webhooks/teams` | ChatOps: on-call, status. |
-| Outbound events | Admin webhooks | SetuOps POSTs request/change/incident events to Slack or HTTP. |
+| Outbound events | Admin webhooks | OpsTrellis POSTs request/change/incident events to Slack or HTTP. |
 | IRM sync | `POST /api/webhooks/irm` | PagerDuty / Grafana IRM / Opsgenie ack-resolve writes back to the same INC fingerprint. |
 
 ---
@@ -443,10 +443,10 @@ See **Kubernetes workspace (NF-02)** above for navigation and secure onboarding.
 Admin **People → SSO** turns on OIDC for User and DevOps. The login pages already call `GET /api/public/sso/options`. Continue with OIDC starts `GET /api/auth/oidc/start` and returns through `/api/auth/oidc/callback` with `?sso_token=`. Admin stays on local break-glass password. Env: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URL`.
 
 ### Workload identity
-CI posts a GitHub Actions OIDC token to `POST /api/auth/workload/github` or a GitLab CI OIDC token to `POST /api/auth/workload/gitlab` (audience default `setuops`). Self-hosted GitLab can set `GITLAB_OIDC_ISSUER` / `GITLAB_OIDC_JWKS_URL`. After verify, SetuOps can assume `AWS_WORKLOAD_ROLE_ARN` with the repo as subject (see W7). DevOps **Health → Identity** lists static keys, the last cloud-role exchange (no secrets), and recent verified tokens.
+CI posts a GitHub Actions OIDC token to `POST /api/auth/workload/github` or a GitLab CI OIDC token to `POST /api/auth/workload/gitlab` (audience default `opstrellis`; `setuops` is still accepted). Self-hosted GitLab can set `GITLAB_OIDC_ISSUER` / `GITLAB_OIDC_JWKS_URL`. After verify, OpsTrellis can assume `AWS_WORKLOAD_ROLE_ARN` with the repo as subject (see W7). DevOps **Health → Identity** lists static keys, the last cloud-role exchange (no secrets), and recent verified tokens.
 
 ### Bidirectional incidents
-Alert labels `pagerduty_incident` / `grafana_alert_uid` attach an external id. Ack or resolve in SetuOps pushes to PagerDuty / Grafana IRM / Opsgenie. Those tools POST the same status to `/api/webhooks/irm` or `/api/webhooks/pagerduty`.
+Alert labels `pagerduty_incident` / `grafana_alert_uid` attach an external id. Ack or resolve in OpsTrellis pushes to PagerDuty / Grafana IRM / Opsgenie. Those tools POST the same status to `/api/webhooks/irm` or `/api/webhooks/pagerduty`.
 
 ### SBOM / provenance on each CHG
 `POST /api/webhooks/change` accepts `sbom_url`, `attestation_url`, `image_digest`, optional `signed` / `provenance`. Detail pages and the Deploy intel repo last-change card show Signed or Unsigned. The Changes catalog webhook sample includes `summary`, `status`, and SBOM fields; see [CICD.md](./CICD.md) for single- and two-phase GitHub Actions jobs.
@@ -494,7 +494,7 @@ DevOps **Policies** stores lightweight Rego `deny` rules (`target=change` or `re
 `POST /api/copilot` retrieves CHGs, INCs, and runbooks first. The reply names those IDs. If a linked change has `previous_sha`, it suggests that recovery. It will not apply Terraform, Helm, or cluster changes. The Support hub shows citation links. User answers stay scoped to visible projects.
 
 ### Watcher rollback to an emergency CHG
-A regression INC on Health, a watching CHG with `previous_sha`, Deploy intel last-change, or the incident editor can record an emergency CHG that targets `previous_sha`. An active emergency CHG or open SEV1/SEV2 INC can bypass a freeze. High-control rollback without an active INC still needs CAB. If a cluster connection exists, the plan includes `k8s_href`. SetuOps records the CHG (and a rollback-console draft when the source ticket exists). It does not apply the revision.
+A regression INC on Health, a watching CHG with `previous_sha`, Deploy intel last-change, or the incident editor can record an emergency CHG that targets `previous_sha`. An active emergency CHG or open SEV1/SEV2 INC can bypass a freeze. High-control rollback without an active INC still needs CAB. If a cluster connection exists, the plan includes `k8s_href`. OpsTrellis records the CHG (and a rollback-console draft when the source ticket exists). It does not apply the revision.
 
 ---
 
@@ -523,7 +523,7 @@ The incident workspace form is no longer a blank second ITSM. `w5_incident_revie
 `w6_promote_chg.go`. DevOps or portal promote writes a CHG for the next environment with the same SHA that last shipped in the source env. The target env's last SHA becomes `previous_sha`. High-control hops use `normal` so CAB still applies. Freeze still blocks the promote itself.
 
 ### Live vs last CHG drift
-`w6_drift.go`. Scorecards, Health watch rows, CHG detail, and Deploy intel last-change compare the connected cluster image tag/digest to the last CHG SHA or `image_digest`. Drift fails the scorecard check. SetuOps does not apply a sync.
+`w6_drift.go`. Scorecards, Health watch rows, CHG detail, and Deploy intel last-change compare the connected cluster image tag/digest to the last CHG SHA or `image_digest`. Drift fails the scorecard check. OpsTrellis does not apply a sync.
 
 ### Blast radius from the service map
 `w6_blast_radius.go`. CHG detail, MCP `get_change`, and the PR impact brief add 1-hop dependents: other catalog services on the same repo or the same team/env. No new CMDB. Promote responses include the hop CHG. User and Admin scorecards show the same drift line as DevOps.
@@ -533,7 +533,7 @@ The incident workspace form is no longer a blank second ITSM. `w5_incident_revie
 ## W7 — Workload cloud roles and MCP writes
 
 ### OIDC → cloud role
-`w7_cloud_sts.go`. After GitHub or GitLab OIDC verify, SetuOps assumes `AWS_WORKLOAD_ROLE_ARN` with the repo (or GitLab project) as the subject. Short-lived AWS credentials return to the CI caller only. Identity findings store role, subject, exchanged, reason, and expiry — never `SecretAccessKey` or `SessionToken`. `GCP_WORKLOAD_SERVICE_ACCOUNT` is recorded as the intended identity; SetuOps does not mint a GCP key. If neither is set, the exchange is skipped and still shown on Identity.
+`w7_cloud_sts.go`. After GitHub or GitLab OIDC verify, OpsTrellis assumes `AWS_WORKLOAD_ROLE_ARN` with the repo (or GitLab project) as the subject. Short-lived AWS credentials return to the CI caller only. Identity findings store role, subject, exchanged, reason, and expiry — never `SecretAccessKey` or `SessionToken`. `GCP_WORKLOAD_SERVICE_ACCOUNT` is recorded as the intended identity; OpsTrellis does not mint a GCP key. If neither is set, the exchange is skipped and still shown on Identity.
 
 ### MCP write tools
 `w7_mcp_write.go`. `comment_incident` appends a timestamped operator note. `request_rollback` records an emergency CHG to `previous_sha` through `executeChangeSHARollback` (same freeze/CAB as the portal). Both refuse terraform/kubectl/helm apply. `GET /mcp` lists them under `write_tools`.

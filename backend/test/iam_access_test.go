@@ -146,7 +146,7 @@ func TestIAMAccessFileUsesOnePathAndManagedPolicyARN(t *testing.T) {
 		RequesterID:  7,
 		Evaluation: iamEvaluation{Input: iamEvaluateInput{
 			Provider: "AWS", ProjectID: "setuops", Environment: "dev", PrincipalID: "user-42",
-			CloudAccountID: "111122223333", CloudMember: "SetuOpsGrant",
+			CloudAccountID: "111122223333", CloudMember: "OpsTrellisGrant",
 			Permissions: []string{"ReadOnlyAccess", "SecurityAudit"},
 			StartsAt:    "2026-10-17T09:00:00Z", EndsAt: "2026-10-20T09:00:00Z",
 		}},

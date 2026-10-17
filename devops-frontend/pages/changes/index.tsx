@@ -42,11 +42,11 @@ interface ChangeRow {
   created_at: string;
 }
 
-const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
+const CHANGE_WEBHOOK_SAMPLE = `- name: Record OpsTrellis change
   if: success() && github.ref == 'refs/heads/main'
   env:
-    SETUOPS_API: \${{ secrets.SETUOPS_API_URL }}
-    SETUOPS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
+    OPSTRELLIS_API: \${{ secrets.OPSTRELLIS_API_URL }}
+    OPSTRELLIS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
     CHANGE_TITLE: \${{ github.event.head_commit.message }}
     CHANGE_SUMMARY: \${{ github.event.pull_request.body || github.event.head_commit.message }}
     CHANGE_AUTHOR: \${{ github.actor }}
@@ -57,9 +57,9 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
     SERVICE="\${GITHUB_REPOSITORY##*/}"
     TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
     SUMMARY="$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)"
-    curl -sf -X POST "\${SETUOPS_API%/}/api/webhooks/change" \\
+    curl -sf -X POST "\${OPSTRELLIS_API%/}/api/webhooks/change" \\
       -H "Content-Type: application/json" \\
-      -H "X-CI-Secret: $SETUOPS_SECRET" \\
+      -H "X-CI-Secret: $OPSTRELLIS_SECRET" \\
       --data "$(jq -n \\
         --arg repo "$GITHUB_REPOSITORY" \\
         --arg sha "$GITHUB_SHA" \\
@@ -99,29 +99,29 @@ const CHANGE_WEBHOOK_SAMPLE = `- name: Record SetuOps change
         }')"`;
 
 const CHANGE_WEBHOOK_LIFECYCLE_SAMPLE = `# Two-phase: same repo + sha — implementing before deploy, implemented after.
-- name: SetuOps — deploy started
+- name: OpsTrellis — deploy started
   if: success() && github.ref == 'refs/heads/main'
   env:
-    SETUOPS_API: \${{ secrets.SETUOPS_API_URL }}
-    SETUOPS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
+    OPSTRELLIS_API: \${{ secrets.OPSTRELLIS_API_URL }}
+    OPSTRELLIS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
     CHANGE_TITLE: \${{ github.event.head_commit.message }}
     CHANGE_SUMMARY: \${{ github.event.pull_request.body || github.event.head_commit.message }}
     CHANGE_AUTHOR: \${{ github.actor }}
   run: |
-    curl -sf -X POST "\${SETUOPS_API%/}/api/webhooks/change" -H "Content-Type: application/json" -H "X-CI-Secret: $SETUOPS_SECRET" \\
+    curl -sf -X POST "\${OPSTRELLIS_API%/}/api/webhooks/change" -H "Content-Type: application/json" -H "X-CI-Secret: $OPSTRELLIS_SECRET" \\
       --data "$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" \\
         --arg service "\${GITHUB_REPOSITORY##*/}" --arg title "$(printf '%s' "$CHANGE_TITLE" | head -n1)" \\
         --arg summary "$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)" --arg author "$CHANGE_AUTHOR" \\
         --arg status "implementing" \\
         '{ repo: $repo, sha: $sha, service: $service, title: $title, summary: $summary, author: $author, status: $status, change_type: "standard", watch_minutes: 120 }')"
 # … deploy …
-- name: SetuOps — deploy finished
+- name: OpsTrellis — deploy finished
   if: success() && github.ref == 'refs/heads/main'
   env:
-    SETUOPS_API: \${{ secrets.SETUOPS_API_URL }}
-    SETUOPS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
+    OPSTRELLIS_API: \${{ secrets.OPSTRELLIS_API_URL }}
+    OPSTRELLIS_SECRET: \${{ secrets.CHANGE_WEBHOOK_SECRET }}
   run: |
-    curl -sf -X POST "\${SETUOPS_API%/}/api/webhooks/change" -H "Content-Type: application/json" -H "X-CI-Secret: $SETUOPS_SECRET" \\
+    curl -sf -X POST "\${OPSTRELLIS_API%/}/api/webhooks/change" -H "Content-Type: application/json" -H "X-CI-Secret: $OPSTRELLIS_SECRET" \\
       --data "$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" --arg service "\${GITHUB_REPOSITORY##*/}" \\
         --arg status "implemented" \\
         '{ repo: $repo, sha: $sha, service: $service, status: $status, change_type: "standard", watch_minutes: 120 }')"`;

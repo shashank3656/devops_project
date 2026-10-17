@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
-export const WORKSPACE_SCOPE_KEY = 'setuops-workspace-scope';
-export const WORKSPACE_SCOPE_EVENT = 'setuops-scope';
+export const WORKSPACE_SCOPE_KEY = 'opstrellis-workspace-scope';
+export const WORKSPACE_SCOPE_EVENT = 'opstrellis-scope';
 
 export type WorkspaceScope = {
   projectId: string;

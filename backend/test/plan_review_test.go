@@ -50,7 +50,7 @@ func TestPlanReviewStatusRequiresAckOnlyForProdDeletes(t *testing.T) {
 	review := parseTerraformPlan(samplePlan)
 	review.RequiresAck = true
 	state, description := planReviewStatusFor(review)
-	if state != "pending" || description != "Prod plan: 1 destroyed, 1 replaced. Acknowledge in SetuOps to merge." {
+	if state != "pending" || description != "Prod plan: 1 destroyed, 1 replaced. Acknowledge in OpsTrellis to merge." {
 		t.Fatalf("got %q %q", state, description)
 	}
 	review.Acknowledged = true

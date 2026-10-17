@@ -61,7 +61,7 @@ func resolveInventoryAccountContext(cloud, accountID string, visibleTeams []stri
 	if bestID <= 0 {
 		return &cloudInventoryAccountContext{
 			AccountStatus: "not_onboarded",
-			Message:       "This provider account is not onboarded in SetuOps for your teams. Onboard it under Cloud accounts to tie inventory to trust and the environment catalog.",
+			Message:       "This provider account is not onboarded in OpsTrellis for your teams. Onboard it under Cloud accounts to tie inventory to trust and the environment catalog.",
 		}
 	}
 	ctx := &cloudInventoryAccountContext{

@@ -1,4 +1,4 @@
-# SetuOps — API reference
+# OpsTrellis — API reference
 
 Every HTTP route registered by the Go backend (`backend/main.go`) is listed here. Feature behaviour is in [FEATURES.md](./FEATURES.md).
 
@@ -18,7 +18,7 @@ Live stubs: `GET /swagger.json`, `GET /api-docs` (the in-process spec is incompl
 | Admin portal | Bearer token with `role=admin`, **or** `X-Admin-Secret: $ADMIN_SECRET` plus `ADMIN_BREAKGLASS_USER_ID`. Browser key: `admin_token`. |
 | DevOps portal | Bearer token. User must be `user_type=devops_user` **or** `role=admin`. Browser key: `devops_token`. |
 | DevOps manager | Same as DevOps, plus `devops_profiles.is_manager = true`. Many write routes require this. |
-| Inbound webhooks | `X-CI-Secret` / `X-SetuOps-Secret` / `X-Webhook-Secret` matching `CHANGE_WEBHOOK_SECRET`, `ALERT_WEBHOOK_SECRET`, `CI_WEBHOOK_SECRET`, or an Admin inbound source. **Or** `X-Hub-Signature-256: sha256=<hex>` HMAC of the raw body. Unsigned posts return **401**. |
+| Inbound webhooks | `X-CI-Secret` / `X-OpsTrellis-Secret` / `X-Webhook-Secret` matching `CHANGE_WEBHOOK_SECRET`, `ALERT_WEBHOOK_SECRET`, `CI_WEBHOOK_SECRET`, or an Admin inbound source. **Or** `X-Hub-Signature-256: sha256=<hex>` HMAC of the raw body. Unsigned posts return **401**. |
 
 Do not mix portal tokens. A user token on a DevOps route returns 403.
 
@@ -56,8 +56,8 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/auth/oidc/start` | none | `?portal=` | Redirects to the IdP. |
 | GET | `/api/auth/oidc/callback` | none | `code`, `state` | Exchanges the code and redirects to the portal `/login?sso_token=`. |
 | POST | `/api/auth/sso/login` | `X-SSO-Auth-Secret` if set | directory user JSON | Existing JIT/SSO session mint (IdP adapters). |
-| POST | `/api/auth/workload/github` | GitHub OIDC JWT | Bearer token or `{ token }` | Verifies Actions OIDC (`aud` default `setuops`). Then assumes `AWS_WORKLOAD_ROLE_ARN` with `repo:` subject. Response `exchange` may include short-lived creds; they are not persisted. |
-| POST | `/api/auth/workload/gitlab` | GitLab OIDC JWT | Bearer token or `{ token }` | Verifies GitLab CI OIDC (`aud` default `setuops`). Same cloud-role exchange using `project:` subject. |
+| POST | `/api/auth/workload/github` | GitHub OIDC JWT | Bearer token or `{ token }` | Verifies Actions OIDC (`aud` default `opstrellis`; `setuops` is still accepted). Then assumes `AWS_WORKLOAD_ROLE_ARN` with `repo:` subject. Response `exchange` may include short-lived creds; they are not persisted. |
+| POST | `/api/auth/workload/gitlab` | GitLab OIDC JWT | Bearer token or `{ token }` | Verifies GitLab CI OIDC (`aud` default `opstrellis`; `setuops` is still accepted). Same cloud-role exchange using `project:` subject. |
 | POST | `/api/auth/forgot-password` | none | `{ email }` | Sends reset email using `FRONTEND_URL`. |
 | POST | `/api/auth/reset-password` | none | `{ token, password }` | Sets a new password. |
 | POST | `/api/auth/verify-2fa` | pending | `{ code }` or `{ token, code }` | Completes 2FA login. |
@@ -452,12 +452,13 @@ Check run name stays `infragate/deploy-intel`.
 
 ## DevOps — Kubernetes
 
-All require a DevOps user. Writes (onboard, actions, terminal) typically require a manager.
+Reads require Kubernetes **Read** on the project. Writes (onboard, restart, scale, resume, terminal) require **Write** on that project. Access is the lower of the group level and the project link in Portal Access, then the higher result across the person’s groups. An admin can read and write every project. A DevOps manager flag does not grant Write. `GET /api/devops/k8s-clusters` with no project returns only projects the caller can read.
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| GET/POST | `/api/devops/k8s-connections` | List or onboard a cluster connection. GET returns `auth_modes_by_cloud` (AWS EKS IAM, Azure AKS workload identity, GCP GKE workload identity, `secret_ref`, kubeconfig/token, in-cluster). POST encrypts pasted secrets at rest; `secret_ref` resolves on the server only. |
-| POST | `/api/devops/k8s-connections/test` | DevOps manager — validate HTTPS endpoint, trust JSON, and secret ref before save. |
+| GET/PUT | `/api/admin/teams/:id/k8s-access` | Admin. Group `k8s_access` (`none`, `read`, `write`) and each linked project’s level. |
+| GET/POST | `/api/devops/k8s-connections` | List connections the caller can read, or onboard one. POST requires Write and encrypts pasted secrets at rest; `secret_ref` resolves on the server only. GET returns `k8s_access` and `auth_modes_by_cloud`. |
+| POST | `/api/devops/k8s-connections/test` | Validate HTTPS endpoint, trust JSON, and secret ref before save. Requires Write. |
 | GET | `/api/devops/k8s-overview` | Cross-cluster summary. |
 | GET | `/api/devops/k8s-clusters` | Cluster list. |
 | GET | `/api/devops/k8s-cluster-detail` | One cluster. |
@@ -478,7 +479,7 @@ All require a DevOps user. Writes (onboard, actions, terminal) typically require
 | GET | `/api/devops/k8s-storage` | PVCs / storage classes. |
 | GET | `/api/devops/k8s-events` | Events. |
 | GET | `/api/devops/k8s-certificates` | Certs. |
-| POST | `/api/devops/k8s-workload-actions` | Restart / scale. |
+| POST | `/api/devops/k8s-workload-actions` | Restart, scale, or resume. Requires Write. Freeze returns 409. |
 | POST | `/api/devops/k8s-terminal-launch` | Start an exec session. |
 | GET | `/api/devops/k8s-terminal-session` | Session status. |
 | GET | `/api/devops/k8s-terminal-attach` | Attach. |
@@ -553,7 +554,7 @@ Accepts Grafana, Alertmanager, or a generic `{ fingerprint, severity, title, mes
 
 ### `POST /api/webhooks/irm` and `/api/webhooks/irm/:provider`
 
-Same alert secrets. PagerDuty, Grafana IRM, or Opsgenie payloads ack/resolve the matching INC (or open one). SetuOps also writes back on DevOps incident PATCH when `PAGERDUTY_API_KEY` / `GRAFANA_IRM_URL` / `OPSGENIE_API_KEY` are set.
+Same alert secrets. PagerDuty, Grafana IRM, or Opsgenie payloads ack/resolve the matching INC (or open one). OpsTrellis also writes back on DevOps incident PATCH when `PAGERDUTY_API_KEY` / `GRAFANA_IRM_URL` / `OPSGENIE_API_KEY` are set.
 
 ### `POST /mcp` and `GET /mcp`
 

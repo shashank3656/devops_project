@@ -43,7 +43,7 @@ export default function MyWorkPage() {
   return (
     <>
       <Head>
-        <title>My work · SetuOps</title>
+        <title>My work · OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <MyWorkDesk

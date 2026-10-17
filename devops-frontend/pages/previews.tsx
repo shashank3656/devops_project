@@ -46,7 +46,7 @@ export default function PreviewsCatalogPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Preview environments - SetuOps</title>
+        <title>Preview environments - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

@@ -112,9 +112,11 @@ export default function DevOpsK8sOnboardCatalogPage() {
               <button type="button" className="btn btn-secondary" onClick={() => setRefreshKey((value) => value + 1)}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </button>
-              <Link href={formHref} className="btn btn-primary">
-                Onboard cluster
-              </Link>
+              {data.k8s_access === 'write' ? (
+                <Link href={formHref} className="btn btn-primary">
+                  Onboard cluster
+                </Link>
+              ) : null}
             </>
           }
         >
@@ -233,9 +235,11 @@ export default function DevOpsK8sOnboardCatalogPage() {
                       Clear filters
                     </button>
                   ) : null}
-                  <Link href={formHref} className="btn btn-primary">
-                    Onboard cluster
-                  </Link>
+                  {data.k8s_access === 'write' ? (
+                    <Link href={formHref} className="btn btn-primary">
+                      Onboard cluster
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ) : (

@@ -126,7 +126,7 @@ export default function DevOpsDashboard() {
   return (
     <>
       <Head>
-        <title>Overview - SetuOps</title>
+        <title>Overview - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="ops-home desk-landing">
@@ -149,7 +149,7 @@ export default function DevOpsDashboard() {
               {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
               <section className="ops-spotlight">
                 <div className="ops-spotlight__copy">
-                  <p className="ops-home__eyebrow">SetuOps / operations hub</p>
+                  <p className="ops-home__eyebrow">OpsTrellis / operations hub</p>
                   <h2>Less noise. More control.</h2>
                   <p>{setupService ? 'Start with the service that needs you. Ownership or repository is still missing.' : 'Nothing in this project is waiting for setup.'}</p>
                 </div>

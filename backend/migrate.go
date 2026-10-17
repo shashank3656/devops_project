@@ -1548,6 +1548,7 @@ func MigrateDatabase() error {
 	migrateMaintenanceNoticeSchema()
 	migrateMaintenanceWindowSchema()
 	migrateSectionGrantsSchema()
+	migrateK8sAccessSchema()
 
 	log.Println("Database schema is up to date")
 	return nil

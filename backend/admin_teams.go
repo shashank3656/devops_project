@@ -910,6 +910,10 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 		adminTeamGrantsHandler(w, r)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "k8s-access" {
+		adminTeamK8sAccessHandler(w, r)
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "members" {
 		if r.Method == "POST" {
 			adminTeamMembersAddHandler(w, r)

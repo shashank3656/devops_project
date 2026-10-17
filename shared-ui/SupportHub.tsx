@@ -265,7 +265,7 @@ export default function SupportHub({
       <aside className="portal-assistant portal-assistant--open" role="dialog" aria-modal="true" aria-label={`${portalName} support assistant`}>
         <div className="portal-assistant__header">
           <div>
-            <span className="portal-assistant__eyebrow">SetuOps Support</span>
+            <span className="portal-assistant__eyebrow">OpsTrellis Support</span>
             <h2 className="portal-assistant__title">{portalName} assistant</h2>
             <p className="portal-assistant__subtitle">Docs for this page.</p>
           </div>

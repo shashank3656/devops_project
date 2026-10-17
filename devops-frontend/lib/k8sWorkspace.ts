@@ -9,6 +9,7 @@ export interface ProjectOption {
   code: string;
   clouds: string[];
   environments: string[];
+  k8s_access?: string;
 }
 
 export interface K8sConnection {
@@ -235,6 +236,7 @@ export interface K8sOnboardingData {
   connections: K8sConnection[];
   auth_modes: string[];
   auth_modes_by_cloud: Record<string, string[]>;
+  k8s_access?: string;
 }
 
 export interface K8sConnectionPayload {
@@ -276,6 +278,7 @@ export interface K8sResourceMeta {
   namespaces: string[];
   environments: string[];
   connections?: K8sConnection[];
+  k8s_access?: string;
 }
 
 export interface K8sClusterListItem {
@@ -614,6 +617,7 @@ function normalizeProjects(value: unknown): ProjectOption[] {
       code: getString(item.code) || 'n/a',
       clouds: normalizeStringArray(item.clouds),
       environments: normalizeStringArray(item.environments),
+      k8s_access: getString(item.k8s_access),
     };
   });
 }
@@ -978,6 +982,7 @@ function normalizeResourceMeta(value: unknown): K8sResourceMeta {
     namespaces: normalizeStringArray(data.namespaces),
     environments: normalizeStringArray(data.environments),
     connections: normalizeConnections(data.connections),
+    k8s_access: getString(data.k8s_access),
   };
 }
 
@@ -1354,6 +1359,7 @@ function normalizeOnboardingData(value: unknown): K8sOnboardingData {
     connections: normalizeConnections(data.connections),
     auth_modes: normalizeStringArray(data.auth_modes),
     auth_modes_by_cloud: normalizeAuthModesByCloud(data.auth_modes_by_cloud),
+    k8s_access: getString(data.k8s_access),
   };
 }
 
@@ -1370,7 +1376,7 @@ async function fetchAuthorizedJson(apiUrl: string, path: string, init?: RequestI
       ...(init?.headers || {}),
     },
   });
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     clearDevOpsSessionAndRedirect();
     throw new Error('DevOps session expired');
   }
@@ -1402,9 +1408,19 @@ async function streamAuthorizedNdjson(
     signal,
   });
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     clearDevOpsSessionAndRedirect();
     throw new Error('DevOps session expired');
+  }
+  if (response.status === 403) {
+    const text = await response.text().catch(() => '');
+    let message = 'This cluster is not included for your group.';
+    try {
+      message = getString(asRecord(JSON.parse(text)).error, message);
+    } catch {
+      if (text) message = text;
+    }
+    throw new Error(message);
   }
 
   if (!response.ok) {

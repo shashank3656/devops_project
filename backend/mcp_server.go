@@ -29,7 +29,7 @@ func mcpTools() []mcpTool {
 	return []mcpTool{
 		{
 			Name:        "list_changes",
-			Description: "List recent SetuOps change requests. Read only.",
+			Description: "List recent OpsTrellis change requests. Read only.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -209,8 +209,8 @@ func mcpHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"name":             "setuops",
-			"title":            "SetuOps MCP",
+			"name":             "opstrellis",
+			"title":            "OpsTrellis MCP",
 			"version":          "1.0.0",
 			"protocol_version": mcpProtocolVersion,
 			"tools":            mcpToolNames(),
@@ -245,7 +245,7 @@ func mcpHandler(w http.ResponseWriter, r *http.Request) {
 		mcpWrite(w, req.ID, map[string]any{
 			"protocolVersion": mcpProtocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "setuops", "version": "1.0.0"},
+			"serverInfo":      map[string]any{"name": "opstrellis", "version": "1.0.0"},
 		})
 	case "notifications/initialized", "ping":
 		mcpWrite(w, req.ID, map[string]any{"ok": true})

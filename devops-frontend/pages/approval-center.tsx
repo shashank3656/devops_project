@@ -167,7 +167,7 @@ export default function DevOpsApprovalCenter() {
   return (
     <>
       <Head>
-        <title>Approval queue - SetuOps DevOps</title>
+        <title>Approval queue - OpsTrellis DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

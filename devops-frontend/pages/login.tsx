@@ -202,12 +202,9 @@ export default function DevOpsLogin() {
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
-            <p className="login-page__mark" aria-label="SetuOps">
-              <span>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path fill="currentColor" d="M4.5 10.2 12 4l7.5 6.2V20a1.2 1.2 0 0 1-1.2 1.2h-4.1V14H9.8v7.2H5.7A1.2 1.2 0 0 1 4.5 20V10.2Z" />
-                </svg>
-              </span>
+            <p className="login-page__mark" aria-label="OpsTrellis">
+              <img src="/brand/opstrellis-mark-dark.svg" alt="" aria-hidden width={44} height={44} />
+              <span className="login-page__mark-word">OpsTrellis</span>
             </p>
             <h1 className="login-page__title">Check the work<br />before it moves.</h1>
             <p className="login-page__tagline">

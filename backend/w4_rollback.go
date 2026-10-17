@@ -109,7 +109,7 @@ func executeChangeSHARollback(userID, incidentID, changeID int) (*changeRequestR
 		PreviousSHA:          plan.CurrentSHA,
 		Title:                title,
 		Author:               author,
-		Summary:              "Watcher-driven rollback recorded as an emergency CHG. SetuOps does not apply the revision.",
+		Summary:              "Watcher-driven rollback recorded as an emergency CHG. OpsTrellis does not apply the revision.",
 		Service:              plan.Service,
 		Environment:          plan.Environment,
 		ChangeType:           "emergency",

@@ -17,6 +17,7 @@ type k8sProjectOption struct {
 	Code         string   `json:"code"`
 	Clouds       []string `json:"clouds"`
 	Environments []string `json:"environments"`
+	K8sAccess    string   `json:"k8s_access,omitempty"`
 }
 
 type k8sConnectionRecord struct {
@@ -238,6 +239,7 @@ type k8sResourceMeta struct {
 	Namespaces          []string              `json:"namespaces"`
 	Environments        []string              `json:"environments"`
 	Connections         []k8sConnectionRecord `json:"connections,omitempty"`
+	K8sAccess           string                `json:"k8s_access,omitempty"`
 }
 
 type k8sClustersResponse struct {
@@ -604,6 +606,7 @@ type k8sDashboardResponse struct {
 	Certificates        []k8sCertificateItem     `json:"certificates"`
 	ServiceAccounts     []k8sServiceAccountItem  `json:"service_accounts"`
 	ConfigMaps          []k8sConfigMapItem       `json:"configmaps"`
+	K8sAccess           string                   `json:"k8s_access,omitempty"`
 }
 
 type k8sWorkloadActionInput struct {
@@ -828,6 +831,7 @@ func buildK8sTerminalSessionResponse(session *k8sTerminalSession) (k8sTerminalSe
 	if err != nil {
 		return k8sTerminalSessionResponse{}, err
 	}
+	filterDashboardForReader(session.ManagerID, payload)
 
 	clusterItems := buildK8sClusterItems(payload)
 	selectedCluster := selectK8sClusterItem(clusterItems, session.ClusterName, session.Environment)
@@ -1240,6 +1244,7 @@ func buildK8sResourceMeta(payload *k8sDashboardResponse, includeConnections bool
 		Clusters:            append([]string(nil), payload.Clusters...),
 		Namespaces:          append([]string(nil), payload.Namespaces...),
 		Environments:        append([]string(nil), payload.Environments...),
+		K8sAccess:           payload.K8sAccess,
 	}
 	if includeConnections {
 		meta.Connections = append([]k8sConnectionRecord(nil), payload.Connections...)
@@ -1387,12 +1392,17 @@ func selectK8sClusterItem(items []k8sClusterListItem, clusterName, environment s
 	return &fallback
 }
 
-func buildK8sClustersResponse(projectID int, clusterName, environment string) (k8sClustersResponse, error) {
+func buildK8sClustersResponse(userID, projectID int, clusterName, environment string) (k8sClustersResponse, error) {
+	access := k8sAccessByProject(userID)
+	if projectID > 0 && !k8sProjectReadable(access, projectID) {
+		return k8sClustersResponse{}, errK8sReadDenied
+	}
 	if projectID > 0 {
 		payload, err := buildK8sDashboard(projectID, clusterName, "", environment, false)
 		if err != nil {
 			return k8sClustersResponse{}, err
 		}
+		filterDashboardForReader(userID, payload)
 		return k8sClustersResponse{
 			k8sResourceMeta: buildK8sResourceMeta(payload, true),
 			Items:           buildK8sClusterItems(payload),
@@ -1411,6 +1421,9 @@ func buildK8sClustersResponse(projectID int, clusterName, environment string) (k
 	items := make([]k8sClusterListItem, 0)
 	seen := make(map[string]struct{})
 	for _, project := range projects {
+		if !k8sProjectReadable(access, project.ID) {
+			continue
+		}
 		payload, err := buildK8sDashboard(project.ID, clusterName, "", environment, false)
 		if err != nil {
 			return k8sClustersResponse{}, err
@@ -1429,6 +1442,9 @@ func buildK8sClustersResponse(projectID int, clusterName, environment string) (k
 	clusterOptions := make([]string, 0, len(connections))
 	environmentOptions := make([]string, 0, len(connections))
 	for _, item := range connections {
+		if !k8sProjectReadable(access, item.ProjectID) {
+			continue
+		}
 		if clusterName != "" && item.ClusterName != clusterName {
 			continue
 		}
@@ -1450,9 +1466,28 @@ func buildK8sClustersResponse(projectID int, clusterName, environment string) (k
 		return items[i].Environment < items[j].Environment
 	})
 
+	options := buildK8sProjectOptions(projects)
+	kept := make([]k8sProjectOption, 0, len(options))
+	strongest := "none"
+	if access == nil {
+		strongest = "write"
+	}
+	for _, project := range options {
+		if !k8sProjectReadable(access, project.ID) {
+			continue
+		}
+		if access == nil {
+			project.K8sAccess = "write"
+		} else {
+			project.K8sAccess = access[project.ID]
+		}
+		strongest = k8sStronger(strongest, project.K8sAccess)
+		kept = append(kept, project)
+	}
+
 	return k8sClustersResponse{
 		k8sResourceMeta: k8sResourceMeta{
-			Projects:            buildK8sProjectOptions(projects),
+			Projects:            kept,
 			SelectedProjectID:   0,
 			SelectedCluster:     clusterName,
 			SelectedNamespace:   "",
@@ -1461,6 +1496,7 @@ func buildK8sClustersResponse(projectID int, clusterName, environment string) (k
 			Namespaces:          []string{},
 			Environments:        uniqueSortedNonEmpty(environmentOptions),
 			Connections:         filteredConnections,
+			K8sAccess:           strongest,
 		},
 		Items: items,
 	}, nil
@@ -1858,35 +1894,34 @@ func devopsK8sConnectionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "GET":
-		if _, ok := requireDevopsUser(w, r); !ok {
+		userID, ok := requireDevopsUser(w, r)
+		if !ok {
 			return
 		}
 		projects, err := listProjectCatalogs()
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+			writeK8sLoadError(w, r, err)
 			return
 		}
 		connections, err := listK8sConnections()
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+			writeK8sLoadError(w, r, err)
 			return
 		}
+		options, visibleConnections, level := filterK8sConnectionCatalog(userID, buildK8sProjectOptions(projects), connections)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status": "ok",
 			"data": map[string]any{
-				"projects":    buildK8sProjectOptions(projects),
-				"connections": connections,
-				"auth_modes":        k8sAuthModes(),
+				"projects":            options,
+				"connections":         visibleConnections,
+				"k8s_access":          level,
+				"auth_modes":          k8sAuthModes(),
 				"auth_modes_by_cloud": k8sAuthModesByCloud(),
 			},
 		})
 	case "POST":
-		userID, ok := requireDevopsManager(w, r)
+		userID, ok := requireDevopsUser(w, r)
 		if !ok {
 			return
 		}
@@ -1895,6 +1930,9 @@ func devopsK8sConnectionsHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid json", "status": "error"})
+			return
+		}
+		if !ensureK8sWrite(w, r, userID, input.ProjectID) {
 			return
 		}
 		connection, err := createOrUpdateK8sConnection(input, &userID)
@@ -1925,7 +1963,8 @@ func devopsK8sConnectionsTestHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsManager(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 	var input k8sOnboardingInput
@@ -1933,6 +1972,9 @@ func devopsK8sConnectionsTestHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid json", "status": "error"})
+		return
+	}
+	if !ensureK8sWrite(w, r, userID, input.ProjectID) {
 		return
 	}
 	message, err := testK8sConnectionInput(input)
@@ -1967,16 +2009,15 @@ func devopsK8sClustersHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, _, environment := devopsK8sQuerySelection(r)
-	response, err := buildK8sClustersResponse(projectID, clusterName, environment)
+	response, err := buildK8sClustersResponse(userID, projectID, clusterName, environment)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -1997,16 +2038,15 @@ func devopsK8sWorkloadsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2031,16 +2071,15 @@ func devopsK8sServicesHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2064,16 +2103,15 @@ func devopsK8sConfigMapsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2097,16 +2135,15 @@ func devopsK8sStorageHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2130,16 +2167,15 @@ func devopsK8sPodsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2164,16 +2200,15 @@ func devopsK8sIngressesHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2197,16 +2232,15 @@ func devopsK8sSecretsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2230,16 +2264,15 @@ func devopsK8sCertificatesHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2263,7 +2296,8 @@ func devopsK8sIngressDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -2276,11 +2310,9 @@ func devopsK8sIngressDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2432,7 +2464,8 @@ func devopsK8sPodDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -2445,11 +2478,9 @@ func devopsK8sPodDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2549,7 +2580,8 @@ func devopsK8sActivityHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -2567,11 +2599,9 @@ func devopsK8sActivityHandler(w http.ResponseWriter, r *http.Request) {
 		limit = k8sActivityMaxLimit
 	}
 
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2753,7 +2783,8 @@ func devopsK8sPodExecProfileHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -2766,11 +2797,9 @@ func devopsK8sPodExecProfileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2855,7 +2884,7 @@ func devopsK8sPodExecProfileHandler(w http.ResponseWriter, r *http.Request) {
 			AllowedShells:       []string{"/bin/sh", "/bin/bash"},
 			DefaultShell:        defaultShell,
 			CommandPreview:      commandPreview,
-			AccessModel:         "Live terminal sessions stay manager-gated and audited before we open a real interactive exec channel.",
+			AccessModel:         "Live terminal sessions require write access on this project and are audited before a real interactive exec channel opens.",
 			AuditHint:           "Use this page to confirm the exact pod, container, and shell before enabling live exec in the next phase.",
 			RecentLogs:          recentLogs,
 			RecentEvents:        recentEvents,
@@ -2926,16 +2955,15 @@ func devopsK8sLogsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -2959,7 +2987,8 @@ func devopsK8sLogStreamHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -2970,11 +2999,9 @@ func devopsK8sLogStreamHandler(w http.ResponseWriter, r *http.Request) {
 	containerName := strings.TrimSpace(r.URL.Query().Get("container"))
 	level := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("level")))
 
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -3003,7 +3030,8 @@ func devopsK8sLogAttachHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -3014,6 +3042,10 @@ func devopsK8sLogAttachHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
+	if _, err := scopeK8sReadProject(userID, projectID); err != nil {
+		writeK8sLoadError(w, r, err)
+		return
+	}
 	workloadName := strings.TrimSpace(r.URL.Query().Get("workload_name"))
 	podName := strings.TrimSpace(r.URL.Query().Get("pod_name"))
 	containerName := strings.TrimSpace(r.URL.Query().Get("container"))
@@ -3024,7 +3056,7 @@ func devopsK8sLogAttachHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	writeSnapshot := func(eventType string, cursor string) (string, error) {
-		payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+		payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 		if err != nil {
 			return cursor, err
 		}
@@ -3075,16 +3107,15 @@ func devopsK8sEventsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -3109,7 +3140,7 @@ func devopsK8sTerminalLaunchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -3148,8 +3179,11 @@ func devopsK8sTerminalLaunchHandler(w http.ResponseWriter, r *http.Request) {
 		encodeDevopsJSON(w, map[string]any{"error": "reason is required for audited terminal access", "status": "error"})
 		return
 	}
+	if !ensureK8sWrite(w, r, managerID, input.ProjectID) {
+		return
+	}
 
-	payload, err := buildK8sDashboard(input.ProjectID, input.ClusterName, input.Namespace, input.Environment, false)
+	payload, err := loadK8sDashboardForReader(managerID, input.ProjectID, input.ClusterName, input.Namespace, input.Environment, false)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -3288,7 +3322,7 @@ func devopsK8sTerminalLaunchHandler(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:       createdAt.Format(time.RFC3339),
 			ExpiresAt:       expiresAt.Format(time.RFC3339),
 			LastActivityAt:  createdAt.Format(time.RFC3339),
-			AccessModel:     "Live exec launch is manager-gated, session-scoped, and recorded through the audit trail.",
+			AccessModel:     "Live exec launch requires write access on this project, stays session-scoped, and is recorded through the audit trail.",
 			AuditHint:       "Use the generated session and command preview together so responders can prove who opened the shell, when, and why.",
 			InitialOutput:   initialOutput,
 		},
@@ -3306,7 +3340,7 @@ func devopsK8sTerminalSessionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -3330,6 +3364,9 @@ func devopsK8sTerminalSessionHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		encodeDevopsJSON(w, map[string]any{"error": "terminal session is not available for this user", "status": "error"})
+		return
+	}
+	if !ensureK8sWrite(w, r, managerID, session.ProjectID) {
 		return
 	}
 
@@ -3356,7 +3393,7 @@ func devopsK8sTerminalAttachHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -3389,6 +3426,9 @@ func devopsK8sTerminalAttachHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer removeK8sTerminalSubscriber(sessionID, subscriberID)
+	if session != nil && !ensureK8sWrite(w, r, managerID, session.ProjectID) {
+		return
+	}
 
 	response, err := buildK8sTerminalSessionResponse(session)
 	if err != nil {
@@ -3461,7 +3501,7 @@ func devopsK8sTerminalCommandHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -3500,6 +3540,9 @@ func devopsK8sTerminalCommandHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		encodeDevopsJSON(w, map[string]any{"error": "terminal session is not available for this user", "status": "error"})
+		return
+	}
+	if !ensureK8sWrite(w, r, managerID, session.ProjectID) {
 		return
 	}
 
@@ -3553,7 +3596,7 @@ func devopsK8sWorkloadActionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}
@@ -3602,12 +3645,9 @@ func devopsK8sWorkloadActionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, projectErr := getProjectCatalogByID(input.ProjectID)
-	if projectErr != nil || project == nil || !devopsUserCanViewProject(managerID, *project) {
-		recordK8sWorkloadActionFailure(managerID, input, "failed", "project access denied")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		encodeDevopsJSON(w, map[string]any{"error": "project access denied", "status": "error"})
+	if k8sRank(userK8sAccessForProject(managerID, input.ProjectID)) < 2 {
+		recordK8sWorkloadActionFailure(managerID, input, "failed", "write access is not granted for this project")
+		writeAPIError(w, r, http.StatusForbidden, "Write access is not granted for this project.", nil)
 		return
 	}
 	if input.Environment != "" {
@@ -3621,7 +3661,7 @@ func devopsK8sWorkloadActionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	payload, err := buildK8sDashboard(input.ProjectID, input.ClusterName, input.Namespace, input.Environment, false)
+	payload, err := loadK8sDashboardForReader(managerID, input.ProjectID, input.ClusterName, input.Namespace, input.Environment, false)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -3693,7 +3733,8 @@ func devopsK8sRolloutDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
@@ -3706,11 +3747,9 @@ func devopsK8sRolloutDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		encodeDevopsJSON(w, map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -3835,16 +3874,15 @@ func devopsK8sClusterDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, false)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, false)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 
@@ -3908,16 +3946,15 @@ func devopsK8sOverviewHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 
 	projectID, clusterName, namespace, environment := devopsK8sQuerySelection(r)
-	payload, err := buildK8sDashboard(projectID, clusterName, namespace, environment, true)
+	payload, err := loadK8sDashboardForReader(userID, projectID, clusterName, namespace, environment, true)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "status": "error"})
+		writeK8sLoadError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

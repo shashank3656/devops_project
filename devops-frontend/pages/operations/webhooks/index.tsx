@@ -185,7 +185,7 @@ export default function WebhooksPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Webhooks - SetuOps</title></Head>
+      <Head><title>Webhooks - OpsTrellis</title></Head>
       <div className="portal-page">
         <PageHeader
           eyebrow="Operations"

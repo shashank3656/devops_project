@@ -209,20 +209,20 @@ Use repository variables for shared defaults or environment variables when they 
 
 ## Change and alert webhooks
 
-After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` or `X-Hub-Signature-256`. Omit `environment` so SetuOps fills service, project, and env from the Services catalog when the repo matches. Idempotency is `repo + sha + resolved environment`. Grafana, Alertmanager, or a logger POSTs `/api/webhooks/alerts`. Optional post-deploy samples go to `/api/webhooks/watch-metrics`. Do not store these secrets in git.
+After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` or `X-Hub-Signature-256`. Omit `environment` so OpsTrellis fills service, project, and env from the Services catalog when the repo matches. Idempotency is `repo + sha + resolved environment`. Grafana, Alertmanager, or a logger POSTs `/api/webhooks/alerts`. Optional post-deploy samples go to `/api/webhooks/watch-metrics`. Do not store these secrets in git.
 
-**GitHub secrets:** `SETUOPS_API_URL`, `CHANGE_WEBHOOK_SECRET` (same value as Admin → Webhooks → inbound change secret).
+**GitHub secrets:** `OPSTRELLIS_API_URL`, `CHANGE_WEBHOOK_SECRET` (same value as Admin → Webhooks → inbound change secret).
 
 **Portal lifecycle vs CI:** In DevOps, operators **Approve** (→ `scheduled`) and **Start implementation** when CAB applies. CI updates the same CHG with `status` (`implementing` → `implemented`) using the same `repo`, `sha`, and resolved environment. Map PR/release notes to JSON **`summary`**.
 
 ### Single POST after successful deploy
 
 ```yaml
-- name: Record SetuOps change
+- name: Record OpsTrellis change
   if: success() && github.ref == 'refs/heads/main'
   env:
-    SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
-    SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+    OPSTRELLIS_API: ${{ secrets.OPSTRELLIS_API_URL }}
+    OPSTRELLIS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
     CHANGE_TITLE: ${{ github.event.head_commit.message }}
     CHANGE_SUMMARY: ${{ github.event.pull_request.body || github.event.head_commit.message }}
     CHANGE_AUTHOR: ${{ github.actor }}
@@ -233,9 +233,9 @@ After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` 
     SERVICE="${GITHUB_REPOSITORY##*/}"
     TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
     SUMMARY="$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)"
-    curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
+    curl -sf -X POST "${OPSTRELLIS_API%/}/api/webhooks/change" \
       -H "Content-Type: application/json" \
-      -H "X-CI-Secret: $SETUOPS_SECRET" \
+      -H "X-CI-Secret: $OPSTRELLIS_SECRET" \
       --data "$(jq -n \
         --arg repo "$GITHUB_REPOSITORY" \
         --arg sha "$GITHUB_SHA" \
@@ -277,14 +277,14 @@ After merge to `main`, CI should POST `/api/webhooks/change` with `X-CI-Secret` 
 
 ### Two-phase POST (deploy start + deploy finish)
 
-Use the same `repo` and `sha` for both calls so SetuOps upserts one CHG.
+Use the same `repo` and `sha` for both calls so OpsTrellis upserts one CHG.
 
 ```yaml
-      - name: SetuOps — deploy started
+      - name: OpsTrellis — deploy started
         if: success() && github.ref == 'refs/heads/main'
         env:
-          SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
-          SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+          OPSTRELLIS_API: ${{ secrets.OPSTRELLIS_API_URL }}
+          OPSTRELLIS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
           CHANGE_TITLE: ${{ github.event.head_commit.message }}
           CHANGE_SUMMARY: ${{ github.event.pull_request.body || github.event.head_commit.message }}
           CHANGE_AUTHOR: ${{ github.actor }}
@@ -294,9 +294,9 @@ Use the same `repo` and `sha` for both calls so SetuOps upserts one CHG.
           SERVICE="${GITHUB_REPOSITORY##*/}"
           TITLE="$(printf '%s' "$CHANGE_TITLE" | head -n1)"
           SUMMARY="$(printf '%s' "$CHANGE_SUMMARY" | head -c 8000)"
-          curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
+          curl -sf -X POST "${OPSTRELLIS_API%/}/api/webhooks/change" \
             -H "Content-Type: application/json" \
-            -H "X-CI-Secret: $SETUOPS_SECRET" \
+            -H "X-CI-Secret: $OPSTRELLIS_SECRET" \
             --data "$(jq -n \
               --arg repo "$GITHUB_REPOSITORY" \
               --arg sha "$GITHUB_SHA" \
@@ -313,17 +313,17 @@ Use the same `repo` and `sha` for both calls so SetuOps upserts one CHG.
 
       # … deploy steps …
 
-      - name: SetuOps — deploy finished
+      - name: OpsTrellis — deploy finished
         if: success() && github.ref == 'refs/heads/main'
         env:
-          SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
-          SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+          OPSTRELLIS_API: ${{ secrets.OPSTRELLIS_API_URL }}
+          OPSTRELLIS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
           CHANGE_AUTHOR: ${{ github.actor }}
         run: |
           set -euo pipefail
-          curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
+          curl -sf -X POST "${OPSTRELLIS_API%/}/api/webhooks/change" \
             -H "Content-Type: application/json" \
-            -H "X-CI-Secret: $SETUOPS_SECRET" \
+            -H "X-CI-Secret: $OPSTRELLIS_SECRET" \
             --data "$(jq -n \
               --arg repo "$GITHUB_REPOSITORY" \
               --arg sha "$GITHUB_SHA" \
@@ -334,15 +334,15 @@ Use the same `repo` and `sha` for both calls so SetuOps upserts one CHG.
               '{ repo: $repo, sha: $sha, service: $service, author: $author,
                  pipeline_url: $pipeline_url, status: $status, change_type: "standard", watch_minutes: 120 }')"
 
-      - name: SetuOps — deploy failed
+      - name: OpsTrellis — deploy failed
         if: failure() && github.ref == 'refs/heads/main'
         env:
-          SETUOPS_API: ${{ secrets.SETUOPS_API_URL }}
-          SETUOPS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
+          OPSTRELLIS_API: ${{ secrets.OPSTRELLIS_API_URL }}
+          OPSTRELLIS_SECRET: ${{ secrets.CHANGE_WEBHOOK_SECRET }}
         run: |
-          curl -sf -X POST "${SETUOPS_API%/}/api/webhooks/change" \
+          curl -sf -X POST "${OPSTRELLIS_API%/}/api/webhooks/change" \
             -H "Content-Type: application/json" \
-            -H "X-CI-Secret: $SETUOPS_SECRET" \
+            -H "X-CI-Secret: $OPSTRELLIS_SECRET" \
             --data "$(jq -n \
               --arg repo "$GITHUB_REPOSITORY" \
               --arg sha "$GITHUB_SHA" \
@@ -354,11 +354,11 @@ Use the same `repo` and `sha` for both calls so SetuOps upserts one CHG.
 ### Local smoke test
 
 ```bash
-export SETUOPS_API="https://your-api"
-export SETUOPS_SECRET="your-inbound-secret"
-curl -sf -X POST "$SETUOPS_API/api/webhooks/change" \
+export OPSTRELLIS_API="https://your-api"
+export OPSTRELLIS_SECRET="your-inbound-secret"
+curl -sf -X POST "$OPSTRELLIS_API/api/webhooks/change" \
   -H "Content-Type: application/json" \
-  -H "X-CI-Secret: $SETUOPS_SECRET" \
+  -H "X-CI-Secret: $OPSTRELLIS_SECRET" \
   -d '{"repo":"org/my-service","sha":"'"$(git rev-parse HEAD)"'","title":"CI sample","summary":"Release notes","author":"you","change_type":"standard","status":"implemented","watch_minutes":120}'
 ```
 

@@ -9,7 +9,6 @@ import K8sWorkspaceShell from '../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import {
   DEVOPS_TOKEN_KEY,
-  DEVOPS_USER_KEY,
   buildK8sHref,
   fetchK8sWorkloads,
   K8sWorkloadsData,
@@ -44,7 +43,6 @@ export default function DevOpsK8sWorkloadsPage() {
   const [namespace, setNamespace] = useState('');
   const [environment, setEnvironment] = useState('');
   const [search, setSearch] = useState('');
-  const [isManager, setIsManager] = useState(false);
   const [submittingKey, setSubmittingKey] = useState('');
   const [scaleTargetKey, setScaleTargetKey] = useState('');
   const [scaleReplicas, setScaleReplicas] = useState('');
@@ -62,21 +60,6 @@ export default function DevOpsK8sWorkloadsPage() {
     router.query.namespace,
     router.query.project_id,
   ]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const rawUser = window.localStorage.getItem(DEVOPS_USER_KEY);
-      if (!rawUser) {
-        setIsManager(false);
-        return;
-      }
-      const parsed = JSON.parse(rawUser) as { devops_profile?: { is_manager?: boolean } } | null;
-      setIsManager(Boolean(parsed?.devops_profile?.is_manager));
-    } catch {
-      setIsManager(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -350,7 +333,8 @@ export default function DevOpsK8sWorkloadsPage() {
       workload_name: item.name,
     });
 
-  const scaleTarget = isManager && scaleTargetKey
+  const canWrite = overview?.k8s_access === 'write';
+  const scaleTarget = canWrite && scaleTargetKey
     ? visibleRows.find((item) => workloadRowKey(item) === scaleTargetKey) || null
     : null;
   const scaleBusy = scaleTarget ? submittingKey === scaleTargetKey : false;
@@ -386,8 +370,7 @@ export default function DevOpsK8sWorkloadsPage() {
     },
   ];
 
-  if (isManager) {
-    columns.push({
+  columns.push({
       id: 'actions',
       header: 'Actions',
       className: 'k8s-action-cell',
@@ -398,31 +381,35 @@ export default function DevOpsK8sWorkloadsPage() {
         return (
           <div className="ig-cell-stack">
             <div className="k8s-action-buttons">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={actionBusy || !canRunActions}
-                onClick={() => handleRestart(rowKey, item)}
-              >
-                {actionBusy ? 'Working...' : 'Restart'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={actionBusy || !canRunActions}
-                onClick={() => {
-                  setNotice('');
-                  setError('');
-                  setScaleTargetKey(rowKey);
-                  setScaleReplicas(String(item.replicas));
-                }}
-              >
-                Scale
-              </button>
+              {canWrite ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={actionBusy || !canRunActions}
+                  onClick={() => handleRestart(rowKey, item)}
+                >
+                  {actionBusy ? 'Working...' : 'Restart'}
+                </button>
+              ) : null}
+              {canWrite ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={actionBusy || !canRunActions}
+                  onClick={() => {
+                    setNotice('');
+                    setError('');
+                    setScaleTargetKey(rowKey);
+                    setScaleReplicas(String(item.replicas));
+                  }}
+                >
+                  Scale
+                </button>
+              ) : null}
               <Link className="btn btn-secondary btn-sm" href={buildScopedHref(`/k8s/workloads/${encodeURIComponent(item.name)}/rollout`, item)}>
                 Rollout
               </Link>
-              {item.status.toLowerCase() !== 'healthy' ? (
+              {canWrite && item.status.toLowerCase() !== 'healthy' ? (
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -433,12 +420,11 @@ export default function DevOpsK8sWorkloadsPage() {
                 </button>
               ) : null}
             </div>
-            {!canRunActions ? <span className="ig-cell-meta">Choose a project-scoped cluster to run actions.</span> : null}
+            {canWrite && !canRunActions ? <span className="ig-cell-meta">Choose a project-scoped cluster to run actions.</span> : null}
           </div>
         );
       },
     });
-  }
 
   return (
     <>

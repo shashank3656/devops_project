@@ -235,7 +235,7 @@ export default function DeployIntelligenceRepoPage() {
     const branch = insights?.branch_protection.base_branch || repoMeta?.base_branch || 'main';
     const ok = await confirm({
       title: 'Apply branch protection',
-      message: `Apply recommended SetuOps checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
+      message: `Apply recommended OpsTrellis checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
       confirmLabel: 'Apply',
     });
     if (!ok) return;
@@ -924,7 +924,7 @@ export default function DeployIntelligenceRepoPage() {
                   disabled={suggestingTicket}
                   onClick={() => void suggestTicket(selected.pr_number, ackReasons.trim().length > 0)}
                 >
-                  {suggestingTicket ? 'Creating ticket…' : 'Create SetuOps ticket'}
+                  {suggestingTicket ? 'Creating ticket…' : 'Create OpsTrellis ticket'}
                 </button>
               </div>
             ) : null}

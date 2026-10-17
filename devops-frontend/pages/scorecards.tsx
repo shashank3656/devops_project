@@ -62,7 +62,7 @@ export default function ScorecardsPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Scorecards - SetuOps</title></Head>
+      <Head><title>Scorecards - OpsTrellis</title></Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>

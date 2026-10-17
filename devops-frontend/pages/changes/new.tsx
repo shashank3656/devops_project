@@ -269,8 +269,8 @@ export default function NewChangeRequestPage() {
       setError('Impact, test plan, and rollback plan are required.');
       return;
     }
-    const idempotencyKey = sessionStorage.getItem('setuops-change-idempotency') || crypto.randomUUID();
-    sessionStorage.setItem('setuops-change-idempotency', idempotencyKey);
+    const idempotencyKey = sessionStorage.getItem('opstrellis-change-idempotency') || crypto.randomUUID();
+    sessionStorage.setItem('opstrellis-change-idempotency', idempotencyKey);
     setSaving(true);
     setError('');
     try {
@@ -316,7 +316,7 @@ export default function NewChangeRequestPage() {
       const change = data.change && typeof data.change === 'object' ? (data.change as Record<string, unknown>) : {};
       const id = typeof change.id === 'number' ? change.id : 0;
       sessionStorage.removeItem(CHANGE_DRAFT_KEY);
-      sessionStorage.removeItem('setuops-change-idempotency');
+      sessionStorage.removeItem('opstrellis-change-idempotency');
       await router.push(id > 0 ? `/changes/${id}` : '/changes');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create change request');

@@ -18,6 +18,13 @@ type Team = {
 
 type Person = { id: number; username: string };
 type Member = { user_id: number; username: string; role: string };
+type K8sLevel = 'none' | 'read' | 'write';
+type K8sLink = { project_id: number; name: string; k8s_access: K8sLevel };
+type K8sProject = { id: number; name: string };
+
+function asK8sLevel(value: unknown): K8sLevel {
+  return value === 'none' || value === 'write' || value === 'read' ? value : 'read';
+}
 
 export default function GroupAccessPage() {
   const apiUrl = useApiUrl();
@@ -40,6 +47,12 @@ export default function GroupAccessPage() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [teamK8s, setTeamK8s] = useState<K8sLevel>('none');
+  const [k8sLinks, setK8sLinks] = useState<K8sLink[]>([]);
+  const [k8sProjects, setK8sProjects] = useState<K8sProject[]>([]);
+  const [addProjectId, setAddProjectId] = useState('');
+  const [addProjectLevel, setAddProjectLevel] = useState<K8sLevel>('read');
+  const [savingK8s, setSavingK8s] = useState(false);
 
   useEffect(() => {
     if (!router.isReady || !Number.isFinite(teamId) || teamId <= 0) return;
@@ -68,6 +81,24 @@ export default function GroupAccessPage() {
           user_id: member.user_id,
           username: member.username,
           role: member.role,
+        })));
+      })
+      .catch(() => undefined);
+    fetch(`${apiUrl}/api/admin/teams/${teamId}/k8s-access`, { headers: sessionAuthHeaders() })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || cancel) return;
+        setTeamK8s(body?.k8s_access === 'write' || body?.k8s_access === 'none' ? body.k8s_access : 'read');
+        const links = Array.isArray(body?.links) ? body.links : [];
+        setK8sLinks(links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
+          project_id: Number(link.project_id) || 0,
+          name: link.name || 'Project',
+          k8s_access: asK8sLevel(link.k8s_access),
+        })));
+        const projects = Array.isArray(body?.projects) ? body.projects : [];
+        setK8sProjects(projects.map((project: { id: number; name: string }) => ({
+          id: Number(project.id) || 0,
+          name: project.name || 'Project',
         })));
       })
       .catch(() => undefined);
@@ -193,6 +224,49 @@ export default function GroupAccessPage() {
       setError('Defaults could not be saved.');
     } finally {
       setSavingDefaults(false);
+    }
+  }
+
+  function queueProject() {
+    const projectId = Number(addProjectId);
+    const project = k8sProjects.find((item) => item.id === projectId);
+    if (!project || k8sLinks.some((link) => link.project_id === project.id)) return;
+    setK8sLinks((current) => [...current, { project_id: project.id, name: project.name, k8s_access: addProjectLevel }]);
+    setAddProjectId('');
+    setAddProjectLevel('read');
+  }
+
+  async function saveKubernetes() {
+    if (!team) return;
+    setSavingK8s(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/teams/${team.id}/k8s-access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...sessionAuthHeaders() },
+        body: JSON.stringify({
+          k8s_access: teamK8s,
+          projects: k8sLinks.map((link) => ({ project_id: link.project_id, k8s_access: link.k8s_access })),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof body?.error === 'string' ? body.error : 'Kubernetes access was not saved.');
+        return;
+      }
+      setTeamK8s(body?.k8s_access === 'write' || body?.k8s_access === 'none' ? body.k8s_access : 'read');
+      const links = Array.isArray(body?.links) ? body.links : [];
+      setK8sLinks(links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
+        project_id: Number(link.project_id) || 0,
+        name: link.name || 'Project',
+        k8s_access: asK8sLevel(link.k8s_access),
+      })));
+      setNotice('Kubernetes access saved.');
+    } catch {
+      setError('Kubernetes access could not be saved.');
+    } finally {
+      setSavingK8s(false);
     }
   }
 
@@ -355,6 +429,72 @@ export default function GroupAccessPage() {
                 <button type="button" className="btn btn-primary" disabled={savingDefaults} onClick={saveDefaults}>
                   {savingDefaults ? 'Saving…' : 'Save defaults'}
                 </button>
+              </section>
+              <section className="portal-surface group-card group-card--wide">
+                <div className="group-card__head">
+                  <div>
+                    <h2 className="access-form__title">Kubernetes</h2>
+                    <p className="access-hint">
+                      The group level and each project level both apply. A person gets the lower of the two, and the higher result across groups they belong to. Read opens clusters, workloads, pods, and logs. Write adds restart, scale, resume, terminal, and cluster onboard. None keeps the project link and hides its clusters. The Kubernetes page under Sections still has to be on. Adding a project also links this group for on-call and other project access.
+                    </p>
+                  </div>
+                  <button type="button" className="btn btn-primary" disabled={savingK8s} onClick={saveKubernetes}>
+                    {savingK8s ? 'Saving…' : 'Save Kubernetes'}
+                  </button>
+                </div>
+                <label className="label" htmlFor="group-k8s">Group access
+                  <select id="group-k8s" className="input" value={teamK8s} onChange={(event) => setTeamK8s(asK8sLevel(event.target.value))}>
+                    <option value="none">None</option>
+                    <option value="read">Read</option>
+                    <option value="write">Write</option>
+                  </select>
+                </label>
+                {k8sLinks.length ? (
+                  <ul className="access-menu" aria-label="Project Kubernetes access">
+                    {k8sLinks.map((link) => (
+                      <li key={link.project_id}>
+                        <label className="label" htmlFor={`k8s-project-${link.project_id}`}>{link.name}
+                          <select
+                            id={`k8s-project-${link.project_id}`}
+                            className="input"
+                            value={link.k8s_access}
+                            onChange={(event) => {
+                              const next = asK8sLevel(event.target.value);
+                              setK8sLinks((current) => current.map((item) => (
+                                item.project_id === link.project_id ? { ...item, k8s_access: next } : item
+                              )));
+                            }}
+                          >
+                            <option value="none">None</option>
+                            <option value="read">Read</option>
+                            <option value="write">Write</option>
+                          </select>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="access-hint">This group is not linked to a project yet.</p>
+                )}
+                <div className="group-defaults">
+                  <label className="label" htmlFor="add-k8s-project">Add project
+                    <select id="add-k8s-project" className="input" value={addProjectId} onChange={(event) => setAddProjectId(event.target.value)}>
+                      <option value="">Choose a project</option>
+                      {k8sProjects.filter((project) => !k8sLinks.some((link) => link.project_id === project.id)).map((project) => (
+                        <option key={project.id} value={project.id}>{project.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label" htmlFor="add-k8s-level">Access
+                    <select id="add-k8s-level" className="input" value={addProjectLevel} onChange={(event) => setAddProjectLevel(event.target.value === 'write' ? 'write' : 'read')}>
+                      <option value="read">Read</option>
+                      <option value="write">Write</option>
+                    </select>
+                  </label>
+                  <button type="button" className="btn btn-secondary" disabled={!addProjectId} onClick={queueProject}>
+                    Add project
+                  </button>
+                </div>
               </section>
               <section className="portal-surface group-card group-card--wide">
                 <div className="group-card__head">

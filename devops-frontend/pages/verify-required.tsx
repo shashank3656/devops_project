@@ -59,7 +59,7 @@ export default function DevOpsVerifyRequired() {
   return (
     <>
       <Head>
-        <title>Verify your email - SetuOps DevOps</title>
+        <title>Verify your email - OpsTrellis DevOps</title>
       </Head>
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div className="card" style={{ maxWidth: 440, width: '100%' }}>

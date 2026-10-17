@@ -784,8 +784,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
-              <span className="devops-sidebar-new__brand-mark" aria-hidden>S</span>
-              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
+              <img className="devops-sidebar-new__brand-mark" src="/brand/opstrellis-mark-dark.svg" alt="" aria-hidden width={28} height={28} />
+              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">OpsTrellis</span>
             </Link>
           )}
         </div>
@@ -858,7 +858,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               <IconMenu />
             </button>
             <div className="devops-navbar__title-wrap">
-              <span className="devops-navbar__kicker">SetuOps</span>
+              <span className="devops-navbar__kicker">OpsTrellis</span>
               <h1 className="devops-navbar__title">{pageTitle}</h1>
             </div>
             <ScopeBar
@@ -956,7 +956,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
         <div className="ops-crumb">
-          <span>{crumbProject?.name || 'SetuOps'} / {pageTitle}</span>
+          <span>{crumbProject?.name || 'OpsTrellis'} / {pageTitle}</span>
           <span>{crumbProject?.team || 'Team'} / {(crumbProject?.cloud || 'cloud').toUpperCase()}</span>
         </div>
         <main id="main-content" tabIndex={-1} className="devops-main-new ig-page">
@@ -1025,7 +1025,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           ...(supportEmailReady
             ? [{
                 label: 'Email platform support',
-                externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+                externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`OpsTrellis support: ${pageTitle}`)}`,
               }]
             : []),
           { label: 'Open incidents', href: '/incidents' },

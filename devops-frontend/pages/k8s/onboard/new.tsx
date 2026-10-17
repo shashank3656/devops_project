@@ -92,12 +92,17 @@ export default function DevOpsK8sOnboardFormPage() {
     };
   }, [apiUrl, router.isReady]);
 
+  const writableProjects = useMemo(
+    () => data.projects.filter((project) => project.k8s_access === 'write'),
+    [data.projects],
+  );
+
   useEffect(() => {
-    if (!data.projects.length) return;
+    if (!writableProjects.length) return;
     const requestedProjectId = readQueryString(router.query.project_id);
     const requestedEnvironment = readQueryString(router.query.environment);
     const selectedProject =
-      data.projects.find((project) => String(project.id) === requestedProjectId) || data.projects[0];
+      writableProjects.find((project) => String(project.id) === requestedProjectId) || writableProjects[0];
     const cloud = normalizeCloudProvider(selectedProject?.clouds[0] || 'aws');
     const modes = k8sAuthModesForCloud(cloud, data.auth_modes_by_cloud);
 
@@ -114,7 +119,7 @@ export default function DevOpsK8sOnboardFormPage() {
         auth_mode: modes[0] || 'secret_ref',
       };
     });
-  }, [data.auth_modes_by_cloud, data.projects, router.query.environment, router.query.project_id]);
+  }, [data.auth_modes_by_cloud, router.query.environment, router.query.project_id, writableProjects]);
 
   const selectedProject = useMemo(
     () => data.projects.find((project) => project.id === form.project_id) || null,
@@ -221,6 +226,11 @@ export default function DevOpsK8sOnboardFormPage() {
               {error}
             </div>
           ) : null}
+          {!loading && writableProjects.length === 0 ? (
+            <div className="alert alert-error" role="alert">
+              Write access is not granted for a project, so this cluster cannot be onboarded.
+            </div>
+          ) : null}
           {testOk ? (
             <div className="alert alert-success" role="status">
               {testOk}
@@ -276,7 +286,7 @@ export default function DevOpsK8sOnboardFormPage() {
                     required
                   >
                     <option value="">Select project</option>
-                    {data.projects.map((project) => (
+                    {writableProjects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name} ({project.code})
                       </option>
@@ -367,7 +377,7 @@ export default function DevOpsK8sOnboardFormPage() {
                         className="input"
                         value={trust.role_arn}
                         onChange={(event) => setTrust((t) => ({ ...t, role_arn: event.target.value }))}
-                        placeholder="arn:aws:iam::111122223333:role/SetuOpsEKSAccess"
+                        placeholder="arn:aws:iam::111122223333:role/OpsTrellisEKSAccess"
                         required
                       />
                     </label>
@@ -494,7 +504,7 @@ export default function DevOpsK8sOnboardFormPage() {
 
                 {form.auth_mode === 'in_cluster' ? (
                   <div className="portal-note portal-form-grid__span-2">
-                    In-cluster mode expects the SetuOps API to run with a service account inside this cluster. No credential is stored.
+                    In-cluster mode expects the OpsTrellis API to run with a service account inside this cluster. No credential is stored.
                   </div>
                 ) : null}
 
@@ -505,7 +515,7 @@ export default function DevOpsK8sOnboardFormPage() {
                   <button type="button" className="btn btn-secondary" disabled={testing || saving} onClick={() => void runTest()}>
                     {testing ? 'Testing…' : 'Test connection'}
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={saving || testing}>
+                  <button type="submit" className="btn btn-primary" disabled={saving || testing || writableProjects.length === 0}>
                     {saving ? 'Saving...' : 'Save cluster'}
                   </button>
                 </div>

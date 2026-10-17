@@ -121,9 +121,9 @@ func buildDeployIntelBranchProtection(owner, name, baseBranch string) deployInte
 		}
 	}
 	if missing == 0 {
-		out.Summary = fmt.Sprintf("Branch %q requires both SetuOps CI checks.", baseBranch)
+		out.Summary = fmt.Sprintf("Branch %q requires both OpsTrellis CI checks.", baseBranch)
 	} else {
-		out.Summary = fmt.Sprintf("Branch %q is protected but %d SetuOps check(s) are not required yet.", baseBranch, missing)
+		out.Summary = fmt.Sprintf("Branch %q is protected but %d OpsTrellis check(s) are not required yet.", baseBranch, missing)
 		out.Recommendations = []string{}
 		for _, check := range out.RequiredChecks {
 			if !check.Present {

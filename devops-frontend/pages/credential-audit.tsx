@@ -273,7 +273,7 @@ export default function CredentialAuditPage() {
   return (
     <>
       <Head>
-        <title>Credential Audit - SetuOps DevOps</title>
+        <title>Credential Audit - OpsTrellis DevOps</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

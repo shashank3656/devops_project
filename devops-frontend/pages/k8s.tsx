@@ -14,6 +14,37 @@ import {
   readQueryString,
 } from '../lib/k8sWorkspace';
 
+function cloudPillClass(cloud: string): string {
+  const value = cloud.toLowerCase();
+  if (value.includes('aws')) return 'k8s-data-pill is-aws';
+  if (value.includes('azure')) return 'k8s-data-pill is-azure';
+  if (value.includes('gcp') || value.includes('google')) return 'k8s-data-pill is-gcp';
+  return 'k8s-data-pill';
+}
+
+function environmentPillClass(environment: string): string {
+  const value = environment.toLowerCase();
+  if (value.includes('prod')) return 'k8s-data-pill is-prod';
+  if (value.includes('uat') || value.includes('stage')) return 'k8s-data-pill is-uat';
+  if (value.includes('dev')) return 'k8s-data-pill is-dev';
+  return 'k8s-data-pill';
+}
+
+function healthLabel(status: string): string {
+  return status.trim() || 'Unknown';
+}
+
+function healthPillClass(status: string): string {
+  const value = status.trim().toLowerCase();
+  if (!value) return 'k8s-data-pill is-unknown';
+  if (value.includes('unhealthy') || value.includes('down') || value.includes('fail') || value.includes('critical')) {
+    return 'k8s-data-pill k8s-data-pill--critical';
+  }
+  if (value.includes('degrad') || value.includes('warn')) return 'k8s-data-pill k8s-data-pill--warning';
+  if (value === 'healthy' || value === 'ok' || value === 'ready') return 'k8s-data-pill k8s-data-pill--healthy';
+  return 'k8s-data-pill is-unknown';
+}
+
 function matchesClusterSearch(item: K8sClusterListItem, query: string) {
   if (!query) return true;
   const haystack = [
@@ -126,9 +157,11 @@ export default function DevOpsK8sClustersPage() {
               <button type="button" className="btn btn-secondary" onClick={() => setRefreshKey((value) => value + 1)}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </button>
-              <Link href={buildK8sHref('/k8s/onboard/new', { project_id: projectId, environment })} className="btn btn-primary">
-                Onboard cluster
-              </Link>
+              {catalog?.k8s_access === 'write' ? (
+                <Link href={buildK8sHref('/k8s/onboard/new', { project_id: projectId, environment })} className="btn btn-primary">
+                  Onboard cluster
+                </Link>
+              ) : null}
             </>
           }
         >
@@ -144,23 +177,23 @@ export default function DevOpsK8sClustersPage() {
             </div>
 
             <div className="k8s-summary-strip">
-              <div className="k8s-summary-card">
+              <div className="k8s-summary-card is-clusters">
                 <span className="k8s-summary-card__label">Clusters</span>
                 <strong className="k8s-summary-card__value">{summary.clusters}</strong>
               </div>
-              <div className="k8s-summary-card">
+              <div className="k8s-summary-card is-namespaces">
                 <span className="k8s-summary-card__label">Namespaces</span>
                 <strong className="k8s-summary-card__value">{summary.namespaces}</strong>
               </div>
-              <div className="k8s-summary-card">
+              <div className="k8s-summary-card is-workloads">
                 <span className="k8s-summary-card__label">Workloads</span>
                 <strong className="k8s-summary-card__value">{summary.workloads}</strong>
               </div>
-              <div className="k8s-summary-card">
+              <div className="k8s-summary-card is-services">
                 <span className="k8s-summary-card__label">Services</span>
                 <strong className="k8s-summary-card__value">{summary.services}</strong>
               </div>
-              <div className="k8s-summary-card">
+              <div className="k8s-summary-card is-storage">
                 <span className="k8s-summary-card__label">Storage</span>
                 <strong className="k8s-summary-card__value">{summary.storage}</strong>
               </div>
@@ -267,9 +300,11 @@ export default function DevOpsK8sClustersPage() {
                   >
                     Clear filters
                   </button>
-                  <Link href={buildK8sHref('/k8s/onboard/new', { project_id: projectId, environment })} className="btn btn-primary">
-                    Onboard cluster
-                  </Link>
+                  {catalog?.k8s_access === 'write' ? (
+                    <Link href={buildK8sHref('/k8s/onboard/new', { project_id: projectId, environment })} className="btn btn-primary">
+                      Onboard cluster
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -317,9 +352,9 @@ export default function DevOpsK8sClustersPage() {
                             <span className="k8s-link-cell__meta">{cluster.project_code}</span>
                           </div>
                         </td>
-                        <td><span className="k8s-data-pill">{cluster.cloud.toUpperCase()}</span></td>
-                        <td><span className="portal-pill k8s-data-pill k8s-data-pill--env">{cluster.environment.toUpperCase()}</span></td>
-                        <td><span className="portal-pill k8s-data-pill">{cluster.health_status || 'Healthy'}</span></td>
+                        <td><span className={cloudPillClass(cluster.cloud)}>{cluster.cloud.toUpperCase()}</span></td>
+                        <td><span className={environmentPillClass(cluster.environment)}>{cluster.environment.toUpperCase()}</span></td>
+                        <td><span className={healthPillClass(cluster.health_status)}>{healthLabel(cluster.health_status)}</span></td>
                         <td>{cluster.kubernetes_version || '—'}</td>
                         <td>{cluster.node_pool || '—'}</td>
                         <td>{cluster.node_count}</td>
