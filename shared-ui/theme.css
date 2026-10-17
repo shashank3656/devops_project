@@ -4452,8 +4452,38 @@ a.svc-tree__folder:hover,
 .oncall-month {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-height: 40px;
+}
+
+.oncall-month strong {
+  min-width: 7.5rem;
+  text-align: center;
+  font-size: 14px;
+}
+
+.oncall-month__step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--ig-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ig-text);
+  cursor: pointer;
+}
+
+.oncall-month__step svg {
+  width: 16px;
+  height: 16px;
+}
+
+.oncall-month__step:hover {
+  background: var(--ig-accent-soft);
+  color: var(--ig-accent-text, var(--ig-accent));
 }
 
 .oncall-board {
@@ -4490,11 +4520,40 @@ a.svc-tree__folder:hover,
   cursor: default;
 }
 
+.oncall-board__cell.is-weekend {
+  background: color-mix(in srgb, #8b93a7 16%, transparent);
+}
+
+.oncall-board__cell.is-weekend .oncall-board__num {
+  color: #9aa3b8;
+}
+
+.oncall-board__cell.is-tone-1 {
+  background: color-mix(in srgb, #3b82f6 22%, transparent);
+}
+
+.oncall-board__cell.is-tone-2 {
+  background: color-mix(in srgb, #14b8a6 22%, transparent);
+}
+
+.oncall-board__cell.is-tone-3 {
+  background: color-mix(in srgb, #f59e0b 24%, transparent);
+}
+
+.oncall-board__cell.is-tone-4 {
+  background: color-mix(in srgb, #a855f7 22%, transparent);
+}
+
 .oncall-board__cell.is-today {
-  background: var(--ig-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--ig-accent, #7c6cf6);
+}
+
+.oncall-board__cell.is-today .oncall-board__num {
+  color: var(--ig-accent-text, #c4b5fd);
 }
 
 .oncall-board__cell.is-selected {
+  background: color-mix(in srgb, var(--ig-accent, #7c6cf6) 42%, transparent);
   border-color: var(--ig-accent, #7c6cf6);
 }
 

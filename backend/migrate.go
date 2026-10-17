@@ -1546,6 +1546,7 @@ func MigrateDatabase() error {
 	migrateOncallScheduleSchema()
 	migrateOncallDutySchema()
 	migrateMaintenanceNoticeSchema()
+	migrateMaintenanceWindowSchema()
 	migrateSectionGrantsSchema()
 
 	log.Println("Database schema is up to date")

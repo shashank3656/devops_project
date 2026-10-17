@@ -389,6 +389,10 @@ func withSectionGate(next http.Handler) http.Handler {
 		}
 		grants := sectionGrantsForUser(user)
 		if !grants.allows(section) || !grants.allowsPage(pageForPath(r.URL.Path)) {
+			if strings.HasPrefix(r.URL.Path, "/api/maintenance/windows") && userCanReachMaintenanceWindows(user.ID) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			writeAPIError(w, r, http.StatusForbidden, "This section is not included for your group.", nil)
 			return
 		}

@@ -58,7 +58,10 @@ export default function OnCallProjectsPage() {
             <h1 className="portal-page__title">Projects</h1>
             <p className="portal-page__subtitle">Add or remove the teams on a project, then choose who rotates on each team.</p>
           </div>
-          <Link href="/on-call" className="btn btn-secondary">Back to on-call</Link>
+          <div className="portal-page__actions">
+            <Link href="/on-call/onboard" className="btn btn-primary">Onboard project</Link>
+            <Link href="/on-call" className="btn btn-secondary">Back to on-call</Link>
+          </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">

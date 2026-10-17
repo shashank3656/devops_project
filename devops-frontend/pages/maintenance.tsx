@@ -1,143 +1,138 @@
 import Head from 'next/head';
-import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
-import { deskCall, sessionRole, useDeskScope } from '../components/deskClient';
+import { sessionRole } from '../components/deskClient';
 import { useApiUrl } from '../context/ApiUrlContext';
 
-type Notice = {
-  state?: string;
-  overlap?: string;
-  audience_count?: number;
-  delivery?: string;
-  correction?: string;
-  incident_open?: boolean;
-  change_open?: boolean;
-  approved?: boolean;
+const TOKEN_KEY = 'devops_token';
+
+type WindowRow = {
+  id: number;
+  number: string;
+  project_name: string;
+  service: string;
+  environment: string;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  can_decide: boolean;
 };
 
-function noticeLabel(value?: string) {
-  if (value === 'reviewed') return 'Reviewed';
-  if (value === 'published') return 'Published';
-  if (value === 'corrected') return 'Corrected';
-  if (value === 'cancelled') return 'Cancelled';
-  return 'Unknown';
+const STATUS_OPTIONS = [
+  { value: 'pending_manager', label: 'Waiting for manager' },
+  { value: 'pending_devops', label: 'Waiting for DevOps manager' },
+  { value: 'pending_admin', label: 'Waiting for admin' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
+function statusLabel(status: string): string {
+  return STATUS_OPTIONS.find((item) => item.value === status)?.label || 'Unknown';
+}
+
+function when(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
 }
 
 export default function MaintenancePage() {
   const apiUrl = useApiUrl();
-  const { projectId, environment } = useDeskScope();
+  const router = useRouter();
   const canWrite = sessionRole() !== 'viewer';
-  const [service, setService] = useState('checkout');
-  const [timezone, setTimezone] = useState('America/New_York');
-  const [impact, setImpact] = useState('checkout writes pause');
-  const [body, setBody] = useState('Planned maintenance for checkout.');
-  const [owner, setOwner] = useState('Ada');
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const [state, setState] = useState<'idle' | 'loading' | 'empty' | 'error' | 'denied'>('idle');
-  const [message, setMessage] = useState('');
+  const [items, setItems] = useState<WindowRow[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('');
 
-  const scopeReady = Boolean(projectId && environment);
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/maintenance/windows`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(typeof data.error === 'string' ? data.error : 'Maintenance could not be loaded.');
+          return;
+        }
+        setItems(Array.isArray(data.windows) ? data.windows : []);
+      })
+      .catch(() => setError('Maintenance could not be loaded.'))
+      .finally(() => setLoading(false));
+  }, [apiUrl]);
 
-  async function submit(action: 'preview' | 'approve' | 'cancel') {
-    setMessage('');
-    if (!scopeReady) {
-      setState('error');
-      setMessage('Choose one project and one environment first.');
-      return;
-    }
-    setState('loading');
-    const now = Date.now();
-    const response = await deskCall(apiUrl, '/api/maintenance/notices', 'POST', {
-      action,
-      project_id: Number(projectId),
-      environment,
-      subscribers: [{ service: service.trim(), opted_out: false }],
-      notice: {
-        id: `notice-${projectId}-${service.trim()}`,
-        service: service.trim(),
-        timezone,
-        impact: impact.trim(),
-        body: body.trim(),
-        owner: owner.trim(),
-        change_id: 'change-9',
-        incident_id: 'incident-4',
-        start: new Date(now).toISOString(),
-        end: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
-        incident_open: true,
-        change_open: true,
-      },
+  const filtering = Boolean(query.trim() || status);
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items.filter((item) => {
+      if (status && item.status !== status) return false;
+      if (!needle) return true;
+      return [item.number, item.project_name, item.service, item.environment].join(' ').toLowerCase().includes(needle);
     });
-    if (response.status === 403) {
-      setState('denied');
-      setNotice(null);
-      return;
-    }
-    if (response.status === 404) {
-      setState('empty');
-      setNotice(null);
-      return;
-    }
-    if (response.status !== 200) {
-      setState('error');
-      setMessage('The notice could not be reviewed. A missing notice stays unknown.');
-      return;
-    }
-    const payload = response.body as { notice?: Notice };
-    setNotice(payload.notice || { state: 'draft' });
-    setState('idle');
-    if (action === 'preview') setMessage('Review only. This did not publish the notice.');
-    if (action === 'approve') setMessage('Notice approved for this audience. It was not published to a public page.');
-    if (action === 'cancel') setMessage('Cancellation recorded. The linked change and incident stay open. This does not mean the service recovered.');
-  }
+  }, [items, query, status]);
 
   return (
     <DevOpsLayout>
       <Head><title>Maintenance</title></Head>
-      <div className="portal-page desk-landing">
-        <header className="portal-page__header">
+      <div className="portal-page">
+        <div className="portal-page__header">
           <div>
+            <span className="portal-page__eyebrow">Maintenance</span>
             <h1 className="portal-page__title">Maintenance</h1>
-            <p className="portal-page__subtitle">Planned notice for this project. Audience is a count. A notice does not close the linked change or incident.</p>
+            <p className="portal-page__subtitle">A planned window is approved by the creator’s manager, then a DevOps manager, then an admin.</p>
           </div>
-        </header>
-        {state === 'error' ? <div className="alert alert-error">{message || 'The notice could not be reviewed.'}</div> : null}
-        {state === 'denied' ? <div className="alert alert-error">You can read notices. You cannot change this notice.</div> : null}
-        {state === 'empty' ? <div className="alert">No maintenance notice is visible for this project.</div> : null}
-        {message && state !== 'error' ? <div className="alert">{message}</div> : null}
-        <dl className="security-facts">
-          <div><dt>Project</dt><dd>{projectId || 'Unknown'}</dd></div>
-          <div><dt>Environment</dt><dd>{environment || 'Unknown'}</dd></div>
-          <div><dt>State</dt><dd>{state === 'loading' ? 'Loading' : noticeLabel(notice?.state)}</dd></div>
-          <div><dt>Audience</dt><dd>{notice ? notice.audience_count ?? 0 : 'Unknown'}</dd></div>
-          <div><dt>Overlap</dt><dd>{notice?.overlap || 'None'}</dd></div>
-          <div><dt>Delivery</dt><dd>{notice?.delivery === 'failed' ? 'Failed' : notice?.delivery === 'sent' ? 'Sent' : 'Unknown'}</dd></div>
-          <div><dt>Linked records</dt><dd>{notice?.incident_open || notice?.change_open ? 'Open' : notice ? 'Open' : 'Unknown'}</dd></div>
-        </dl>
-        <form className="portal-surface" onSubmit={(event) => { event.preventDefault(); void submit('preview'); }}>
-          <div className="portal-field-grid portal-field-grid--two">
-            <label className="label">Service
-              <input className="input" value={service} onChange={(event) => setService(event.target.value)} required />
+          {canWrite ? <Link href="/maintenance/new" className="btn btn-primary">Create</Link> : null}
+        </div>
+        {error ? <div className="alert alert-error">{error}</div> : null}
+        <section className="portal-surface">
+          <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
+            <label>
+              Search
+              <input className="input" type="search" value={query} placeholder="Number, project, or service" onChange={(event) => setQuery(event.target.value)} />
             </label>
-            <label className="label">Timezone
-              <input className="input" value={timezone} onChange={(event) => setTimezone(event.target.value)} required />
+            <label>
+              Status
+              <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="">All statuses</option>
+                {STATUS_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
             </label>
-            <label className="label">Impact
-              <input className="input" value={impact} onChange={(event) => setImpact(event.target.value)} required />
-            </label>
-            <label className="label">Owner
-              <input className="input" value={owner} onChange={(event) => setOwner(event.target.value)} required />
-            </label>
-            <label className="label">Notice
-              <input className="input" value={body} onChange={(event) => setBody(event.target.value)} required />
-            </label>
-          </div>
-          {notice?.correction ? <p>Correction {notice.correction}. The linked change and incident stay open.</p> : null}
-          <div className="portal-page__actions">
-            <button className="btn btn-secondary" type="submit">Review notice</button>
-            <button className="btn btn-primary" type="button" disabled={!canWrite} onClick={() => void submit('approve')}>Approve notice</button>
-            <button className="btn btn-secondary" type="button" disabled={!canWrite} onClick={() => void submit('cancel')}>Cancel maintenance</button>
-          </div>
-        </form>
+            <div className="iam-filters__actions">
+              {filtering ? <button type="button" className="btn btn-secondary" onClick={() => { setQuery(''); setStatus(''); }}>Clear</button> : null}
+            </div>
+          </form>
+          {loading ? <div className="empty-state">Loading maintenance...</div> : null}
+          {!loading && !visible.length ? (
+            <div className="empty-state">{filtering ? 'No maintenance matches this filter.' : 'No maintenance windows yet.'}</div>
+          ) : null}
+          {visible.length ? (
+            <table className="templates-table">
+              <thead>
+                <tr>
+                  <th>Maintenance</th>
+                  <th>Service</th>
+                  <th>Window</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((item) => (
+                  <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/maintenance/${item.id}`)}>
+                    <td>
+                      <strong>{item.number}</strong>
+                      <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_name || 'Unknown'}</div>
+                    </td>
+                    <td>{item.service}{item.environment ? ` · ${item.environment}` : ''}</td>
+                    <td>{when(item.starts_at)} – {when(item.ends_at)}</td>
+                    <td>{item.can_decide ? 'Needs your decision' : statusLabel(item.status)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </section>
       </div>
     </DevOpsLayout>
   );

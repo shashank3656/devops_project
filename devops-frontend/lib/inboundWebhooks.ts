@@ -20,6 +20,10 @@ export function webhookUsePath(kind: string) {
   return WEBHOOK_USES.find((item) => item.id === kind)?.path || '/api/webhooks/alerts';
 }
 
+export function webhookSample(kind: string) {
+  return kind === 'change' ? WEBHOOK_CHANGE_SAMPLE : WEBHOOK_INCIDENT_SAMPLE;
+}
+
 export const WEBHOOK_CHANGE_SAMPLE = `{
   "repo": "org/checkout",
   "sha": "abc123def456",
