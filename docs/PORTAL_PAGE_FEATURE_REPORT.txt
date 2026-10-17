@@ -1,6 +1,11 @@
 InfraGate Portal Page and Feature Report
 Generated: 2026-03-22
 
+Current product (October 2026)
+- One portal: devops-frontend. frontend/ and admin-frontend/ are not in this repo.
+- Step-by-step behavior for on-call, IAM, changes, incidents, problems, maintenance, and webhooks is docs/FLOWS.md.
+- The inventory below is the March 2026 three-portal snapshot. Do not treat its routes as the current map.
+
 Scope
 - This report covers all page files found under:
   - frontend/pages

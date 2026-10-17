@@ -7,7 +7,7 @@ This repo supports two deployment styles:
 
 For GitHub Actions deployment pipelines, environment approvals, and GHCR publishing, see [CI/CD](./CICD.md).
 
-The root README links here intentionally so deployment steps stay in one place.
+The root README links here intentionally so deployment steps stay in one place. The UI this repo ships is `devops-frontend`. How those screens behave is [FLOWS.md](./FLOWS.md). Helm values may still name the older user and admin hosts.
 
 ## Deployment Decision Guide
 
