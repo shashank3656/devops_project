@@ -239,7 +239,7 @@ export default function ChangesCatalogPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Changes - DevOps</title>
+        <title>Changes - OpsTrellis</title>
       </Head>
       <div className="portal-page changes-page">
         <div className="portal-page__header">

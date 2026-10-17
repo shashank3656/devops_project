@@ -213,7 +213,7 @@ export default function ServiceDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{item?.service || 'Service'} - DevOps</title>
+        <title>{item?.service || 'Service'} - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

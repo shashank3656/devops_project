@@ -422,7 +422,7 @@ export default function DevOpsK8sServiceDetailPage() {
   return (
     <>
       <Head>
-        <title>{serviceName ? `${serviceName} - Service` : 'Service'} - DevOps</title>
+        <title>{serviceName ? `${serviceName} - Service` : 'Service'} - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

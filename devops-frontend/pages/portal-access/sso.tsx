@@ -89,7 +89,7 @@ export default function PortalSsoPage() {
   return (
     <>
       <Head>
-        <title>Sign-in - DevOps</title>
+        <title>Sign-in - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

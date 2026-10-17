@@ -74,7 +74,7 @@ export default function MyRequestsPage() {
   return (
     <>
       <Head>
-        <title>My requests - DevOps</title>
+        <title>My requests - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

@@ -116,7 +116,7 @@ export default function DevOpsRetryCenterPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Retry Center - DevOps Portal</title>
+        <title>Retry Center - OpsTrellis</title>
       </Head>
       <div className="alert-page">
         <header className="work-page__head">

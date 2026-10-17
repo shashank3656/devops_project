@@ -154,7 +154,7 @@ export default function EditDevOpsTemplate() {
   return (
     <>
       <Head>
-        <title>Edit template - DevOps</title>
+        <title>Edit template - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page portal-page--narrow">

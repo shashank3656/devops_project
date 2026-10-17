@@ -253,7 +253,7 @@ export default function CloudResourcesPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Cloud inventory - DevOps</title>
+        <title>Cloud inventory - OpsTrellis</title>
       </Head>
       <div className="portal-page cloud-workspace-page">
         <PageHeader

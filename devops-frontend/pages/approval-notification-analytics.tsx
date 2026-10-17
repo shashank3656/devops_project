@@ -189,7 +189,7 @@ export default function ApprovalNotificationAnalyticsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Approval & Notification Analytics - DevOps Portal</title>
+        <title>Approval & Notification Analytics - OpsTrellis</title>
       </Head>
       <div className="alert-page">
         <header className="work-page__head">

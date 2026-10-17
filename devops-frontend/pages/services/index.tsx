@@ -223,7 +223,7 @@ export default function ServiceMapPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Services - DevOps</title>
+        <title>Services - OpsTrellis</title>
       </Head>
       <div className="ops-frame">
         <header className="ops-frame__head">

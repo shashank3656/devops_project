@@ -160,7 +160,7 @@ export default function NewServiceMapPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Add service - DevOps</title>
+        <title>Add service - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

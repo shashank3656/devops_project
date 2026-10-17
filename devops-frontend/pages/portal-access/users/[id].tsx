@@ -108,7 +108,7 @@ export default function EditPersonPage() {
   return (
     <>
       <Head>
-        <title>{username ? `${username} - DevOps` : 'Person - DevOps'}</title>
+        <title>{username ? `${username} - OpsTrellis` : 'Person - OpsTrellis'}</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

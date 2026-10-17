@@ -235,7 +235,7 @@ export default function CloudAccountDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{item?.display_name || 'Cloud account'} - DevOps</title>
+        <title>{item?.display_name || 'Cloud account'} - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <PageHeader

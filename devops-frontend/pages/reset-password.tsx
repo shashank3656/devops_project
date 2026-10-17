@@ -68,7 +68,7 @@ export default function DevOpsResetPassword() {
     return (
       <>
         <Head>
-          <title>Reset Password - DevOps</title>
+          <title>Reset Password - OpsTrellis</title>
         </Head>
         <div className="login-page">
           <div className="login-page__right" style={{ margin: 'auto' }}>
@@ -95,15 +95,15 @@ export default function DevOpsResetPassword() {
   return (
     <>
       <Head>
-        <title>Reset Password - DevOps</title>
+        <title>Reset Password - OpsTrellis</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">DevOps</h1>
+            <h1 className="login-page__title">OpsTrellis</h1>
             <p className="login-page__tagline">
-              Set a new password for the DevOps portal and return to your operations workspace.
+              Set a new password for OpsTrellis and return to your operations workspace.
             </p>
           </div>
           <div className="login-page__decor">
@@ -116,7 +116,7 @@ export default function DevOpsResetPassword() {
           <div className="login-page__card">
             <h2 className="login-page__card-title">Set new password</h2>
             <p className="login-page__card-subtitle">
-              Enter your new DevOps portal password below.
+              Enter your new OpsTrellis password below.
             </p>
             {success ? (
               <p style={{ color: 'var(--color-success)' }}>

@@ -653,7 +653,7 @@ export default function DevOpsIncidentsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Incidents - DevOps Portal</title>
+        <title>Incidents - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

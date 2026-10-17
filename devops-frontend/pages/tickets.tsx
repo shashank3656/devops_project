@@ -945,7 +945,7 @@ export default function DevOpsTickets() {
   return (
     <>
       <Head>
-        <title>Requests - OpsTrellis DevOps</title>
+        <title>Requests - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-tickets-page">

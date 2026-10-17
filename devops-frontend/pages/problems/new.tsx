@@ -246,7 +246,7 @@ export default function NewProblemPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Create problem - DevOps</title>
+        <title>Create problem - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

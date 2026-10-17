@@ -346,7 +346,7 @@ export default function DevOpsRunbooksPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Project Runbooks - DevOps Portal</title>
+        <title>Project Runbooks - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

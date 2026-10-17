@@ -100,7 +100,7 @@ export default function DevOpsK8sOnboardCatalogPage() {
   return (
     <>
       <Head>
-        <title>K8s connections - DevOps</title>
+        <title>K8s connections - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

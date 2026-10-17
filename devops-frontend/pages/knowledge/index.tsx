@@ -40,7 +40,7 @@ export default function KnowledgeIndexPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Knowledge - DevOps</title>
+        <title>Knowledge - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

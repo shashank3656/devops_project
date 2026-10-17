@@ -98,7 +98,7 @@ export default function NewGroupPage() {
   return (
     <>
       <Head>
-        <title>Create group - DevOps</title>
+        <title>Create group - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

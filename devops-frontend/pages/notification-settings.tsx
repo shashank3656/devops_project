@@ -159,7 +159,7 @@ export default function NotificationSettingsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Notification Settings - DevOps Portal</title>
+        <title>Notification Settings - OpsTrellis</title>
       </Head>
       <div className="alert-page">
         <header className="work-page__head">

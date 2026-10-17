@@ -99,7 +99,7 @@ export default function NewRequestPage() {
   return (
     <>
       <Head>
-        <title>New request - DevOps</title>
+        <title>New request - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

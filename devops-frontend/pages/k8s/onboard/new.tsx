@@ -205,7 +205,7 @@ export default function DevOpsK8sOnboardFormPage() {
   return (
     <>
       <Head>
-        <title>Onboard K8s cluster - DevOps</title>
+        <title>Onboard K8s cluster - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

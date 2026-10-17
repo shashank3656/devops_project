@@ -197,7 +197,7 @@ export default function DevOpsLogin() {
   return (
     <>
       <Head>
-        <title>Login - DevOps</title>
+        <title>Login - OpsTrellis</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">

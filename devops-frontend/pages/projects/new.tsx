@@ -387,7 +387,7 @@ export default function NewProjectPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Create Project - DevOps Portal</title>
+        <title>Create Project - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

@@ -349,7 +349,7 @@ export default function GroupAccessPage() {
   return (
     <>
       <Head>
-        <title>{team ? `${team.name} - DevOps` : 'Group - DevOps'}</title>
+        <title>{team ? `${team.name} - OpsTrellis` : 'Group - OpsTrellis'}</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

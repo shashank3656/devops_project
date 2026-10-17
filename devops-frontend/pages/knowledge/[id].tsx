@@ -44,7 +44,7 @@ export default function KnowledgeDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{item?.article_number || 'Knowledge'} - DevOps</title>
+        <title>{item?.article_number || 'Knowledge'} - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

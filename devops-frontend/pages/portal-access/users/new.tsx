@@ -115,7 +115,7 @@ export default function NewPersonPage() {
   return (
     <>
       <Head>
-        <title>Add person - DevOps</title>
+        <title>Add person - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

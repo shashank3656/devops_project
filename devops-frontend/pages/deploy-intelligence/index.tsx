@@ -79,7 +79,7 @@ export default function DeployIntelligenceIndexPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Deploy intelligence - DevOps</title>
+        <title>Deploy intelligence - OpsTrellis</title>
       </Head>
       <div className="di-page di-page--catalog">
         <header className="di-page__head di-page__head--split">

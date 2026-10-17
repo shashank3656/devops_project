@@ -383,7 +383,7 @@ export default function IncidentWorkspacePage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Incident Review - DevOps Portal</title>
+        <title>Incident Review - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

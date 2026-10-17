@@ -444,7 +444,7 @@ export default function ServiceDeskPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Service desk - DevOps</title>
+        <title>Service desk - OpsTrellis</title>
       </Head>
       <div className={`sd-page${selected ? ' sd-page--with-inspector' : ''}`}>
         <header className="sd-hero">

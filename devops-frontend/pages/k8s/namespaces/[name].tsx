@@ -190,7 +190,7 @@ export default function DevOpsK8sNamespaceDetailPage() {
   return (
     <>
       <Head>
-        <title>{namespaceName ? `${namespaceName} - Namespace` : 'Namespace'} - DevOps</title>
+        <title>{namespaceName ? `${namespaceName} - Namespace` : 'Namespace'} - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

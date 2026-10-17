@@ -16,7 +16,7 @@ export default function EditGitOpsProjectRedirect() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Edit GitOps Project - DevOps Portal</title>
+        <title>Edit GitOps Project - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

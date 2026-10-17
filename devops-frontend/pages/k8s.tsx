@@ -145,7 +145,7 @@ export default function DevOpsK8sClustersPage() {
   return (
     <>
       <Head>
-        <title>K8s Clusters - DevOps</title>
+        <title>K8s Clusters - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

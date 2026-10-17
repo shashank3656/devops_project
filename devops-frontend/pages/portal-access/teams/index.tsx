@@ -61,7 +61,7 @@ export default function PortalTeamsPage() {
   return (
     <>
       <Head>
-        <title>Groups - DevOps</title>
+        <title>Groups - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

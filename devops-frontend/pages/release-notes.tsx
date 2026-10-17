@@ -48,7 +48,7 @@ export default function ReleaseNotesPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Release notes - DevOps</title>
+        <title>Release notes - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

@@ -1012,7 +1012,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         open={supportOpen}
         initialTab={supportTab}
         onClose={() => setSupportOpen(false)}
-        portalName="DevOps Portal"
+        portalName="OpsTrellis"
         currentPath={pathname}
         currentTitle={pageTitle}
         articles={supportArticles}

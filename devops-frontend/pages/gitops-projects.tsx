@@ -285,7 +285,7 @@ export default function GitOpsProjectsPage() {
   return (
     <>
       <Head>
-        <title>GitOps Projects - DevOps Portal</title>
+        <title>GitOps Projects - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page gitops-page">
@@ -340,7 +340,7 @@ export default function GitOpsProjectsPage() {
                 <article className="portal-stat-card">
                   <span className="portal-stat-card__label">Projects</span>
                   <strong className="portal-stat-card__value">{formatCount(data.overview.project_count)}</strong>
-                  <p className="portal-stat-card__copy">Team-scoped GitOps roots currently visible in the DevOps portal.</p>
+                  <p className="portal-stat-card__copy">Team-scoped GitOps roots currently visible in OpsTrellis.</p>
                 </article>
                 <article className="portal-stat-card">
                   <span className="portal-stat-card__label">Requests</span>

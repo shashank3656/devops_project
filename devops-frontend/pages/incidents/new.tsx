@@ -333,7 +333,7 @@ export default function NewIncidentPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Create Incident - DevOps Portal</title>
+        <title>Create Incident - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

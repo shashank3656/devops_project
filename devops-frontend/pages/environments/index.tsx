@@ -300,7 +300,7 @@ export default function EnvironmentsCatalogPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Environment catalog · OpsTrellis DevOps</title>
+        <title>Environment catalog · OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

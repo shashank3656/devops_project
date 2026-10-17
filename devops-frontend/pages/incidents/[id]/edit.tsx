@@ -435,7 +435,7 @@ export default function EditIncidentPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Edit Incident - DevOps Portal</title>
+        <title>Edit Incident - OpsTrellis</title>
       </Head>
       <div className="work-page">
         <header className="work-page__head">

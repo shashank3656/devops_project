@@ -790,7 +790,7 @@ export default function GitOpsControlPage() {
   return (
     <>
       <Head>
-        <title>Project-Infra - DevOps Portal</title>
+        <title>Project-Infra - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className={`portal-page gitops-page${useIde ? ' gitops-page--ide' : ''}`}>

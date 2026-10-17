@@ -188,7 +188,7 @@ export default function ChangeDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{item?.change_number || 'Change'} - DevOps</title>
+        <title>{item?.change_number || 'Change'} - OpsTrellis</title>
       </Head>
       <div className="work-page">
         <header className="work-page__head">

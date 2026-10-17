@@ -125,7 +125,7 @@ export default function GatePoliciesCatalogPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Promotion rules - DevOps Portal</title>
+        <title>Promotion rules - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

@@ -108,7 +108,7 @@ export default function DevOpsTemplatesList() {
   return (
     <>
       <Head>
-        <title>Templates - DevOps</title>
+        <title>Templates - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

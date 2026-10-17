@@ -41,15 +41,15 @@ export default function DevOpsForgotPassword() {
   return (
     <>
       <Head>
-        <title>Forgot Password - DevOps</title>
+        <title>Forgot Password - OpsTrellis</title>
       </Head>
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
             <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">DevOps</h1>
+            <h1 className="login-page__title">OpsTrellis</h1>
             <p className="login-page__tagline">
-              Reset your DevOps portal password and get back to tickets, workload, and approvals.
+              Reset your OpsTrellis password and get back to tickets, workload, and approvals.
             </p>
           </div>
           <div className="login-page__decor">

@@ -328,7 +328,7 @@ export default function NewChangeRequestPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Create change request - DevOps</title>
+        <title>Create change request - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

@@ -544,7 +544,7 @@ export default function DevOpsPromotionsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Promotion Center - DevOps Portal</title>
+        <title>Promotion Center - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

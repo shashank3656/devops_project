@@ -225,7 +225,7 @@ export default function EditRunbookPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Edit Runbook - DevOps Portal</title>
+        <title>Edit Runbook - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

@@ -624,7 +624,7 @@ export default function DevOpsK8sPodTerminalPage() {
   return (
     <>
       <Head>
-        <title>Terminal Access - DevOps</title>
+        <title>Terminal Access - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

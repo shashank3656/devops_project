@@ -68,7 +68,7 @@ export default function ProblemsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Problems - DevOps</title>
+        <title>Problems - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

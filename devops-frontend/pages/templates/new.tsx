@@ -86,7 +86,7 @@ export default function NewDevOpsTemplate() {
   return (
     <>
       <Head>
-        <title>New template - DevOps</title>
+        <title>New template - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page portal-page--narrow">

@@ -1,7 +1,7 @@
 {
-  "name": "OpsTrellis DevOps",
+  "name": "OpsTrellis",
   "short_name": "OpsTrellis",
-  "description": "DevOps portal for OpsTrellis infrastructure requests",
+  "description": "OpsTrellis engineering operations portal",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#090E1D",

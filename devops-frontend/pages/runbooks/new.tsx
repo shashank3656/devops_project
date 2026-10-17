@@ -203,7 +203,7 @@ export default function NewRunbookPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Create Runbook - DevOps Portal</title>
+        <title>Create Runbook - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

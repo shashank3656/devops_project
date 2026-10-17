@@ -45,7 +45,7 @@ export default function PortalAccessPage() {
   return (
     <>
       <Head>
-        <title>Portal Access - DevOps</title>
+        <title>Portal Access - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

@@ -130,7 +130,7 @@ export default function DevOpsK8sSecretsPage() {
   return (
     <>
       <Head>
-        <title>Secrets - DevOps</title>
+        <title>Secrets - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

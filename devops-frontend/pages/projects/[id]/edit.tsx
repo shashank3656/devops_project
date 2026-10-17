@@ -372,7 +372,7 @@ export default function EditProjectPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Edit Project - DevOps Portal</title>
+        <title>Edit Project - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

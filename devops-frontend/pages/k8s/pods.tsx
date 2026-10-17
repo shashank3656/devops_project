@@ -137,7 +137,7 @@ export default function DevOpsK8sPodsPage() {
   return (
     <>
       <Head>
-        <title>Pods - DevOps</title>
+        <title>Pods - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

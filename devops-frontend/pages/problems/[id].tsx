@@ -98,7 +98,7 @@ export default function ProblemDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{item?.problem_number || 'Problem'} - DevOps</title>
+        <title>{item?.problem_number || 'Problem'} - OpsTrellis</title>
       </Head>
       <div className="work-page">
         <header className="work-page__head">

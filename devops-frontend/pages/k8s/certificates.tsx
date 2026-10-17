@@ -128,7 +128,7 @@ export default function DevOpsK8sCertificatesPage() {
   return (
     <>
       <Head>
-        <title>TLS & Certificates - DevOps</title>
+        <title>TLS & Certificates - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

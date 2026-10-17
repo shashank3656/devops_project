@@ -150,7 +150,7 @@ export default function OperatorActivityPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Operator activity · OpsTrellis DevOps</title>
+        <title>Operator activity · OpsTrellis</title>
       </Head>
       <PageHeader
         eyebrow="ITSM"

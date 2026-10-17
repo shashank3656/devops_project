@@ -170,7 +170,7 @@ export default function RequestDetailPage() {
   return (
     <>
       <Head>
-        <title>{request ? `Request ${request.id} - DevOps` : 'Request - DevOps'}</title>
+        <title>{request ? `Request ${request.id} - OpsTrellis` : 'Request - OpsTrellis'}</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

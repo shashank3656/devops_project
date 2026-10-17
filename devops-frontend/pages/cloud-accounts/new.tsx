@@ -163,7 +163,7 @@ export default function CloudAccountOnboardPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Onboard cloud account - DevOps</title>
+        <title>Onboard cloud account - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <PageHeader

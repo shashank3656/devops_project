@@ -71,7 +71,7 @@ export default function PortalUsersPage() {
   return (
     <>
       <Head>
-        <title>People - DevOps</title>
+        <title>People - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

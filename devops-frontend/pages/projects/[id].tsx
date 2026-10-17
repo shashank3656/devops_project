@@ -962,7 +962,7 @@ export default function DevOpsProjectDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{project ? `${project.name} - Projects` : 'Project Details - DevOps Portal'}</title>
+        <title>{project ? `${project.name} - Projects` : 'Project Details - OpsTrellis'}</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

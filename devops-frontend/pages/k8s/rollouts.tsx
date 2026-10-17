@@ -133,7 +133,7 @@ export default function DevOpsK8sRolloutsPage() {
   return (
     <>
       <Head>
-        <title>Rollouts - DevOps</title>
+        <title>Rollouts - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

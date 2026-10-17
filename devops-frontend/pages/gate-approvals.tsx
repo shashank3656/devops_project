@@ -224,7 +224,7 @@ export default function GateApprovalsPage() {
   return (
     <>
       <Head>
-        <title>Promotion history - OpsTrellis DevOps</title>
+        <title>Promotion history - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

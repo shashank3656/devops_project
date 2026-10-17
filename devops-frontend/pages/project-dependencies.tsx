@@ -15,7 +15,7 @@ export default function ProjectDependenciesPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Project Relationships - DevOps Portal</title>
+        <title>Project Relationships - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <section className="portal-surface">
@@ -24,7 +24,7 @@ export default function ProjectDependenciesPage() {
               <span className="portal-surface__eyebrow">Portal cleanup</span>
               <h1 className="portal-surface__title">This view has been retired</h1>
               <p className="portal-surface__subtitle">
-                Project Dependencies has been removed from the DevOps portal to keep the experience simpler.
+                Project Dependencies has been removed from OpsTrellis to keep the experience simpler.
                 Redirecting you to Projects.
               </p>
             </div>

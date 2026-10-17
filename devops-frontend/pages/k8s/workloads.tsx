@@ -429,7 +429,7 @@ export default function DevOpsK8sWorkloadsPage() {
   return (
     <>
       <Head>
-        <title>Workloads - DevOps</title>
+        <title>Workloads - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell
