@@ -17,6 +17,15 @@ function known(value: string | undefined): string {
   return text || 'Unknown';
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+  if (!res.ok) return {};
+  return asRecord(await res.json().catch(() => ({})));
+}
+
 function readPeople(rows: unknown, nameKey: 'name' | 'username'): Person[] {
   const list = Array.isArray(rows) ? rows : [];
   return list
@@ -52,25 +61,26 @@ export default function OnCallTeamUsersPage() {
     setLoading(true);
     setError('');
     Promise.all([
-      fetch(`${apiUrl}/api/devops/projects/${projectId}`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
-      fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
-      fetch(`${apiUrl}/api/devops/project-options`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
-      fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers }).then(async (res) => ({ ok: res.ok, body: await res.json().catch(() => ({})) })),
-      fetch(`${apiUrl}/api/oncall/roster?team_id=${teamId}`, { headers }).then(async (res) => ({ ok: res.ok, body: await res.json().catch(() => ({})) })),
+      fetch(`${apiUrl}/api/devops/projects/${projectId}`, { headers }).then(readJson).catch(() => ({})),
+      fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then(readJson).catch(() => ({})),
+      fetch(`${apiUrl}/api/devops/project-options`, { headers }).then(readJson).catch(() => ({})),
+      fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
+      fetch(`${apiUrl}/api/oncall/roster?team_id=${teamId}`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
     ])
       .then(async ([projectBody, mine, options, membersResult, rosterResult]) => {
-        const project = projectBody.project || projectBody;
-        setProjectName(String(project.name || '').trim());
+        const project = asRecord(projectBody.project);
+        const projectRecord = Object.keys(project).length ? project : projectBody;
+        setProjectName(known(typeof projectRecord.name === 'string' ? projectRecord.name : ''));
         const catalog = [
-          ...(Array.isArray(mine?.teams) ? mine.teams : []),
-          ...(Array.isArray(options?.owner_teams) ? options.owner_teams : []),
+          ...(Array.isArray(mine.teams) ? mine.teams : []),
+          ...(Array.isArray(options.owner_teams) ? options.owner_teams : []),
         ];
-        const match = catalog.find((item: { id?: number }) => item.id === teamId) as { name?: string } | undefined;
-        setTeamName(String(match?.name || '').trim());
+        const match = catalog.map((item) => asRecord(item)).find((item) => item.id === teamId);
+        setTeamName(known(typeof match?.name === 'string' ? match.name : ''));
         let members = membersResult.ok ? readPeople(membersResult.body.members, 'name') : [];
         if (!members.length) {
           const fallback = await fetch(`${apiUrl}/api/devops/teams/${teamId}/members`, { headers });
-          const body = await fallback.json().catch(() => ({}));
+          const body = await readJson(fallback);
           if (fallback.ok) members = readPeople(body.members, 'username');
         }
         const roster = rosterResult.ok ? readPeople(rosterResult.body.users, 'name') : [];
