@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
+import { expireSession } from '../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -181,10 +182,8 @@ const defaultPostmortemForm: PostmortemFormState = {
   review_notes: '',
 };
 
-function clearSessionAndRedirect(router: ReturnType<typeof useRouter>) {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  router.replace('/login');
+function clearSessionAndRedirect(_router: ReturnType<typeof useRouter>) {
+  expireSession();
 }
 
 function formatDateTime(value?: string | null): string {

@@ -162,7 +162,8 @@ export default function FindingsPage() {
             <input className="input" value={findingId} onChange={(event) => setFindingId(event.target.value.replace(/\D/g, ''))} inputMode="numeric" />
           </label>
           <div className="portal-page__actions">
-            <button className="btn btn-primary" type="submit" disabled={!findingId}>Load finding</button>
+            <button className="btn btn-primary" type="submit" disabled={!findingId} title={findingId ? 'Load finding' : 'Enter a finding id to continue.'}>Load finding</button>
+            {!findingId ? <span className="blocked-action__reason">Enter a finding id to continue.</span> : null}
           </div>
         </form>
         {finding ? (
@@ -184,10 +185,11 @@ export default function FindingsPage() {
             </div>
             <p className="portal-page__subtitle">A fix note does not deploy. A change request is not execution. Close waits for a verified rescan.</p>
             <div className="portal-page__actions">
-              <button className="btn btn-secondary" type="button" disabled={!canWrite || !serviceId} onClick={() => void nameOwner()}>Name owner</button>
+              <button className="btn btn-secondary" type="button" disabled={!canWrite || !serviceId} title={!canWrite ? 'Your role cannot change this finding.' : !serviceId ? 'Enter a service id to continue.' : 'Name owner'} onClick={() => void nameOwner()}>Name owner</button>
               <Link className="btn btn-secondary" href="/changes/new">Open a change request</Link>
-              <button className="btn btn-primary" type="button" disabled={!canWrite || !gate.allowed} onClick={() => void closeFinding()}>Close after verified rescan</button>
+              <button className="btn btn-primary" type="button" disabled={!canWrite || !gate.allowed} title={!canWrite ? 'Your role cannot close this finding.' : gate.reason || 'Close after a verified rescan'} onClick={() => void closeFinding()}>Close after verified rescan</button>
             </div>
+            {!canWrite ? <p className="blocked-action__reason">Your role cannot change this finding.</p> : !serviceId ? <p className="blocked-action__reason">Enter a service id to name an owner.</p> : null}
             <p>{gate.reason}</p>
             <h2 className="portal-surface__title">Exception</h2>
             <div className="portal-field-grid portal-field-grid--two">

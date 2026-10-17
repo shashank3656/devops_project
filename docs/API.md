@@ -58,7 +58,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | POST | `/api/auth/sso/login` | `X-SSO-Auth-Secret` if set | directory user JSON | Existing JIT/SSO session mint (IdP adapters). |
 | POST | `/api/auth/workload/github` | GitHub OIDC JWT | Bearer token or `{ token }` | Verifies Actions OIDC (`aud` default `opstrellis`; `setuops` is still accepted). Then assumes `AWS_WORKLOAD_ROLE_ARN` with `repo:` subject. Response `exchange` may include short-lived creds; they are not persisted. |
 | POST | `/api/auth/workload/gitlab` | GitLab OIDC JWT | Bearer token or `{ token }` | Verifies GitLab CI OIDC (`aud` default `opstrellis`; `setuops` is still accepted). Same cloud-role exchange using `project:` subject. |
-| POST | `/api/auth/forgot-password` | none | `{ email }` | Sends reset email using `FRONTEND_URL`. |
+| POST | `/api/auth/forgot-password` | none | `{ email }` (email or username) | Sends a reset link valid for one hour. Always answers 200 with the same message, whether or not the account exists. |
 | POST | `/api/auth/reset-password` | none | `{ token, password }` | Sets a new password. |
 | POST | `/api/auth/verify-2fa` | pending | `{ code }` or `{ token, code }` | Completes 2FA login. |
 | GET | `/api/verify-email` | none | `?token=` | Marks email verified. |

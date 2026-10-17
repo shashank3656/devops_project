@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -70,6 +71,197 @@ func listServiceMap(projectID int, environment, query string) ([]serviceMapEntry
 		out = append(out, *item)
 	}
 	return out, nil
+}
+
+func serviceMapConditions(projectID int, environment, query, team string, visible []int, restrict bool) (string, []any) {
+	args := []any{}
+	where := []string{}
+	if restrict {
+		if len(visible) == 0 {
+			where = append(where, "FALSE")
+		} else {
+			placeholders := make([]string, len(visible))
+			for index, id := range visible {
+				args = append(args, id)
+				placeholders[index] = fmt.Sprintf("$%d", len(args))
+			}
+			where = append(where, fmt.Sprintf("s.project_id IN (%s)", strings.Join(placeholders, ", ")))
+		}
+	}
+	if projectID > 0 {
+		args = append(args, projectID)
+		where = append(where, fmt.Sprintf("s.project_id = $%d", len(args)))
+	}
+	if trimmed := strings.TrimSpace(environment); trimmed != "" {
+		args = append(args, strings.ToLower(trimmed))
+		where = append(where, fmt.Sprintf("(s.environment = '' OR LOWER(s.environment) = $%d)", len(args)))
+	}
+	if trimmed := strings.TrimSpace(query); trimmed != "" {
+		args = append(args, "%"+strings.ToLower(trimmed)+"%")
+		where = append(where, fmt.Sprintf("(LOWER(s.service) LIKE $%d OR LOWER(s.repo) LIKE $%d OR LOWER(s.team) LIKE $%d)", len(args), len(args), len(args)))
+	}
+	if trimmed := strings.TrimSpace(team); trimmed != "" {
+		names := strings.Split(trimmed, "|")
+		parts := []string{}
+		for _, name := range names {
+			name = strings.ToLower(strings.TrimSpace(name))
+			if name == "" {
+				continue
+			}
+			args = append(args, name)
+			parts = append(parts, fmt.Sprintf("LOWER(COALESCE(s.team, '')) = $%d", len(args)))
+		}
+		if len(parts) > 0 {
+			where = append(where, "("+strings.Join(parts, " OR ")+")")
+		}
+	}
+	if len(where) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(where, " AND "), args
+}
+
+func visibleServiceProjectIDs(userID int) (bool, []int, error) {
+	if callerSeesEveryProject(userID) {
+		return true, nil, nil
+	}
+	set, err := getVisibleProjectIDSetForUser(userID)
+	if err != nil {
+		return false, nil, err
+	}
+	ids := make([]int, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	return false, ids, nil
+}
+
+type serviceFolderCount struct {
+	ProjectID   int    `json:"project_id"`
+	ProjectName string `json:"project_name"`
+	Environment string `json:"environment"`
+	Count       int    `json:"count"`
+}
+
+func listServiceMapSummary(projectID int, visible []int, restrict bool) ([]serviceFolderCount, int, int, *serviceMapEntry, error) {
+	where, args := serviceMapConditions(projectID, "", "", "", visible, restrict)
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT COALESCE(s.project_id, 0), COALESCE(p.name, ''), COALESCE(s.environment, ''), COUNT(*)
+		FROM service_map s
+		LEFT JOIN projects p ON p.id = s.project_id`+where+`
+		GROUP BY 1, 2, 3
+		ORDER BY 2, 3
+	`, args...)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []serviceFolderCount{}, 0, 0, nil, nil
+		}
+		return nil, 0, 0, nil, err
+	}
+	defer cancel()
+	defer rows.Close()
+	folders := []serviceFolderCount{}
+	total := 0
+	for rows.Next() {
+		var folder serviceFolderCount
+		if err := rows.Scan(&folder.ProjectID, &folder.ProjectName, &folder.Environment, &folder.Count); err != nil {
+			return nil, 0, 0, nil, err
+		}
+		total += folder.Count
+		folders = append(folders, folder)
+	}
+	incompleteWhere, incompleteArgs := serviceMapConditions(projectID, "", "", "", visible, restrict)
+	incompleteSQL := `SELECT COUNT(*) FROM service_map s LEFT JOIN projects p ON p.id = s.project_id` + incompleteWhere
+	incompleteClause := "(COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '')"
+	if incompleteWhere == "" {
+		incompleteSQL += " WHERE " + incompleteClause
+	} else {
+		incompleteSQL += " AND " + incompleteClause
+	}
+	var incomplete int
+	if err := queryRowContext(incompleteSQL, incompleteArgs...).Scan(&incomplete); err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return folders, total, 0, nil, nil
+		}
+		return nil, 0, 0, nil, err
+	}
+	setupWhere, setupArgs := serviceMapConditions(projectID, "", "", "", visible, restrict)
+	setupSQL := `
+		SELECT s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
+		       COALESCE(s.environment,''), COALESCE(s.grafana_uid,''), COALESCE(s.promql,''), COALESCE(s.dashboard_url,''), COALESCE(s.metrics_url,''), COALESCE(s.team,'')
+		FROM service_map s
+		LEFT JOIN projects p ON p.id = s.project_id` + setupWhere
+	if setupWhere == "" {
+		setupSQL += " WHERE (COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '')"
+	} else {
+		setupSQL += " AND (COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '')"
+	}
+	setupSQL += " ORDER BY s.id LIMIT 1"
+	setupRows, setupCancel, err := queryRowsWithTimeout(setupSQL, setupArgs...)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return folders, total, incomplete, nil, nil
+		}
+		return nil, 0, 0, nil, err
+	}
+	defer setupCancel()
+	defer setupRows.Close()
+	if !setupRows.Next() {
+		return folders, total, incomplete, nil, nil
+	}
+	setup, err := scanServiceMap(setupRows)
+	if err != nil {
+		return nil, 0, 0, nil, err
+	}
+	return folders, total, incomplete, setup, nil
+}
+
+func listServiceMapPage(projectID int, environment, query, team string, visible []int, restrict bool, limit, offset int) ([]serviceMapEntry, int, error) {
+	where, args := serviceMapConditions(projectID, environment, query, team, visible, restrict)
+	var total int
+	if err := queryRowContext(`SELECT COUNT(*) FROM service_map s LEFT JOIN projects p ON p.id = s.project_id`+where, args...).Scan(&total); err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []serviceMapEntry{}, 0, nil
+		}
+		return nil, 0, err
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	pageArgs := append([]any{}, args...)
+	pageArgs = append(pageArgs, limit, offset)
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
+		       COALESCE(s.environment,''), COALESCE(s.grafana_uid,''), COALESCE(s.promql,''), COALESCE(s.dashboard_url,''), COALESCE(s.metrics_url,''), COALESCE(s.team,'')
+		FROM service_map s
+		LEFT JOIN projects p ON p.id = s.project_id`+where+fmt.Sprintf(`
+		ORDER BY s.service, s.environment, s.id
+		LIMIT $%d OFFSET $%d
+	`, len(args)+1, len(args)+2), pageArgs...)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []serviceMapEntry{}, 0, nil
+		}
+		return nil, 0, err
+	}
+	defer cancel()
+	defer rows.Close()
+	out := []serviceMapEntry{}
+	for rows.Next() {
+		item, err := scanServiceMap(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, *item)
+	}
+	return out, total, nil
 }
 
 func scanServiceMap(scanner interface {
@@ -213,19 +405,72 @@ func getServiceMapByID(id int) (*serviceMapEntry, error) {
 	return nil, fmt.Errorf("service not found")
 }
 
+func filterServicesVisible(userID int, items []serviceMapEntry) ([]serviceMapEntry, error) {
+	if callerSeesEveryProject(userID) {
+		return items, nil
+	}
+	visible, err := getVisibleProjectIDSetForUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	kept := make([]serviceMapEntry, 0, len(items))
+	for _, item := range items {
+		if item.ProjectID != nil && visible[*item.ProjectID] {
+			kept = append(kept, item)
+		}
+	}
+	return kept, nil
+}
+
 func devopsServiceMapHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == "OPTIONS" {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
 	switch r.Method {
 	case "GET":
+		if projectID > 0 && !ensureProjectVisible(w, r, userID, projectID) {
+			return
+		}
+		seeAll, visibleIDs, err := visibleServiceProjectIDs(userID)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
+			return
+		}
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("view")), "summary") {
+			folders, total, incomplete, setup, err := listServiceMapSummary(projectID, visibleIDs, !seeAll)
+			if err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"folders": folders, "total": total, "incomplete": incomplete, "setup": setup, "status": "ok"})
+			return
+		}
+		if strings.TrimSpace(r.URL.Query().Get("limit")) != "" {
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+			items, total, err := listServiceMapPage(projectID, r.URL.Query().Get("environment"), r.URL.Query().Get("q"), r.URL.Query().Get("team"), visibleIDs, !seeAll, limit, offset)
+			if err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"services": items, "total": total, "limit": 50, "offset": offset, "status": "ok"})
+			return
+		}
 		items, err := listServiceMap(projectID, r.URL.Query().Get("environment"), r.URL.Query().Get("q"))
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
+			return
+		}
+		items, err = filterServicesVisible(userID, items)
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
 			return
@@ -233,12 +478,19 @@ func devopsServiceMapHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"services": items, "status": "ok"})
 	case "POST":
-		if _, ok := requireDevopsManager(w, r); !ok {
+		userID, ok = requireDevopsManager(w, r)
+		if !ok {
 			return
 		}
 		var body serviceMapEntry
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
+			return
+		}
+		if body.ProjectID == nil || !ensureProjectVisible(w, r, userID, *body.ProjectID) {
+			if body.ProjectID == nil {
+				writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
+			}
 			return
 		}
 		item, err := upsertServiceMap(body)
@@ -259,7 +511,8 @@ func devopsServiceMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 	id, err := strconv.Atoi(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/services/"), "/"))
@@ -274,15 +527,42 @@ func devopsServiceMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusNotFound, "service not found", err)
 			return
 		}
+		visible, err := projectPointerVisible(userID, item.ProjectID)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
+			return
+		}
+		if !visible {
+			writeAPIError(w, r, http.StatusNotFound, "service not found", nil)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"service": item, "status": "ok"})
 	case "PATCH":
-		if _, ok := requireDevopsManager(w, r); !ok {
+		userID, ok = requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		current, err := getServiceMapByID(id)
+		if err != nil {
+			writeAPIError(w, r, http.StatusNotFound, "service not found", err)
+			return
+		}
+		visible, visErr := projectPointerVisible(userID, current.ProjectID)
+		if visErr != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", visErr)
+			return
+		}
+		if !visible {
+			writeAPIError(w, r, http.StatusNotFound, "service not found", nil)
 			return
 		}
 		var body serviceMapEntry
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
+			return
+		}
+		if body.ProjectID != nil && !ensureProjectVisible(w, r, userID, *body.ProjectID) {
 			return
 		}
 		item, err := updateServiceMapByID(id, body)

@@ -355,9 +355,9 @@ export default function DevOpsK8sClustersPage() {
                         <td><span className={cloudPillClass(cluster.cloud)}>{cluster.cloud.toUpperCase()}</span></td>
                         <td><span className={environmentPillClass(cluster.environment)}>{cluster.environment.toUpperCase()}</span></td>
                         <td><span className={healthPillClass(cluster.health_status)}>{healthLabel(cluster.health_status)}</span></td>
-                        <td>{cluster.kubernetes_version || '—'}</td>
-                        <td>{cluster.node_pool || '—'}</td>
-                        <td>{cluster.node_count}</td>
+                        <td>{cluster.kubernetes_version || 'Unknown'}</td>
+                        <td>{cluster.node_pool || 'Unknown'}</td>
+                        <td>{cluster.node_count == null ? 'Unknown' : cluster.node_count}</td>
                         <td>{cluster.namespace_count}</td>
                         <td>{cluster.workload_count}</td>
                         <td>{cluster.service_count}</td>

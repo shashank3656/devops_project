@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
@@ -126,7 +127,7 @@ export default function ProblemsPage() {
                 {visible.map((item) => (
                   <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/problems/${item.id}`)}>
                     <td>
-                      <strong>{item.problem_number}</strong>
+                      <strong><Link href={`/problems/${item.id}`} onClick={(event) => event.stopPropagation()}>{item.problem_number}</Link></strong>
                       <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.summary || item.fingerprint}</div>
                     </td>
                     <td>{priorityLabel(item.priority || 'p3')}</td>

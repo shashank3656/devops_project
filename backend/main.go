@@ -27,6 +27,9 @@ func corsAllowedOrigins() []string {
 		}
 		origins = append(origins, part)
 	}
+	if !isProductionRuntime() {
+		origins = append(origins, "http://localhost:3002", "http://127.0.0.1:3002")
+	}
 	return origins
 }
 

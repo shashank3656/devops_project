@@ -6,6 +6,9 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { FALLBACK_ITSM_CATEGORIES, ITSMCategory, ITSM_PRIORITIES, PROBLEM_STATES, normalizeCategories, subcategoriesFor } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { expireSession } from '../../lib/sessionExpiry';
+import { saveSubmissionResult } from '../../lib/submissionResult';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -43,9 +46,7 @@ interface ExistingProblem {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 export default function NewProblemPage() {
@@ -78,6 +79,7 @@ export default function NewProblemPage() {
   const [causeState, setCauseState] = useState<'suspected' | 'confirmed'>('suspected');
   const [fixVerified, setFixVerified] = useState(false);
   const [loading, setLoading] = useState(true);
+  const { allowLeave } = useUnsavedChanges(Boolean(title.trim() || description.trim() || workaround.trim() || projectId || service.trim()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -224,6 +226,13 @@ export default function NewProblemPage() {
       }
       const problem = data.problem && typeof data.problem === 'object' ? (data.problem as Record<string, unknown>) : {};
       const id = typeof problem.id === 'number' ? problem.id : 0;
+      allowLeave();
+      saveSubmissionResult({
+        kind: 'Problem',
+        id: previewNumber || (id > 0 ? `#${id}` : 'created'),
+        status: status || 'new',
+        next: 'Assign an owner if it is still unassigned, then record the cause before it can become a known error.',
+      });
       await router.push(id > 0 ? `/problems/${id}` : '/problems');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create problem');
@@ -279,25 +288,31 @@ export default function NewProblemPage() {
             <div className="empty-state">Loading problem form...</div>
           ) : (
             <form onSubmit={(event) => void submit(event)}>
-              <label className="label">
-                Search existing problems
-                <input className="input" value={problemQuery} onChange={(event) => setProblemQuery(event.target.value)} placeholder="Search this project before creating a new problem" />
-              </label>
-              {!projectId ? <p>Select one project before creating a problem.</p> : null}
-              {projectId && matchingProblems.length > 0 ? (
-                <ul>
-                  {matchingProblems.slice(0, 8).map((item) => (
-                    <li key={item.id}><Link href={`/problems/${item.id}`}>{item.title}</Link></li>
-                  ))}
-                </ul>
-              ) : null}
-              {projectId && query && matchingProblems.length === 0 ? <p>No matching problem in this project.</p> : null}
-              <div className="portal-form-grid">
+              <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Check existing problems</legend>
                 <label className="label">
-                  Short description
+                  Search this project <span className="onboard-optional">Optional</span>
+                  <input className="input" value={problemQuery} onChange={(event) => setProblemQuery(event.target.value)} placeholder="Search before creating a new problem" />
+                </label>
+                {!projectId ? <p className="onboard-unavailable">Select a project below before this search can match existing problems.</p> : null}
+                {projectId && matchingProblems.length > 0 ? (
+                  <ul>
+                    {matchingProblems.slice(0, 8).map((item) => (
+                      <li key={item.id}><Link href={`/problems/${item.id}`}>{item.title}</Link></li>
+                    ))}
+                  </ul>
+                ) : null}
+                {projectId && query && matchingProblems.length === 0 ? <p className="form-section__copy">No matching problem in this project.</p> : null}
+              </fieldset>
+              <fieldset className="form-section">
+                <legend className="form-section__title">What happened</legend>
+                <div className="portal-form-grid">
+<label className="label">
+                  Short description<span className="form-req" aria-hidden="true"> *</span>
                   <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Recurring 5xx on checkout after deploy" required />
                 </label>
-                <label className="label">
+<label className="label">
                   Priority
                   <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
                     {ITSM_PRIORITIES.map((item) => (
@@ -305,7 +320,7 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
+<label className="label">
                   State
                   <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
                     {PROBLEM_STATES.map((item) => (
@@ -313,7 +328,7 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
+<label className="label">
                   Category
                   <select className="input" value={category} onChange={(event) => { setCategory(event.target.value); setSubcategory(''); }}>
                     {categories.map((item) => (
@@ -321,7 +336,7 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
+<label className="label">
                   Subcategory
                   <select className="input" value={subcategory} onChange={(event) => setSubcategory(event.target.value)}>
                     <option value="">Select subcategory</option>
@@ -330,7 +345,24 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
+                </div>
+              </fieldset>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Scope</legend>
+                <p className="form-section__copy">Pick the project first. Service and environment come from that project.</p>
+                <div className="portal-form-grid">
+<label className="label">
+                  Project<span className="form-req" aria-hidden="true"> *</span>
+                  <select className="input" required value={projectId} onChange={(event) => { setProjectId(event.target.value); setRelatedIncidentId(''); }}>
+                    <option value="">Select one project</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name} ({project.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+<label className="label">
                   Service
                   <select className="input" value={service} onChange={(event) => applyService(event.target.value)}>
                     <option value="">Select a service</option>
@@ -342,11 +374,16 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
+<label className="label">
                   Environment
                   <input className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="prod" />
                 </label>
-                <label className="label">
+                </div>
+              </fieldset>
+              <details className="onboard-advanced">
+                <summary>Ownership <span className="onboard-optional">Optional</span></summary>
+                <div className="portal-form-grid">
+<label className="label">
                   Assignment group
                   <select className="input" value={assignmentGroupId} onChange={(event) => setAssignmentGroupId(event.target.value)}>
                     <option value="">No group</option>
@@ -355,7 +392,7 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
+<label className="label">
                   Assignee
                   <select className="input" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)}>
                     <option value="">Unassigned</option>
@@ -366,7 +403,7 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
+<label className="label">
                   Caller
                   <select className="input" value={callerUserId} onChange={(event) => setCallerUserId(event.target.value)}>
                     <option value="">Unknown caller</option>
@@ -377,18 +414,7 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-                <label className="label">
-                  Project
-                  <select className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setRelatedIncidentId(''); }}>
-                    <option value="">Select one project</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} ({project.code})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
+<label className="label">
                   Related incident
                   <select className="input" value={relatedIncidentId} onChange={(event) => setRelatedIncidentId(event.target.value)}>
                     <option value="">None</option>
@@ -400,7 +426,10 @@ export default function NewProblemPage() {
                     ))}
                   </select>
                 </label>
-              </div>
+                </div>
+              </details>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Cause</legend>
               <label className="label">
                 Cause
                 <select className="input" value={causeState} onChange={(event) => setCauseState(event.target.value === 'confirmed' ? 'confirmed' : 'suspected')}>
@@ -426,10 +455,12 @@ export default function NewProblemPage() {
                   Fix verified. Closure needs this confirmation.
                 </label>
               ) : null}
+              </fieldset>
               <div className="portal-form-actions">
                 <button type="submit" className="btn btn-primary" disabled={saving || !title.trim() || !projectId}>
                   {saving ? 'Creating...' : 'Create problem'}
                 </button>
+                <Link href="/problems" className="btn btn-secondary">Cancel</Link>
               </div>
             </form>
           )}

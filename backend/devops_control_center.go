@@ -1737,6 +1737,9 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "short description is required before submitting an incident", nil)
 			return
 		}
+		if body.ProjectID > 0 && !ensureProjectVisible(w, r, managerID, body.ProjectID) {
+			return
+		}
 		var item *requestIncident
 		var err error
 		if body.RequestID <= 0 {

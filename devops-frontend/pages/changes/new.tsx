@@ -1,13 +1,18 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { CHANGE_DRAFT_KEY, rememberReturn } from '../../lib/returnPath';
+import { scopeListHref } from '../../lib/scopeHref';
+import { CHANGE_DRAFT_KEY } from '../../lib/returnPath';
 import { ITSM_PRIORITIES } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { readWorkspaceScope, WORKSPACE_SCOPE_EVENT, type WorkspaceScope } from '@infragate/ui';
+import { expireSession } from '../../lib/sessionExpiry';
+import { saveSubmissionResult } from '../../lib/submissionResult';
+import BlockedAction from '../../components/BlockedAction';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -38,10 +43,7 @@ interface PortalUserOption {
 }
 
 function clearSessionAndRedirect() {
-  rememberReturn('/changes/new');
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parseProjectList(raw: unknown): ProjectOption[] {
@@ -99,6 +101,18 @@ function parsePortalUsers(raw: unknown): PortalUserOption[] {
     .filter((item) => item.id > 0 && item.username);
 }
 
+function withSignedInAssignee(users: PortalUserOption[]): PortalUserOption[] {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const account = raw ? JSON.parse(raw) as { id?: number; username?: string } : null;
+    if (!account || typeof account.id !== 'number' || !account.username) return users;
+    if (users.some((user) => user.id === account.id)) return users;
+    return [...users, { id: account.id, username: account.username, email: '' }];
+  } catch {
+    return users;
+  }
+}
+
 export default function NewChangeRequestPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -127,6 +141,7 @@ export default function NewChangeRequestPage() {
   const [watchMinutes, setWatchMinutes] = useState('120');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const submitLock = useRef(false);
   const [error, setError] = useState('');
   const [pendingScope, setPendingScope] = useState<WorkspaceScope | null>(null);
 
@@ -135,6 +150,7 @@ export default function NewChangeRequestPage() {
     [services, serviceId],
   );
   const draftDirty = Boolean(title.trim() || summary.trim() || impact.trim() || backoutPlan.trim() || serviceId || sha.trim());
+  const { allowLeave } = useUnsavedChanges(draftDirty);
   const servicesForProject = projectId
     ? services.filter((item) => !item.project_id || String(item.project_id) === projectId)
     : [];
@@ -164,7 +180,7 @@ export default function NewChangeRequestPage() {
         const previewData = asRecord(await previewRes.json().catch(() => ({})));
         setProjects(parseProjectList(projectData.projects));
         setServices(parseServiceList(serviceData.services));
-        setUsers(parsePortalUsers(userData.users));
+        setUsers(withSignedInAssignee(parsePortalUsers(userData.users)));
         const number = getString(previewData.change_number);
         if (number) setPreviewNumber(number);
       })
@@ -269,6 +285,8 @@ export default function NewChangeRequestPage() {
       setError('Impact, test plan, and rollback plan are required.');
       return;
     }
+    if (submitLock.current) return;
+    submitLock.current = true;
     const idempotencyKey = sessionStorage.getItem('opstrellis-change-idempotency') || crypto.randomUUID();
     sessionStorage.setItem('opstrellis-change-idempotency', idempotencyKey);
     setSaving(true);
@@ -317,10 +335,18 @@ export default function NewChangeRequestPage() {
       const id = typeof change.id === 'number' ? change.id : 0;
       sessionStorage.removeItem(CHANGE_DRAFT_KEY);
       sessionStorage.removeItem('opstrellis-change-idempotency');
+      allowLeave();
+      saveSubmissionResult({
+        kind: 'Change',
+        id: previewNumber || (id > 0 ? `#${id}` : 'created'),
+        status: 'new',
+        next: 'Submitting saved the request. It does not deploy. An approver still has to accept it.',
+      });
       await router.push(id > 0 ? `/changes/${id}` : '/changes');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create change request');
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   };
@@ -339,7 +365,7 @@ export default function NewChangeRequestPage() {
               Scope, change details, plans, then review. Saving a request is not a deployment. Approval is not execution.
             </p>
           </div>
-          <Link href="/changes" className="btn btn-secondary">
+          <Link href={scopeListHref('/changes', router.query)} className="btn btn-secondary">
             Back to changes
           </Link>
         </div>
@@ -391,140 +417,163 @@ export default function NewChangeRequestPage() {
                   <Link href="/services/new">Create a service</Link>
                 </div>
               ) : null}
-              <h3>Scope</h3>
-              <div className="portal-form-grid">
-                <label className="label">
-                  Project
-                  <select className="input" value={projectId} onChange={(event) => {
-                    setProjectId(event.target.value);
-                    setServiceId('');
-                  }}>
-                    <option value="">Select one project</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name} ({project.code})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <p>
-                Team {selectedProject?.team || 'Unknown'} · Cloud {selectedProject?.cloud || 'Unknown'} · Environment {selectedService?.environment || selectedProject?.environments?.join(', ') || 'Unknown'}
-              </p>
-              <h3>Change</h3>
-              <div className="portal-form-grid">
-                <label className="label">
-                  Title
-                  <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Deploy payments-api timeout change" required />
-                </label>
-                <label className="label">
-                  Type
-                  <select className="input" value={changeType} onChange={(event) => setChangeType(event.target.value)}>
-                    <option value="standard">Standard</option>
-                    <option value="normal">Normal (CAB on prod)</option>
-                    <option value="emergency">Emergency</option>
-                  </select>
-                </label>
-                <label className="label">
-                  Service
-                  <select className="input" value={serviceId} onChange={(event) => applyService(event.target.value)} required>
-                    <option value="">Select a service</option>
-                    {servicesForProject.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.service}
-                        {item.project_name ? ` · ${item.project_name}` : ''}
-                        {item.repo ? ` · ${item.repo}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Assigned to
-                  <select className="input" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)} required>
-                    <option value="">Select a portal user</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.username}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Priority
-                  <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
-                    {ITSM_PRIORITIES.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Risk
-                  <select className="input" value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
-                <label className="label">
-                  Repo
-                  <input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} placeholder="Filled from the selected service" />
-                </label>
-                <label className="label">
-                  Commit SHA
-                  <input className="input" value={sha} onChange={(event) => setSha(event.target.value)} placeholder="Commit SHA, if you already have one" />
-                </label>
-                <label className="label">
-                  Pull request
-                  <input className="input" value={prNumber} onChange={(event) => setPrNumber(event.target.value)} placeholder="1842" />
-                </label>
-                <label className="label">
-                  Pull request URL
-                  <input className="input" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://github.com/acme/payments-api/pull/1842" />
-                </label>
-                {changeType === 'emergency' ? (
+              <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Scope</legend>
+                <p className="form-section__copy">Pick the project first. The service list only shows services in that project.</p>
+                <div className="portal-form-grid">
                   <label className="label">
-                    Linked incident
-                    <input className="input" value={incidentNumber} onChange={(event) => setIncidentNumber(event.target.value)} placeholder="INC0000123" required />
+                    Project<span className="form-req" aria-hidden="true"> *</span>
+                    <select className="input" required value={projectId} onChange={(event) => {
+                      setProjectId(event.target.value);
+                      setServiceId('');
+                    }}>
+                      <option value="">Select one project</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name} ({project.code})
+                        </option>
+                      ))}
+                    </select>
                   </label>
-                ) : null}
-              </div>
-              <h3>Plans and window</h3>
-              <div className="portal-form-grid">
+                  <label className="label">
+                    Service<span className="form-req" aria-hidden="true"> *</span>
+                    <select className="input" value={serviceId} onChange={(event) => applyService(event.target.value)} required>
+                      <option value="">Select a service</option>
+                      {servicesForProject.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.service}
+                          {item.project_name ? ` · ${item.project_name}` : ''}
+                          {item.repo ? ` · ${item.repo}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Assigned to<span className="form-req" aria-hidden="true"> *</span>
+                    <select className="input" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)} required>
+                      <option value="">Select a portal user</option>
+                      {users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.username}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="form-section__meta">
+                  Team {selectedProject?.team || 'Unknown'} · Cloud {selectedProject?.cloud || 'Unknown'} · Environment {selectedService?.environment || selectedProject?.environments?.join(', ') || 'Unknown'}
+                </p>
+              </fieldset>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Change</legend>
+                <div className="portal-form-grid">
+                  <label className="label">
+                    Title<span className="form-req" aria-hidden="true"> *</span>
+                    <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Deploy payments-api timeout change" required />
+                  </label>
+                  <label className="label">
+                    Type
+                    <select className="input" value={changeType} onChange={(event) => setChangeType(event.target.value)}>
+                      <option value="standard">Standard</option>
+                      <option value="normal">Normal (CAB on prod)</option>
+                      <option value="emergency">Emergency</option>
+                    </select>
+                  </label>
+                  <label className="label">
+                    Priority
+                    <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
+                      {ITSM_PRIORITIES.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Risk
+                    <select className="input" value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </label>
+                  {changeType === 'emergency' ? (
+                    <label className="label">
+                      Linked incident<span className="form-req" aria-hidden="true"> *</span>
+                      <input className="input" value={incidentNumber} onChange={(event) => setIncidentNumber(event.target.value)} placeholder="INC0000123" required />
+                    </label>
+                  ) : null}
+                </div>
+              </fieldset>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Plans</legend>
+                <p className="form-section__copy">Approvers read these before the change runs.</p>
                 <label className="label">
-                  Planned start
-                  <input className="input" type="datetime-local" value={plannedStart} onChange={(event) => setPlannedStart(event.target.value)} />
+                  Impact<span className="form-req" aria-hidden="true"> *</span>
+                  <textarea className="input" rows={3} value={impact} onChange={(event) => setImpact(event.target.value)} placeholder="Who or what is affected if this change goes wrong." required />
                 </label>
                 <label className="label">
-                  Planned end
-                  <input className="input" type="datetime-local" value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
+                  Test plan<span className="form-req" aria-hidden="true"> *</span>
+                  <textarea className="input" rows={3} value={testPlan} onChange={(event) => setTestPlan(event.target.value)} placeholder="How this change will be tested before approval." required />
                 </label>
                 <label className="label">
-                  Watch minutes
-                  <input className="input" type="number" min={15} value={watchMinutes} onChange={(event) => setWatchMinutes(event.target.value)} />
+                  Rollback plan<span className="form-req" aria-hidden="true"> *</span>
+                  <textarea className="input" rows={3} value={backoutPlan} onChange={(event) => setBackoutPlan(event.target.value)} placeholder="How to revert if health or errors move after the change." required />
                 </label>
-              </div>
-              <label className="label">
-                Summary
-                <textarea className="input" rows={3} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="What is changing and why this window is safe." />
-              </label>
-              <label className="label">
-                Impact
-                <textarea className="input" rows={3} value={impact} onChange={(event) => setImpact(event.target.value)} placeholder="Who or what is affected if this change goes wrong." required />
-              </label>
-              <label className="label">
-                Test plan
-                <textarea className="input" rows={3} value={testPlan} onChange={(event) => setTestPlan(event.target.value)} placeholder="How this change will be tested before approval." required />
-              </label>
-              <label className="label">
-                Rollback plan
-                <textarea className="input" rows={3} value={backoutPlan} onChange={(event) => setBackoutPlan(event.target.value)} placeholder="How to revert if health or errors move after the change." required />
-              </label>
-              <h3>Review</h3>
-              <p>Submitting saves the request. It does not deploy. A later material edit invalidates an existing approval. Approval is not execution.</p>
+                <label className="label">
+                  Summary <span className="onboard-optional">Optional</span>
+                  <textarea className="input" rows={3} value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="What is changing and why this window is safe." />
+                </label>
+              </fieldset>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Window <span className="onboard-optional">Optional</span></legend>
+                <div className="portal-form-grid">
+                  <label className="label">
+                    Planned start
+                    <input className="input" type="datetime-local" value={plannedStart} onChange={(event) => setPlannedStart(event.target.value)} />
+                  </label>
+                  <label className="label">
+                    Planned end
+                    <input className="input" type="datetime-local" value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
+                  </label>
+                  <label className="label">
+                    Watch minutes
+                    <input className="input" type="number" min={15} value={watchMinutes} onChange={(event) => setWatchMinutes(event.target.value)} />
+                  </label>
+                </div>
+              </fieldset>
+              <details className="onboard-advanced" open={Boolean(sha || prNumber || prUrl) || undefined}>
+                <summary>Code reference <span className="onboard-optional">Optional</span></summary>
+                <p className="form-section__copy">Repo is filled from the selected service. Add a commit or pull request if you already have one.</p>
+                <div className="portal-form-grid">
+                  <label className="label">
+                    Repo
+                    <input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} placeholder="Filled from the selected service" />
+                  </label>
+                  <label className="label">
+                    Commit SHA
+                    <input className="input" value={sha} onChange={(event) => setSha(event.target.value)} placeholder="Commit SHA, if you already have one" />
+                  </label>
+                  <label className="label">
+                    Pull request
+                    <input className="input" value={prNumber} onChange={(event) => setPrNumber(event.target.value)} placeholder="1842" />
+                  </label>
+                  <label className="label">
+                    Pull request URL
+                    <input className="input" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://github.com/acme/payments-api/pull/1842" />
+                  </label>
+                </div>
+              </details>
+              <p className="form-section__meta">Submitting saves the request. It does not deploy. A later material edit invalidates an existing approval. Approval is not execution.</p>
               <div className="portal-form-actions">
-                <button type="submit" className="btn btn-primary" disabled={saving || !title.trim() || !projectId || !serviceId || !assigneeUserId || !services.length}>
+                <BlockedAction
+                  blocked={!saving && (!title.trim() || !projectId || !serviceId || !assigneeUserId || !services.length)}
+                  reason={!services.length ? 'Add a service to this project before you can request a change.' : !projectId ? 'Choose a project to continue.' : !serviceId ? 'Choose a service to continue.' : !assigneeUserId ? 'Choose who the change is assigned to.' : !title.trim() ? 'Add a title to continue.' : ''}
+                >
+                <button type="submit" className="btn btn-primary" disabled={saving || !title.trim() || !projectId || !serviceId || !assigneeUserId || !services.length} title={!services.length ? 'Add a service to this project before you can request a change.' : !projectId ? 'Choose a project to continue.' : undefined}>
                   {saving ? 'Creating...' : 'Create change request'}
                 </button>
+                </BlockedAction>
+                <Link href={scopeListHref('/changes', router.query)} className="btn btn-secondary">Cancel</Link>
               </div>
             </form>
           )}

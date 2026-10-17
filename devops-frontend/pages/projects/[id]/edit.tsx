@@ -6,6 +6,8 @@ import CloudServiceSelect from '../../../components/CloudServiceSelect';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { asRecord, getString } from '../../../lib/payload';
+import { useUnsavedChanges } from '../../../lib/useUnsavedChanges';
+import { expireSession } from '../../../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -105,9 +107,7 @@ function normalizeCode(value: string): string {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parseProjectId(value: string | string[] | undefined): number | null {
@@ -126,6 +126,8 @@ export default function EditProjectPage() {
   const [form, setForm] = useState<ProjectFormState>(createEmptyForm());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty);
   const [error, setError] = useState('');
   const [teamOptionsError, setTeamOptionsError] = useState('');
   const [notice, setNotice] = useState('');
@@ -361,6 +363,7 @@ export default function EditProjectPage() {
         throw new Error(getString(data.error, 'Failed to save project'));
       }
       setNotice('Project updated.');
+      setDirty(false);
       void loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save project');
@@ -404,19 +407,19 @@ export default function EditProjectPage() {
           {loading ? (
             <div className="empty-state">Loading project...</div>
           ) : (
-            <form className="catalog-editor__form" onSubmit={submitForm}>
+            <form className="catalog-editor__form" onSubmit={submitForm} onChange={() => setDirty(true)}>
               <div className="catalog-editor__field-grid">
                 <div className="form-group">
-                  <label className="label">Project name</label>
-                  <input className="input" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} required />
+                  <label className="label" htmlFor="project-edit-project-name">Project name</label>
+                  <input id="project-edit-project-name" className="input" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} required />
                 </div>
                 <div className="form-group">
-                  <label className="label">Project code</label>
-                  <input className="input" value={form.code} onChange={(e) => updateForm({ code: normalizeCode(e.target.value) })} placeholder="payments-core" required />
+                  <label className="label" htmlFor="project-edit-project-code">Project code</label>
+                  <input id="project-edit-project-code" className="input" value={form.code} onChange={(e) => updateForm({ code: normalizeCode(e.target.value) })} placeholder="payments-core" required />
                 </div>
                 <div className="form-group">
-                  <label className="label">Owner team</label>
-                  <select className="select" value={form.owner_team_id} onChange={(e) => updateForm({ owner_team_id: e.target.value })}>
+                  <label className="label" htmlFor="project-edit-owner-team">Owner team</label>
+                  <select id="project-edit-owner-team" className="select" value={form.owner_team_id} onChange={(e) => updateForm({ owner_team_id: e.target.value })}>
                     <option value="">Select owner team</option>
                     {ownerTeams.map((team) => (
                       <option key={team.id} value={team.id}>
@@ -432,8 +435,8 @@ export default function EditProjectPage() {
                   </small>
                 </div>
                 <div className="form-group">
-                  <label className="label">Status</label>
-                  <select className="select" value={form.status} onChange={(e) => updateForm({ status: e.target.value as ProjectStatus })}>
+                  <label className="label" htmlFor="project-edit-status">Status</label>
+                  <select id="project-edit-status" className="select" value={form.status} onChange={(e) => updateForm({ status: e.target.value as ProjectStatus })}>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                     <option value="archived">Archived</option>
@@ -442,8 +445,8 @@ export default function EditProjectPage() {
               </div>
 
               <div className="form-group catalog-editor__field-block">
-                <label className="label">Description</label>
-                <textarea className="textarea" rows={3} value={form.description} onChange={(e) => updateForm({ description: e.target.value })} />
+                <label className="label" htmlFor="project-edit-description">Description</label>
+                <textarea id="project-edit-description" className="textarea" rows={3} value={form.description} onChange={(e) => updateForm({ description: e.target.value })} />
               </div>
 
               <div className="catalog-editor__section">
@@ -576,6 +579,9 @@ export default function EditProjectPage() {
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Saving...' : 'Save changes'}
                 </button>
+                <Link href={projectId ? `/projects/${projectId}` : '/projects'} className="btn btn-secondary">
+                  Cancel
+                </Link>
                 <span className="catalog-editor__owner-note">Owner team: {selectedOwnerTeamName}</span>
               </div>
             </form>

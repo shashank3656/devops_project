@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -7,6 +7,7 @@ import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord } from '../lib/payload';
 import { homeFor, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { consumeReturn, readChangeDraft } from '../lib/returnPath';
+import { clearAuthNotice, peekAuthNotice } from '../lib/sessionExpiry';
 import { isSignedSessionToken } from '../lib/session';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -39,9 +40,21 @@ export default function DevOpsLogin() {
   const [resendingOtp, setResendingOtp] = useState(false);
   const [sso, setSso] = useState<PublicSSOState>({ enabled: false, mode: 'disabled', provider: 'none', login_url: '' });
   const [draftSaved, setDraftSaved] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [canRetry, setCanRetry] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [accessCopied, setAccessCopied] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraftSaved(readChangeDraft());
+    if (peekAuthNotice() !== 'expired') return;
+    setSessionExpired(true);
+    const clearNotice = window.setTimeout(() => {
+      clearAuthNotice();
+    }, 0);
+    return () => window.clearTimeout(clearNotice);
   }, []);
 
   useEffect(() => {
@@ -129,7 +142,7 @@ export default function DevOpsLogin() {
 
   const handleVerify2FA = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pending2fa || !otp.trim()) return;
+    if (loading || !pending2fa || !otp.trim()) return;
     setError('');
     setLoading(true);
     try {
@@ -155,19 +168,31 @@ export default function DevOpsLogin() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitLogin = async () => {
+    if (loading) return;
     setError('');
+    setCanRetry(false);
     setLoading(true);
     try {
       const loginRes = await fetch(`${apiUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, portal: 'devops' }),
+        body: JSON.stringify({ username: username.trim(), password, portal: 'devops' }),
       });
       const loginData = await loginRes.json().catch(() => ({}));
       if (!loginRes.ok) {
-        setError('Sign-in was not accepted.');
+        if (loginRes.status === 401) {
+          setPassword('');
+          setError('That username and password did not match. Check them and try again.');
+          passwordRef.current?.focus();
+        } else if (loginRes.status === 429) {
+          setError('Too many sign-in attempts. Wait a minute, then try again.');
+        } else if (loginRes.status === 403) {
+          setError('Your account cannot sign in here. Ask your administrator to check your access.');
+        } else {
+          setError('OpsTrellis could not complete sign-in right now.');
+          setCanRetry(true);
+        }
         return;
       }
       const pending = pending2FAFromLoginResponse(loginData);
@@ -177,20 +202,39 @@ export default function DevOpsLogin() {
         return;
       }
       if (typeof loginData.token !== 'string' || !isSignedSessionToken(loginData.token)) {
-        setError('Login failed');
+        setError('OpsTrellis could not complete sign-in right now.');
+        setCanRetry(true);
         return;
       }
       await finishDevOpsSession(loginData.token);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      const isNetwork = /failed to fetch|network error|load failed|err_connection/i.test(String(msg));
-      setError(
-        isNetwork
-          ? `Cannot connect to backend at ${apiUrl}. Check: (1) Backend is running (docker-compose up -d or run backend on port 8080). (2) Port 8080 is open. (3) From this browser, open ${apiUrl.replace(/\/$/, '')}/health to test.`
-          : `Cannot connect to backend at ${apiUrl}. Ensure it is running.`
-      );
+    } catch {
+      setError('We could not reach OpsTrellis. Check your connection, then try again.');
+      setCanRetry(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitLogin();
+  };
+
+  const accessRequestText = [
+    'Hello, I need access to OpsTrellis.',
+    `Username: ${username.trim() || '(my username)'}`,
+    'Team:',
+    'Project(s):',
+    'Access needed (read / write):',
+  ].join('\n');
+
+  const copyAccessRequest = async () => {
+    try {
+      await navigator.clipboard.writeText(accessRequestText);
+      setAccessCopied(true);
+      window.setTimeout(() => setAccessCopied(false), 2500);
+    } catch {
+      setAccessCopied(false);
     }
   };
 
@@ -216,17 +260,27 @@ export default function DevOpsLogin() {
         <div className="login-page__right">
           <div className="login-page__card">
             <h2 className="login-page__card-title">Welcome back</h2>
-            <p className="login-page__card-subtitle">Sign in to your DevOps workspace.</p>
+            <p className="login-page__card-subtitle">Sign in to OpsTrellis.</p>
+            {sessionExpired ? (
+              <p className="alert" role="status">Your session expired. Sign in to return to the page you were using. Nothing you already saved was removed.</p>
+            ) : null}
             {draftSaved ? (
               <p className="alert" role="status">A change draft is saved in this browser. Sign in to continue it.</p>
             ) : null}
             {error && (
-              <div className="alert alert-error" role="alert">{error}</div>
+              <div className="alert alert-error login-page__error" role="alert">
+                <span>{error}</span>
+                {canRetry && !pending2fa ? (
+                  <button type="button" className="login-page__retry" onClick={() => void submitLogin()} disabled={loading}>
+                    Try again
+                  </button>
+                ) : null}
+              </div>
             )}
             {pending2fa ? (
               <form onSubmit={handleVerify2FA}>
                 <p className="login-page__card-subtitle" style={{ marginBottom: '1rem' }}>
-                  Enter the 6-digit code sent to <strong>{pending2fa.emailHint}</strong>
+                  Two-factor authentication is on for this account. Enter the 6-digit code sent to <strong>{pending2fa.emailHint}</strong>. After it is accepted you return to the page you opened.
                 </p>
                 <div className="form-group">
                   <label className="label" htmlFor="devops-otp">Verification code</label>
@@ -269,14 +323,16 @@ export default function DevOpsLogin() {
                 </button>
               </form>
             ) : (
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} aria-busy={loading}>
               {sso.enabled && (
                 <>
                   <button type="button" className="btn btn-secondary login-page__submit" onClick={handleSSOLogin} disabled={loading}>
                     Continue with {providerLabel(sso.provider)}
                   </button>
                   <p className="login-page__hint" style={{ marginTop: 12, marginBottom: 12 }}>
-                    {sso.mode === 'required' ? 'username/password login is disabled by policy' : 'or sign in with username and password'}
+                    {sso.mode === 'required'
+                      ? `${providerLabel(sso.provider)} is required for this portal. After sign-in you return to the page you opened.`
+                      : `Or sign in with your username and password. ${providerLabel(sso.provider)} is optional.`}
                   </p>
                 </>
               )}
@@ -290,45 +346,92 @@ export default function DevOpsLogin() {
                     <label className="label" htmlFor="username">Username</label>
                     <input
                       id="username"
+                      name="username"
                       className="input"
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       required
                       autoFocus
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      readOnly={loading}
                       placeholder="Enter your username"
                     />
                   </div>
                   <div className="form-group">
-                    <label className="label" htmlFor="password">Password</label>
-                    <input
-                      id="password"
-                      className="input"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      placeholder="Enter your password"
-                    />
+                    <div className="login-page__label-row">
+                      <label className="label" htmlFor="password">Password</label>
+                      <Link href="/forgot-password" className="login-page__link">
+                        Forgot password?
+                      </Link>
+                    </div>
+                    <div className="login-page__password">
+                      <input
+                        ref={passwordRef}
+                        id="password"
+                        name="password"
+                        className="input"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        autoComplete="current-password"
+                        readOnly={loading}
+                        placeholder="Enter your password"
+                      />
+                      <button
+                        type="button"
+                        className="login-page__reveal"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-pressed={showPassword}
+                        aria-controls="password"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
                   </div>
                   <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
-                    {loading ? 'Signing in…' : 'Sign in'}
+                    {loading ? (
+                      <>
+                        <span className="login-page__spinner" aria-hidden />
+                        Signing in…
+                      </>
+                    ) : 'Sign in'}
                   </button>
                 </>
               )}
             </form>
             )}
             {!pending2fa ? (
-            <p className="login-page__hint" style={{ marginTop: 16 }}>
-              <Link href="/forgot-password" className="login-page__link">
-                Forgot password?
-              </Link>
-            </p>
-            ) : null}
-            {!pending2fa ? (
-            <p className="login-page__hint">
-              Need access? Contact your workspace administrator.
-            </p>
+              <div className="login-page__access">
+                <button
+                  type="button"
+                  className="login-page__access-toggle"
+                  aria-expanded={accessOpen}
+                  aria-controls="login-access-help"
+                  onClick={() => setAccessOpen((v) => !v)}
+                >
+                  Need access or help signing in?
+                </button>
+                {accessOpen ? (
+                  <div id="login-access-help" className="login-page__access-panel">
+                    <p>
+                      Your OpsTrellis administrator adds people to groups and projects. Send them this request so they know
+                      what to grant.
+                    </p>
+                    <pre className="login-page__access-text">{accessRequestText}</pre>
+                    <button type="button" className="btn btn-secondary login-page__access-copy" onClick={() => void copyAccessRequest()}>
+                      {accessCopied ? 'Copied' : 'Copy request'}
+                    </button>
+                    <p className="login-page__access-note" aria-live="polite">
+                      Locked out or forgot your password? Use <Link href="/forgot-password" className="login-page__link">Forgot password</Link> first.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>

@@ -32,6 +32,7 @@ export default function ScopeBar({
     return unique.length ? unique : FALLBACK_ENVIRONMENTS;
   }, [projects, selected, catalogEnvironments, scope.projectId]);
   const hasScope = Boolean(scope.projectId || scope.environment);
+  const isProduction = /^prod/i.test(scope.environment.trim());
 
   return (
     <div className="ig-scope-bar" role="group" aria-label="Workspace scope">
@@ -56,7 +57,7 @@ export default function ScopeBar({
           ))}
         </select>
       </label>
-      <label className="ig-scope-bar__field">
+      <label className={`ig-scope-bar__field${isProduction ? ' ig-scope-bar__field--prod' : ''}`} data-env={isProduction ? 'production' : undefined}>
         <span className="ig-scope-bar__label">Environment</span>
         <select
           className="ig-scope-bar__control"
@@ -71,6 +72,11 @@ export default function ScopeBar({
           ))}
         </select>
       </label>
+      {isProduction ? (
+        <span className="ig-scope-bar__prod" role="status">
+          Production
+        </span>
+      ) : null}
       {onClear && hasScope ? (
         <button type="button" className="ig-scope-bar__clear" onClick={onClear}>
           Clear

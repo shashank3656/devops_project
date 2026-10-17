@@ -121,7 +121,7 @@ export default function MaintenancePage() {
                 {visible.map((item) => (
                   <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/maintenance/${item.id}`)}>
                     <td>
-                      <strong>{item.number}</strong>
+                      <strong><Link href={`/maintenance/${item.id}`} onClick={(event) => event.stopPropagation()}>{item.number}</Link></strong>
                       <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_name || 'Unknown'}</div>
                     </td>
                     <td>{item.service}{item.environment ? ` · ${item.environment}` : ''}</td>

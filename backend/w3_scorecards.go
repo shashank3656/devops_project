@@ -19,6 +19,7 @@ type serviceScorecard struct {
 	ProjectName    string           `json:"project_name,omitempty"`
 	ProjectCode    string           `json:"project_code,omitempty"`
 	Score          int              `json:"score"`
+	ScoreState     string           `json:"score_state"` // known or unknown
 	OpenIncidents  int              `json:"open_incidents"`
 	Deployments30d int              `json:"deployments_30d"`
 	Failed30d      int              `json:"failed_30d"`
@@ -114,23 +115,40 @@ func buildServiceScorecards(projectID int, environment string) ([]serviceScoreca
 		}
 		drift := detectServiceDrift(svc.Service, firstNonEmpty(svc.Environment, environment), card.LastChangeSHA, digest)
 		card.Drift = &drift
-		card.Checks = []scorecardCheck{
-			{Key: "owner", Label: "Owner", Passed: strings.TrimSpace(svc.Team) != "", Detail: firstNonEmpty(svc.Team, "No team on this service")},
-			{Key: "slo", Label: "SLO", Passed: slo != nil && !card.SLOBurned, Detail: map[bool]string{true: "Within budget", false: "No SLO or currently burning"}[slo != nil && !card.SLOBurned]},
-			{Key: "incidents", Label: "Open incidents", Passed: card.OpenIncidents == 0, Detail: strconv.Itoa(card.OpenIncidents) + " active"},
-			{Key: "runbook", Label: "Runbook", Passed: card.RunbookAgeDays != nil && *card.RunbookAgeDays < 180, Detail: map[bool]string{true: "Fresh enough", false: "Missing or older than 180 days"}[card.RunbookAgeDays != nil && *card.RunbookAgeDays < 180]},
-			{Key: "change", Label: "Last change", Passed: card.LastChange != "", Detail: firstNonEmpty(card.LastChange, "No CHG in catalog")},
-			{Key: "drift", Label: "Live vs last CHG", Passed: !drift.Drifted, Detail: firstNonEmpty(drift.Detail, "No cluster image to compare")},
-			{Key: "dora", Label: "DORA", Passed: doraFailureRateOK(card.Dora), Detail: doraScorecardDetail(card.Dora)},
-		}
-		passed := 0
-		for _, check := range card.Checks {
-			if check.Passed {
-				passed++
+		sloState := "unknown"
+		sloDetail := "No SLO or live metrics. Missing telemetry is Unknown, not healthy."
+		if slo != nil && latest != nil {
+			if card.SLOBurned {
+				sloState = "fail"
+				sloDetail = "Error or latency is outside the SLO."
+			} else {
+				sloState = "pass"
+				sloDetail = "Live metrics are inside the SLO."
 			}
 		}
-		if len(card.Checks) > 0 {
-			card.Score = int(math.Round(float64(passed) / float64(len(card.Checks)) * 100))
+		runbookFresh := card.RunbookAgeDays != nil && *card.RunbookAgeDays < 180
+		driftState := "unknown"
+		if drift.Compared {
+			if drift.Drifted {
+				driftState = "fail"
+			} else {
+				driftState = "pass"
+			}
+		}
+		card.Checks = []scorecardCheck{
+			scoredCheck("owner", "Owner", firstNonEmpty(svc.Team, "No team on this service"), map[bool]string{true: "pass", false: "fail"}[strings.TrimSpace(svc.Team) != ""]),
+			scoredCheck("slo", "SLO", sloDetail, sloState),
+			scoredCheck("incidents", "Open incidents", strconv.Itoa(card.OpenIncidents)+" active", map[bool]string{true: "pass", false: "fail"}[card.OpenIncidents == 0]),
+			scoredCheck("runbook", "Runbook", map[bool]string{true: "Fresh enough", false: "Missing or older than 180 days"}[runbookFresh], map[bool]string{true: "pass", false: "fail"}[runbookFresh]),
+			scoredCheck("change", "Last change", firstNonEmpty(card.LastChange, "No change record. Unknown, not healthy."), map[bool]string{true: "pass", false: "unknown"}[card.LastChange != ""]),
+			scoredCheck("drift", "Live vs last CHG", firstNonEmpty(drift.Detail, "No cluster image to compare. Unknown, not healthy."), driftState),
+			doraScorecardCheck(card.Dora),
+		}
+		known, passed := countKnownChecks(card.Checks)
+		card.ScoreState = "unknown"
+		if known > 0 {
+			card.ScoreState = "known"
+			card.Score = int(math.Round(float64(passed) / float64(known) * 100))
 		}
 		out = append(out, card)
 	}
@@ -145,13 +163,34 @@ func serviceDoraMetrics(deployments, failures int, leadHours, restoreHours []flo
 	return buildDoraMetrics(current, doraWindow{}, windowDays)
 }
 
+func scoredCheck(key, label, detail, state string) scorecardCheck {
+	return scorecardCheck{Key: key, Label: label, Detail: detail, State: state, Passed: state == "pass"}
+}
+
 func doraFailureRateOK(metrics []doraMetric) bool {
 	for _, metric := range metrics {
 		if metric.Key == "change_failure_rate" {
-			return metric.Samples == 0 || metric.Value <= 15
+			return metric.Samples > 0 && metric.Value <= 15
 		}
 	}
-	return true
+	return false
+}
+
+func doraScorecardCheck(metrics []doraMetric) scorecardCheck {
+	detail := doraScorecardDetail(metrics)
+	for _, metric := range metrics {
+		if metric.Key != "change_failure_rate" {
+			continue
+		}
+		if metric.Samples == 0 {
+			return scoredCheck("dora", "DORA", "No deployments in the last 30 days. Unknown, not healthy.", "unknown")
+		}
+		if metric.Value <= 15 {
+			return scoredCheck("dora", "DORA", detail, "pass")
+		}
+		return scoredCheck("dora", "DORA", detail, "fail")
+	}
+	return scoredCheck("dora", "DORA", "No DORA samples. Unknown, not healthy.", "unknown")
 }
 
 func doraScorecardDetail(metrics []doraMetric) string {
@@ -188,7 +227,8 @@ func devopsScorecardsHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	if _, ok := requireDevopsUser(w, r); !ok {
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
 		return
 	}
 	if r.Method != "GET" {
@@ -196,11 +236,30 @@ func devopsScorecardsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projectID, _ := strconv.Atoi(r.URL.Query().Get("project_id"))
+	if projectID > 0 && !ensureProjectVisible(w, r, userID, projectID) {
+		return
+	}
 	items, err := buildServiceScorecards(projectID, r.URL.Query().Get("environment"))
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to load scorecards", err)
 		return
 	}
+	seeAll := callerSeesEveryProject(userID)
+	var visible map[int]bool
+	if !seeAll {
+		visible, err = getVisibleProjectIDSetForUser(userID)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to load scorecards", err)
+			return
+		}
+	}
+	kept := make([]serviceScorecard, 0, len(items))
+	for _, item := range items {
+		if seeAll || (item.ProjectID != nil && visible[*item.ProjectID]) {
+			kept = append(kept, item)
+		}
+	}
+	items = kept
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"scorecards": items, "status": "ok"})
 }

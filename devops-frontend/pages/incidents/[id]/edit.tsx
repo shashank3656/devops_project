@@ -8,6 +8,7 @@ import ITSMClock from '../../../components/ITSMClock';
 import ITSMJournal from '../../../components/ITSMJournal';
 import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentCanFinish, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
 import { asRecord, getString } from '../../../lib/payload';
+import { expireSession } from '../../../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -149,9 +150,7 @@ function normalizeMembersByTeam(value: unknown): Record<number, TeamMemberOption
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function getIncidentReference(incident: Pick<Incident, 'id' | 'incident_number'>): string {

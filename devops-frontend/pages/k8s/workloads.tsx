@@ -104,7 +104,14 @@ export default function DevOpsK8sWorkloadsPage() {
     () => ({
       workloads: visibleRows.length,
       healthy: visibleRows.filter((item) => item.status.toLowerCase() === 'healthy').length,
-      degraded: visibleRows.filter((item) => item.status.toLowerCase() !== 'healthy').length,
+      unknown: visibleRows.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status === '' || status === 'unknown';
+      }).length,
+      degraded: visibleRows.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status !== 'healthy' && status !== '' && status !== 'unknown';
+      }).length,
       namespaces: new Set(visibleRows.map((item) => item.namespace)).size,
     }),
     [visibleRows],
@@ -473,6 +480,10 @@ export default function DevOpsK8sWorkloadsPage() {
               <div className="k8s-summary-card">
                 <span className="k8s-summary-card__label">Healthy</span>
                 <strong className="k8s-summary-card__value">{summary.healthy}</strong>
+              </div>
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Unknown</span>
+                <strong className="k8s-summary-card__value">{summary.unknown}</strong>
               </div>
               <div className="k8s-summary-card">
                 <span className="k8s-summary-card__label">Needs attention</span>

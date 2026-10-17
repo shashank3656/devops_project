@@ -2,37 +2,37 @@ import { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { asRecord, getString } from '../lib/payload';
 
 export default function DevOpsForgotPassword() {
   const apiUrl = useApiUrl();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sentTo, setSentTo] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    const value = email.trim();
+    if (!value || loading) return;
     setLoading(true);
     setError('');
     try {
       const res = await fetch(`${apiUrl}/api/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          portal: 'devops',
-        }),
+        body: JSON.stringify({ email: value, portal: 'devops' }),
       });
-      const data = asRecord(await res.json().catch(() => ({})));
-      if (!res.ok) {
-        setError(getString(data.error, 'Request failed'));
+      if (res.status === 429) {
+        setError('Too many reset requests. Wait a minute, then try again.');
         return;
       }
-      setSent(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Request failed');
+      if (!res.ok) {
+        setError('OpsTrellis could not send the reset link right now. Try again in a moment.');
+        return;
+      }
+      setSentTo(value);
+    } catch {
+      setError('We could not reach OpsTrellis. Check your connection, then try again.');
     } finally {
       setLoading(false);
     }
@@ -46,58 +46,77 @@ export default function DevOpsForgotPassword() {
       <div className="login-page">
         <div className="login-page__left">
           <div className="login-page__brand">
-            <img src="/logo.svg" alt="" width={56} height={56} className="login-page__logo" />
-            <h1 className="login-page__title">OpsTrellis</h1>
-            <p className="login-page__tagline">
-              Reset your OpsTrellis password and get back to tickets, workload, and approvals.
+            <p className="login-page__mark" aria-label="OpsTrellis">
+              <img src="/brand/opstrellis-mark-dark.svg" alt="" aria-hidden width={44} height={44} />
+              <span className="login-page__mark-word">OpsTrellis</span>
             </p>
-          </div>
-          <div className="login-page__decor">
-            <div className="login-page__blob login-page__blob--1" />
-            <div className="login-page__blob login-page__blob--2" />
-            <div className="login-page__blob login-page__blob--3" />
+            <h1 className="login-page__title">Get back to work.</h1>
+            <p className="login-page__tagline">
+              Reset your OpsTrellis password and return to tickets, workload, and approvals.
+            </p>
           </div>
         </div>
         <div className="login-page__right">
           <div className="login-page__card">
             <h2 className="login-page__card-title">Forgot password</h2>
-            <p className="login-page__card-subtitle">
-              Enter your DevOps email and we&apos;ll send you a reset link for this portal.
-            </p>
-            {error && (
-              <div className="alert alert-error" role="alert" style={{ marginBottom: 16 }}>
-                {error}
-              </div>
-            )}
-            {sent ? (
-              <p style={{ color: 'var(--color-success)', marginBottom: 16 }}>
-                Check your email for a reset link. It may take a few minutes to arrive.
-              </p>
-            ) : (
-              <form onSubmit={handleSubmit}>
-                <div className="form-group">
-                  <label className="label" htmlFor="email">Email</label>
-                  <input
-                    id="email"
-                    className="input"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={loading}
-                    autoComplete="email"
-                    placeholder="devops@example.com"
-                  />
-                </div>
-                <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
-                  {loading ? 'Sending…' : 'Send reset link'}
+            {sentTo ? (
+              <div className="login-page__confirm" role="status">
+                <p className="login-page__confirm-title">Check your inbox</p>
+                <p>
+                  If an OpsTrellis account matches <strong>{sentTo}</strong>, a reset link is on its way. It can take a few
+                  minutes. The link works once and expires after one hour.
+                </p>
+                <p className="login-page__hint">Nothing arrived? Check spam, or send it again.</p>
+                <button
+                  type="button"
+                  className="btn btn-secondary login-page__submit"
+                  onClick={() => setSentTo('')}
+                >
+                  Send again
                 </button>
-              </form>
+              </div>
+            ) : (
+              <>
+                <p className="login-page__card-subtitle">
+                  Enter the email or username on your account. We&apos;ll send a reset link to the email on file.
+                </p>
+                {error && (
+                  <div className="alert alert-error" role="alert">
+                    {error}
+                  </div>
+                )}
+                <form onSubmit={handleSubmit} aria-busy={loading}>
+                  <div className="form-group">
+                    <label className="label" htmlFor="email">Email or username</label>
+                    <input
+                      id="email"
+                      name="email"
+                      className="input"
+                      type="text"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoFocus
+                      readOnly={loading}
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      placeholder="you@company.com"
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary login-page__submit" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <span className="login-page__spinner" aria-hidden />
+                        Sending…
+                      </>
+                    ) : 'Send reset link'}
+                  </button>
+                </form>
+              </>
             )}
-            <p style={{ marginTop: 16 }}>
-              <Link href="/login" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>
-                ← Back to login
-              </Link>
+            <p className="login-page__hint login-page__back">
+              <Link href="/login" className="login-page__link">← Back to sign in</Link>
             </p>
           </div>
         </div>

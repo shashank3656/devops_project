@@ -7,6 +7,7 @@ import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { confirmGuardedDay2Action, notifyDay2ActionComplete } from '../lib/guardedDay2Action';
 import { asRecord, getString } from '../lib/payload';
+import { expireSession } from '../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -180,9 +181,7 @@ function normalizePromotions(value: unknown): PromotionItem[] {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
@@ -758,7 +757,7 @@ export default function DevOpsPromotionsPage() {
                                                 Acknowledge risks: {check.change_brief.headline}
                                               </label>
                                               {ackedHighRisk[item.request_id] ? (
-                                                <textarea
+                                                <textarea aria-label="Exception reasons"
                                                   className="input"
                                                   rows={2}
                                                   style={{ marginTop: 8, width: '100%' }}

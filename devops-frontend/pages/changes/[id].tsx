@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import ExecutionStage from '../../components/ExecutionStage';
 import {
   buildPortalApiUrl,
   buildChangeDetailActions,
@@ -200,6 +201,20 @@ export default function ChangeDetailPage() {
                 ? [item.status, item.service, item.environment === 'unspecified' ? '' : item.environment].filter(Boolean).join(' · ')
                 : 'Approval, schedule, and implementation for this change.'}
             </p>
+            {item ? (
+              <ExecutionStage
+                status={item.status}
+                recovery={
+                  isManager && item.previous_sha ? (
+                    <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={applyRollback}>
+                      Roll back to {item.previous_sha.slice(0, 7)}
+                    </button>
+                  ) : (
+                    <Link href="/changes/new" className="btn btn-secondary">Start a follow-up change</Link>
+                  )
+                }
+              />
+            ) : null}
           </div>
           <div className="request-actions" style={{ marginTop: 0 }}>
             {item && !finished && isManager && item.previous_sha ? (

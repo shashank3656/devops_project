@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import CopyButton from './CopyButton';
 import DataTable, { type DataTableColumn, type RowKey } from './DataTable';
 
 export interface ChangeCatalogRow {
@@ -18,10 +19,26 @@ export interface ChangeCatalogRow {
   status?: string;
   cab_status?: string;
   linked_incidents?: number;
+  created_at?: string;
 }
 
 function changeNumber(row: ChangeCatalogRow): string {
   return row.change_number || `CHG${String(row.id).padStart(7, '0')}`;
+}
+
+function formatWhen(value?: string): string {
+  if (!value) return 'Unknown';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function statusBadge(status?: string): string {
+  const value = (status || '').toLowerCase();
+  if (value.includes('fail') || value.includes('reject') || value.includes('cancel')) return 'ig-badge ig-badge--danger';
+  if (value.includes('implement') || value.includes('approv') || value.includes('close') || value.includes('success')) return 'ig-badge ig-badge--ok';
+  if (value.includes('watch') || value.includes('schedul')) return 'ig-badge ig-badge--medium';
+  return 'ig-badge ig-badge--info';
 }
 
 export function buildChangeCatalogColumns(options?: { showRisk?: boolean }): DataTableColumn<ChangeCatalogRow>[] {
@@ -29,57 +46,37 @@ export function buildChangeCatalogColumns(options?: { showRisk?: boolean }): Dat
     {
       id: 'change',
       header: 'Change',
-      cell: (item) => (
-        <>
-          <strong>{changeNumber(item)}</strong>
-          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.title || item.sha || '—'}</div>
-          {item.summary ? (
-            <div style={{ color: 'var(--color-text-muted)', fontSize: 12, marginTop: 2 }}>
-              {item.summary.length > 96 ? `${item.summary.slice(0, 96)}…` : item.summary}
-            </div>
-          ) : null}
-        </>
-      ),
-    },
-    {
-      id: 'repo',
-      header: 'Repo / PR',
-      cell: (item) => (
-        <>
-          {item.repo || '—'}
-          <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-            {item.pr_number ? `PR #${item.pr_number}` : 'No PR'} · {(item.sha || '').slice(0, 7) || '—'}
+      width: '46%',
+      className: 'ig-col-title',
+      cell: (item) => {
+        const context = [item.service, item.environment && item.environment !== 'unspecified' ? item.environment : '', item.assignee_username].filter(Boolean).join(' · ');
+        return (
+          <div className="ig-cell-stack">
+            <span className="ig-cell-title">{item.title || changeNumber(item)}</span>
+            <span className="ig-cell-meta">
+              {changeNumber(item)}
+              <CopyButton value={changeNumber(item)} label="change number" />
+              {context ? ` · ${context}` : ''}
+              {item.pr_number ? ` · PR ${item.pr_number}` : ''}
+            </span>
           </div>
-        </>
-      ),
+        );
+      },
     },
-    { id: 'service', header: 'Service', cell: (item) => item.service || '—' },
-    {
-      id: 'env',
-      header: 'Env',
-      cell: (item) => (item.environment === 'unspecified' || !item.environment ? '—' : item.environment),
-    },
-    { id: 'assignee', header: 'Assigned to', cell: (item) => item.assignee_username || '—' },
-    { id: 'priority', header: 'Priority', cell: (item) => item.priority || 'medium' },
+    { id: 'priority', header: 'Priority', cell: (item) => item.priority || 'Unknown' },
   ];
   if (options?.showRisk) {
-    cols.push({ id: 'risk', header: 'Risk', cell: (item) => item.risk_level || 'medium' });
+    cols.push({ id: 'risk', header: 'Risk', cell: (item) => item.risk_level || 'Unknown' });
   }
   cols.push(
     { id: 'type', header: 'Type', cell: (item) => item.change_type || '—' },
     {
       id: 'status',
       header: 'Status',
-      cell: (item) => (
-        <>
-          {item.status || '—'}
-          {item.cab_status ? (
-            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>CAB {item.cab_status}</div>
-          ) : null}
-        </>
-      ),
+      cell: (item) => <span className={statusBadge(item.status)}>{item.status || 'Unknown'}</span>,
     },
-    { id: 'incidents', header: 'Incidents', cell: (item) => String(item.linked_incidents ?? 0) },
+    { id: 'created', header: 'Created', cell: (item) => formatWhen(item.created_at) },
+    { id: 'incidents', header: 'Incidents', align: 'right', className: 'ig-col-num', cell: (item) => (typeof item.linked_incidents === 'number' ? String(item.linked_incidents) : 'Unknown') },
   );
   return cols;
 }

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { formatRelativeTime } from './time';
+import RelativeTime from './RelativeTime';
 import type { QueueItem, Tone } from './types';
 
 const KIND_LABELS: Record<string, string> = {
@@ -77,7 +77,6 @@ export default function WorkQueue({
     <ul className="ig-home-panel ig-home-queue">
       {items.map((item) => {
         const tone = badgeTone(item);
-        const when = formatRelativeTime(item.at);
         return (
           <li key={item.id}>
             <Link href={item.href} className="ig-home-queue__row">
@@ -88,7 +87,7 @@ export default function WorkQueue({
               </span>
               <span className="ig-home-queue__ref">
                 {item.ref ? <code>{item.ref}</code> : null}
-                {when ? <span>{when}</span> : null}
+                {item.at ? <span><RelativeTime value={item.at} /></span> : null}
               </span>
               <span className="ig-home-queue__action">{item.action || 'Open'}</span>
             </Link>

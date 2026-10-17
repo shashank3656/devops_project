@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import ExecutionStage from '../../components/ExecutionStage';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 
@@ -179,6 +180,16 @@ export default function RequestDetailPage() {
               <p className="ops-kicker">Requests</p>
               <h1>{request ? `${request.service || 'Request'} #${request.id}` : 'Request'}</h1>
               <p>{request ? statusLabel(request.status) : 'Open a request from your list.'}</p>
+              {request ? (
+                <ExecutionStage
+                  status={request.status}
+                  recovery={
+                    <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('resubmit')}>
+                      Raise again
+                    </button>
+                  }
+                />
+              ) : null}
             </div>
             <Link href="/my-requests" className="btn btn-secondary">Back to my requests</Link>
           </header>

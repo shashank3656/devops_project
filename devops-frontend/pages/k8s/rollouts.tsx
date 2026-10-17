@@ -87,7 +87,14 @@ export default function DevOpsK8sRolloutsPage() {
     () => ({
       rollouts: visibleRows.length,
       healthy: visibleRows.filter((item) => item.status.toLowerCase() === 'healthy').length,
-      stalled: visibleRows.filter((item) => item.status.toLowerCase() !== 'healthy').length,
+      unknown: visibleRows.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status === '' || status === 'unknown';
+      }).length,
+      stalled: visibleRows.filter((item) => {
+        const status = item.status.toLowerCase();
+        return status !== 'healthy' && status !== '' && status !== 'unknown';
+      }).length,
       clusters: new Set(visibleRows.map((item) => item.cluster_name)).size,
     }),
     [visibleRows],
@@ -171,6 +178,10 @@ export default function DevOpsK8sRolloutsPage() {
               <div className="k8s-summary-card">
                 <span className="k8s-summary-card__label">Healthy</span>
                 <strong className="k8s-summary-card__value">{summary.healthy}</strong>
+              </div>
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Unknown</span>
+                <strong className="k8s-summary-card__value">{summary.unknown}</strong>
               </div>
               <div className="k8s-summary-card">
                 <span className="k8s-summary-card__label">Needs follow-up</span>

@@ -297,7 +297,7 @@ export interface K8sClusterListItem {
   configmap_count: number;
   storage_count: number;
   node_pool: string;
-  node_count: number;
+  node_count: number | null;
   kubernetes_version: string;
   location: string;
   health_status: string;
@@ -1007,7 +1007,7 @@ function normalizeClusterItems(value: unknown): K8sClusterListItem[] {
         configmap_count: Number(row.configmap_count) || 0,
         storage_count: Number(row.storage_count) || 0,
         node_pool: getString(row.node_pool),
-        node_count: Number(row.node_count) || 0,
+        node_count: typeof row.node_count === 'number' ? row.node_count : null,
         kubernetes_version: getString(row.kubernetes_version),
         location: getString(row.location),
         health_status: getString(row.health_status),

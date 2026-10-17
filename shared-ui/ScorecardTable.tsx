@@ -5,6 +5,7 @@ export interface ScorecardCheckRow {
   key: string;
   label: string;
   passed: boolean;
+  state?: 'pass' | 'fail' | 'unknown' | string;
   detail?: string;
 }
 
@@ -22,6 +23,7 @@ export interface ScorecardRow {
   team?: string;
   project_name?: string;
   score: number;
+  score_state?: 'known' | 'unknown' | string;
   open_incidents: number;
   last_change?: string;
   last_change_id?: number;
@@ -35,6 +37,31 @@ function rowKey(item: ScorecardRow): string {
   return `${item.service}-${item.environment || ''}`;
 }
 
+function checkState(check: ScorecardCheckRow): 'pass' | 'fail' | 'unknown' {
+  if (check.state === 'pass' || check.state === 'fail' || check.state === 'unknown') return check.state;
+  return check.passed ? 'pass' : 'fail';
+}
+
+function scoreText(item: ScorecardRow): string {
+  return item.score_state === 'known' ? String(item.score) : 'Unknown';
+}
+
+function failedLabels(item: ScorecardRow): string {
+  const checks = item.checks || [];
+  const failed = checks.filter((check) => checkState(check) === 'fail').map((check) => check.label);
+  const unknown = checks.filter((check) => checkState(check) === 'unknown').map((check) => check.label);
+  if (failed.length && unknown.length) return `${failed.join(' · ')} · Unknown: ${unknown.join(' · ')}`;
+  if (failed.length) return failed.join(' · ');
+  if (unknown.length) return `Unknown: ${unknown.join(' · ')}`;
+  return 'Known checks passed';
+}
+
+function doraText(metric: ScorecardDoraRow): string {
+  if (metric.band === 'none' || metric.band === '') return 'Unknown';
+  const unit = metric.unit === 'percent' ? '%' : ` ${metric.unit}`;
+  return `${metric.value}${unit} (${metric.band})`;
+}
+
 function buildUserColumns(): DataTableColumn<ScorecardRow>[] {
   return [
     {
@@ -43,13 +70,11 @@ function buildUserColumns(): DataTableColumn<ScorecardRow>[] {
       cell: (item) => (
         <>
           <strong>{item.service}</strong>
-          <div className="portal-surface__subtitle">
-            {(item.checks || []).filter((check) => !check.passed).map((check) => check.label).join(' · ') || 'All checks passed'}
-          </div>
+          <div className="portal-surface__subtitle">{failedLabels(item)}</div>
         </>
       ),
     },
-    { id: 'score', header: 'Score', cell: (item) => String(item.score) },
+    { id: 'score', header: 'Score', cell: (item) => scoreText(item) },
     { id: 'incidents', header: 'Incidents', cell: (item) => String(item.open_incidents) },
     {
       id: 'dora',
@@ -58,10 +83,7 @@ function buildUserColumns(): DataTableColumn<ScorecardRow>[] {
         (item.dora || [])
           .filter((metric) => metric.key === 'change_failure_rate')
           .map((metric) => (
-            <span key={metric.key}>
-              {metric.value}
-              {metric.unit === 'percent' ? '%' : ` ${metric.unit}`} ({metric.band})
-            </span>
+            <span key={metric.key}>{doraText(metric)}</span>
           )),
     },
     {
@@ -91,7 +113,7 @@ function buildDevopsColumns(): DataTableColumn<ScorecardRow>[] {
         </>
       ),
     },
-    { id: 'score', header: 'Score', cell: (item) => String(item.score) },
+    { id: 'score', header: 'Score', cell: (item) => scoreText(item) },
     {
       id: 'dora',
       header: 'DORA',
@@ -100,7 +122,7 @@ function buildDevopsColumns(): DataTableColumn<ScorecardRow>[] {
           .filter((metric) => metric.key === 'change_failure_rate' || metric.key === 'deploy_frequency')
           .map((metric) => (
             <div key={metric.key}>
-              {metric.label}: {metric.value} {metric.unit} ({metric.band})
+              {metric.label}: {metric.band === 'none' || metric.band === '' ? 'Unknown' : `${metric.value} ${metric.unit} (${metric.band})`}
             </div>
           )),
     },
@@ -110,7 +132,7 @@ function buildDevopsColumns(): DataTableColumn<ScorecardRow>[] {
       cell: (item) =>
         (item.checks || []).map((check) => (
           <div key={check.key}>
-            {check.passed ? 'pass' : 'fail'} · {check.label}
+            {checkState(check)} · {check.label}
           </div>
         )),
     },
@@ -142,7 +164,7 @@ function buildAdminColumns(): DataTableColumn<ScorecardRow>[] {
         </>
       ),
     },
-    { id: 'score', header: 'Score', cell: (item) => String(item.score) },
+    { id: 'score', header: 'Score', cell: (item) => scoreText(item) },
     { id: 'incidents', header: 'Incidents', cell: (item) => String(item.open_incidents) },
     {
       id: 'dora',
@@ -151,9 +173,7 @@ function buildAdminColumns(): DataTableColumn<ScorecardRow>[] {
         (item.dora || [])
           .filter((metric) => metric.key === 'change_failure_rate')
           .map((metric) => (
-            <span key={metric.key}>
-              {metric.value}% ({metric.band})
-            </span>
+            <span key={metric.key}>{doraText(metric)}</span>
           )),
     },
     {

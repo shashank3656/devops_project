@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { formatRelativeTime, initialsFor } from './time';
+import RelativeTime from './RelativeTime';
+import { initialsFor } from './time';
 import type { ActivityItem } from './types';
 
 export default function ActivityFeed({
@@ -50,7 +51,7 @@ export default function ActivityFeed({
                   {item.detail ? <span className="ig-home-activity__detail">{item.detail}</span> : null}
                 </span>
                 <time className="ig-home-activity__time" dateTime={item.at}>
-                  {formatRelativeTime(item.at)}
+                  <RelativeTime value={item.at} />
                 </time>
               </>
             );

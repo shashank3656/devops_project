@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { DataTable, formatRelativeTime, type DataTableColumn } from '@infragate/ui';
+import { DataTable, RelativeTime, exactTimeTitle, type DataTableColumn } from '@infragate/ui';
 import ApprovalsSectionNav from '../components/ApprovalsSectionNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -85,8 +85,8 @@ const reviewColumns: DataTableColumn<ApprovalRequest>[] = [
     id: 'created_at',
     header: 'Created',
     cell: (request) => (
-      <span className="ig-cell-meta" title={new Date(request.created_at).toLocaleString()}>
-        {formatRelativeTime(request.created_at)}
+      <span className="ig-cell-meta" title={exactTimeTitle(request.created_at)}>
+        <RelativeTime value={request.created_at} />
       </span>
     ),
   },

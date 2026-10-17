@@ -116,7 +116,7 @@ export default function MaintenanceDetailPage() {
             <h1 className="portal-page__title">{item?.service || 'Maintenance'}</h1>
             <p className="portal-page__subtitle">{item ? statusLabel(item.status) : 'Loading'}</p>
           </div>
-          <Link href="/maintenance" className="btn btn-secondary">Back</Link>
+          <Link href="/maintenance" className="btn btn-secondary">Back to maintenance</Link>
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {item ? (

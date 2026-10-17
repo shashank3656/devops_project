@@ -1,11 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { scopeListHref } from '../../lib/scopeHref';
 import { FALLBACK_ITSM_CATEGORIES, IMPACT_URGENCY, INCIDENT_STATES, ITSM_PRIORITIES, ITSMCategory, normalizeCategories, priorityFromImpactUrgency, subcategoriesFor } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
+import { expireSession } from '../../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -82,9 +85,7 @@ function normalizeMembersByTeam(value: unknown): Record<number, TeamMemberOption
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
@@ -142,25 +143,48 @@ export default function NewIncidentPage() {
   const [currentIncidentNumber, setCurrentIncidentNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const submitLock = useRef(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const { allowLeave } = useUnsavedChanges(Boolean(summary.trim() || notes.trim() || comment.trim() || conferenceNotes.trim()));
 
   const requestedRequestId = useMemo(() => parsePositiveIntQuery(router.query.request_id), [router.query.request_id]);
+  const scopedProjectId = useMemo(() => parsePositiveIntQuery(router.query.project_id) || 0, [router.query.project_id]);
+  const scopedEnvironment = useMemo(() => {
+    const value = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment;
+    return (value || '').trim();
+  }, [router.query.environment]);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('opstrellis-incident-note');
-    if (saved) setNotes(saved);
+    const raw = sessionStorage.getItem('opstrellis-incident-draft');
+    if (!raw) {
+      const saved = sessionStorage.getItem('opstrellis-incident-note');
+      if (saved) setNotes(saved);
+      return;
+    }
+    try {
+      const saved = JSON.parse(raw) as { summary?: string; notes?: string; impact?: string; urgency?: string; category?: string; subcategory?: string };
+      if (saved.summary) setSummary(saved.summary);
+      if (saved.notes) setNotes(saved.notes);
+      if (saved.impact) setImpact(saved.impact);
+      if (saved.urgency) setUrgency(saved.urgency);
+      if (saved.category) setCategory(saved.category);
+      if (saved.subcategory) setSubcategory(saved.subcategory);
+    } catch {
+      sessionStorage.removeItem('opstrellis-incident-draft');
+    }
   }, []);
 
   useEffect(() => {
-    const lower = notes.toLowerCase();
-    if (/(password|secret|token)/.test(lower)) {
+    const blob = JSON.stringify({ summary, notes, impact, urgency, category, subcategory });
+    if (/(password|secret|token)/i.test(blob)) {
+      sessionStorage.removeItem('opstrellis-incident-draft');
       sessionStorage.removeItem('opstrellis-incident-note');
       return;
     }
-    if (notes.trim()) sessionStorage.setItem('opstrellis-incident-note', notes);
-    else sessionStorage.removeItem('opstrellis-incident-note');
-  }, [notes]);
+    if (summary.trim() || notes.trim()) sessionStorage.setItem('opstrellis-incident-draft', blob);
+    else sessionStorage.removeItem('opstrellis-incident-draft');
+  }, [summary, notes, impact, urgency, category, subcategory]);
 
   useEffect(() => {
     if (requestedRequestId && !requestId) {
@@ -265,6 +289,8 @@ export default function NewIncidentPage() {
       clearSessionAndRedirect();
       return;
     }
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSaving(true);
     setError('');
     setNotice('');
@@ -273,6 +299,9 @@ export default function NewIncidentPage() {
       const normalizedStatus = mode === 'draft' ? 'draft' : status === 'draft' ? 'new' : status;
     if (mode !== 'draft' && !summary.trim()) {
       throw new Error('Short description is required');
+    }
+    if (mode !== 'draft' && !scopedProjectId) {
+      throw new Error('Select a project before raising an incident.');
     }
     if (mode !== 'draft' && (normalizedStatus === 'resolved' || normalizedStatus === 'closed') && !notes.trim()) {
       throw new Error('Resolve needs a recovery note before this incident can close.');
@@ -295,6 +324,8 @@ export default function NewIncidentPage() {
           summary,
           notes,
           comment,
+          project_id: scopedProjectId,
+          environment: scopedEnvironment,
           caller_user_id: callerUserId ? Number(callerUserId) : 0,
           category,
           subcategory,
@@ -319,6 +350,9 @@ export default function NewIncidentPage() {
       }
       setNotice(mode === 'draft' ? 'Incident draft created.' : 'Incident submitted.');
       if (savedIncident.id > 0 && mode === 'submit') {
+        sessionStorage.removeItem('opstrellis-incident-draft');
+        sessionStorage.removeItem('opstrellis-incident-note');
+        allowLeave();
         await router.push(`/incidents/${savedIncident.id}/edit`);
         return;
       }
@@ -326,6 +360,7 @@ export default function NewIncidentPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save incident');
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   };
@@ -345,7 +380,7 @@ export default function NewIncidentPage() {
             </p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/incidents" className="btn btn-secondary">
+            <Link href={scopeListHref('/incidents', router.query)} className="btn btn-secondary">
               Back to incidents
             </Link>
           </div>
@@ -372,162 +407,178 @@ export default function NewIncidentPage() {
             <div className="empty-state">Loading incident options...</div>
           ) : (
             <>
-              <div className="portal-form-grid">
+              <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+              <fieldset className="form-section">
+                <legend className="form-section__title">What happened</legend>
                 <label className="label">
-                  Incident reference
-                  <input className="input" value={currentIncidentNumber || 'Will be generated when you save'} readOnly />
+                  Short description<span className="form-req" aria-hidden="true"> *</span>
+                  <input className="input" required value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production checkout is returning 5xx" />
                 </label>
-                {requestedRequestId ? (
+                <div className="portal-form-grid">
                   <label className="label">
-                    Linked request
-                    <input className="input" value={`#${requestedRequestId}`} readOnly />
-                  </label>
-                ) : (
-                  <label className="label">
-                    Linked request (optional)
-                    <input
-                      className="input"
-                      value={requestId}
-                      onChange={(event) => setRequestId(event.target.value)}
-                      placeholder="Optional infra ticket or INC number"
-                    />
-                  </label>
-                )}
-                <label className="label">
-                  Impact
-                  <select className="input" value={impact} onChange={(event) => setImpact(event.target.value)}>
-                    {IMPACT_URGENCY.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                  <small>Who is affected.</small>
-                </label>
-                <label className="label">
-                  Urgency
-                  <select className="input" value={urgency} onChange={(event) => setUrgency(event.target.value)}>
-                    {IMPACT_URGENCY.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                  <small>How fast a response is needed.</small>
-                </label>
-                <label className="label">
-                  Priority
-                  <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
-                    {ITSM_PRIORITIES.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                  <small>Derived from impact and urgency. You can adjust it.</small>
-                </label>
-                <label className="label">
-                  State
-                  <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
-                    {INCIDENT_STATES.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Assignment group
-                  <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-                    <option value="">Select group</option>
-                    {teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Escalation level
-                  <select className="input" value={escalationLevel} onChange={(event) => setEscalationLevel(event.target.value)}>
-                    <option value="monitoring">Monitoring</option>
-                    <option value="team_lead">Team lead</option>
-                    <option value="manager">Manager</option>
-                    <option value="executive">Executive</option>
-                  </select>
-                </label>
-                <label className="label">
-                  Assignee
-                  <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId}>
-                    <option value="">Unassigned</option>
-                    {selectedTeamMembers.map((member) => (
-                      <option key={member.id} value={member.user_id}>
-                        {member.username} ({member.role})
-                      </option>
-                    ))}
-                  </select>
-                  <small>Assignment names an owner. It is not acknowledgement.</small>
-                </label>
-                <label className="label">
-                  Caller
-                  <select className="input" value={callerUserId} onChange={(event) => setCallerUserId(event.target.value)}>
-                    <option value="">Unknown caller</option>
-                    {callers.map((caller) => (
-                      <option key={caller.user_id} value={caller.user_id}>
-                        {caller.username}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Category
-                  <select className="input" value={category} onChange={(event) => { setCategory(event.target.value); setSubcategory(''); }}>
-                    {categories.map((item) => (
-                      <option key={item.value} value={item.value}>{item.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Subcategory
-                  <select className="input" value={subcategory} onChange={(event) => setSubcategory(event.target.value)}>
-                    <option value="">Select subcategory</option>
-                    {subcategoriesFor(categories, category).map((item) => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Parent incident
-                  <select className="input" value={parentIncidentId} onChange={(event) => setParentIncidentId(event.target.value)}>
-                    <option value="">None — this is the parent</option>
-                    {incidents.map((item) => (
-                      <option key={item.id} value={item.id}>{getIncidentReference(item)}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="label">
-                  Short description
-                  <input className="input" value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production checkout is returning 5xx" />
-                </label>
-              </div>
-
-              <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={major} onChange={(event) => setMajor(event.target.checked)} />
-                Major incident — open a conference bridge
-              </label>
-              {major ? (
-                <>
-                  <label className="label">
-                    Conference URL
-                    <input className="input" value={conferenceURL} onChange={(event) => setConferenceURL(event.target.value)} placeholder="https://meet.example.com/major-inc" />
+                    Impact
+                    <select className="input" value={impact} onChange={(event) => setImpact(event.target.value)}>
+                      {IMPACT_URGENCY.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                    <small>Who is affected.</small>
                   </label>
                   <label className="label">
-                    Conference notes
-                    <input className="input" value={conferenceNotes} onChange={(event) => setConferenceNotes(event.target.value)} placeholder="Bridge pin, war-room channel, next update time" />
+                    Urgency
+                    <select className="input" value={urgency} onChange={(event) => setUrgency(event.target.value)}>
+                      {IMPACT_URGENCY.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                    <small>How fast a response is needed.</small>
                   </label>
-                </>
-              ) : null}
-              <label className="label">
-                Work note (internal)
-                <textarea className="input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Internal investigation note" />
-                <small>A draft stays in this browser. The timeline records provenance after save. Resolve or close needs a recovery note.</small>
-              </label>
-              <label className="label">
-                Customer comment
-                <textarea className="input" rows={3} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Visible update for the caller" />
-              </label>
+                  <label className="label">
+                    Priority
+                    <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
+                      {ITSM_PRIORITIES.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                    <small>Derived from impact and urgency. You can adjust it.</small>
+                  </label>
+                </div>
+                <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={major} onChange={(event) => setMajor(event.target.checked)} />
+                  Major incident — open a conference bridge
+                </label>
+                {major ? (
+                  <>
+                    <label className="label">
+                      Conference URL
+                      <input className="input" value={conferenceURL} onChange={(event) => setConferenceURL(event.target.value)} placeholder="https://meet.example.com/major-inc" />
+                    </label>
+                    <label className="label">
+                      Conference notes
+                      <input className="input" value={conferenceNotes} onChange={(event) => setConferenceNotes(event.target.value)} placeholder="Bridge pin, war-room channel, next update time" />
+                    </label>
+                  </>
+                ) : null}
+              </fieldset>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Ownership</legend>
+                <div className="portal-form-grid">
+                  <label className="label">
+                    Assignment group
+                    <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
+                      <option value="">Select group</option>
+                      {teams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Assignee
+                    <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId}>
+                      <option value="">Unassigned</option>
+                      {selectedTeamMembers.map((member) => (
+                        <option key={member.id} value={member.user_id}>
+                          {member.username} ({member.role})
+                        </option>
+                      ))}
+                    </select>
+                    <small>Assignment names an owner. It is not acknowledgement.</small>
+                  </label>
+                  <label className="label">
+                    Escalation level
+                    <select className="input" value={escalationLevel} onChange={(event) => setEscalationLevel(event.target.value)}>
+                      <option value="monitoring">Monitoring</option>
+                      <option value="team_lead">Team lead</option>
+                      <option value="manager">Manager</option>
+                      <option value="executive">Executive</option>
+                    </select>
+                  </label>
+                  <label className="label">
+                    State
+                    <select className="input" value={status} onChange={(event) => setStatus(event.target.value)}>
+                      {INCIDENT_STATES.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </fieldset>
+              <details className="onboard-advanced" open={Boolean(requestId || callerUserId || subcategory || parentIncidentId) || undefined}>
+                <summary>More details <span className="onboard-optional">Optional</span></summary>
+                <div className="portal-form-grid">
+                  <label className="label">
+                    Incident reference
+                    <input className="input" value={currentIncidentNumber || 'Will be generated when you save'} readOnly />
+                  </label>
+                  {requestedRequestId ? (
+                    <label className="label">
+                      Linked request
+                      <input className="input" value={`#${requestedRequestId}`} readOnly />
+                    </label>
+                  ) : (
+                    <label className="label">
+                      Linked request (optional)
+                      <input
+                        className="input"
+                        value={requestId}
+                        onChange={(event) => setRequestId(event.target.value)}
+                        placeholder="Optional infra ticket or INC number"
+                      />
+                    </label>
+                  )}
+                  <label className="label">
+                    Caller
+                    <select className="input" value={callerUserId} onChange={(event) => setCallerUserId(event.target.value)}>
+                      <option value="">Unknown caller</option>
+                      {callers.map((caller) => (
+                        <option key={caller.user_id} value={caller.user_id}>
+                          {caller.username}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Category
+                    <select className="input" value={category} onChange={(event) => { setCategory(event.target.value); setSubcategory(''); }}>
+                      {categories.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Subcategory
+                    <select className="input" value={subcategory} onChange={(event) => setSubcategory(event.target.value)}>
+                      <option value="">Select subcategory</option>
+                      {subcategoriesFor(categories, category).map((item) => (
+                        <option key={item} value={item}>{item}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label">
+                    Parent incident
+                    <select className="input" value={parentIncidentId} onChange={(event) => setParentIncidentId(event.target.value)}>
+                      <option value="">None — this is the parent</option>
+                      {incidents.map((item) => (
+                        <option key={item.id} value={item.id}>{getIncidentReference(item)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Notes <span className="onboard-optional">Optional</span></legend>
+                <label className="label">
+                  Work note (internal)
+                  <textarea className="input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Internal investigation note" />
+                  <small>A draft stays in this browser. The timeline records provenance after save. Resolve or close needs a recovery note.</small>
+                </label>
+                <label className="label">
+                  Customer comment
+                  <textarea className="input" rows={3} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Visible update for the caller" />
+                </label>
+              </fieldset>
 
               <div className="portal-form-actions">
                 <button

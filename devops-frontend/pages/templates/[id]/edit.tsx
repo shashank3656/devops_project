@@ -6,6 +6,7 @@ import Link from 'next/link';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { asRecord, getString } from '../../../lib/payload';
+import { useUnsavedChanges } from '../../../lib/useUnsavedChanges';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const CLOUDS = ['aws', 'azure', 'gcp'];
@@ -45,6 +46,8 @@ export default function EditDevOpsTemplate() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
+  const [dirty, setDirty] = useState(false);
+  const { allowLeave } = useUnsavedChanges(dirty && !fetchLoading);
 
   const fetchTemplate = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -78,6 +81,7 @@ export default function EditDevOpsTemplate() {
       setTemplateID(null);
       setError('Failed to load template. Check your connection.');
     } finally {
+      setDirty(false);
       setFetchLoading(false);
     }
   }, [routeTemplateId, router, apiUrl]);
@@ -140,6 +144,7 @@ export default function EditDevOpsTemplate() {
       }
       const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok) {
+        allowLeave();
         router.push('/templates?updated=1');
         return;
       }
@@ -196,11 +201,14 @@ export default function EditDevOpsTemplate() {
                   </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="portal-stack">
+                <form onSubmit={handleSubmit} className="portal-stack" onChange={() => setDirty(true)}>
+                  <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+                  <fieldset className="form-section">
+                    <legend className="form-section__title">Basics</legend>
                   <div className="portal-field-grid portal-field-grid--two">
                     <div className="form-group">
                       <label className="label" htmlFor="tpl-name">
-                        Name
+                        Name<span className="form-req" aria-hidden="true"> *</span>
                       </label>
                       <input
                         id="tpl-name"
@@ -212,7 +220,7 @@ export default function EditDevOpsTemplate() {
                     </div>
                     <div className="form-group">
                       <label className="label" htmlFor="tpl-service">
-                        Service
+                        Service<span className="form-req" aria-hidden="true"> *</span>
                       </label>
                       <input
                         id="tpl-service"
@@ -226,7 +234,7 @@ export default function EditDevOpsTemplate() {
 
                   <div className="form-group">
                     <label className="label" htmlFor="tpl-desc">
-                      Description
+                      Description <span className="onboard-optional">Optional</span>
                     </label>
                     <input
                       id="tpl-desc"
@@ -235,7 +243,10 @@ export default function EditDevOpsTemplate() {
                       onChange={(event) => setDescription(event.target.value)}
                     />
                   </div>
+                  </fieldset>
 
+                  <fieldset className="form-section">
+                    <legend className="form-section__title">Defaults</legend>
                   <div className="portal-field-grid">
                     <div className="form-group">
                       <label className="label" htmlFor="tpl-cloud">
@@ -272,7 +283,10 @@ export default function EditDevOpsTemplate() {
                       </div>
                     </div>
                   </div>
+                  </fieldset>
 
+                  <details className="onboard-advanced" open={config.trim() !== '' && config.trim() !== '{}' ? true : undefined}>
+                    <summary>Config JSON <span className="onboard-optional">Optional</span></summary>
                   <div className="form-group">
                     <label className="label" htmlFor="tpl-config">
                       Config (JSON)
@@ -285,12 +299,16 @@ export default function EditDevOpsTemplate() {
                       rows={8}
                     />
                   </div>
+                  </details>
 
                   <div className="portal-form-actions">
                     <button type="submit" className="btn btn-primary" disabled={loading}>
                       {loading ? 'Saving...' : 'Save changes'}
                     </button>
-                    <button type="button" className="btn btn-secondary" onClick={() => void fetchTemplate()}>
+                    <Link href={routeTemplateId ? `/templates/${routeTemplateId}` : '/templates'} className="btn btn-secondary">
+                      Cancel
+                    </Link>
+                    <button type="button" className="btn btn-ghost" onClick={() => void fetchTemplate()}>
                       Reset
                     </button>
                   </div>

@@ -5,6 +5,8 @@ import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { rememberService } from '../../lib/recentServices';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -76,6 +78,17 @@ export default function ServiceDetailPage() {
   const [dashboardURL, setDashboardURL] = useState('');
   const [metricsURL, setMetricsURL] = useState('');
   const [promql, setPromql] = useState('');
+  useUnsavedChanges(editing && Boolean(item) && (
+    service !== (item?.service || '')
+    || repo !== (item?.repo || '')
+    || environment !== (item?.environment || '')
+    || team !== (item?.team || '')
+    || grafanaUID !== (item?.grafana_uid || '')
+    || dashboardURL !== (item?.dashboard_url || '')
+    || metricsURL !== (item?.metrics_url || '')
+    || promql !== (item?.promql || '')
+    || projectId !== (item?.project_id ? String(item.project_id) : '')
+  ));
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
   const resourceId = parsePortalNumericId(id);
 
@@ -100,7 +113,16 @@ export default function ServiceDetailPage() {
           setError(data?.error || 'Failed to load service');
           return;
         }
-        setItem(data.service || null);
+        const service = data.service || null;
+        setItem(service);
+        if (service && typeof service.id === 'number') {
+          rememberService({
+            id: service.id,
+            name: String(service.service || service.name || 'Service'),
+            project: String(service.project_name || ''),
+            environment: String(service.environment || ''),
+          });
+        }
       })
       .catch(() => setError('Failed to load service'));
   }, [apiUrl, resourceId]);
@@ -263,9 +285,13 @@ export default function ServiceDetailPage() {
         ) : null}
         {editing ? (
           <section className="portal-surface">
-            <form className="portal-form-grid" onSubmit={(event) => void save(event)}>
-              <label className="label">Service<input className="input" value={service} onChange={(event) => setService(event.target.value)} required /></label>
-              <label className="label">Repo<input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
+            <form onSubmit={(event) => void save(event)}>
+              <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Basics</legend>
+                <div className="portal-form-grid">
+              <label className="label">Service<span className="form-req" aria-hidden="true"> *</span><input className="input" value={service} onChange={(event) => setService(event.target.value)} required /></label>
+              <label className="label">Repo <span className="onboard-optional">Optional</span><input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
               <label className="label">
                 Project
                 <select className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setEnvironment(''); }}>
@@ -293,10 +319,18 @@ export default function ServiceDetailPage() {
                   ))}
                 </select>
               </label>
+                </div>
+              </fieldset>
+              <details className="onboard-advanced" open={Boolean(grafanaUID || dashboardURL || metricsURL || promql) || undefined}>
+                <summary>Monitoring <span className="onboard-optional">Optional</span></summary>
+                <p className="form-section__copy">Without these links, health on this service stays Unknown.</p>
+                <div className="portal-form-grid">
               <label className="label">Grafana UID<input className="input" value={grafanaUID} onChange={(event) => setGrafanaUID(event.target.value)} /></label>
               <label className="label">Dashboard URL<input className="input" value={dashboardURL} onChange={(event) => setDashboardURL(event.target.value)} /></label>
               <label className="label">Metrics JSON URL<input className="input" value={metricsURL} onChange={(event) => setMetricsURL(event.target.value)} /></label>
               <label className="label">PromQL<textarea className="input" rows={3} value={promql} onChange={(event) => setPromql(event.target.value)} /></label>
+                </div>
+              </details>
               <div className="portal-form-actions">
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</button>
                 <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setEditing(false)}>Cancel</button>

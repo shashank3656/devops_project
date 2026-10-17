@@ -1,11 +1,17 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { serviceLabel } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { saveSubmissionResult } from '../../lib/submissionResult';
+import BlockedAction from '../../components/BlockedAction';
+import { readWorkspaceScope, WORKSPACE_SCOPE_EVENT, type WorkspaceScope } from '@infragate/ui';
+
+const REQUEST_DRAFT_KEY = 'opstrellis-request-draft';
 
 type TeamChoice = { id: number; name: string; slug: string; default_env?: string };
 type ProjectService = { cloud: string; service: string };
@@ -26,6 +32,8 @@ export default function NewRequestPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const submitLock = useRef(false);
+  const restoredDraft = useRef(false);
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
@@ -34,7 +42,7 @@ export default function NewRequestPage() {
       .then((body) => {
         const list = Array.isArray(body?.teams) ? body.teams : [];
         setTeams(list);
-        if (list[0]?.slug) {
+        if (list[0]?.slug && !restoredDraft.current) {
           setTeam(list[0].slug);
           if (list[0].default_env) setEnv(list[0].default_env);
         }
@@ -46,7 +54,50 @@ export default function NewRequestPage() {
       .catch(() => setProjects([]));
   }, [apiUrl]);
 
+  useEffect(() => {
+    const raw = sessionStorage.getItem(REQUEST_DRAFT_KEY);
+    if (!raw) return;
+    restoredDraft.current = true;
+    try {
+      const saved = JSON.parse(raw) as { projectId?: string; cloud?: string; serviceId?: string; env?: string; priority?: string; dueDate?: string; comment?: string; team?: string };
+      if (saved.team) setTeam(saved.team);
+      if (saved.projectId) setProjectId(saved.projectId);
+      if (saved.cloud) setCloud(saved.cloud);
+      if (saved.serviceId) setServiceId(saved.serviceId);
+      if (saved.env) setEnv(saved.env);
+      if (saved.priority) setPriority(saved.priority);
+      if (saved.dueDate) setDueDate(saved.dueDate);
+      if (saved.comment) setComment(saved.comment);
+    } catch {
+      sessionStorage.removeItem(REQUEST_DRAFT_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!(projectId || cloud || serviceId || comment.trim() || dueDate)) {
+      sessionStorage.removeItem(REQUEST_DRAFT_KEY);
+      return;
+    }
+    sessionStorage.setItem(REQUEST_DRAFT_KEY, JSON.stringify({ team, projectId, cloud, serviceId, env, priority, dueDate, comment }));
+  }, [team, projectId, cloud, serviceId, env, priority, dueDate, comment]);
+
+  useEffect(() => {
+    const onScope = (event: Event) => {
+      const next = (event as CustomEvent<WorkspaceScope>).detail || readWorkspaceScope();
+      if (!next) return;
+      if (next.projectId && next.projectId !== projectId) {
+        setProjectId(next.projectId);
+        setCloud('');
+        setServiceId('');
+      }
+      if (next.environment) setEnv(next.environment);
+    };
+    window.addEventListener(WORKSPACE_SCOPE_EVENT, onScope);
+    return () => window.removeEventListener(WORKSPACE_SCOPE_EVENT, onScope);
+  }, [projectId]);
+
   const router = useRouter();
+  const { allowLeave } = useUnsavedChanges(Boolean(projectId || cloud || serviceId || comment.trim() || dueDate));
   const selectedProject = projects.find((item) => String(item.id) === projectId);
   const cloudOptions = selectedProject?.clouds || [];
   const environmentOptions = selectedProject?.environments?.length ? selectedProject.environments : ['dev', 'uat', 'prod'];
@@ -59,6 +110,8 @@ export default function NewRequestPage() {
       setError('Choose a cloud and a service from this project.');
       return;
     }
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSaving(true);
     setError('');
     setNotice('');
@@ -83,6 +136,14 @@ export default function NewRequestPage() {
         return;
       }
       if (body?.id) {
+        sessionStorage.removeItem(REQUEST_DRAFT_KEY);
+        allowLeave();
+        saveSubmissionResult({
+          kind: 'Request',
+          id: `#${body.id}`,
+          status: 'waiting for review',
+          next: 'It has not been applied. A reviewer approves it before any cloud change runs.',
+        });
         await router.push(`/requests/${body.id}`);
         return;
       }
@@ -92,6 +153,7 @@ export default function NewRequestPage() {
     } catch {
       setError('The request could not be sent.');
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   }
@@ -114,7 +176,12 @@ export default function NewRequestPage() {
           {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           <form className="portal-surface access-form" onSubmit={submit}>
-            <label className="label" htmlFor="request-team">Team</label>
+            <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+            {teams.length === 0 ? <p className="onboard-unavailable">You need a team before you can raise a request. Ask an administrator to add you to one.</p> : null}
+            <fieldset className="form-section">
+              <legend className="form-section__title">Scope</legend>
+              <p className="form-section__copy">Choose the project, then the cloud, then a service saved on that project.</p>
+            <label className="label" htmlFor="request-team">Team<span className="form-req" aria-hidden="true"> *</span></label>
             <select
               id="request-team"
               className="input"
@@ -132,15 +199,19 @@ export default function NewRequestPage() {
                 <option key={item.id} value={item.slug}>{item.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="request-project">Project</label>
+            <label className="label" htmlFor="request-project">Project<span className="form-req" aria-hidden="true"> *</span></label>
             <select
               id="request-project"
               className="input"
               value={projectId}
               onChange={(event) => {
-                setProjectId(event.target.value);
+                const nextId = event.target.value;
+                const nextProject = projects.find((item) => String(item.id) === nextId);
+                const nextEnvironments = nextProject?.environments || [];
+                setProjectId(nextId);
                 setCloud('');
                 setServiceId('');
+                setEnv(nextEnvironments.includes(env) ? env : (nextEnvironments[0] || 'dev'));
               }}
               required
             >
@@ -153,7 +224,8 @@ export default function NewRequestPage() {
             <select id="request-env" className="input" value={env} onChange={(event) => setEnv(event.target.value)}>
               {environmentOptions.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
-            <label className="label" htmlFor="request-cloud">Cloud</label>
+            <label className="label" htmlFor="request-cloud">Cloud<span className="form-req" aria-hidden="true"> *</span></label>
+            <BlockedAction blocked={!projectId} reason="Choose a project to continue.">
             <select
               id="request-cloud"
               className="input"
@@ -165,17 +237,16 @@ export default function NewRequestPage() {
               <option value="">{projectId ? 'Select a cloud' : 'Choose a project first'}</option>
               {cloudOptions.map((name) => <option key={name} value={name}>{name.toUpperCase()}</option>)}
             </select>
-            <label className="label" htmlFor="request-service">Service</label>
-            <select id="request-service" className="input" value={serviceId} onChange={(event) => setServiceId(event.target.value)} required disabled={!cloud || serviceOptions.length === 0}>
+            </BlockedAction>
+            <label className="label" htmlFor="request-service">Service<span className="form-req" aria-hidden="true"> *</span></label>
+            <BlockedAction blocked={!cloud || serviceOptions.length === 0} reason={!projectId ? 'Choose a project to continue.' : !cloud ? 'Choose a cloud to continue.' : 'No service is saved for this cloud. Add one on the project before raising a request.'}>
+            <select id="request-service" className="input" value={serviceId} onChange={(event) => setServiceId(event.target.value)} required disabled={!cloud || serviceOptions.length === 0} title={!cloud ? 'Choose a cloud to continue.' : serviceOptions.length === 0 ? 'No service is saved for this cloud.' : 'Service'}>
               <option value="">{!cloud ? 'Select a cloud first' : serviceOptions.length ? 'Select a service' : 'No services were saved for this cloud on the project'}</option>
               {serviceOptions.map((item) => (
                 <option key={`${item.cloud}-${item.service}`} value={item.service}>{serviceLabel(item.cloud, item.service)}</option>
               ))}
             </select>
-            <label className="label" htmlFor="request-due">Needed by</label>
-            <input id="request-due" className="input" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
-            <label className="label" htmlFor="request-note">Note for the reviewer</label>
-            <input id="request-note" className="input" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="What should the reviewer know?" />
+            </BlockedAction>
             <label className="label" htmlFor="request-priority">Priority</label>
             <select id="request-priority" className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
               <option value="low">Low — L1</option>
@@ -183,10 +254,22 @@ export default function NewRequestPage() {
               <option value="high">High — L3</option>
               <option value="critical">Critical — L4</option>
             </select>
-            <button type="submit" className="btn btn-primary" disabled={saving || teams.length === 0}>
-              {saving ? 'Raising…' : 'Raise request'}
-            </button>
-            {teams.length === 0 ? <p className="work-empty">You need a team before you can raise a request.</p> : null}
+            </fieldset>
+            <details className="onboard-advanced">
+              <summary>Timing and note <span className="onboard-optional">Optional</span></summary>
+            <label className="label" htmlFor="request-due">Needed by</label>
+            <input id="request-due" className="input" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+            <label className="label" htmlFor="request-note">Note for the reviewer</label>
+            <input id="request-note" className="input" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="What should the reviewer know?" />
+            </details>
+            <div className="portal-form-actions">
+              <BlockedAction blocked={teams.length === 0} reason="You need a team before you can raise a request.">
+              <button type="submit" className="btn btn-primary" disabled={saving || teams.length === 0} title={teams.length === 0 ? 'You need a team before you can raise a request.' : 'Raise request'}>
+                {saving ? 'Raising…' : 'Raise request'}
+              </button>
+              </BlockedAction>
+              <Link href="/my-requests" className="btn btn-secondary">Cancel</Link>
+            </div>
           </form>
         </div>
       </DevOpsLayout>

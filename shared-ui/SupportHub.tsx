@@ -308,7 +308,7 @@ export default function SupportHub({
               ))}
             </div>
             <div className="portal-assistant__composer">
-              <textarea
+              <textarea aria-label="Message"
                 ref={textareaRef}
                 className="portal-assistant__textarea"
                 value={input}
@@ -347,7 +347,7 @@ export default function SupportHub({
         ) : (
           <div className="portal-assistant__body portal-assistant__body--docs">
             <div className="portal-assistant__docs-toolbar">
-              <input ref={docsSearchRef} type="search" className="portal-assistant__docs-search" value={docsQuery} onChange={(event) => setDocsQuery(event.target.value)} placeholder="Search guides, workflows, and page help" />
+              <input aria-label="Search help articles" ref={docsSearchRef} type="search" className="portal-assistant__docs-search" value={docsQuery} onChange={(event) => setDocsQuery(event.target.value)} placeholder="Search guides, workflows, and page help" />
               {externalDocsHref ? <a href={externalDocsHref} className="portal-assistant__link" target="_blank" rel="noreferrer">Open full docs</a> : null}
             </div>
             {contextArticle ? (

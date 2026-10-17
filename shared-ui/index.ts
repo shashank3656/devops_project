@@ -28,7 +28,9 @@ export {
 export { pending2FAFromLoginResponse, resendLogin2FACode, type Pending2FA } from './login2faHelpers';
 export { applyTheme, getTheme, openCommandPalette, setTheme, toggleTheme, type ThemeMode } from './theme';
 export { AuthPipeline, SearchTrigger, ThemeToggle } from './ShellControls';
-export { formatRelativeTime, greetingFor, initialsFor } from './time';
+export { exactTimeTitle, formatRelativeTime, greetingFor, initialsFor } from './time';
+export { default as RelativeTime } from './RelativeTime';
+export { default as CopyButton } from './CopyButton';
 export { default as ActivityFeed } from './ActivityFeed';
 export { default as BulkBar } from './BulkBar';
 export { default as CommandPalette } from './CommandPalette';

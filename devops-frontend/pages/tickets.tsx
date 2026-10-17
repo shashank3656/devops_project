@@ -15,7 +15,8 @@ import {
   SavedViews,
   UndoToaster,
   useSavedFilterViews,
-  formatRelativeTime,
+  CopyButton,
+  RelativeTime,
   queryString,
   useUndoQueue,
   type DataTableColumn,
@@ -32,6 +33,7 @@ import { RequestPRImpact, useConfirm } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 import { asRecord, getString } from '../lib/payload';
+import { expireSession } from '../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -64,7 +66,7 @@ const DEFAULT_TICKET_FILTERS: TicketFilters = {
 };
 
 const TICKET_VIEW_PRESETS: SavedView<TicketFilters>[] = [
-  { name: 'Needs DevOps review', filters: { ...DEFAULT_TICKET_FILTERS, status: 'pending_devops_approval' } },
+  { name: 'Requests awaiting my approval', filters: { ...DEFAULT_TICKET_FILTERS, status: 'pending_devops_approval' } },
   { name: 'Overdue or due soon', filters: { ...DEFAULT_TICKET_FILTERS, atRisk: true, sortBy: 'due_date', sortOrder: 'asc' } },
   { name: 'In progress', filters: { ...DEFAULT_TICKET_FILTERS, status: 'in_progress', sortBy: 'updated_at' } },
 ];
@@ -363,6 +365,7 @@ export default function DevOpsTickets() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [atRisk, setAtRisk] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [shareReady, setShareReady] = useState(false);
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [recentIds, setRecentIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -432,10 +435,20 @@ export default function DevOpsTickets() {
     params.set('offset', String(offset));
     fetch(`${apiUrl}/api/devops/requests?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        if (res.status === 401 || res.status === 403) router.replace('/login');
+        if (res.status === 401) {
+          expireSession();
+          return null;
+        }
+        if (res.status === 403) {
+          setRequests([]);
+          setTotal(0);
+          setListError('You do not have access to this request queue.');
+          return null;
+        }
         return asRecord(await res.json().catch(() => ({})));
       })
       .then((data) => {
+        if (!data) return;
         if (Array.isArray(data.requests)) setRequests(data.requests as TicketRow[]);
         else setRequests([]);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
@@ -775,40 +788,23 @@ export default function DevOpsTickets() {
     {
       id: 'request',
       header: 'Request',
+      width: '46%',
+      className: 'ig-col-title',
       cell: (req) => {
         const bundleCount = getRequestBundleCount(req);
+        const context = [req.project_name, req.env, req.team || req.created_by_username].filter(Boolean).join(' · ');
         return (
           <div className="ig-cell-stack">
             <span className="ig-cell-title">{req.service || 'Request'}</span>
             <span className="ig-cell-meta">
               <span className="ig-mono">#{req.id}</span>
-              {bundleCount > 1 ? ` · ${bundleCount} services` : ''}
+              {context ? ` · ${context}` : ''}
+              {bundleCount > 1 ? ` · ${bundleCount}` : ''}
               {isAccessRequest(req) ? ' · Access' : ''}
-              {req.created_by_username ? ` · ${req.created_by_username}` : ''}
             </span>
           </div>
         );
       },
-    },
-    {
-      id: 'project',
-      header: 'Project',
-      cell: (req) => (
-        <div className="ig-cell-stack">
-          <span>{req.project_name || 'Not set'}</span>
-          <span className="ig-cell-meta">{req.team}</span>
-        </div>
-      ),
-    },
-    {
-      id: 'target',
-      header: 'Target',
-      cell: (req) => (
-        <span className="ig-cell-chips">
-          <span className="ig-chip">{req.env || '—'}</span>
-          <span className="ig-chip ig-chip--muted">{(req.cloud || '—').toUpperCase()}</span>
-        </span>
-      ),
     },
     {
       id: 'priority',
@@ -845,8 +841,8 @@ export default function DevOpsTickets() {
       header: 'Updated',
       sortable: true,
       cell: (req) => (
-        <span className="ig-cell-meta" title={formatDateTime(req.updated_at)}>
-          {formatRelativeTime(req.updated_at) || formatDateTime(req.updated_at)}
+        <span className="ig-cell-meta">
+          <RelativeTime value={req.updated_at} />
         </span>
       ),
     },
@@ -876,7 +872,26 @@ export default function DevOpsTickets() {
     if (!router.isReady) return;
     setProjectId(queryString(router.query, 'project_id'));
     setEnvironment(queryString(router.query, 'environment'));
-  }, [router.isReady, router.query.project_id, router.query.environment]);
+    setStatus(queryString(router.query, 'status'));
+    setSearch(queryString(router.query, 'q'));
+    setShareReady(true);
+  }, [router.isReady, router.query.project_id, router.query.environment, router.query.status, router.query.q]);
+
+  useEffect(() => {
+    if (!router.isReady || !shareReady) return;
+    const next: Record<string, string | string[]> = { ...router.query as Record<string, string | string[]> };
+    const assign = (key: string, value: string) => {
+      if (value) next[key] = value;
+      else delete next[key];
+    };
+    assign('status', status);
+    assign('q', search);
+    assign('project_id', projectId);
+    assign('environment', environment);
+    const same = ['status', 'q', 'project_id', 'environment'].every((key) => String(next[key] || '') === queryString(router.query, key));
+    if (same) return;
+    void router.replace({ pathname: '/tickets', query: next }, undefined, { shallow: true });
+  }, [environment, projectId, router, search, shareReady, status]);
 
   useEffect(() => {
     fetchProjects();
@@ -969,9 +984,6 @@ export default function DevOpsTickets() {
                   ))}
                 </div>
               )}
-              <p className="devops-tickets-subtitle">
-                Search by request number, team, cloud, status, or requester. Click a row to open the review workspace, check the context, comment, and decide.
-              </p>
             </div>
           </div>
 
@@ -1221,7 +1233,7 @@ export default function DevOpsTickets() {
               title={
                 detailRequest ? (
                   <>
-                    <span className="ig-mono">#{detailRequest.id}</span> {detailRequest.service}
+                    <span className="ig-mono">#{detailRequest.id}</span> <CopyButton value={String(detailRequest.id)} label="request reference" /> {detailRequest.service}
                   </>
                 ) : (
                   'Loading request'
@@ -1591,7 +1603,7 @@ export default function DevOpsTickets() {
                                   />
                                   <span>Acknowledge risks in this change brief</span>
                                 </label>
-                                <textarea
+                                <textarea aria-label="Exception reasons"
                                   className="input devops-approval-workspace__textarea"
                                   rows={3}
                                   value={ackReasons}

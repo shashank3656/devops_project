@@ -1445,18 +1445,14 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := GetUserByEmailOrUsername(email)
-	if err != nil {
+	if err != nil && err != sql.ErrNoRows {
 		log.Printf("[Auth] Forgot-password: lookup failed: %v", err)
-		if err == sql.ErrNoRows {
-			writeAPIError(w, r, http.StatusNotFound, "No account found with that email", nil)
-			return
-		}
 		writeAPIError(w, r, http.StatusInternalServerError, "Something went wrong. Please try again.", nil)
 		return
 	}
 	if user == nil || user.Email == "" {
 		log.Printf("[Auth] Forgot-password: no matching account")
-		writeAPIError(w, r, http.StatusNotFound, "No account found with that email", nil)
+		writeForgotPasswordAccepted(w)
 		return
 	}
 	log.Printf("[Auth] Forgot-password: sending reset link user_id=%d", user.ID)
@@ -1483,6 +1479,11 @@ func forgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Printf("[Auth] Forgot-password email sent user_id=%d", user.ID)
 	}
+	writeForgotPasswordAccepted(w)
+}
+
+// writeForgotPasswordAccepted answers the same way whether or not the account exists.
+func writeForgotPasswordAccepted(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	encodeAuthJSON(w, map[string]interface{}{"status": "ok", "message": "If an account exists with that email, you will receive a reset link."})
 }

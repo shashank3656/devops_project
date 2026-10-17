@@ -1,7 +1,9 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useConfirm } from '@infragate/ui';
+import { productionDetailLines } from '../lib/productionConfirm';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { incidentCanFinish } from '../lib/itsm';
@@ -164,6 +166,25 @@ function storedIsAdmin(): boolean {
   }
 }
 
+const DESK_VIEW_KEY = 'opstrellis-desk-view';
+const PAGE_SIZE = 25;
+
+type SortKey = 'created' | 'type' | 'priority' | 'status' | 'owner';
+type SortDir = 'asc' | 'desc';
+
+function priorityRank(priority: string) {
+  const p = priority.toLowerCase();
+  if (p.includes('critical') || p === 'p1' || p === 'sev1') return 0;
+  if (p.includes('high') || p === 'p2' || p === 'sev2') return 1;
+  if (p.includes('medium') || p === 'p3' || p === 'sev3') return 2;
+  if (p.includes('low') || p === 'p4' || p === 'sev4') return 3;
+  return 4;
+}
+
+function csvCell(value: string) {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
 export default function ServiceDeskPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -175,7 +196,15 @@ export default function ServiceDeskPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [ownerFilter, setOwnerFilter] = useState('');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [sortKey, setSortKey] = useState<SortKey>('created');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState(1);
+  const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState('');
+  const viewHydrated = useRef(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [finishing, setFinishing] = useState('');
@@ -192,6 +221,35 @@ export default function ServiceDeskPage() {
       setUsername('');
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as Record<string, unknown>;
+      if (saved.tab === 'all' || saved.tab === 'mine' || saved.tab === 'approval') setTab(saved.tab);
+      if (typeof saved.query === 'string') setQuery(saved.query);
+      if (typeof saved.typeFilter === 'string') setTypeFilter(saved.typeFilter);
+      if (typeof saved.priorityFilter === 'string') setPriorityFilter(saved.priorityFilter);
+      if (typeof saved.ownerFilter === 'string') setOwnerFilter(saved.ownerFilter);
+      if (['created', 'type', 'priority', 'status', 'owner'].includes(String(saved.sortKey))) setSortKey(saved.sortKey as SortKey);
+      if (saved.sortDir === 'asc' || saved.sortDir === 'desc') setSortDir(saved.sortDir);
+      if (typeof saved.page === 'number' && saved.page > 0) setPage(saved.page);
+    } catch {
+      // A broken saved view falls back to defaults.
+    }
+    viewHydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!viewHydrated.current) return;
+    try {
+      sessionStorage.setItem(
+        DESK_VIEW_KEY,
+        JSON.stringify({ tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page }),
+      );
+    } catch {
+      // Storage can be unavailable in private windows.
+    }
+  }, [tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -350,7 +408,7 @@ export default function ServiceDeskPage() {
           if (!selectedKey && visible[0]) setSelectedKey(visible[0].key);
         });
       })
-      .catch(() => setError('Failed to load service desk'))
+      .catch(() => setError('The service desk could not load. Check your connection, then try again.'))
       .finally(() => setLoading(false));
   }, [apiUrl, router, reloadTick]);
 
@@ -406,12 +464,138 @@ export default function ServiceDeskPage() {
         .toLowerCase()
         .includes(needle);
     });
+    const direction = sortDir === 'asc' ? 1 : -1;
     next.sort((a, b) => {
-      const delta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return sortOrder === 'newest' ? -delta : delta;
+      let delta = 0;
+      if (sortKey === 'priority') delta = priorityRank(b.priority) - priorityRank(a.priority);
+      else if (sortKey === 'status') delta = a.status.localeCompare(b.status);
+      else if (sortKey === 'owner') delta = a.owner.localeCompare(b.owner);
+      else if (sortKey === 'type') delta = a.kind.localeCompare(b.kind);
+      if (delta === 0) delta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return delta * direction;
     });
     return next;
-  }, [items, tab, query, typeFilter, priorityFilter, ownerFilter, sortOrder, username]);
+  }, [items, tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, username]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+  const pageKeys = pageRows.map((item) => item.key);
+  const checkedOnPage = pageKeys.filter((key) => checkedKeys.includes(key));
+  const allOnPageChecked = pageKeys.length > 0 && checkedOnPage.length === pageKeys.length;
+  const someOnPageChecked = checkedOnPage.length > 0 && !allOnPageChecked;
+  const checkedTickets = pageRows.filter((item) => checkedKeys.includes(item.key));
+  const closableIncidents = checkedTickets.filter((item) => item.kind === 'incident' && incidentCanFinish(item.status));
+  const filtersActive = Boolean(query.trim() || typeFilter || priorityFilter || ownerFilter || tab !== 'all');
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someOnPageChecked;
+  }, [someOnPageChecked]);
+
+  const changeView = (apply: () => void) => {
+    apply();
+    setPage(1);
+    setCheckedKeys([]);
+    setBulkNotice('');
+  };
+
+  const goToPage = (next: number) => {
+    setPage(Math.min(Math.max(1, next), pageCount));
+    setCheckedKeys([]);
+    setBulkNotice('');
+  };
+
+  const clearFilters = () =>
+    changeView(() => {
+      setTab('all');
+      setQuery('');
+      setTypeFilter('');
+      setPriorityFilter('');
+      setOwnerFilter('');
+    });
+
+  const sortBy = (key: SortKey) =>
+    changeView(() => {
+      if (sortKey === key) {
+        setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortKey(key);
+        setSortDir(key === 'created' || key === 'priority' ? 'desc' : 'asc');
+      }
+    });
+
+  const ariaSort = (key: SortKey): 'ascending' | 'descending' | 'none' =>
+    sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none';
+
+  const toggleChecked = (key: string) => {
+    setBulkNotice('');
+    setCheckedKeys((current) => (current.includes(key) ? current.filter((k) => k !== key) : [...current, key]));
+  };
+
+  const toggleAllOnPage = () => {
+    setBulkNotice('');
+    setCheckedKeys(allOnPageChecked ? [] : pageKeys);
+  };
+
+  const exportChecked = () => {
+    const header = ['Ticket', 'Type', 'Title', 'Priority', 'Status', 'Owner', 'Service', 'Environment', 'Created'];
+    const lines = checkedTickets.map((item) =>
+      [ticketIdLabel(item), kindLabel(item.kind), item.title, item.priority, item.status, item.owner, item.service, item.environment, item.createdAt]
+        .map((value) => csvCell(String(value || '')))
+        .join(','),
+    );
+    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'opstrellis-service-desk.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    setBulkNotice(`Exported ${checkedTickets.length} ticket${checkedTickets.length === 1 ? '' : 's'}.`);
+  };
+
+  const closeCheckedIncidents = async () => {
+    if (!closableIncidents.length || bulkBusy) return;
+    const ok = await confirm({
+      title: `Close ${closableIncidents.length} incident${closableIncidents.length === 1 ? '' : 's'}?`,
+      message: 'Closed incidents leave the open queue. Other selected tickets are not changed.',
+      detailLines: productionDetailLines({
+        project: '',
+        environment: Array.from(new Set(closableIncidents.map((item) => item.environment || 'Unknown'))).slice(0, 4).join(', '),
+        resource: closableIncidents.map((item) => `${ticketIdLabel(item)} (${item.service || 'service unknown'})`).slice(0, 5).join(', '),
+        consequence: 'These incidents are marked closed and leave the open queue. This does not roll back a deployment.',
+      }),
+      confirmLabel: 'Close incidents',
+      destructive: true,
+    });
+    if (!ok) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      void router.replace('/login');
+      return;
+    }
+    setBulkBusy(true);
+    setBulkNotice('');
+    let closed = 0;
+    for (const ticket of closableIncidents) {
+      try {
+        const response = await fetch(`${apiUrl}/api/devops/incidents/${ticket.id}/close`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        if (response.ok) closed += 1;
+      } catch {
+        // Counted as not closed below.
+      }
+    }
+    const failed = closableIncidents.length - closed;
+    setBulkNotice(failed ? `Closed ${closed} of ${closableIncidents.length}. ${failed} could not be closed; open them to see why.` : `Closed ${closed} incident${closed === 1 ? '' : 's'}.`);
+    setCheckedKeys([]);
+    setBulkBusy(false);
+    setReloadTick((current) => current + 1);
+  };
 
   const stats = useMemo(() => {
     const open = items.filter((item) => !['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(item.status.toLowerCase())).length;
@@ -456,19 +640,14 @@ export default function ServiceDeskPage() {
           <Link href="/changes/new" className="btn btn-primary">Create change</Link>
         </header>
 
-        <section className="ops-spotlight">
-          <div>
-            <p className="ops-home__eyebrow">Your team&apos;s service hub</p>
-            <h2>One queue. Clear ownership. Faster action.</h2>
-            <p>Choose a request below, or pick up work from your shared queue.</p>
+        {error ? (
+          <div className="alert alert-error sd-alert" role="alert">
+            <span>{error}</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReloadTick((current) => current + 1)}>
+              Try again
+            </button>
           </div>
-          <div>
-            <small>{loading || error ? 'QUEUE' : `${items.length} LIVE TICKETS`}</small>
-            <span>{loading || error ? 'Counts stay unknown until the queue loads.' : 'Live records for this workspace. Missing fields stay blank.'}</span>
-          </div>
-        </section>
-
-        {error ? <div className="alert alert-error">{error}</div> : null}
+        ) : null}
 
         <section className="ops-actions-4" aria-label="Start a request">
           <Link href="/incidents/new" className="ops-jump ops-jump--peach">
@@ -503,7 +682,7 @@ export default function ServiceDeskPage() {
                   role="tab"
                   aria-selected={tab === entry.id}
                   className={`sd-tab${tab === entry.id ? ' is-active' : ''}`}
-                  onClick={() => setTab(entry.id)}
+                  onClick={() => changeView(() => setTab(entry.id))}
                 >
                   {entry.label}
                 </button>
@@ -513,58 +692,152 @@ export default function ServiceDeskPage() {
             <div className="sd-filters">
               <input
                 className="input sd-search"
-                placeholder="Search tickets..."
+                type="search"
+                placeholder="Search tickets…"
+                aria-label="Search tickets"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  changeView(() => setQuery(value));
+                }}
               />
-              <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Type">
-                <option value="">Type</option>
+              <select className="input" value={typeFilter} onChange={(event) => { const value = event.target.value; changeView(() => setTypeFilter(value)); }} aria-label="Type">
+                <option value="">All types</option>
                 <option value="incident">Incident</option>
                 <option value="change">Change</option>
                 <option value="problem">Problem</option>
                 <option value="request">Request</option>
                 <option value="access">Access request</option>
               </select>
-              <select className="input" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} aria-label="Priority">
-                <option value="">Priority</option>
+              <select className="input" value={priorityFilter} onChange={(event) => { const value = event.target.value; changeView(() => setPriorityFilter(value)); }} aria-label="Priority">
+                <option value="">All priorities</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
-              <select className="input" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Owner">
-                <option value="">Owner</option>
+              <select className="input" value={ownerFilter} onChange={(event) => { const value = event.target.value; changeView(() => setOwnerFilter(value)); }} aria-label="Owner">
+                <option value="">All owners</option>
                 {owners.map((owner) => (
                   <option key={owner} value={owner}>{owner}</option>
                 ))}
               </select>
-              <select className="input sd-sort" value={sortOrder} onChange={(event) => setSortOrder(event.target.value === 'oldest' ? 'oldest' : 'newest')} aria-label="Sort">
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
+              <select
+                className="input sd-sort"
+                value={`${sortKey}:${sortDir}`}
+                onChange={(event) => {
+                  const [key, dir] = event.target.value.split(':') as [SortKey, SortDir];
+                  changeView(() => {
+                    setSortKey(key);
+                    setSortDir(dir);
+                  });
+                }}
+                aria-label="Sort"
+              >
+                <option value="created:desc">Newest first</option>
+                <option value="created:asc">Oldest first</option>
+                <option value="priority:desc">Highest priority</option>
+                <option value="status:asc">Status A–Z</option>
+                <option value="owner:asc">Owner A–Z</option>
+                <option value="type:asc">Type A–Z</option>
               </select>
+              {filtersActive ? (
+                <button type="button" className="btn btn-secondary btn-sm sd-clear" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              ) : null}
             </div>
 
+            {checkedTickets.length > 0 || bulkNotice ? (
+              <div className="sd-bulk" role="region" aria-label="Bulk actions">
+                {checkedTickets.length > 0 ? (
+                  <>
+                    <strong>{checkedTickets.length} selected</strong>
+                    <span className="sd-bulk__scope">on this page</span>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={exportChecked} disabled={bulkBusy}>
+                      Export CSV
+                    </button>
+                    {closableIncidents.length > 0 ? (
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => void closeCheckedIncidents()} disabled={bulkBusy}>
+                        {bulkBusy ? 'Closing…' : `Close ${closableIncidents.length} incident${closableIncidents.length === 1 ? '' : 's'}`}
+                      </button>
+                    ) : null}
+                    <button type="button" className="sd-bulk__clear" onClick={() => setCheckedKeys([])} disabled={bulkBusy}>
+                      Clear selection
+                    </button>
+                  </>
+                ) : null}
+                {bulkNotice ? <span className="sd-bulk__notice" role="status">{bulkNotice}</span> : null}
+              </div>
+            ) : null}
+
             <div className="sd-table-wrap">
-              {loading ? <div className="empty-state">Loading service desk…</div> : null}
+              {loading ? <div className="empty-state" role="status">Loading service desk…</div> : null}
+              {!loading && !error && items.length === 0 ? (
+                <div className="sd-empty">
+                  <h3>No tickets yet</h3>
+                  <p>Incidents, changes, problems and requests you can see will appear here.</p>
+                  <Link href="/incidents/new" className="btn btn-primary btn-sm">Report an incident</Link>
+                </div>
+              ) : null}
+              {!loading && items.length > 0 && filtered.length === 0 ? (
+                <div className="sd-empty">
+                  <h3>No tickets match these filters</h3>
+                  <p>Try a different search, or clear the filters to see every ticket.</p>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters}>Clear filters</button>
+                </div>
+              ) : null}
               {!loading && filtered.length > 0 ? (
                 <table className="sd-table">
                   <thead>
                     <tr>
-                      <th>Ticket</th>
-                      <th>Type</th>
-                      <th>Priority</th>
-                      <th>Status</th>
-                      <th>Owner</th>
-                      <th>Source</th>
+                      <th className="sd-table__check" scope="col">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          checked={allOnPageChecked}
+                          onChange={toggleAllOnPage}
+                          aria-label={allOnPageChecked ? 'Clear selection on this page' : 'Select all tickets on this page'}
+                        />
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('created')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('created')}>Ticket</button>
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('type')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('type')}>Type</button>
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('priority')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('priority')}>Priority</button>
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('status')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('status')}>Status</button>
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('owner')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('owner')}>Owner</button>
+                      </th>
+                      <th scope="col">Source</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((item) => (
+                    {pageRows.map((item) => (
                       <tr
                         key={item.key}
-                        className={selectedKey === item.key ? 'is-selected' : undefined}
+                        className={`${selectedKey === item.key ? 'is-selected' : ''}${checkedKeys.includes(item.key) ? ' is-checked' : ''}`.trim() || undefined}
                         onClick={() => setSelectedKey(item.key)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && event.target === event.currentTarget) setSelectedKey(item.key);
+                        }}
+                        tabIndex={0}
+                        aria-selected={selectedKey === item.key}
                       >
+                        <td className="sd-table__check" onClick={(event) => event.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={checkedKeys.includes(item.key)}
+                            onChange={() => toggleChecked(item.key)}
+                            aria-label={`Select ${ticketIdLabel(item)}`}
+                          />
+                        </td>
                         <td>
                           <div className="sd-ticket-cell">
                             <span className="sd-ticket-id">{ticketIdLabel(item)}</span>
@@ -604,6 +877,20 @@ export default function ServiceDeskPage() {
                 </table>
               ) : null}
             </div>
+            {!loading && filtered.length > PAGE_SIZE ? (
+              <nav className="sd-pager" aria-label="Ticket pages">
+                <span>
+                  {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+                </span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+                  Previous
+                </button>
+                <span aria-current="page">Page {currentPage} of {pageCount}</span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= pageCount}>
+                  Next
+                </button>
+              </nav>
+            ) : null}
           </div>
 
           {selected ? (

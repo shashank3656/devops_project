@@ -858,7 +858,7 @@ export default function DevOpsK8sPodTerminalPage() {
                       ))}
                     </div>
                     <div className="k8s-terminal-command-form">
-                      <input
+                      <input aria-label="Command"
                         className="input k8s-terminal-command-input"
                         value={commandInput}
                         onChange={(event) => setCommandInput(event.target.value)}
@@ -934,7 +934,7 @@ export default function DevOpsK8sPodTerminalPage() {
                   </div>
                 </div>
                 <div className="k8s-terminal-snippet-form">
-                  <input
+                  <input aria-label="Snippet label"
                     className="input"
                     value={snippetLabel}
                     onChange={(event) => setSnippetLabel(event.target.value)}

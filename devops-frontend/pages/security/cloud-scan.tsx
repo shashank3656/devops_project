@@ -207,7 +207,8 @@ export default function CloudScanPage() {
               </label>
             </div>
             <div className="portal-page__actions">
-              <button className="btn btn-primary" type="submit" disabled={!ready}>Review scope</button>
+              <button className="btn btn-primary" type="submit" disabled={!ready || connections.length === 0} title={connections.length === 0 ? 'Connect a cloud account to continue.' : !ready ? 'Choose a project, environment, profile, region, account, and check to continue.' : 'Review scope'}>Review scope</button>
+              {connections.length === 0 ? <span className="blocked-action__reason">Connect a cloud account to continue.</span> : !ready ? <span className="blocked-action__reason">Choose a project, environment, profile, region, account, and check to continue.</span> : null}
             </div>
           </form>
         ) : null}

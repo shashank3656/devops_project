@@ -222,7 +222,7 @@ type k8sClusterListItem struct {
 	ConfigMapCount    int       `json:"configmap_count"`
 	StorageCount      int       `json:"storage_count"`
 	NodePool          string    `json:"node_pool"`
-	NodeCount         int       `json:"node_count"`
+	NodeCount         *int      `json:"node_count,omitempty"`
 	KubernetesVersion string    `json:"kubernetes_version"`
 	Location          string    `json:"location"`
 	HealthStatus      string    `json:"health_status"`
@@ -1192,48 +1192,6 @@ func uniqueSortedNonEmpty(values []string) []string {
 	return out
 }
 
-func k8sVersionForCloud(cloud string) string {
-	switch strings.ToLower(strings.TrimSpace(cloud)) {
-	case "gcp":
-		return "1.29.8-gke.1093000"
-	case "aws":
-		return "1.29.7-eks"
-	case "azure":
-		return "1.29.6-aks"
-	default:
-		return "1.29.6"
-	}
-}
-
-func k8sLocationForCloud(cloud, environment string) string {
-	env := strings.ToLower(strings.TrimSpace(environment))
-	switch strings.ToLower(strings.TrimSpace(cloud)) {
-	case "gcp":
-		if env == "prod" {
-			return "asia-south1"
-		}
-		return "asia-south1-b"
-	case "aws":
-		if env == "prod" {
-			return "ap-south-1"
-		}
-		return "ap-south-1a"
-	case "azure":
-		if env == "prod" {
-			return "centralindia"
-		}
-		return "centralindia-1"
-	default:
-		return "regional"
-	}
-}
-
-func k8sNodePoolName(clusterName, environment string) string {
-	token := k8sSafeToken(clusterName)
-	env := k8sSafeToken(environment)
-	return fmt.Sprintf("%s-%s-pool", token, env)
-}
-
 func buildK8sResourceMeta(payload *k8sDashboardResponse, includeConnections bool) k8sResourceMeta {
 	meta := k8sResourceMeta{
 		Projects:            append([]k8sProjectOption(nil), payload.Projects...),
@@ -1299,11 +1257,7 @@ func buildK8sClusterItems(payload *k8sDashboardResponse) []k8sClusterListItem {
 			Environment:       connection.Environment,
 			AuthMode:          connection.AuthMode,
 			HasAuthCredential: connection.HasAuthCredential,
-			NodePool:          k8sNodePoolName(connection.ClusterName, connection.Environment),
-			NodeCount:         3 + ((connection.ProjectID + len(connection.ClusterName)) % 4),
-			KubernetesVersion: k8sVersionForCloud(connection.Cloud),
-			Location:          k8sLocationForCloud(connection.Cloud, connection.Environment),
-			HealthStatus:      "Healthy",
+			HealthStatus:      "Unknown",
 			UpdatedAt:         connection.UpdatedAt,
 		}
 	}
@@ -1337,6 +1291,10 @@ func buildK8sClusterItems(payload *k8sDashboardResponse) []k8sClusterListItem {
 			case "degraded":
 				if row.HealthStatus != "Blocked" {
 					row.HealthStatus = "Needs attention"
+				}
+			case "healthy", "ready", "available", "running":
+				if row.HealthStatus == "Unknown" {
+					row.HealthStatus = "Healthy"
 				}
 			}
 		}

@@ -171,7 +171,7 @@ html[data-theme] .history-filter-label,
 html[data-theme] .devops-kpi-card__label,
 html[data-theme] .devops-section-label {
   font-family: var(--ig-font);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -413,8 +413,8 @@ html[data-theme] .textarea:focus,
 html[data-theme] .history-filter-input:focus,
 html[data-theme] .history-filter-select:focus {
   outline: none;
-  border: 2px solid var(--ig-accent-border);
-  box-shadow: none;
+  border-color: var(--ig-accent-border);
+  box-shadow: var(--ig-focus-ring);
 }
 
 html[data-theme] .label {
@@ -603,7 +603,7 @@ html[data-theme] .devops-sidebar-new__brand-word {
 html[data-theme] .user-sidebar-shell__brand-word--primary,
 html[data-theme] .admin-sidebar-shell__brand-word--primary,
 html[data-theme] .devops-sidebar-new__brand-word--primary {
-  font-weight: 800;
+  font-weight: 700;
   color: var(--ig-text);
 }
 
@@ -639,7 +639,7 @@ html[data-theme] .devops-sidebar-new__status-title {
   display: block;
   padding: 8px 10px 6px;
   font-family: var(--ig-font);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -758,7 +758,7 @@ html[data-theme] .devops-sidebar-new__section-toggle {
   border-radius: var(--ig-radius);
   background: transparent;
   font-family: var(--ig-font);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -771,7 +771,7 @@ html[data-theme] .devops-sidebar-new__section-toggle:hover {
 }
 
 html[data-theme] .devops-sidebar-new__section-meta {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -812,7 +812,7 @@ html[data-theme] .admin-sidebar-shell__status-meta,
 html[data-theme] .devops-sidebar-new__status-meta {
   margin-left: auto;
   font-family: var(--ig-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ig-muted);
 }
 
@@ -982,7 +982,7 @@ html[data-theme] .user-topbar__kicker,
 html[data-theme] .admin-topbar__kicker,
 html[data-theme] .devops-navbar__kicker {
   font-family: var(--ig-font);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -1156,7 +1156,7 @@ html[data-theme] .devops-navbar__profile-btn .devops-navbar__role {
   border: 0;
   background: transparent;
   color: var(--ig-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -1577,7 +1577,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
   padding: 0 10px;
   border-radius: 999px;
   background: var(--ig-accent-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1707,7 +1707,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
   gap: 6px;
   margin-top: 6px;
   font-family: var(--ig-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: #6ee7b7;
 }
 
@@ -1822,7 +1822,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
   padding: 0 7px;
   border-radius: 999px;
   background: var(--ig-accent-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--ig-accent-text);
 }
@@ -1892,7 +1892,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ig-faint);
   white-space: nowrap;
 }
@@ -2061,7 +2061,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -2165,7 +2165,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
 
 .ig-home-activity__time {
   padding-top: 2px;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
   color: var(--ig-faint);
 }
@@ -2208,7 +2208,7 @@ html[data-theme] .login-page__card > .ig-icon-button {
 .ig-home-ops__label {
   display: block;
   margin-bottom: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2785,18 +2785,25 @@ html[data-theme] .ig-table th {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 10px 12px;
+  padding: 11px 14px;
   background: var(--ig-surface);
   box-shadow: inset 0 -1px 0 var(--ig-border);
   color: var(--ig-muted);
+  font-size: 13px;
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
 
 html[data-theme] .ig-table td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   vertical-align: middle;
   color: var(--ig-text-2);
+  border-bottom: 1px solid var(--ig-border);
+}
+
+html[data-theme] .ig-table tbody tr:nth-child(even):not(.is-selected):not(.is-active) td {
+  background: color-mix(in srgb, var(--ig-surface-2) 70%, transparent);
 }
 
 html[data-theme] .ig-table .ig-table__select {
@@ -2805,8 +2812,8 @@ html[data-theme] .ig-table .ig-table__select {
 }
 
 html[data-theme] .ig-table input[type='checkbox'] {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   margin: 0;
   accent-color: var(--ig-accent);
   cursor: pointer;
@@ -3618,7 +3625,7 @@ html[data-theme] .ig-table tbody tr.ig-tree-row--cloud td:first-child { box-shad
     background: none;
     color: var(--ig-muted);
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     text-decoration: none;
     cursor: pointer;
@@ -4144,7 +4151,7 @@ html[data-theme] .devops-incident-filter-chip {
 }
 
 html[data-theme] .devops-incident-filter-chip__label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -4241,7 +4248,7 @@ html[data-theme] .devops-incident-filter-row__actions {
   grid-template-columns: minmax(140px, 1.4fr) minmax(120px, 1fr) minmax(100px, 0.8fr);
   gap: 12px;
   padding: 8px 12px 2px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -4489,7 +4496,7 @@ a.svc-tree__folder:hover,
 .oncall-board__dow {
   padding: 4px 0;
   color: var(--ig-muted);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -4559,7 +4566,7 @@ a.svc-tree__folder:hover,
   max-width: 100%;
   overflow: hidden;
   color: var(--ig-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4642,7 +4649,7 @@ a.svc-tree__folder:hover,
 .month-cal__dow {
   padding: 4px 0;
   color: var(--ig-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .month-cal__day {
@@ -5187,9 +5194,150 @@ html[data-theme] .devops-layout .sd-filters select.input {
   transition: background var(--ig-duration) var(--ig-ease);
 }
 
+.sd-table tbody tr:nth-child(even) {
+  background: var(--ig-surface-2);
+}
+
 .sd-table tbody tr:hover,
-.sd-table tbody tr.is-selected {
+.sd-table tbody tr.is-selected,
+.sd-table tbody tr.is-checked {
   background: var(--ig-accent-soft);
+}
+
+.sd-table tbody tr.is-selected {
+  box-shadow: inset 3px 0 0 var(--ig-accent);
+}
+
+.sd-table tbody tr:focus-visible {
+  outline: 2px solid var(--ig-accent);
+  outline-offset: -2px;
+}
+
+.sd-table-wrap {
+  max-height: 72vh;
+}
+
+.sd-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.sd-table__check {
+  width: 44px;
+  padding-right: 0 !important;
+}
+
+.sd-table__check input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--ig-accent);
+  cursor: pointer;
+}
+
+.sd-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sd-sort-btn::after {
+  content: '↕';
+  opacity: 0.35;
+  font-size: 12px;
+}
+
+th[aria-sort='ascending'] .sd-sort-btn::after { content: '↑'; opacity: 1; }
+th[aria-sort='descending'] .sd-sort-btn::after { content: '↓'; opacity: 1; }
+th[aria-sort='ascending'] .sd-sort-btn,
+th[aria-sort='descending'] .sd-sort-btn { color: var(--ig-text); }
+
+.sd-sort-btn:focus-visible {
+  outline: 2px solid var(--ig-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sd-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--ig-accent-border);
+  border-radius: 12px;
+  background: var(--ig-accent-soft);
+  color: var(--ig-text);
+  font-size: 14px;
+}
+
+.sd-bulk__scope {
+  color: var(--ig-muted);
+  margin-right: auto;
+}
+
+.sd-bulk__clear {
+  border: 0;
+  background: transparent;
+  color: var(--ig-accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sd-bulk__notice {
+  flex-basis: 100%;
+  color: var(--ig-text-2);
+}
+
+.sd-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 4px 0;
+  color: var(--ig-muted);
+  font-size: 13px;
+}
+
+.sd-pager > span:first-child {
+  margin-right: auto;
+}
+
+.sd-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--ig-muted);
+}
+
+.sd-empty h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--ig-text);
+}
+
+.sd-empty p {
+  margin: 0 0 14px;
+}
+
+.sd-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sd-clear {
+  white-space: nowrap;
 }
 
 .sd-ticket-cell {
@@ -5200,7 +5348,7 @@ html[data-theme] .devops-layout .sd-filters select.input {
 }
 
 .sd-ticket-id {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--ig-muted);
@@ -5919,7 +6067,7 @@ html[data-theme] .portal-page.desk-landing {
 
 .work-kind {
   color: var(--ig-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -6068,7 +6216,7 @@ html[data-theme] .security-facts div {
 
 html[data-theme] .security-facts dt {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -6306,7 +6454,7 @@ html[data-theme] .devops-layout .work-page__head h1 {
 .ops-spotlight small {
   display: block;
   margin-bottom: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
 }
@@ -6405,14 +6553,139 @@ html[data-theme] .devops-layout .work-page__head h1 {
   border-radius: 6px 6px 2px 2px;
 }
 
-.ops-bars b:first-child { background: #7a5af8; }
-.ops-bars b:last-child { background: #3cbf8f; }
+.ops-bars b:first-child { background: var(--ot-violet); }
+.ops-bars b:last-child { background: var(--ot-teal); }
+
+.ops-bars--demo { opacity: 0.55; }
+
+.ops-chart {
+  position: relative;
+}
+
+.ops-chart__unit {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  color: var(--ot-slate);
+  font-size: 12px;
+}
+
+.ops-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ops-demo-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px dashed #b9a6ff;
+  border-radius: 999px;
+  color: var(--ot-violet-deep);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ops-legend em::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.ops-legend__changes::before { background: var(--ot-violet); }
+.ops-legend__deploys::before { background: var(--ot-teal); }
+.ops-legend a { margin-left: auto; color: var(--ig-accent-text); font-weight: 600; }
+
+.ops-scores__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  color: var(--ot-slate);
+  font-size: 13px;
+}
+
+.ops-score--disconnected strong {
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  color: var(--ot-slate);
+}
+
+.ops-score {
+  color: var(--ot-ink);
+  text-decoration: none;
+  transition: box-shadow var(--ig-duration) var(--ig-ease), transform var(--ig-duration) var(--ig-ease);
+}
+
+.ops-score:hover {
+  box-shadow: 0 0 0 1px rgba(23, 35, 59, 0.12), 0 6px 18px rgba(23, 35, 59, 0.08);
+}
+
+.ops-score:focus-visible {
+  outline: 2px solid var(--ig-accent);
+  outline-offset: 2px;
+}
+
+.ops-score small {
+  color: var(--ot-slate);
+}
+
+.ops-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid #f5d0a9;
+  border-radius: 14px;
+  background: var(--ot-tint-peach);
+  color: var(--ot-ink);
+}
+
+.ops-notice p { margin: 0; }
+
+.ops-home__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+html[data-theme='dark'] .ops-scores__meta,
+html[data-theme='dark'] .ops-chart__unit,
+html[data-theme='dark'] .ops-days,
+html[data-theme='dark'] .ops-legend,
+html[data-theme='dark'] .ops-score--disconnected strong {
+  color: var(--ig-muted);
+}
+
+html[data-theme='dark'] .ops-demo-badge {
+  border-color: rgba(196, 181, 253, 0.5);
+  color: var(--ot-lavender);
+}
+
+html[data-theme='dark'] .ops-notice {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: #3a2a20;
+  color: #fbeee4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-score { transition: none; }
+}
 
 .ops-days,
 .ops-legend {
   display: flex;
   justify-content: space-between;
-  color: #6b7588;
+  color: var(--ot-slate);
   font-size: 12px;
 }
 
@@ -6517,7 +6790,7 @@ html[data-theme] .devops-layout .portal-page__eyebrow,
   display: block;
   margin: 0 0 4px;
   color: #148568;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -6551,7 +6824,7 @@ html[data-theme] .devops-layout .devops-project-pill {
 
 html[data-theme] .devops-layout .devops-project-pill__label {
   color: #4f5c73;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
 }
 
@@ -6635,7 +6908,7 @@ html[data-theme] .devops-layout .work-board {
   border-radius: 10px;
   background: var(--ot-tint-violet);
   color: var(--ot-violet-deep);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .ops-chip {
@@ -6793,10 +7066,18 @@ html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .devops-navbar .ig-
   min-width: 0;
 }
 
-html[data-theme] .devops-layout .ig-scope-bar__label,
 html[data-theme] .devops-layout .ig-scope-bar__facts,
 html[data-theme] .devops-layout .ig-scope-bar__clear {
   display: none;
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field {
@@ -6825,21 +7106,62 @@ html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__cont
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:first-child::before {
-  content: 'S';
+  content: '';
   position: absolute;
-  left: 8px;
-  top: 7px;
+  left: 13px;
+  top: 13px;
   z-index: 1;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: #7655d5;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--ot-violet);
+  pointer-events: none;
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__control:focus-visible {
+  outline: 2px solid var(--ig-accent);
+  outline-offset: 2px;
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__field--prod .ig-scope-bar__control,
+html[data-theme] .devops-layout .ig-scope-bar__field--prod:nth-child(2) .ig-scope-bar__control {
+  background-color: #fff3e0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23a14f00' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  color: #8a4300;
+  box-shadow: inset 0 0 0 1px #f5b26b;
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__field--prod:nth-child(2)::before {
+  background: #d97706;
+}
+
+html[data-theme] .ig-scope-bar__prod {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #8a4300;
   color: #fff;
   font-size: 12px;
-  font-weight: 800;
-  line-height: 22px;
-  text-align: center;
-  pointer-events: none;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+html[data-theme] .ig-scope-bar__prod::before {
+  content: '!';
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  color: #8a4300;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:nth-child(2) .ig-scope-bar__control {
@@ -7059,8 +7381,8 @@ html[data-theme] .login-page__right {
 }
 
 html[data-theme] .login-page__card {
-  width: min(100%, 400px);
-  max-width: 400px;
+  width: min(100%, 424px);
+  max-width: 424px;
   margin: auto;
   padding: 0 24px;
   border: 0;
@@ -7104,16 +7426,39 @@ html[data-theme] .login-page .input:focus-visible {
   box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.28);
 }
 
+html[data-theme] .login-page .input {
+  height: 46px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+
 html[data-theme] .login-page .input::placeholder {
-  color: rgba(244, 246, 250, 0.42);
+  color: rgba(214, 220, 236, 0.56);
+}
+
+html[data-theme] .login-page .label {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme] .login-page .form-group {
+  margin-bottom: 16px;
 }
 
 html[data-theme] .login-page .btn-primary.login-page__submit,
 html[data-theme] .login-page__submit {
-  width: auto;
-  min-width: 108px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
   margin-top: 8px;
-  border-radius: 999px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
   background: var(--ot-violet);
   border-color: var(--ot-violet);
   color: #fff;
@@ -7160,6 +7505,238 @@ html[data-theme] .login-page__link:focus-visible {
   outline: 2px solid var(--ot-lavender);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+html[data-theme] .login-page .btn-secondary.login-page__submit {
+  background: transparent;
+  border: 1px solid rgba(196, 181, 253, 0.32);
+  color: #f4f6fa;
+}
+
+html[data-theme] .login-page .btn-secondary.login-page__submit:hover:not(:disabled) {
+  background: rgba(196, 181, 253, 0.08);
+}
+
+html[data-theme] .login-page__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+html[data-theme] .login-page__label-row .label {
+  margin: 0;
+}
+
+html[data-theme] .login-page__label-row .login-page__link {
+  font-size: 13px;
+}
+
+html[data-theme] .login-page__password {
+  position: relative;
+}
+
+html[data-theme] .login-page__password .input {
+  padding-right: 72px;
+}
+
+html[data-theme] .login-page__reveal {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  min-width: 56px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ot-lavender);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+html[data-theme] .login-page__reveal:hover {
+  background: rgba(196, 181, 253, 0.1);
+}
+
+html[data-theme] .login-page__reveal:focus-visible,
+html[data-theme] .login-page__retry:focus-visible,
+html[data-theme] .login-page__access-toggle:focus-visible {
+  outline: 2px solid var(--ot-lavender);
+  outline-offset: 2px;
+}
+
+html[data-theme] .login-page__field-help {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(214, 220, 236, 0.7);
+}
+
+html[data-theme] .login-page__field-help--error {
+  color: #fca5a5;
+}
+
+html[data-theme] .login-page .alert {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+
+html[data-theme] .login-page .alert-error {
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.32);
+  color: #fecaca;
+}
+
+html[data-theme] .login-page__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+html[data-theme] .login-page__retry {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(254, 202, 202, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@keyframes login-spin {
+  to { transform: rotate(360deg); }
+}
+
+html[data-theme] .login-page__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: login-spin 0.8s linear infinite;
+}
+
+html[data-theme] .login-page__confirm {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  border-radius: 12px;
+  background: rgba(45, 212, 191, 0.08);
+  color: rgba(244, 246, 250, 0.86);
+  line-height: 1.5;
+}
+
+html[data-theme] .login-page__confirm p {
+  margin: 0 0 8px;
+}
+
+html[data-theme] .login-page__confirm-title {
+  font-weight: 700;
+  color: #fff;
+}
+
+html[data-theme] .login-page__back {
+  margin-top: 20px;
+}
+
+html[data-theme] .login-page__access {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme] .login-page__access-toggle {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ot-lavender);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+html[data-theme] .login-page__access-toggle::after {
+  content: ' ▾';
+}
+
+html[data-theme] .login-page__access-toggle[aria-expanded='true']::after {
+  content: ' ▴';
+}
+
+html[data-theme] .login-page__access-panel {
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--ot-midnight);
+  color: rgba(244, 246, 250, 0.8);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+html[data-theme] .login-page__access-panel p {
+  margin: 0 0 10px;
+}
+
+html[data-theme] .login-page__access-text {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #e4e8f2;
+  font-family: var(--ig-mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+
+html[data-theme] .login-page__access-copy {
+  min-height: 40px;
+  border-radius: 10px;
+}
+
+html[data-theme] .login-page__access-note {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+@media (max-width: 899px) {
+  html[data-theme] .login-page__right {
+    order: -1;
+    padding-top: 32px;
+  }
+
+  html[data-theme] .login-page__left {
+    padding: 24px;
+  }
+
+  html[data-theme] .login-page__title {
+    font-size: 26px;
+  }
+
+  html[data-theme] .login-page__mark {
+    margin-bottom: 12px;
+  }
+
+  html[data-theme] .login-page .ig-auth-pipeline,
+  html[data-theme] .login-page__tagline {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] .login-page__spinner {
+    animation: none;
+  }
 }
 
 @media (max-width: 768px) {
@@ -8450,4 +9027,822 @@ html[data-theme] .alert-trends--three {
   background: color-mix(in srgb, #94a3b8 14%, transparent);
   border-color: color-mix(in srgb, #94a3b8 32%, transparent);
   color: #cbd5e1;
+}
+
+/* Required fields are marked by text, not colour alone. Assistive tech reads the `required` attribute. */
+html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > .label::after,
+html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > label::after,
+html[data-theme] .devops-layout label:has(+ :is(input, select, textarea)[required])::after {
+  content: ' *';
+  color: var(--ig-danger);
+  font-weight: 700;
+}
+
+html[data-theme] .devops-layout :is(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--ig-danger);
+}
+
+/* Keep wide tables inside their own scroll area instead of widening the page. */
+html[data-theme] .devops-main-wrapper-new {
+  min-width: 0;
+}
+
+html[data-theme] .devops-layout main,
+html[data-theme] .devops-layout #main-content {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+@media (max-width: 720px) {
+  html[data-theme] .devops-layout .ops-scores,
+  html[data-theme] .devops-layout .ops-actions {
+    grid-template-columns: 1fr;
+  }
+
+  html[data-theme] .devops-layout .sd-filters {
+    flex-wrap: wrap;
+  }
+
+  html[data-theme] .devops-layout .sd-filters .input {
+    flex: 1 1 160px;
+  }
+
+  html[data-theme] .devops-layout .ops-notice,
+  html[data-theme] .devops-layout .sd-alert,
+  html[data-theme] .devops-layout .ops-home__error {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+
+/* Onboarding wizard and grouped forms */
+html[data-theme] .devops-layout .onboard-wizard {
+  display: grid;
+  gap: 18px;
+}
+
+html[data-theme] .devops-layout :is(.onboard-step, .form-section) {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 18px;
+  border: 1px solid var(--ig-border);
+  border-radius: 12px;
+  background: var(--ig-surface);
+}
+
+html[data-theme] .devops-layout :is(.onboard-step__title, .form-section__title) {
+  padding: 0 6px;
+  color: var(--ig-text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+html[data-theme] .devops-layout :is(.onboard-step__copy, .form-section__copy, .form-section__meta, .onboard-caption) {
+  margin: 0;
+  color: var(--ig-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+html[data-theme] .devops-layout .form-req {
+  color: var(--ig-danger);
+  font-weight: 600;
+}
+
+html[data-theme] .devops-layout .form-req-note {
+  margin: 0 0 12px;
+  color: var(--ig-muted);
+  font-size: 13px;
+}
+
+html[data-theme] .devops-layout .onboard-optional {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--ig-surface-2);
+  color: var(--ig-muted);
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+html[data-theme] .devops-layout .onboard-advanced {
+  margin: 0 0 18px;
+  border: 1px solid var(--ig-border);
+  border-radius: 12px;
+  background: var(--ig-surface);
+}
+
+html[data-theme] .devops-layout .onboard-advanced > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px;
+  color: var(--ig-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+html[data-theme] .devops-layout .onboard-advanced[open] > summary {
+  border-bottom: 1px solid var(--ig-border);
+}
+
+html[data-theme] .devops-layout .onboard-advanced > :not(summary) {
+  margin: 14px 18px;
+}
+
+html[data-theme] .devops-layout .onboard-connections {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .devops-layout .onboard-connection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--ig-border);
+  border-left-width: 4px;
+  border-radius: 10px;
+}
+
+html[data-theme] .devops-layout .onboard-connection--ok {
+  border-left-color: var(--ig-success);
+  background: var(--ig-success-soft);
+}
+
+html[data-theme] .devops-layout .onboard-connection--missing {
+  border-left-color: var(--ig-warning);
+  background: var(--ig-warning-soft);
+}
+
+html[data-theme] .devops-layout .onboard-connection--unknown {
+  border-left-color: var(--ig-border-strong);
+  background: var(--ig-surface-2);
+}
+
+html[data-theme] .devops-layout .onboard-prod-confirm {
+  padding: 10px 12px;
+  border: 1px solid var(--ig-warning);
+  border-radius: 10px;
+  background: var(--ig-warning-soft);
+}
+
+html[data-theme] .devops-layout .onboard-unavailable {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--ig-border-strong);
+  border-radius: 10px;
+  color: var(--ig-text-2);
+  font-size: 14px;
+}
+
+html[data-theme] .devops-layout .onboard-review {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) 1fr;
+  margin: 0;
+  border: 1px solid var(--ig-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+html[data-theme] .devops-layout .onboard-review > div {
+  display: contents;
+}
+
+html[data-theme] .devops-layout .onboard-review :is(dt, dd) {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ig-border);
+}
+
+html[data-theme] .devops-layout .onboard-review dt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--ig-surface-2);
+  color: var(--ig-text-2);
+  font-weight: 600;
+}
+
+html[data-theme] .devops-layout .onboard-edit {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ig-accent-text, var(--ig-accent));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+html[data-theme] .devops-layout .onboard-edit:hover {
+  background: var(--ig-accent-soft);
+}
+
+html[data-theme] .devops-layout .onboard-step-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ig-danger);
+  border-radius: 10px;
+  background: var(--ig-danger-soft);
+  color: var(--ig-text);
+  font-size: 14px;
+}
+
+html[data-theme] .devops-layout .onboard-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--ig-border);
+  background: var(--ig-bg);
+}
+
+html[data-theme] .devops-layout .onboard-progress {
+  margin-left: auto;
+  color: var(--ig-muted);
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  html[data-theme] .devops-layout .onboard-review {
+    grid-template-columns: 1fr;
+  }
+
+  html[data-theme] .devops-layout .onboard-review dt {
+    border-bottom: 0;
+  }
+
+  html[data-theme] .devops-layout .onboard-progress {
+    width: 100%;
+    margin-left: 0;
+    order: -1;
+  }
+}
+
+/* Collapsed sidebar tooltip, positioned by DevOpsLayout so the sidebar's overflow cannot clip it. */
+.ot-nav-tooltip {
+  position: fixed;
+  z-index: 1000;
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--ot-ink, #17233b);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(16, 21, 37, 0.24);
+}
+
+/* Breadcrumbs */
+html[data-theme] .devops-layout .ops-crumb {
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--ig-muted);
+  font-size: 13px;
+}
+
+html[data-theme] .devops-layout .ops-crumb__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .devops-layout .ops-crumb__list li + li::before {
+  content: '/';
+  margin-right: 4px;
+  color: var(--ig-faint, var(--ig-muted));
+}
+
+html[data-theme] .devops-layout .ops-crumb__list a {
+  color: var(--ig-muted);
+  text-decoration: none;
+}
+
+html[data-theme] .devops-layout .ops-crumb__list a:hover {
+  color: var(--ig-accent-text, var(--ig-accent));
+  text-decoration: underline;
+}
+
+html[data-theme] .devops-layout .ops-crumb__list [aria-current='page'] {
+  color: var(--ig-text);
+  font-weight: 600;
+}
+
+html[data-theme] .devops-layout .ops-service dt {
+  color: var(--ig-muted);
+}
+
+/* Profile menu */
+html[data-theme] .devops-navbar__profile-wrap {
+  position: relative;
+}
+
+html[data-theme] .devops-navbar__profile-btn {
+  font: inherit;
+  cursor: pointer;
+}
+
+html[data-theme] .devops-navbar__profile-caret {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+
+html[data-theme] .devops-navbar__profile-btn[aria-expanded='true'] .devops-navbar__profile-caret {
+  transform: rotate(180deg);
+}
+
+html[data-theme] .devops-navbar__profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  display: grid;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--ig-border);
+  border-radius: 12px;
+  background: var(--ig-surface);
+  box-shadow: var(--ig-shadow-pop, 0 12px 32px rgba(16, 21, 37, 0.18));
+}
+
+html[data-theme] .devops-navbar__profile-head {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 4px;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--ig-border);
+}
+
+html[data-theme] .devops-navbar__profile-head strong {
+  color: var(--ig-text);
+  font-size: 14px;
+}
+
+html[data-theme] .devops-navbar__profile-head span {
+  color: var(--ig-muted);
+  font-size: 13px;
+}
+
+html[data-theme] .devops-navbar__profile-item {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ig-text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+html[data-theme] .devops-navbar__profile-item:is(:hover, :focus-visible) {
+  background: var(--ig-accent-soft);
+  outline: none;
+}
+
+html[data-theme] .devops-navbar__profile-item:focus-visible {
+  box-shadow: 0 0 0 3px var(--ig-focus-ring);
+}
+
+html[data-theme] .devops-navbar__profile-item--danger {
+  color: var(--ig-danger);
+}
+
+.ot-skeleton {
+  display: inline-block;
+  border-radius: 6px;
+  background: var(--ig-surface-3, rgba(148, 163, 184, 0.25));
+  animation: ot-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.ot-skeleton--text {
+  width: 72px;
+  height: 12px;
+  vertical-align: middle;
+}
+
+@keyframes ot-skeleton-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Search palette states */
+html[data-theme] .ig-palette__status {
+  margin: 0;
+  padding: 0 20px;
+  color: var(--ig-muted);
+  font-size: 13px;
+}
+
+html[data-theme] .ig-palette__status:not(:empty) {
+  padding-top: 10px;
+}
+
+html[data-theme] .ig-palette__status.is-error {
+  color: var(--ig-danger);
+}
+
+html[data-theme] .ig-palette__empty {
+  padding: 18px 20px;
+  font-size: 14px;
+}
+
+html[data-theme] .ig-palette__input:focus-visible {
+  outline: 2px solid var(--ig-accent);
+  outline-offset: -2px;
+}
+
+html[data-theme] .ig-search-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ig-focus-ring);
+}
+
+/* Chart captions, legends and solid bars */
+html[data-theme] .ops-chart-figure {
+  margin: 12px 0 0;
+}
+
+html[data-theme] .ops-chart-figure__caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--ig-muted);
+  font-size: 13px;
+}
+
+html[data-theme] .ops-chart-figure__legend {
+  display: inline-flex;
+  gap: 14px;
+}
+
+html[data-theme] .ops-chart-figure__legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+html[data-theme] .ops-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+html[data-theme] .ops-swatch--merge,
+html[data-theme] .deploy-intel-chart__bar--merge {
+  background: var(--ot-violet, #6d4aff);
+}
+
+html[data-theme] .ops-swatch--risk,
+html[data-theme] .deploy-intel-chart__bar--risk {
+  background: var(--ig-danger);
+}
+
+html[data-theme] .deploy-intel-chart__bar {
+  min-width: 0;
+}
+
+html[data-theme] .deploy-intel-chart__label,
+html[data-theme] .project-detail__trend-value,
+html[data-theme] .project-detail__trend-label {
+  color: var(--ig-muted);
+  font-size: 12px;
+}
+
+html[data-theme] .project-detail__trend-bar {
+  background: var(--ot-teal, #2dd4bf);
+  border-radius: 6px 6px 0 0;
+}
+
+html[data-theme] .project-detail__trend-bar.is-zero {
+  background: var(--ig-border-strong);
+}
+
+html[data-theme] .project-detail__trend-chart {
+  border-bottom: 1px solid var(--ig-border);
+}
+
+/* Clickable table rows also expose a real link for keyboard users. */
+html[data-theme] .devops-layout tr[style*='cursor'] td a {
+  color: inherit;
+}
+
+html[data-theme] .devops-layout tr[style*='cursor']:focus-within {
+  outline: 2px solid var(--ig-accent);
+  outline-offset: -2px;
+}
+
+/* Primary controls stay large enough to tap. Dense table buttons keep their smaller size. */
+html[data-theme] .devops-layout .btn:not(.btn-sm),
+html[data-theme] .devops-navbar__icon-btn,
+html[data-theme] .ig-search-trigger,
+html[data-theme] .devops-navbar__profile-btn {
+  min-height: 44px;
+}
+
+html[data-theme] .devops-layout .portal-form-grid__span-2 {
+  grid-column: 1 / -1;
+}
+
+/* Long names, ticket lists, and error text stay inside the page. */
+html[data-theme] .devops-layout :is(.portal-page__title, .devops-navbar__title, .alert, .ops-crumb__list, .ig-scope-bar__field, .sd-table td, .ig-table td) {
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .devops-layout .alert {
+  max-height: 9rem;
+  overflow: auto;
+}
+
+html[data-theme] .devops-navbar__profile-label,
+html[data-theme] .ig-scope-bar select,
+html[data-theme] .ig-scope-bar__value {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-theme] .devops-layout .ops-banner-stack {
+  display: grid;
+  gap: 8px;
+  margin: 12px 20px 0;
+}
+
+html[data-theme] .devops-layout .sd-table {
+  max-height: min(70vh, 720px);
+}
+
+html[data-theme] .ig-table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px 4px;
+  color: var(--ig-muted);
+  font-size: 14px;
+}
+
+html[data-theme] .ig-table-pager__actions {
+  display: flex;
+  gap: 8px;
+}
+
+html[data-theme] .execution-stage {
+  margin-top: 12px;
+}
+
+html[data-theme] .execution-stage__copy {
+  margin: 0 0 8px;
+  color: var(--ot-ink);
+}
+
+html[data-theme] .execution-stage__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .execution-stage__step {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--ot-tint-blue);
+  color: var(--ig-muted);
+  font-size: 14px;
+}
+
+html[data-theme] .execution-stage__step.is-reached {
+  color: var(--ot-ink);
+}
+
+html[data-theme] .execution-stage__step.is-current {
+  background: var(--ot-violet);
+  color: var(--ig-accent-on);
+}
+
+html[data-theme] .execution-stage__step.is-failed {
+  background: var(--ot-tint-peach, #fff1e6);
+  color: var(--ot-ink);
+}
+
+html[data-theme] .execution-stage__recovery {
+  margin-top: 10px;
+}
+
+html[data-theme] .ig-home-env__state--unknown {
+  color: var(--ig-muted);
+}
+
+html[data-theme] .svc-tree__service strong {
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] button.svc-tree__service {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+html[data-theme] .blocked-action {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+html[data-theme] .blocked-action__reason {
+  color: var(--ig-muted);
+  font-size: 14px;
+}
+
+html[data-theme] .copy-chip {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ot-tint-violet);
+  color: var(--ot-ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+html[data-theme] .recent-services {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .recent-services li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+html[data-theme] .devops-layout .ops-home__head {
+  padding: 22px 24px;
+  border-radius: 16px;
+  background: var(--ot-tint-violet, #f0ebff);
+}
+
+html[data-theme] .devops-layout .ops-actions .ops-action:not(:first-child) {
+  background: var(--ig-surface, #fff);
+  box-shadow: inset 0 0 0 1px var(--ig-border);
+}
+
+html[data-theme] .devops-layout .ops-banner-stack,
+html[data-theme] .devops-layout .ops-crumb {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+html[data-theme] .devops-layout .devops-main-new {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+html[data-theme] .devops-layout .portal-page__header,
+html[data-theme] .devops-layout .ops-frame__head,
+html[data-theme] .devops-layout .devops-tickets-header,
+html[data-theme] .devops-layout .portal-surface,
+html[data-theme] .devops-layout .ig-table-card,
+html[data-theme] .devops-layout .devops-filter-ribbon,
+html[data-theme] .devops-layout .devops-incident-filter-surface,
+html[data-theme] .devops-layout .devops-incident-strip,
+html[data-theme] .devops-layout .changes-facts,
+html[data-theme] .devops-layout .ops-frame .ops-minis {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+html[data-theme] .devops-layout .ops-frame .ops-minis,
+html[data-theme] .devops-layout .devops-incident-strip,
+html[data-theme] .devops-layout .changes-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 0;
+  background: transparent;
+}
+
+html[data-theme] .devops-layout .ops-frame .ops-mini,
+html[data-theme] .devops-layout .devops-incident-pill,
+html[data-theme] .devops-layout .changes-facts > div {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ot-ink, #17233b);
+}
+
+html[data-theme] .devops-layout .ops-frame .ops-mini strong,
+html[data-theme] .devops-layout .devops-incident-pill__value,
+html[data-theme] .devops-layout .changes-facts strong {
+  margin: 0;
+  color: var(--ot-ink, #17233b);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+html[data-theme] .devops-layout .ops-frame .ops-mini small,
+html[data-theme] .devops-layout .devops-incident-pill__label,
+html[data-theme] .devops-layout .changes-facts span {
+  color: var(--ig-muted, #58677f);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+html[data-theme] .devops-layout :is(.portal-page__actions, .ops-frame__head, .portal-surface__header, .devops-filter-ribbon__actions, .devops-tickets-header, .ig-table) .btn-secondary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ig-muted, #58677f);
+  box-shadow: none;
+}
+
+html[data-theme] .devops-layout :is(.portal-page__actions, .ops-frame__head, .portal-surface__header, .devops-filter-ribbon__actions, .devops-tickets-header, .ig-table) .btn-secondary:hover {
+  background: var(--ig-surface-2, #f5f7fc);
+  color: var(--ot-ink, #17233b);
+}
+
+html[data-theme] .devops-layout .portal-page__header .portal-page__actions,
+html[data-theme] .devops-layout .ig-table .portal-page__actions {
+  margin-top: 0;
+}
+
+html[data-theme] .devops-layout .ig-table {
+  background: var(--ig-surface, #fff);
+}
+
+html[data-theme] .devops-layout .ig-table td.ig-col-title .ig-cell-title {
+  display: block;
+  max-width: none;
+  color: var(--ot-ink, #17233b);
+  font-weight: 600;
+}
+
+html[data-theme] .devops-layout .ig-table td.ig-col-num,
+html[data-theme] .devops-layout .ig-table th.ig-col-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+html[data-theme] .recent-services span {
+  color: var(--ig-muted);
 }

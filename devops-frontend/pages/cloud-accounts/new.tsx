@@ -12,6 +12,7 @@ import {
 } from '../../lib/cloudProviders';
 import CloudTrustSetupGuide from '../../components/CloudTrustSetupGuide';
 import { PageHeader, SegmentedControl, portalFetch } from '@infragate/ui';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 
 interface DevopsTeam {
   id: number;
@@ -44,6 +45,7 @@ export default function CloudAccountOnboardPage() {
   const [secretRef, setSecretRef] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const { allowLeave } = useUnsavedChanges(Boolean(accountId.trim() || displayName.trim() || projectId || roleArn.trim() || externalId.trim() || secretRef.trim() || environments.length));
 
   const copy = useMemo(() => providerFormCopy(provider), [provider]);
 
@@ -141,6 +143,7 @@ export default function CloudAccountOnboardPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Failed to onboard account');
       const id = data?.account?.id;
+      allowLeave();
       if (id) void router.push(`/cloud-accounts/${id}`);
       else void router.push('/cloud-accounts');
     } catch (err) {
@@ -173,7 +176,11 @@ export default function CloudAccountOnboardPage() {
         />
         {error ? <div className="alert alert-error">{error}</div> : null}
         <CloudTrustSetupGuide provider={provider} />
-        <form className="portal-surface portal-form-grid" onSubmit={(e) => void submit(e)}>
+        <form className="portal-surface" onSubmit={(e) => void submit(e)}>
+          <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+          <fieldset className="form-section">
+            <legend className="form-section__title">Account</legend>
+            <div className="portal-form-grid">
           <div className="label" style={{ gridColumn: '1 / -1' }}>
             <span>Cloud provider</span>
             <SegmentedControl
@@ -185,7 +192,7 @@ export default function CloudAccountOnboardPage() {
             />
           </div>
           <label className="label">
-            {copy.accountIdLabel}
+            {copy.accountIdLabel}<span className="form-req" aria-hidden="true"> *</span>
             <input
               className="input"
               value={accountId}
@@ -199,11 +206,17 @@ export default function CloudAccountOnboardPage() {
             </span>
           </label>
           <label className="label">
-            Display name
+            Display name<span className="form-req" aria-hidden="true"> *</span>
             <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required placeholder="Platform production" />
           </label>
+            </div>
+          </fieldset>
+          <fieldset className="form-section">
+            <legend className="form-section__title">Scope</legend>
+            <p className="form-section__copy">Teams and environments come from the project. They stay empty until a project is selected.</p>
+            <div className="portal-form-grid">
           <label className="label">
-            Project
+            Project<span className="form-req" aria-hidden="true"> *</span>
             <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
               <option value="">Select project</option>
               {projects.map((project) => (
@@ -214,7 +227,7 @@ export default function CloudAccountOnboardPage() {
             </select>
           </label>
           <label className="label">
-            Team
+            Team<span className="form-req" aria-hidden="true"> *</span>
             <select className="input" value={teamSlug} onChange={(e) => setTeamSlug(e.target.value)} required disabled={!projectId || envsLoading}>
               <option value="">{!projectId ? 'Select a project first' : envsLoading ? 'Loading teams...' : teams.length === 0 ? 'No teams' : 'Select team'}</option>
               {teams.map((t) => (
@@ -276,6 +289,11 @@ export default function CloudAccountOnboardPage() {
                     : 'Open the list and choose an environment. Add another the same way.'}
             </span>
           </label>
+            </div>
+          </fieldset>
+          <fieldset className="form-section">
+            <legend className="form-section__title">Access</legend>
+            <div className="portal-form-grid">
           <label className="label">
             Auth mode
             <select className="input" value={authMode} onChange={(e) => setAuthMode(e.target.value)}>
@@ -300,10 +318,12 @@ export default function CloudAccountOnboardPage() {
               <input className="input" type="password" autoComplete="off" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} required placeholder="CLOUD_ACCOUNT_PLATFORM_KEYS" />
             </label>
           )}
-          <p className="portal-surface__subtitle" style={{ gridColumn: '1 / -1', margin: 0 }}>
+            </div>
+          <p className="portal-surface__subtitle" style={{ margin: '12px 0 0' }}>
             The role, external ID, and secret reference are stored encrypted. The response returns the account you entered and whether those values are set. It does not return the values.
           </p>
-          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          </fieldset>
+          <div className="portal-form-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving…' : 'Save and test on server'}
             </button>

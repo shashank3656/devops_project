@@ -398,7 +398,11 @@ func devopsProjectInfraSettingsHandler(w http.ResponseWriter, r *http.Request, p
 	}
 	switch r.Method {
 	case http.MethodGet:
-		if _, ok := requireDevopsUser(w, r); !ok {
+		userID, ok := requireDevopsUser(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
 		project, err := getProjectCatalogByID(projectID)
@@ -410,7 +414,11 @@ func devopsProjectInfraSettingsHandler(w http.ResponseWriter, r *http.Request, p
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{"status": "ok", "settings": settings})
 	case http.MethodPatch, http.MethodPut:
-		if _, ok := requireDevopsManager(w, r); !ok {
+		userID, ok := requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
 		var body projectInfraSettings

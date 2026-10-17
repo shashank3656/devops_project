@@ -8,10 +8,29 @@ export function formatRelativeTime(iso?: string, now: number = Date.now()): stri
   if (Number.isNaN(then)) return '';
   const diff = Math.max(0, now - then);
   if (diff < MINUTE) return 'just now';
-  if (diff < HOUR) return `${Math.floor(diff / MINUTE)}m ago`;
-  if (diff < DAY) return `${Math.floor(diff / HOUR)}h ago`;
-  if (diff < 7 * DAY) return `${Math.floor(diff / DAY)}d ago`;
+  if (diff < HOUR) {
+    const minutes = Math.floor(diff / MINUTE);
+    return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+  }
+  if (diff < DAY) {
+    const hours = Math.floor(diff / HOUR);
+    return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  }
+  if (diff < 7 * DAY) {
+    const days = Math.floor(diff / DAY);
+    return days === 1 ? '1 day ago' : `${days} days ago`;
+  }
   return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/** Exact local date, time, and timezone for a hover title. */
+export function exactTimeTitle(iso?: string): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  const exact = date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZoneName: 'short' });
+  return zone ? `${exact} (${zone})` : exact;
 }
 
 export function greetingFor(date: Date = new Date()): string {

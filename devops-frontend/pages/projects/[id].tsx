@@ -117,6 +117,8 @@ interface ProjectReleaseActivityItem {
   status: string;
   priority: string;
   client_name: string;
+  requested_by?: string;
+  created_at?: string;
   updated_at: string;
   due_date?: string;
   pr_url?: string;
@@ -594,6 +596,8 @@ function normalizeReleaseDashboard(rawValue: unknown): ProjectReleaseDashboard |
             status: getString(row.status),
             priority: getString(row.priority),
             client_name: getString(row.client_name),
+            requested_by: getString(row.requested_by),
+            created_at: getString(row.created_at),
             updated_at: getString(row.updated_at),
             due_date: getString(row.due_date) || undefined,
             pr_url: getString(row.pr_url) || undefined,
@@ -1755,7 +1759,10 @@ export default function DevOpsProjectDetailPage() {
                               {item.environment.toUpperCase()} · {item.cloud} · {item.team || item.client_name || 'Unassigned'}
                             </p>
                             <p className="project-detail__activity-meta project-detail__activity-meta--minor">
-                              Updated {formatDateTime(item.updated_at)}
+                              Requested by {item.requested_by || 'Unknown'}
+                              {item.created_at ? ` · ${formatDateTime(item.created_at)}` : ''}
+                              {' · '}Updated {formatDateTime(item.updated_at)}
+                              {' · '}Status {item.status || 'Unknown'}
                             </p>
                             <Link
                               href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id })}
@@ -1837,18 +1844,34 @@ export default function DevOpsProjectDetailPage() {
 
                   <div className="project-detail__trend">
                     <span className="portal-surface__eyebrow">Release trend</span>
-                    <div className="project-detail__trend-chart">
-                      {releaseDashboard.release_trend.map((point) => (
-                        <div key={point.label} className="project-detail__trend-point">
-                          <span className="project-detail__trend-value">{point.count}</span>
-                          <span
-                            className="project-detail__trend-bar"
-                            style={{ height: `${Math.max(12, point.count * 18)}px` }}
-                          />
-                          <span className="project-detail__trend-label">{point.label}</span>
-                        </div>
-                      ))}
-                    </div>
+                    {releaseDashboard.release_trend.length === 0 ? (
+                      <div className="empty-state">No releases recorded for this project yet.</div>
+                    ) : (() => {
+                      const trendMax = Math.max(...releaseDashboard.release_trend.map((point) => point.count), 1);
+                      return (
+                        <figure className="ops-chart-figure">
+                          <figcaption className="ops-chart-figure__caption">
+                            Releases per period · scale 0–{trendMax}
+                          </figcaption>
+                          <div
+                            className="project-detail__trend-chart"
+                            role="img"
+                            aria-label={`Releases per period: ${releaseDashboard.release_trend.map((point) => `${point.label} ${point.count}`).join(', ')}`}
+                          >
+                            {releaseDashboard.release_trend.map((point) => (
+                              <div key={point.label} className="project-detail__trend-point" aria-hidden="true">
+                                <span className="project-detail__trend-value">{point.count}</span>
+                                <span
+                                  className={`project-detail__trend-bar${point.count === 0 ? ' is-zero' : ''}`}
+                                  style={{ height: point.count === 0 ? '2px' : `${Math.max(6, (point.count / trendMax) * 96)}px` }}
+                                />
+                                <span className="project-detail__trend-label">{point.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </figure>
+                      );
+                    })()}
                   </div>
                 </section>
               </>
