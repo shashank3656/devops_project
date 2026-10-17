@@ -33,6 +33,13 @@ interface IncidentOption {
   id: number;
   incident_number?: string;
   summary?: string;
+  project_id?: number;
+}
+
+interface ExistingProblem {
+  id: number;
+  title: string;
+  project_id?: number;
 }
 
 function clearSessionAndRedirect() {
@@ -66,6 +73,10 @@ export default function NewProblemPage() {
   const [workaround, setWorkaround] = useState('');
   const [knownError, setKnownError] = useState(false);
   const [relatedIncidentId, setRelatedIncidentId] = useState('');
+  const [existingProblems, setExistingProblems] = useState<ExistingProblem[]>([]);
+  const [problemQuery, setProblemQuery] = useState('');
+  const [causeState, setCauseState] = useState<'suspected' | 'confirmed'>('suspected');
+  const [fixVerified, setFixVerified] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -95,10 +106,11 @@ export default function NewProblemPage() {
       loadJson('/api/devops/users?audience=portal'),
       loadJson('/api/devops/incidents'),
       loadJson('/api/devops/problems?mode=preview'),
+      loadJson('/api/devops/problems'),
       loadJson('/api/devops/itsm-catalog'),
     ])
-      .then(([projectRes, serviceRes, userRes, incidentRes, previewRes, catalogRes]) => {
-        if ([projectRes, serviceRes, userRes, incidentRes, previewRes, catalogRes].every((item) => item.unauthorized)) {
+      .then(([projectRes, serviceRes, userRes, incidentRes, previewRes, problemRes, catalogRes]) => {
+        if ([projectRes, serviceRes, userRes, incidentRes, previewRes, problemRes, catalogRes].every((item) => item.unauthorized)) {
           clearSessionAndRedirect();
           return;
         }
@@ -116,7 +128,18 @@ export default function NewProblemPage() {
         const userList = Array.isArray(userRes.data.users) ? userRes.data.users : [];
         setUsers(userList.filter((item: { id?: number }) => typeof item.id === 'number') as PortalUserOption[]);
         const incidentList = Array.isArray(incidentRes.data.incidents) ? incidentRes.data.incidents : [];
-        setIncidents(incidentList.filter((item: { id?: number }) => typeof item.id === 'number') as IncidentOption[]);
+        setIncidents(incidentList.filter((item: { id?: number }) => typeof item.id === 'number').map((item: { id: number; incident_number?: string; summary?: string; project_id?: number }) => ({
+          id: item.id,
+          incident_number: item.incident_number,
+          summary: item.summary,
+          project_id: typeof item.project_id === 'number' ? item.project_id : undefined,
+        })));
+        const problemList = Array.isArray(problemRes.data.problems) ? problemRes.data.problems : [];
+        setExistingProblems(problemList.filter((item: { id?: number }) => typeof item.id === 'number').map((item: { id: number; title?: string; summary?: string; project_id?: number }) => ({
+          id: item.id,
+          title: item.title || item.summary || `Problem ${item.id}`,
+          project_id: typeof item.project_id === 'number' ? item.project_id : undefined,
+        })));
         const number = getString(previewRes.data.problem_number);
         if (number) setPreviewNumber(number);
       })
@@ -151,6 +174,18 @@ export default function NewProblemPage() {
       setError('Short description is required');
       return;
     }
+    if (!projectId) {
+      setError('Select one project before creating a problem.');
+      return;
+    }
+    if (knownError && (!description.trim() || !workaround.trim())) {
+      setError('A known error needs cause evidence and a workaround.');
+      return;
+    }
+    if ((status === 'resolved' || status === 'closed') && !fixVerified) {
+      setError('Closure needs fix verification.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -163,7 +198,7 @@ export default function NewProblemPage() {
         body: JSON.stringify({
           title: title.trim(),
           summary: title.trim(),
-          description: description.trim(),
+          description: `Cause (${causeState}): ${description.trim()}`,
           category,
           subcategory,
           service: service.trim(),
@@ -196,6 +231,17 @@ export default function NewProblemPage() {
       setSaving(false);
     }
   };
+
+  const query = problemQuery.trim().toLowerCase();
+  const matchingProblems = projectId
+    ? existingProblems.filter((item) => (!item.project_id || String(item.project_id) === projectId) && (!query || item.title.toLowerCase().includes(query)))
+    : [];
+  const scopedIncidents = projectId
+    ? incidents.filter((item) => !item.project_id || String(item.project_id) === projectId)
+    : [];
+  const scopedServices = projectId
+    ? services.filter((item) => !item.project_id || String(item.project_id) === projectId)
+    : [];
 
   return (
     <DevOpsLayout>
@@ -233,6 +279,19 @@ export default function NewProblemPage() {
             <div className="empty-state">Loading problem form...</div>
           ) : (
             <form onSubmit={(event) => void submit(event)}>
+              <label className="label">
+                Search existing problems
+                <input className="input" value={problemQuery} onChange={(event) => setProblemQuery(event.target.value)} placeholder="Search this project before creating a new problem" />
+              </label>
+              {!projectId ? <p>Select one project before creating a problem.</p> : null}
+              {projectId && matchingProblems.length > 0 ? (
+                <ul>
+                  {matchingProblems.slice(0, 8).map((item) => (
+                    <li key={item.id}><Link href={`/problems/${item.id}`}>{item.title}</Link></li>
+                  ))}
+                </ul>
+              ) : null}
+              {projectId && query && matchingProblems.length === 0 ? <p>No matching problem in this project.</p> : null}
               <div className="portal-form-grid">
                 <label className="label">
                   Short description
@@ -275,7 +334,7 @@ export default function NewProblemPage() {
                   Service
                   <select className="input" value={service} onChange={(event) => applyService(event.target.value)}>
                     <option value="">Select a service</option>
-                    {services.map((item) => (
+                    {scopedServices.map((item) => (
                       <option key={item.id} value={item.service}>
                         {item.service}
                         {item.environment ? ` · ${item.environment}` : ''}
@@ -303,7 +362,6 @@ export default function NewProblemPage() {
                     {users.map((user) => (
                       <option key={user.id} value={user.id}>
                         {user.username}
-                        {user.email ? ` · ${user.email}` : ''}
                       </option>
                     ))}
                   </select>
@@ -315,15 +373,14 @@ export default function NewProblemPage() {
                     {users.map((user) => (
                       <option key={`caller-${user.id}`} value={user.id}>
                         {user.username}
-                        {user.email ? ` · ${user.email}` : ''}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="label">
                   Project
-                  <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                    <option value="">No project</option>
+                  <select className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setRelatedIncidentId(''); }}>
+                    <option value="">Select one project</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name} ({project.code})
@@ -335,7 +392,7 @@ export default function NewProblemPage() {
                   Related incident
                   <select className="input" value={relatedIncidentId} onChange={(event) => setRelatedIncidentId(event.target.value)}>
                     <option value="">None</option>
-                    {incidents.map((item) => (
+                    {scopedIncidents.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.incident_number || `INC${String(item.id).padStart(7, '0')}`}
                         {item.summary ? ` · ${item.summary}` : ''}
@@ -345,19 +402,32 @@ export default function NewProblemPage() {
                 </label>
               </div>
               <label className="label">
-                Description
-                <textarea className="input" rows={4} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What is recurring, when it started, and the suspected root." />
+                Cause
+                <select className="input" value={causeState} onChange={(event) => setCauseState(event.target.value === 'confirmed' ? 'confirmed' : 'suspected')}>
+                  <option value="suspected">Suspected</option>
+                  <option value="confirmed">Confirmed</option>
+                </select>
+              </label>
+              <label className="label">
+                Cause evidence
+                <textarea className="input" rows={4} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What is recurring, when it started, and the evidence for the cause." />
               </label>
               <label className="label">
                 Workaround
-                <textarea className="input" rows={3} value={workaround} onChange={(event) => setWorkaround(event.target.value)} placeholder="Optional known workaround while RCA is open." />
+                <textarea className="input" rows={3} value={workaround} onChange={(event) => setWorkaround(event.target.value)} placeholder="Required before this can be marked a known error." />
               </label>
               <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={knownError} onChange={(event) => setKnownError(event.target.checked)} />
-                Known error — a workaround exists and this can stay open until a change lands
+                Known error — requires cause evidence and a workaround
               </label>
+              {(status === 'resolved' || status === 'closed') ? (
+                <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={fixVerified} onChange={(event) => setFixVerified(event.target.checked)} />
+                  Fix verified. Closure needs this confirmation.
+                </label>
+              ) : null}
               <div className="portal-form-actions">
-                <button type="submit" className="btn btn-primary" disabled={saving || !title.trim()}>
+                <button type="submit" className="btn btn-primary" disabled={saving || !title.trim() || !projectId}>
                   {saving ? 'Creating...' : 'Create problem'}
                 </button>
               </div>

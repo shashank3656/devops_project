@@ -12,20 +12,20 @@ import (
 )
 
 type operatorAuditRow struct {
-	ID             int       `json:"id"`
-	ActorUserID    *int      `json:"actor_user_id,omitempty"`
-	ActorUsername  string    `json:"actor_username,omitempty"`
-	TeamSlug       string    `json:"team_slug,omitempty"`
-	ProjectID      *int      `json:"project_id,omitempty"`
-	ProjectName    string    `json:"project_name,omitempty"`
-	ProjectCode    string    `json:"project_code,omitempty"`
-	Environment    string    `json:"environment,omitempty"`
-	ResourceType   string    `json:"resource_type"`
-	ResourceID     string    `json:"resource_id"`
-	Action         string    `json:"action"`
-	Result         string    `json:"result"`
-	Summary        string    `json:"summary,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID            int       `json:"id"`
+	ActorUserID   *int      `json:"actor_user_id,omitempty"`
+	ActorUsername string    `json:"actor_username,omitempty"`
+	TeamSlug      string    `json:"team_slug,omitempty"`
+	ProjectID     *int      `json:"project_id,omitempty"`
+	ProjectName   string    `json:"project_name,omitempty"`
+	ProjectCode   string    `json:"project_code,omitempty"`
+	Environment   string    `json:"environment,omitempty"`
+	ResourceType  string    `json:"resource_type"`
+	ResourceID    string    `json:"resource_id"`
+	Action        string    `json:"action"`
+	Result        string    `json:"result"`
+	Summary       string    `json:"summary,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 const (
@@ -102,12 +102,13 @@ func operatorAuditActionTracked(action string) bool {
 		return true
 	}
 	switch action {
-	case "request_approve", "request_reject", "request_promote",
+	case "request_approve", "request_reject", "request_promote", "promotion_exception",
 		"deployment_gate_approve", "deployment_gate_revoke",
 		"request_rollback_prepare", "environment_catalog_update",
 		"cloud_account_onboard", "cloud_account_disable", "cloud_account_enable",
 		"cloud_account_trust_update", "cloud_account_test",
-		"template_create", "template_update", "template_delete":
+		"template_create", "template_update", "template_delete",
+		"security_gate_policy", "security_gate_override", "finding_due_date", "risk_exception", "slo_definition", "pod_failure", "sre_incident", "sre_episode", "automation_rule", "report_definition", "outbound_sync", "readiness_signal", "acceptance_case", "pilot_journey", "webhook_lifecycle", "access_grant", "drift_plan", "backup_record", "service_bootstrap", "change_monitor":
 		return true
 	default:
 		return false

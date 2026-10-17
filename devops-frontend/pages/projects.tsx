@@ -16,12 +16,6 @@ const CLOUD_OPTIONS = [
   { value: 'gcp', label: 'GCP' },
 ];
 
-const SERVICE_OPTIONS: Record<string, string[]> = {
-  aws: ['ec2', 'eks', 'rds', 'vpc', 's3', 'iam', 'lambda'],
-  azure: ['aks', 'postgresql', 'virtual-network', 'storage-account'],
-  gcp: ['gke', 'cloudsql', 'vpc', 'storage', 'iam'],
-};
-
 type ProjectStatus = 'active' | 'inactive' | 'archived';
 
 interface TeamOption {
@@ -229,14 +223,6 @@ export default function DevOpsProjectsPage() {
   useEffect(() => {
     fetchData();
   }, [apiUrl, router]);
-
-  const servicesByCloud = useMemo(() => {
-    const grouped: Record<string, string[]> = {};
-    for (const cloud of form.clouds) {
-      grouped[cloud] = SERVICE_OPTIONS[cloud] || [];
-    }
-    return grouped;
-  }, [form.clouds]);
 
   const updateForm = (patch: Partial<ProjectFormState>) => {
     setForm((current) => ({ ...current, ...patch }));
@@ -687,10 +673,10 @@ export default function DevOpsProjectsPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Project Onboarding</span>
+            <span className="portal-page__eyebrow">Infrastructure</span>
             <h1 className="portal-page__title">Projects</h1>
             <p className="portal-page__subtitle">
-              Define the project catalog that drives user requests: environments, clouds, services, and team access.
+              Teams, clouds and environments with clear ownership.
             </p>
           </div>
           <div className="portal-page__actions">

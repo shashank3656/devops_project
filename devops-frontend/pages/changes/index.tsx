@@ -6,10 +6,22 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
+const DEVOPS_USER_KEY = 'devops_user';
+
+function storedIsAdmin(): boolean {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const user = raw ? JSON.parse(raw) as { role?: string } : null;
+    return user?.role === 'admin';
+  } catch {
+    return false;
+  }
+}
 
 interface ChangeRow {
   id: number;
   change_number: string;
+  project_id?: number;
   project_name?: string;
   project_code?: string;
   service: string;
@@ -114,12 +126,6 @@ const CHANGE_WEBHOOK_LIFECYCLE_SAMPLE = `# Two-phase: same repo + sha — implem
         --arg status "implemented" \\
         '{ repo: $repo, sha: $sha, service: $service, status: $status, change_type: "standard", watch_minutes: 120 }')"`;
 
-function parseProjectID(value: string | string[] | undefined): number {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
-}
-
 export default function ChangesCatalogPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -133,8 +139,6 @@ export default function ChangesCatalogPage() {
   const [selectedKeys, setSelectedKeys] = useState<Set<RowKey>>(new Set());
   const [copied, setCopied] = useState(false);
   const webhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
-  const projectID = parseProjectID(router.query.project_id);
-  const environment = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment || '';
 
   const load = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -143,26 +147,32 @@ export default function ChangesCatalogPage() {
     setError('');
     try {
       const params = new URLSearchParams();
-      if (projectID) params.set('project_id', String(projectID));
-      if (environment) params.set('environment', environment);
       if (statusFilter) params.set('status', statusFilter);
       if (typeFilter) params.set('change_type', typeFilter);
       if (query.trim()) params.set('q', query.trim());
-      const res = await fetch(`${apiUrl}/api/devops/changes?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const search = params.toString();
+      const headers = { Authorization: `Bearer ${token}` };
+      const res = await fetch(`${apiUrl}/api/devops/changes?${search}`, { headers });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      let changes = Array.isArray(data?.changes) ? data.changes : [];
+      if (storedIsAdmin()) {
+        const adminRes = await fetch(`${apiUrl}/api/admin/changes?${search}`, { headers });
+        if (adminRes.ok) {
+          const adminData = await adminRes.json().catch(() => ({}));
+          if (Array.isArray(adminData?.changes)) changes = adminData.changes;
+        }
+      }
+      if (!res.ok && changes.length === 0) {
         setError(data?.error || 'Failed to load changes');
         return;
       }
-      setItems(Array.isArray(data?.changes) ? data.changes : []);
+      setItems(changes);
     } catch {
       setError('Failed to load changes');
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, projectID, environment, statusFilter, typeFilter, query]);
+  }, [apiUrl, statusFilter, typeFilter, query]);
 
   useEffect(() => {
     void load();
@@ -234,10 +244,9 @@ export default function ChangesCatalogPage() {
       <div className="portal-page changes-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Deployments</span>
             <h1 className="portal-page__title">Changes</h1>
             <p className="portal-page__subtitle">
-              Select changes to Approve, Schedule, Implement, Cancel, or Close manually. CI can also record deploys via webhook.
+              Approve, schedule, or close a change. A webhook can record a deploy.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -249,27 +258,12 @@ export default function ChangesCatalogPage() {
 
         {error ? <div className="alert alert-error">{error}</div> : null}
 
-        <section className="k8s-summary-strip">
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Changes</span>
-            <strong className="k8s-summary-card__value">{items.length}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Awaiting approve</span>
-            <strong className="k8s-summary-card__value">{pendingApprove}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Watching</span>
-            <strong className="k8s-summary-card__value">{watchingCount}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Shipped</span>
-            <strong className="k8s-summary-card__value">{implementedCount}</strong>
-          </div>
-          <div className="k8s-summary-card">
-            <span className="k8s-summary-card__label">Failed</span>
-            <strong className="k8s-summary-card__value">{failedCount}</strong>
-          </div>
+        <section className="changes-facts" aria-label="Change summary">
+          <div><span>Changes</span><strong>{loading ? 'Unknown' : items.length}</strong></div>
+          <div><span>Awaiting approve</span><strong>{loading ? 'Unknown' : pendingApprove}</strong></div>
+          <div><span>Watching</span><strong>{loading ? 'Unknown' : watchingCount}</strong></div>
+          <div><span>Shipped</span><strong>{loading ? 'Unknown' : implementedCount}</strong></div>
+          <div><span>Failed</span><strong>{loading ? 'Unknown' : failedCount}</strong></div>
         </section>
 
         <BulkBar count={selectedKeys.size} noun="change" onClear={() => setSelectedKeys(new Set())}>
@@ -358,11 +352,11 @@ export default function ChangesCatalogPage() {
               <code className="changes-page__webhook-url">{webhookUrl}</code>
             </p>
             <p className="portal-surface__subtitle" style={{ marginTop: 12, fontWeight: 600 }}>
-              Single POST (after deploy)
+              Sample payload, single POST after deploy. This is not a recorded event.
             </p>
             <pre className="code-block changes-page__sample">{CHANGE_WEBHOOK_SAMPLE}</pre>
             <p className="portal-surface__subtitle" style={{ marginTop: 12, fontWeight: 600 }}>
-              Two-phase lifecycle
+              Sample payload, two-phase lifecycle. This is not a recorded event.
             </p>
             <pre className="code-block changes-page__sample">{CHANGE_WEBHOOK_LIFECYCLE_SAMPLE}</pre>
           </details>

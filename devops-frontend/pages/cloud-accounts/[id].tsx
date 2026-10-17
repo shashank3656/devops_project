@@ -26,11 +26,14 @@ interface CloudAccount {
   account_id: string;
   display_name: string;
   team_slug: string;
+  project_name?: string;
+  project_code?: string;
   environments: string[];
   auth_mode: string;
-  role_arn?: string;
+  role_arn_set?: boolean;
   external_id_set?: boolean;
   secret_ref_set?: boolean;
+  credentials_encrypted?: boolean;
   status: string;
   last_error?: string;
   last_test_at?: string;
@@ -90,7 +93,7 @@ export default function CloudAccountDetailPage() {
         setItem(account);
         if (account) {
           setAuthMode(account.auth_mode || 'assume_role');
-          setRoleArn(account.role_arn || '');
+          setRoleArn('');
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
@@ -154,9 +157,9 @@ export default function CloudAccountDetailPage() {
       retest: true,
     };
     if (authMode === 'assume_role') {
-      body.role_arn = roleArn.trim();
-      body.external_id = externalId.trim();
-    } else {
+      if (roleArn.trim()) body.role_arn = roleArn.trim();
+      if (externalId.trim()) body.external_id = externalId.trim();
+    } else if (secretRef.trim()) {
       body.secret_ref = secretRef.trim();
     }
     try {
@@ -170,7 +173,9 @@ export default function CloudAccountDetailPage() {
       if (!res.ok) throw new Error(data?.error || 'Failed to update trust');
       if (data.account) {
         setItem(data.account);
-        setRoleArn(data.account.role_arn || '');
+        setRoleArn('');
+        setExternalId('');
+        setSecretRef('');
       }
       setNotice('Trust configuration updated and connection re-tested on the server.');
     } catch (err) {
@@ -238,7 +243,7 @@ export default function CloudAccountDetailPage() {
           title={item?.display_name || 'Cloud account'}
           subtitle={
             item
-              ? `${providerLabel(item.provider)} · ${item.account_id} · team ${item.team_slug}`
+              ? `${providerLabel(item.provider)} · ${item.account_id} · ${item.project_code || item.project_name || 'no project'} · team ${item.team_slug}`
               : 'Loading…'
           }
           actions={
@@ -273,15 +278,19 @@ export default function CloudAccountDetailPage() {
                 </label>
                 <label className="label">
                   {copy.roleLabel}
-                  <input className="input" readOnly value={item.role_arn || '—'} />
+                  <input className="input" readOnly value={item.role_arn_set ? 'Stored encrypted' : '—'} />
                 </label>
                 <label className="label">
                   {copy.externalIdLabel}
-                  <input className="input" readOnly value={item.external_id_set ? 'Configured on server' : '—'} />
+                  <input className="input" readOnly value={item.external_id_set ? 'Stored encrypted' : '—'} />
                 </label>
                 <label className="label">
                   Server secret
-                  <input className="input" readOnly value={item.secret_ref_set ? 'Configured on server' : '—'} />
+                  <input className="input" readOnly value={item.secret_ref_set ? 'Stored encrypted' : '—'} />
+                </label>
+                <label className="label">
+                  Project
+                  <input className="input" readOnly value={item.project_code || item.project_name || '—'} />
                 </label>
                 <label className="label">
                   Environments
@@ -435,22 +444,24 @@ export default function CloudAccountDetailPage() {
                     <>
                       <label className="label">
                         {copy.roleLabel}
-                        <input className="input" value={roleArn} onChange={(e) => setRoleArn(e.target.value)} required />
+                        <input className="input" type="password" value={roleArn} onChange={(e) => setRoleArn(e.target.value)} required={!item.role_arn_set} placeholder={item.role_arn_set ? 'Stored encrypted. Enter a new value only to replace it.' : ''} autoComplete="off" />
                       </label>
                       <label className="label">
                         {copy.externalIdLabel}
                         <input
                           className="input"
+                          type="password"
                           value={externalId}
                           onChange={(e) => setExternalId(e.target.value)}
-                          placeholder={item.external_id_set ? 'Enter new value to replace server copy' : copy.externalIdPlaceholder}
+                          placeholder={item.external_id_set ? 'Stored encrypted. Enter a new value only to replace it.' : copy.externalIdPlaceholder}
+                          autoComplete="off"
                         />
                       </label>
                     </>
                   ) : (
                     <label className="label">
                       Secret reference
-                      <input className="input" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} required placeholder="ENV_VAR_NAME_ON_API_HOST" />
+                      <input className="input" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} required={!item.secret_ref_set} autoComplete="off" placeholder={item.secret_ref_set ? 'Stored encrypted. Enter a new value only to replace it.' : 'ENV_VAR_NAME_ON_API_HOST'} />
                     </label>
                   )}
                   <div style={{ gridColumn: '1 / -1' }}>

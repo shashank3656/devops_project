@@ -5,7 +5,7 @@ import { DataTable, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
-import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel } from '../lib/itsm';
+import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentCanFinish, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel } from '../lib/itsm';
 import { asRecord, getString } from '../lib/payload';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -65,7 +65,9 @@ function normalizeIncident(incident: unknown): Incident {
     project_name: typeof item.project_name === 'string' ? item.project_name : '',
     project_code: typeof item.project_code === 'string' ? item.project_code : '',
     request_team: typeof item.request_team === 'string' ? item.request_team : '',
-    request_env: typeof item.request_env === 'string' ? item.request_env : '',
+    request_env: typeof item.request_env === 'string' && item.request_env
+      ? item.request_env
+      : typeof item.environment === 'string' ? item.environment : '',
     request_service: typeof item.request_service === 'string' ? item.request_service : '',
     request_cloud: typeof item.request_cloud === 'string' ? item.request_cloud : '',
     request_status: typeof item.request_status === 'string' ? item.request_status : '',
@@ -126,6 +128,16 @@ function normalizeIncidents(value: unknown): Incident[] {
   return value.map((incident) => normalizeIncident(incident));
 }
 
+function storedIsAdmin(): boolean {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const user = raw ? JSON.parse(raw) as { role?: string } : null;
+    return user?.role === 'admin';
+  } catch {
+    return false;
+  }
+}
+
 function clearSessionAndRedirect() {
   localStorage.removeItem(DEVOPS_TOKEN_KEY);
   localStorage.removeItem(DEVOPS_USER_KEY);
@@ -179,6 +191,7 @@ export default function DevOpsIncidentsPage() {
   const [summary, setSummary] = useState('');
   const [notes, setNotes] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [finishingId, setFinishingId] = useState<number | null>(null);
   const [currentIncidentNumber, setCurrentIncidentNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -244,7 +257,6 @@ export default function DevOpsIncidentsPage() {
   const activeStatusFilter = useMemo(() => normalizeQueryValue(router.query.status), [router.query.status]);
   const activeEnvironmentFilter = useMemo(() => normalizeQueryValue(router.query.environment), [router.query.environment]);
   const activeFilterCount = [
-    activeProjectID ? String(activeProjectID) : '',
     activeRequestID ? String(activeRequestID) : '',
     activeSeverityFilter,
     activeStatusFilter,
@@ -263,17 +275,16 @@ export default function DevOpsIncidentsPage() {
 
   const filteredIncidents = useMemo(() => {
     return incidents.filter((incident) => {
-      if (activeProjectID && incident.project_id !== activeProjectID) return false;
       if (activeRequestID && incident.request_id !== activeRequestID) return false;
       if (activeSeverityFilter && severityToPriority(incident.severity) !== activeSeverityFilter) return false;
       if (activeStatusFilter && incidentStateValue(incident.status) !== incidentStateValue(activeStatusFilter)) return false;
       if (activeEnvironmentFilter && incident.request_env?.trim().toLowerCase() !== activeEnvironmentFilter) return false;
       return true;
     });
-  }, [activeEnvironmentFilter, activeProjectID, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
+  }, [activeEnvironmentFilter, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
 
   const hasActiveFilters = Boolean(
-    activeProjectID || activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
+    activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
   );
   const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
 
@@ -288,6 +299,39 @@ export default function DevOpsIncidentsPage() {
       assigned,
     };
   }, [filteredIncidents]);
+
+  const finishIncident = async (incident: Incident, action: 'close' | 'cancel') => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect();
+      return;
+    }
+    setFinishingId(incident.id);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/incidents/${incident.id}/${action}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok) {
+        throw new Error(getString(data.error, 'Could not update the incident'));
+      }
+      const nextStatus = action === 'close' ? 'closed' : 'cancelled';
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? { ...item, status: nextStatus } : item)));
+      setNotice(action === 'close' ? 'Incident closed.' : 'Incident cancelled.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update the incident');
+    } finally {
+      setFinishingId(null);
+    }
+  };
 
   const incidentQueueColumns: DataTableColumn<Incident>[] = useMemo(
     () => [
@@ -351,20 +395,48 @@ export default function DevOpsIncidentsPage() {
         id: 'action',
         header: 'Action',
         cell: (incident) => (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={(event) => {
-              event.stopPropagation();
-              void router.push(`/incidents/${incident.id}/edit`);
-            }}
-          >
-            Edit
-          </button>
+          <div className="portal-page__actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                void router.push(`/incidents/${incident.id}/edit`);
+              }}
+            >
+              Edit
+            </button>
+            {incidentCanFinish(incident.status) ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={finishingId === incident.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void finishIncident(incident, 'close');
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={finishingId === incident.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void finishIncident(incident, 'cancel');
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : null}
+          </div>
         ),
       },
     ],
-    [router],
+    [router, finishingId, apiUrl],
   );
 
   const loadData = async () => {
@@ -377,18 +449,30 @@ export default function DevOpsIncidentsPage() {
     setError('');
     try {
       const params = new URLSearchParams();
-      if (activeProjectID) params.set('project_id', String(activeProjectID));
-      if (activeEnvironmentFilter) params.set('environment', activeEnvironmentFilter);
       if (activeStatusFilter) params.set('status', activeStatusFilter);
-      const response = await fetch(`${apiUrl}/api/devops/incidents${params.toString() ? `?${params}` : ''}`, {
+      const query = params.toString() ? `?${params}` : '';
+      const response = await fetch(`${apiUrl}/api/devops/incidents${query}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         clearSessionAndRedirect();
         return;
       }
       const data = asRecord(await response.json().catch(() => ({})));
-      if (!response.ok) {
+      if (storedIsAdmin()) {
+        const adminResponse = await fetch(`${apiUrl}/api/admin/incidents${query}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (adminResponse.ok) {
+          const adminData = asRecord(await adminResponse.json().catch(() => ({})));
+          data.incidents = adminData.incidents;
+        }
+      }
+      if (!response.ok && !Array.isArray(data.incidents)) {
+        if (response.status === 403) {
+          clearSessionAndRedirect();
+          return;
+        }
         throw new Error(getString(data.error, 'Failed to load incidents'));
       }
       setTeams(normalizeTeams(data.teams));
@@ -403,7 +487,7 @@ export default function DevOpsIncidentsPage() {
 
   useEffect(() => {
     void loadData();
-  }, [apiUrl, activeProjectID, activeEnvironmentFilter, activeStatusFilter]);
+  }, [apiUrl, activeStatusFilter]);
 
   const resetForm = () => {
     setEditingId(null);

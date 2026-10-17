@@ -456,3 +456,331 @@
     padding: 0 8px;
   }
 }
+
+.desk-language-signed-out {
+  min-height: 100vh;
+  background: var(--ig-bg);
+  padding: 32px;
+}
+
+.desk-language {
+  display: grid;
+  gap: 28px;
+  max-width: 1040px;
+}
+
+.desk-language:has(.desk-language__rail) {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  column-gap: 48px;
+  row-gap: 20px;
+  align-items: start;
+}
+
+.desk-language:has(.desk-language__rail) > * {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.desk-language:has(.desk-language__rail) > .desk-landing {
+  grid-column: 1 / -1;
+}
+
+.desk-landing {
+  display: grid;
+  gap: 8px;
+  max-width: 40rem;
+}
+
+.desk-landing__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.desk-landing h1,
+.desk-landing h2 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  color: var(--ig-text);
+}
+
+.desk-landing p {
+  margin: 0;
+  color: var(--ig-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.desk-language__panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.desk-language:has(.desk-language__rail) > .desk-language__rail {
+  grid-column: 2;
+  grid-row: 2 / span 12;
+  align-self: start;
+  position: sticky;
+  top: 24px;
+  padding-left: 28px;
+  border-left: 1px solid var(--ig-border);
+}
+
+.desk-language__panel h2 {
+  margin: 0 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ig-muted);
+}
+
+@media (max-width: 860px) {
+  .desk-language:has(.desk-language__rail) {
+    grid-template-columns: 1fr;
+  }
+
+  .desk-language:has(.desk-language__rail) > .desk-language__rail {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+    padding-left: 0;
+    border-left: 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ig-border);
+  }
+}
+
+.desk-language__chips,
+.desk-language__samples,
+.desk-language__choices,
+.desk-language__records li,
+.desk-language__sample,
+.desk-language__empty,
+.desk-language__actions,
+.desk-language__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.desk-language__sample,
+.desk-language__note,
+.desk-language__empty p {
+  color: var(--ig-muted);
+  margin: 0;
+}
+
+.desk-language__samples,
+.desk-language__panel .desk-language__note {
+  margin-top: 12px;
+}
+
+.desk-language__choices {
+  margin-bottom: 14px;
+}
+
+.desk-language__choices button {
+  border: 1px solid var(--ig-border);
+  background: var(--ig-surface-2);
+  color: var(--ig-text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.desk-language__choices button.is-selected {
+  background: var(--ig-accent-soft);
+  color: var(--ig-accent-text);
+  border-color: var(--ig-accent-border);
+}
+
+.desk-language__records {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+section.desk-language__records > h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ig-muted);
+}
+
+.desk-language__records li {
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 0;
+  border-top: 1px solid var(--ig-border);
+}
+
+.desk-language__records li[aria-current='true'] {
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--ig-accent);
+  padding-left: 12px;
+}
+
+.desk-language__records button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desk-language__records button > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.desk-language__records small {
+  display: block;
+  margin-top: 4px;
+  color: var(--ig-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.desk-language__form {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+
+.desk-language__field {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.desk-language__form label {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ig-muted);
+}
+
+.desk-language__form label:has(input[type='checkbox']) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+}
+
+.desk-language__form label:has(input[type='checkbox']) input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.desk-language__form button[type='submit']:not(.btn) {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ig-accent);
+  color: var(--ig-accent-on);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.desk-language__form button[type='submit']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.desk-language__form .btn,
+.desk-language__form button[type='submit'] {
+  justify-self: start;
+  width: auto;
+}
+
+.desk-language__form input:not([type='checkbox']),
+.desk-language__form select {
+  width: 100%;
+  max-width: 360px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--ig-border);
+  background: var(--ig-surface);
+  color: var(--ig-text);
+  padding: 0 12px;
+}
+
+.desk-language__error {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--ig-danger);
+  font-weight: 600;
+}
+
+.desk-state--empty {
+  color: var(--ig-muted);
+  background: var(--ig-surface-2);
+}
+
+.desk-state--error {
+  color: var(--ig-danger);
+  background: var(--ig-danger-soft);
+}
+
+.desk-state--stale {
+  color: var(--ig-warning);
+  background: var(--ig-warning-soft);
+}
+
+.desk-state--unknown {
+  color: var(--ig-info);
+  background: var(--ig-info-soft);
+}
+
+.desk-state--ready {
+  color: var(--ig-success);
+  background: var(--ig-success-soft);
+}
+
+.my-work__sections {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.my-work__sections a,
+.my-work__sections button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--ig-border);
+  background: transparent;
+  color: var(--ig-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}

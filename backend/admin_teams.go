@@ -25,6 +25,10 @@ func adminBreakGlassUserID(r *http.Request) (int, bool) {
 	if secret == "" || r.Header.Get("X-Admin-Secret") != secret {
 		return 0, false
 	}
+	if isProductionRuntime() {
+		log.Printf("admin break-glass rejected (disabled in production) path=%s", r.URL.Path)
+		return 0, false
+	}
 	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
 		log.Printf("admin break-glass rejected (browser Origin) origin=%s path=%s", origin, r.URL.Path)
 		return 0, false
@@ -280,6 +284,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	AppendAuditLog(adminIDPtr, "user_create", "user", strconv.Itoa(userID), req.Username)
+	emailSent := sendAccountCreatedEmail(req.Email, req.Username)
 	userResp := map[string]interface{}{"id": userID, "username": req.Username, "email": req.Email, "role": req.Role, "verified": true, "user_type": userType}
 	if userType == "portal_user" {
 		if u, _ := GetUserByID(userID); u != nil {
@@ -296,7 +301,7 @@ func adminUsersCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	encodeAdminTeamJSON(w, map[string]interface{}{"user": userResp, "status": "ok"})
+	encodeAdminTeamJSON(w, map[string]interface{}{"user": userResp, "status": "ok", "email_sent": emailSent})
 }
 
 // adminUserDetailHandler handles GET and PATCH /api/admin/users/:id (admin only)
@@ -517,8 +522,24 @@ func adminTeamsListHandler(w http.ResponseWriter, r *http.Request) {
 	if teams == nil {
 		teams = []Team{}
 	}
+	saved, _ := loadSavedSectionGrants()
+	views := make([]map[string]interface{}, 0, len(teams))
+	for _, team := range teams {
+		grants, custom := saved[team.ID]
+		if !custom {
+			grants = defaultSectionGrants(team.TeamType)
+		}
+		views = append(views, map[string]interface{}{
+			"id":           team.ID,
+			"name":         team.Name,
+			"slug":         team.Slug,
+			"team_type":    team.TeamType,
+			"grants":       grants,
+			"grants_saved": custom,
+		})
+	}
 	w.Header().Set("Content-Type", "application/json")
-	encodeAdminTeamJSON(w, map[string]interface{}{"teams": teams, "status": "ok"})
+	encodeAdminTeamJSON(w, map[string]interface{}{"teams": views, "status": "ok"})
 }
 
 // adminTeamsCreateHandler POST /api/admin/teams
@@ -883,6 +904,10 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeMethodNotAllowed(w, r)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "grants" {
+		adminTeamGrantsHandler(w, r)
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "members" {

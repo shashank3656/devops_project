@@ -8,6 +8,42 @@ import (
 	"strings"
 )
 
+func requestRaisedMessage(req *PRRequest) string {
+	service := strings.TrimSpace(req.Service)
+	if service == "" {
+		service = "a service"
+	}
+	env := strings.TrimSpace(req.Env)
+	if env == "" {
+		env = "the selected environment"
+	}
+	return fmt.Sprintf("Request #%d was raised for %s in %s. It is waiting for approval.", req.ID, service, env)
+}
+
+// NotifyRequestRaised emails the person who raised a request. Drafts do not send mail.
+func NotifyRequestRaised(req *PRRequest) {
+	if req == nil || req.CreatedBy == nil || *req.CreatedBy <= 0 || req.Status == "draft" {
+		return
+	}
+	msg := requestRaisedMessage(req)
+	reqID := req.ID
+	_ = InsertUserNotification(*req.CreatedBy, &reqID, req.ProjectID, "raised", msg)
+	sendNotificationEmailIfConfigured(*req.CreatedBy, "raised", "Request raised", msg)
+	if req.Status != "pending_user_manager_approval" {
+		return
+	}
+	managerID := GetGroupManagerForUserInTeam(*req.CreatedBy, req.Team)
+	if managerID == 0 {
+		managerID = GetGroupManagerForUser(*req.CreatedBy)
+	}
+	if managerID <= 0 || managerID == *req.CreatedBy {
+		return
+	}
+	note := fmt.Sprintf("Request #%d is waiting for your approval.", req.ID)
+	_ = InsertUserNotification(managerID, &reqID, req.ProjectID, "raised", note)
+	sendNotificationEmailIfConfigured(managerID, "raised", "Request waiting for approval", note)
+}
+
 // NotifyRequestApproved notifies the request creator that the request was approved (moved to DevOps or similar).
 func NotifyRequestApproved(req *PRRequest, message string) {
 	if req == nil || req.CreatedBy == nil || *req.CreatedBy <= 0 {

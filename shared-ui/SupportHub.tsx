@@ -47,7 +47,7 @@ function buildGreeting(portalName: string, currentTitle: string, article: Suppor
   return {
     id: 'greeting',
     role: 'assistant',
-    text: `Hi, I’m the SetuOps support assistant for ${portalName}.\n\n${contextLine}\n\nI can explain workflows, point you to the right page, and surface the most relevant docs without sending you hunting through the menu.`,
+    text: contextLine,
     actions: article?.actions,
   };
 }
@@ -172,6 +172,14 @@ export default function SupportHub({
   }, [open]);
 
   useEffect(() => {
+    if (!open || typeof document === 'undefined') return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => {
+      previous?.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
     const nextFocus = activeTab === 'chat' ? textareaRef.current : docsSearchRef.current;
     const raf = window.requestAnimationFrame(() => {
@@ -204,6 +212,8 @@ export default function SupportHub({
       article.keywords.some((keyword) => keyword.toLowerCase().includes(normalized))
     );
   }, [articles, contextArticle, docsQuery, selectedCategory]);
+
+  if (!open) return null;
 
   const handleSend = (seed?: string) => {
     const question = (seed ?? input).trim();
@@ -251,13 +261,13 @@ export default function SupportHub({
 
   return (
     <>
-      <div className={`portal-assistant-overlay ${open ? 'portal-assistant-overlay--open' : ''}`} aria-hidden={!open} onClick={onClose} />
-      <aside className={`portal-assistant ${open ? 'portal-assistant--open' : ''}`} role="dialog" aria-modal="true" aria-label={`${portalName} support assistant`}>
+      <div className="portal-assistant-overlay portal-assistant-overlay--open" onClick={onClose} />
+      <aside className="portal-assistant portal-assistant--open" role="dialog" aria-modal="true" aria-label={`${portalName} support assistant`}>
         <div className="portal-assistant__header">
           <div>
             <span className="portal-assistant__eyebrow">SetuOps Support</span>
             <h2 className="portal-assistant__title">{portalName} assistant</h2>
-            <p className="portal-assistant__subtitle">Support works like a chatbot here, while Documentation keeps the structured guidance close by.</p>
+            <p className="portal-assistant__subtitle">Docs for this page.</p>
           </div>
           <button ref={closeButtonRef} type="button" className="portal-assistant__close" onClick={onClose}>Close</button>
         </div>

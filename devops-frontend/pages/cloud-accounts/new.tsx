@@ -19,17 +19,25 @@ interface DevopsTeam {
   slug: string;
 }
 
-const ENV_PRESETS = ['dev', 'uat', 'stage', 'prod'];
+interface ProjectOption {
+  id: number;
+  name: string;
+  code?: string;
+}
 
 export default function CloudAccountOnboardPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [teams, setTeams] = useState<DevopsTeam[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [envOptions, setEnvOptions] = useState<string[]>([]);
+  const [environments, setEnvironments] = useState<string[]>([]);
+  const [envsLoading, setEnvsLoading] = useState(false);
   const [provider, setProvider] = useState<CloudProviderId>('aws');
   const [accountId, setAccountId] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [teamSlug, setTeamSlug] = useState('');
-  const [envInput, setEnvInput] = useState('dev, prod');
   const [authMode, setAuthMode] = useState('assume_role');
   const [roleArn, setRoleArn] = useState('');
   const [externalId, setExternalId] = useState('');
@@ -45,16 +53,52 @@ export default function CloudAccountOnboardPage() {
       router.replace('/login');
       return;
     }
-    portalFetch(`${apiUrl}/api/devops/my-teams`, { token })
+    portalFetch(`${apiUrl}/api/devops/projects`, { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
-        if (res.ok && Array.isArray(data.teams)) {
-          setTeams(data.teams);
-          if (data.teams[0]?.slug) setTeamSlug(data.teams[0].slug);
-        }
+        if (res.ok && Array.isArray(data.projects)) setProjects(data.projects);
       })
       .catch(() => {});
   }, [apiUrl, router]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setEnvOptions([]);
+      setEnvironments([]);
+      setTeams([]);
+      setTeamSlug('');
+      return;
+    }
+    const token = localStorage.getItem('devops_token');
+    if (!token) return;
+    setEnvsLoading(true);
+    setEnvironments([]);
+    setTeams([]);
+    setTeamSlug('');
+    portalFetch(`${apiUrl}/api/devops/projects/${projectId}`, { token })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        const raw = data?.project?.environments;
+        const next = Array.isArray(raw) ? raw.filter((item: unknown) => typeof item === 'string' && item.trim()) : [];
+        setEnvOptions(next);
+        if (next.length === 1) setEnvironments(next);
+        const access = Array.isArray(data?.project?.team_access) ? data.project.team_access : [];
+        const nextTeams = access
+          .map((item: { team_id?: number; team_name?: string; team_slug?: string }) => ({
+            id: Number(item.team_id) || 0,
+            name: item.team_name || item.team_slug || '',
+            slug: item.team_slug || '',
+          }))
+          .filter((item: DevopsTeam) => item.slug);
+        setTeams(nextTeams);
+        if (nextTeams.length === 1) setTeamSlug(nextTeams[0].slug);
+      })
+      .catch(() => {
+        setEnvOptions([]);
+        setTeams([]);
+      })
+      .finally(() => setEnvsLoading(false));
+  }, [apiUrl, projectId]);
 
   const onProviderChange = (next: string) => {
     const id = normalizeCloudProvider(next);
@@ -70,12 +114,12 @@ export default function CloudAccountOnboardPage() {
     e.preventDefault();
     const token = localStorage.getItem('devops_token');
     if (!token) return;
+    if (environments.length === 0) {
+      setError('Choose an environment from this project.');
+      return;
+    }
     setSaving(true);
     setError('');
-    const environments = envInput
-      .split(/[,\s]+/)
-      .map((v) => v.trim())
-      .filter(Boolean);
     try {
       const res = await portalFetch(`${apiUrl}/api/devops/cloud/accounts`, {
         token,
@@ -86,6 +130,7 @@ export default function CloudAccountOnboardPage() {
           account_id: accountId.trim(),
           display_name: displayName.trim(),
           team_slug: teamSlug.trim(),
+          project_id: Number(projectId),
           environments,
           auth_mode: authMode,
           role_arn: roleArn.trim(),
@@ -158,19 +203,78 @@ export default function CloudAccountOnboardPage() {
             <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required placeholder="Platform production" />
           </label>
           <label className="label">
-            DevOps team
-            <select className="input" value={teamSlug} onChange={(e) => setTeamSlug(e.target.value)} required>
-              <option value="">Select team</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.slug}>
-                  {t.name} ({t.slug})
+            Project
+            <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
+              <option value="">Select project</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.code ? `${project.name} (${project.code})` : project.name}
                 </option>
               ))}
             </select>
           </label>
           <label className="label">
+            Team
+            <select className="input" value={teamSlug} onChange={(e) => setTeamSlug(e.target.value)} required disabled={!projectId || envsLoading}>
+              <option value="">{!projectId ? 'Select a project first' : envsLoading ? 'Loading teams...' : teams.length === 0 ? 'No teams' : 'Select team'}</option>
+              {teams.map((t) => (
+                <option key={t.id || t.slug} value={t.slug}>
+                  {t.name && t.name !== t.slug ? `${t.name} (${t.slug})` : t.slug}
+                </option>
+              ))}
+            </select>
+            <span className="ig-muted" style={{ fontSize: 12 }}>
+              {!projectId ? 'Select a project to load its teams.' : envsLoading ? 'Loading teams...' : teams.length === 0 ? 'This project has no teams.' : 'These are the teams on the selected project.'}
+            </span>
+          </label>
+          <label className="label">
             Environments
-            <input className="input" value={envInput} onChange={(e) => setEnvInput(e.target.value)} placeholder={ENV_PRESETS.join(', ')} />
+            <select
+              className="input"
+              value=""
+              disabled={!projectId || envsLoading || envOptions.length === 0}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (!next) return;
+                setEnvironments((current) => (current.includes(next) ? current : [...current, next]));
+              }}
+            >
+              <option value="">
+                {!projectId
+                  ? 'Select a project first'
+                  : envsLoading
+                    ? 'Loading environments...'
+                    : envOptions.length === 0
+                      ? 'No environments'
+                      : 'Select environment'}
+              </option>
+              {envOptions.filter((env) => !environments.includes(env)).map((env) => (
+                <option key={env} value={env}>{env}</option>
+              ))}
+            </select>
+            {environments.length > 0 ? (
+              <span style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {environments.map((env) => (
+                  <button
+                    key={env}
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setEnvironments((current) => current.filter((item) => item !== env))}
+                  >
+                    {env} · Remove
+                  </button>
+                ))}
+              </span>
+            ) : null}
+            <span className="ig-muted" style={{ fontSize: 12 }}>
+              {!projectId
+                ? 'Select a project to load its environments.'
+                : envsLoading
+                  ? 'Loading environments...'
+                  : envOptions.length === 0
+                    ? 'This project has no environments.'
+                    : 'Open the list and choose an environment. Add another the same way.'}
+            </span>
           </label>
           <label className="label">
             Auth mode
@@ -183,19 +287,22 @@ export default function CloudAccountOnboardPage() {
             <>
               <label className="label">
                 {copy.roleLabel}
-                <input className="input" value={roleArn} onChange={(e) => setRoleArn(e.target.value)} required placeholder={copy.rolePlaceholder} />
+                <input className="input" type="password" autoComplete="off" value={roleArn} onChange={(e) => setRoleArn(e.target.value)} required placeholder={copy.rolePlaceholder} />
               </label>
               <label className="label">
                 {copy.externalIdLabel}
-                <input className="input" value={externalId} onChange={(e) => setExternalId(e.target.value)} placeholder={copy.externalIdPlaceholder} />
+                <input className="input" type="password" autoComplete="off" value={externalId} onChange={(e) => setExternalId(e.target.value)} placeholder={copy.externalIdPlaceholder} />
               </label>
             </>
           ) : (
             <label className="label">
               Secret reference (env var name on API host)
-              <input className="input" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} required placeholder="CLOUD_ACCOUNT_PLATFORM_KEYS" />
+              <input className="input" type="password" autoComplete="off" value={secretRef} onChange={(e) => setSecretRef(e.target.value)} required placeholder="CLOUD_ACCOUNT_PLATFORM_KEYS" />
             </label>
           )}
+          <p className="portal-surface__subtitle" style={{ gridColumn: '1 / -1', margin: 0 }}>
+            The role, external ID, and secret reference are stored encrypted. The response returns the account you entered and whether those values are set. It does not return the values.
+          </p>
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Saving…' : 'Save and test on server'}

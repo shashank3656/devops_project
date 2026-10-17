@@ -47,7 +47,7 @@ docker compose --env-file config/.env --profile dev up -d --build
 | `SESSION_SECRET` or `JWT_SECRET` | HMAC key for signed session tokens. Required when `APP_ENV=production` |
 | `API_KEY_HASH_SECRET` | API key hash pepper. Required when `APP_ENV=production` |
 | `ALLOW_TEST_OTP` | Dev/CI only. If `true` outside production, API may include `otp_for_testing` when SMTP is down. **Leave unset/false for customer deployments** — portals never display test OTPs. |
-| `SMTP_*` | Required for login 2FA and password reset. Without `SMTP_HOST`, enabling 2FA blocks login with a clear error. |
+| `SMTP_*` | Required for login 2FA and password reset. Without `SMTP_HOST`, enabling 2FA blocks login with a clear error. Maintenance, on-call cover, major-incident, and IAM grant messages are still saved in the app when SMTP is empty; they are emailed only when `SMTP_HOST` is set. See [FLOWS.md](./FLOWS.md#who-is-told). |
 | `CORS_ALLOWED_ORIGINS` | Extra comma-separated browser origins. Portal URLs are already allowed. `*` is ignored |
 | `FRONTEND_URL`, `ADMIN_FRONTEND_URL`, `DEVOPS_FRONTEND_URL` | Portal URLs used for CORS, links, and emails |
 | `DEFAULT_ADMIN_USERNAME`, `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_ADMIN_EMAIL` | Initial admin bootstrap |

@@ -117,27 +117,18 @@ function AnalyticsBarList({
         </div>
       </div>
       {items.length === 0 ? (
-        <div className="empty-state">No data available yet.</div>
+        <div className="empty-state">Nothing recorded yet.</div>
       ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div className="alert-bars">
           {items.map((item) => {
-            const width = maxCount > 0 ? `${Math.max(12, Math.round((item.count / maxCount) * 100))}%` : '12%';
+            const width = maxCount > 0 ? `${Math.max(8, Math.round((item.count / maxCount) * 100))}%` : '8%';
             return (
-              <article key={`${eyebrow}-${item.key}`} style={{ display: 'grid', gap: 6 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <article key={`${eyebrow}-${item.key}`}>
+                <div>
                   <strong>{toTitleCase(item.label || item.key)}</strong>
                   <span className="portal-pill">{item.count}</span>
                 </div>
-                <div style={{ height: 10, background: 'rgba(15, 23, 42, 0.08)', borderRadius: 999, overflow: 'hidden' }}>
-                  <div
-                    style={{
-                      width,
-                      height: '100%',
-                      borderRadius: 999,
-                      background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.9), rgba(34, 197, 94, 0.85))',
-                    }}
-                  />
-                </div>
+                <div className="alert-meter"><span style={{ width }} /></div>
               </article>
             );
           })}
@@ -153,7 +144,6 @@ export default function ApprovalNotificationAnalyticsPage() {
   const [analytics, setAnalytics] = useState<OpsAnalyticsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showSettingsPosture, setShowSettingsPosture] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -201,62 +191,53 @@ export default function ApprovalNotificationAnalyticsPage() {
       <Head>
         <title>Approval & Notification Analytics - DevOps Portal</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="alert-page">
+        <header className="work-page__head">
           <div>
-            <span className="portal-page__eyebrow">Operations Analytics</span>
-            <h1 className="portal-page__title">Approval & notification analytics</h1>
-            <p className="portal-page__subtitle">
-              Track approval load, alert volume, reminder pressure, and delivery channel posture from one operational dashboard.
-            </p>
+            <h1>Alert analytics</h1>
+            <p>Approvals, alert volume, and whether each channel is turned on.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/notification-settings" className="btn btn-secondary">Notification Settings</Link>
-            <Link href="/gate-approvals" className="btn btn-secondary">Gate Audit</Link>
-            <Link href="/ops-command-center" className="btn btn-primary">Ops Command Center</Link>
+            <Link href="/notification-settings" className="btn btn-secondary">Settings</Link>
+            <Link href="/retry-center" className="btn btn-secondary">Retries</Link>
           </div>
-        </div>
+        </header>
 
-        {loading ? <div className="portal-surface"><div className="empty-state">Loading approval and notification analytics...</div></div> : null}
+        {loading ? <div className="portal-surface"><div className="empty-state">Loading analytics...</div></div> : null}
         {error ? <div className="alert alert-error">{error}</div> : null}
 
         {!loading && !error && analytics ? (
           <>
-            <section className="portal-surface" style={{ marginBottom: 24 }}>
-              <div className="portal-pill-row">
-                <span className="portal-pill">Active approvals {summary.active_approvals}</span>
-                <span className="portal-pill">Expiring soon {summary.approvals_expiring_24h}</span>
-                <span className="portal-pill">Notifications 7d {summary.notifications_last_7_days}</span>
-                <span className="portal-pill">Blocked alerts {summary.blocked_promotion_alerts}</span>
-                <span className="portal-pill">Expiry alerts {summary.expiry_tracker_alerts}</span>
-              </div>
-            </section>
+            <div className="changes-facts">
+              <div><span>Active approvals</span><strong>{summary.active_approvals}</strong></div>
+              <div><span>Expiring in 24h</span><strong>{summary.approvals_expiring_24h}</strong></div>
+              <div><span>Alerts, 7 days</span><strong>{summary.notifications_last_7_days}</strong></div>
+              <div><span>Alerts, 30 days</span><strong>{summary.notifications_last_30_days}</strong></div>
+              <div><span>Blocked</span><strong>{summary.blocked_promotion_alerts}</strong></div>
+              <div><span>Expiry</span><strong>{summary.expiry_tracker_alerts}</strong></div>
+            </div>
 
-            <div className="portal-grid" style={{ alignItems: 'start', marginTop: 24 }}>
+            <div className="changes-facts">
+              <div><span>In app</span><strong>{analytics.settings.in_app_enabled ? 'On' : 'Off'}</strong></div>
+              <div><span>Email</span><strong>{analytics.settings.email_enabled ? 'On' : 'Off'}</strong></div>
+              <div><span>Slack</span><strong>{analytics.settings.slack_configured ? 'Connected' : 'Not set'}</strong></div>
+              <div><span>Teams</span><strong>{analytics.settings.teams_configured ? 'Connected' : 'Not set'}</strong></div>
+              <div><span>Webhook</span><strong>{analytics.settings.webhook_configured ? 'Connected' : 'Not set'}</strong></div>
+            </div>
+
+            <div className="alert-trends">
               <section className="portal-surface">
                 <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">Approvals</span>
-                    <h2 className="portal-surface__title">14-day approval trend</h2>
-                  </div>
+                  <h2 className="portal-surface__title">Approvals, 14 days</h2>
                 </div>
-                <div style={{ display: 'grid', gap: 10 }}>
+                <div className="alert-trend">
                   {analytics.approval_trend.map((point) => (
-                    <article key={`approval-trend-${point.label}`} style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                    <article key={`approval-trend-${point.label}`}>
+                      <div className="alert-trend__meta">
                         <span>{point.label}</span>
                         <span className="portal-pill">{point.approval_count}</span>
                       </div>
-                      <div style={{ height: 10, background: 'rgba(15, 23, 42, 0.08)', borderRadius: 999, overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            width: `${Math.max(point.approval_count > 0 ? point.approval_count * 12 : 12, 12)}%`,
-                            maxWidth: '100%',
-                            height: '100%',
-                            background: 'linear-gradient(90deg, rgba(34, 197, 94, 0.9), rgba(14, 165, 233, 0.9))',
-                          }}
-                        />
-                      </div>
+                      <div className="alert-meter"><span style={{ width: `${Math.min(100, Math.max(point.approval_count > 0 ? 18 : 0, point.approval_count * 12))}%` }} /></div>
                     </article>
                   ))}
                 </div>
@@ -264,121 +245,59 @@ export default function ApprovalNotificationAnalyticsPage() {
 
               <section className="portal-surface">
                 <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">Notifications</span>
-                    <h2 className="portal-surface__title">14-day notification trend</h2>
-                  </div>
+                  <h2 className="portal-surface__title">Alerts, 14 days</h2>
                 </div>
-                <div style={{ display: 'grid', gap: 10 }}>
+                <div className="alert-trend">
                   {analytics.notification_trend.map((point) => (
-                    <article key={`notification-trend-${point.label}`} style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <article key={`notification-trend-${point.label}`}>
+                      <div className="alert-trend__meta">
                         <span>{point.label}</span>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <span className="portal-pill">Total {point.notification_count}</span>
-                          <span className="portal-pill">Blocked {point.blocked_alert_count}</span>
-                          <span className="portal-pill">Expiry {point.expiry_alert_count}</span>
-                        </div>
+                        <span className="portal-pill">{point.notification_count} · blocked {point.blocked_alert_count}</span>
                       </div>
-                      <div style={{ height: 10, background: 'rgba(15, 23, 42, 0.08)', borderRadius: 999, overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            width: `${Math.max(point.notification_count > 0 ? point.notification_count * 10 : 12, 12)}%`,
-                            maxWidth: '100%',
-                            height: '100%',
-                            background: 'linear-gradient(90deg, rgba(249, 115, 22, 0.9), rgba(239, 68, 68, 0.9))',
-                          }}
-                        />
-                      </div>
+                      <div className="alert-meter alert-meter--warm"><span style={{ width: `${Math.min(100, Math.max(point.notification_count > 0 ? 18 : 0, point.notification_count * 10))}%` }} /></div>
                     </article>
                   ))}
                 </div>
               </section>
             </div>
 
-            <div className="portal-grid" style={{ alignItems: 'start', marginTop: 24 }}>
-              <AnalyticsBarList title="Approvals by environment" eyebrow="Breakdown" items={analytics.approvals_by_environment} />
-              <AnalyticsBarList title="Approvals by approver" eyebrow="Breakdown" items={analytics.approvals_by_approver} />
-              <AnalyticsBarList title="Notifications by type" eyebrow="Breakdown" items={analytics.notifications_by_type} />
+            <div className="alert-trends alert-trends--three">
+              <AnalyticsBarList title="By environment" eyebrow="Approvals" items={analytics.approvals_by_environment} />
+              <AnalyticsBarList title="By approver" eyebrow="Approvals" items={analytics.approvals_by_approver} />
+              <AnalyticsBarList title="By type" eyebrow="Alerts" items={analytics.notifications_by_type} />
             </div>
 
-            <div className="portal-grid" style={{ alignItems: 'start', marginTop: 24 }}>
-              <section className="portal-surface">
-                <div className="portal-surface__header">
-                  <div>
-                    <span className="portal-surface__eyebrow">Recent activity</span>
-                    <h2 className="portal-surface__title">Latest notification events</h2>
-                  </div>
-                  <div className="portal-page__actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setShowSettingsPosture((current) => !current)}
-                    >
-                      {showSettingsPosture ? 'Hide settings posture' : 'Show settings posture'}
-                    </button>
-                    <Link href="/notification-settings" className="btn btn-secondary btn-sm">Edit settings</Link>
-                  </div>
-                </div>
-                {analytics.recent_events.length === 0 ? (
-                  <div className="empty-state">No notification events recorded yet.</div>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="templates-table">
-                      <thead>
-                        <tr>
-                          <th>Event</th>
-                          <th>Category</th>
-                          <th>Target</th>
-                          <th>Created</th>
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <h2 className="portal-surface__title">Latest events</h2>
+              </div>
+              {analytics.recent_events.length === 0 ? (
+                <div className="empty-state">No alert events yet.</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="templates-table">
+                    <thead>
+                      <tr>
+                        <th>Event</th>
+                        <th>Category</th>
+                        <th>Target</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analytics.recent_events.map((event) => (
+                        <tr key={`recent-event-${event.id}`}>
+                          <td><strong>{event.event_key || `event-${event.id}`}</strong></td>
+                          <td>{toTitleCase(event.category)}</td>
+                          <td>{event.target || '—'}</td>
+                          <td>{formatDateTime(event.created_at)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {analytics.recent_events.map((event) => (
-                          <tr key={`recent-event-${event.id}`}>
-                            <td><strong>{event.event_key || `event-${event.id}`}</strong></td>
-                            <td>{toTitleCase(event.category)}</td>
-                            <td>{event.target || '—'}</td>
-                            <td>{formatDateTime(event.created_at)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-
-              {showSettingsPosture ? (
-                <section className="portal-surface">
-                  <div className="portal-surface__header">
-                    <div>
-                      <span className="portal-surface__eyebrow">Settings posture</span>
-                      <h2 className="portal-surface__title">Current delivery configuration</h2>
-                    </div>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowSettingsPosture(false)}>
-                      Close
-                    </button>
-                  </div>
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <span className="portal-pill">In-app: {analytics.settings.in_app_enabled ? 'enabled' : 'disabled'}</span>
-                      <span className="portal-pill">Email: {analytics.settings.email_enabled ? 'enabled' : 'disabled'}</span>
-                      <span className="portal-pill">Slack: {analytics.settings.slack_enabled ? 'enabled' : 'disabled'}</span>
-                      <span className="portal-pill">Teams: {analytics.settings.teams_enabled ? 'enabled' : 'disabled'}</span>
-                      <span className="portal-pill">Webhook: {analytics.settings.webhook_enabled ? 'enabled' : 'disabled'}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <span className="portal-pill">Blocked promotions: {analytics.settings.notify_blocked_promotions ? 'on' : 'off'}</span>
-                      <span className="portal-pill">Expiring approvals: {analytics.settings.notify_gate_approval_expiring ? 'on' : 'off'}</span>
-                      <span className="portal-pill">Expiring assets: {analytics.settings.notify_expiring_assets ? 'on' : 'off'}</span>
-                    </div>
-                    <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
-                      Slack configured: {analytics.settings.slack_configured ? 'yes' : 'no'} · Teams configured: {analytics.settings.teams_configured ? 'yes' : 'no'} · Generic webhook configured: {analytics.settings.webhook_configured ? 'yes' : 'no'}
-                    </div>
-                  </div>
-                </section>
-              ) : null}
-            </div>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           </>
         ) : null}
       </div>

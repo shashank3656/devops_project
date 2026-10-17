@@ -6,10 +6,8 @@ This document explains the technology choices behind InfraGate, what each layer 
 
 | Layer | Technology | Purpose |
 | --- | --- | --- |
-| User Portal | Next.js | Self-service requests, templates, history, assigned incidents |
-| Admin Portal | Next.js | Governance, approvals, users, teams, administration |
-| DevOps Portal | Next.js | Promotions, gates, K8s health, incidents, rollback, operations |
-| Backend API | Go | Shared workflow engine, auth, persistence, notifications, integrations |
+| Portal | Next.js (`devops-frontend`) | One shell for requests, service desk, on-call, IAM, maintenance, infrastructure, and portal access |
+| Backend API | Go | Workflow engine, auth, persistence, notifications, integrations |
 | Database | PostgreSQL | Primary system of record |
 | Cache / Queue | Redis | Caching and lightweight background-job behavior |
 | Packaging | Docker | Containerized local and deployment builds |
@@ -21,7 +19,7 @@ This document explains the technology choices behind InfraGate, what each layer 
 
 ## Frontend Stack
 
-All three portals use the same frontend foundation so teams can reuse patterns and keep the overall platform consistent.
+The portal is one Next.js app. Shared CSS lives in `shared-ui`. Screen flows are in [FLOWS.md](./FLOWS.md).
 
 ### Core
 
@@ -34,41 +32,9 @@ All three portals use the same frontend foundation so teams can reuse patterns a
 
 - Next.js gives a structured app layout and production build pipeline
 - TypeScript helps keep API-heavy pages safer as the product grows
-- separate portals allow clearer role-based UX without turning one app into an overloaded super-admin interface
+- section grants keep a requester, an operator, and an admin in the same app without giving every person every page
 
 ### Portal responsibilities
-
-#### User Portal
-
-Located in:
-
-- [frontend](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/frontend)
-
-Key responsibilities:
-
-- infrastructure request creation
-- request templates
-- request history
-- assigned incidents and read-only reviews
-- scorecards and live-vs-CHG drift
-- notification drawer UX
-
-#### Admin Portal
-
-Located in:
-
-- [admin-frontend](/Users/gowthamshashank/New_Ideas/Devops_Tool/devops_project/admin-frontend)
-
-Key responsibilities:
-
-- user management
-- team management
-- governance and approval views
-- templates and platform controls
-- outbound webhook event catalog
-- read catalogs for changes, incidents, scorecards, and reviews
-
-#### DevOps Portal
 
 Located in:
 
@@ -76,15 +42,14 @@ Located in:
 
 Key responsibilities:
 
-- release dashboards
-- promotion gates
-- environment drift
-- K8s workload health
-- expiry tracker
-- incidents, generated reviews, and rollback CHGs
-- Health, SLO freeze, scorecards, and Identity
-- ops command center
-- MCP comment / request-rollback (no apply)
+- infrastructure requests, templates, and history
+- service desk: changes, incidents, problems, knowledge
+- on-call calendar, cover requests, and project onboarding
+- IAM access requests and DevOps approval
+- maintenance windows and the three-step approval
+- inbound webhook sources and samples
+- people, groups, and sign-in under Portal Access
+- releases, Kubernetes, cloud accounts, and inventory
 
 ## Backend Stack
 
@@ -101,7 +66,7 @@ Located in:
 
 ### Why Go
 
-The backend acts as the shared workflow engine for three separate portals. Go is a good fit here because it keeps the runtime small, fast, and operationally straightforward for:
+The backend is the workflow engine for the one portal. Go is a good fit here because it keeps the runtime small, fast, and operationally straightforward for:
 
 - API handling
 - workflow orchestration

@@ -76,6 +76,33 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
+func browserMutation(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
+func browserMutationAllowed(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" {
+		return corsOriginAllowed(origin)
+	}
+	return !strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site")
+}
+
+func withBrowserCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if browserMutation(r.Method) && !browserMutationAllowed(r) {
+			writeAPIError(w, r, http.StatusForbidden, "cross-site request blocked", nil)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func handleOptions(w http.ResponseWriter, r *http.Request) {
 	applyCORSHeaders(w, r)
 	origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/")
@@ -218,6 +245,14 @@ func createPRHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusBadRequest)
 		encodeJSON(w, errorResponse)
+		return
+	}
+	if err := applyTemplateRender(payload); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+	if err := recordSandboxVerification(payload, "9c7c3a7a", listSandboxObservations()); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
@@ -435,6 +470,14 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "request failed", err)
 		return
 	}
+	if err := applyTemplateRender(payload); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
+	if err := recordSandboxVerification(payload, "9c7c3a7a", listSandboxObservations()); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
+		return
+	}
 
 	// Ensure user can only submit requests for a team they belong to
 	if userID > 0 && DB != nil {
@@ -554,6 +597,9 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	applyProjectDefaultLifetimeIfEligible(prRequest.ID, prRequest.ProjectID, prRequest.Env)
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
+	if !draft {
+		NotifyRequestRaised(prRequest)
+	}
 
 	// Optional initial comment when raising the PR (saved as first request comment)
 	if userID > 0 {
@@ -621,7 +667,7 @@ func main() {
 				log.Printf("user_activity table OK (%d rows)", n)
 			}
 		}
-		// Ensure default admin exists (credentials from env or admin/admin123)
+		// Ensure default admin exists only when DEFAULT_ADMIN_PASSWORD is set to a non-default value.
 		EnsureDefaultAdmin()
 		startLifecycleScheduler()
 		startCostDigestScheduler()
@@ -651,6 +697,7 @@ func main() {
 	http.HandleFunc("/api/logs/github", logsGitHubHandler)
 	http.HandleFunc("/api/auth/signup", signupHandler)
 	http.HandleFunc("/api/auth/login", loginHandler)
+	http.HandleFunc("/api/auth/logout", logoutHandler)
 	http.HandleFunc("/api/auth/sso/login", authSSOLoginHandler)
 	http.HandleFunc("/api/auth/oidc/start", oidcStartHandler)
 	http.HandleFunc("/api/auth/oidc/callback", oidcCallbackHandler)
@@ -673,6 +720,7 @@ func main() {
 	http.HandleFunc("/api/me/changes/", meChangeDetailHandler)
 	http.HandleFunc("/api/me/scorecards", meScorecardsHandler)
 	http.HandleFunc("/api/me/teams", meTeamsHandler)
+	http.HandleFunc("/api/me/ticket-audience", meTicketAudienceHandler)
 	http.HandleFunc("/api/me/teams/", meTeamMembersRouter)
 	http.HandleFunc("/api/me/managed-teams", meManagedTeamsHandler)
 	http.HandleFunc("/api/me/notifications", meNotificationsHandler)
@@ -718,6 +766,8 @@ func main() {
 	http.HandleFunc("/api/admin/webhooks/", adminWebhookDetailHandler)
 	http.HandleFunc("/api/admin/inbound-sources", adminInboundSourcesHandler)
 	http.HandleFunc("/api/admin/inbound-sources/", adminInboundSourceDetailHandler)
+	http.HandleFunc("/api/devops/inbound-sources", devopsInboundSourcesHandler)
+	http.HandleFunc("/api/devops/inbound-sources/", devopsInboundSourceDetailHandler)
 	http.HandleFunc("/api/admin/changes", adminChangesHandler)
 	http.HandleFunc("/api/admin/changes/", adminChangeDetailHandler)
 	http.HandleFunc("/api/admin/scorecards", adminScorecardsHandler)
@@ -743,6 +793,19 @@ func main() {
 	http.HandleFunc("/api/devops/saved-views/", devopsSavedFilterViewsHandler)
 	http.HandleFunc("/api/devops/prs/", devopsPRNumberImpactHandler)
 	http.HandleFunc("/api/devops/oncall", devopsOncallHandler)
+	http.HandleFunc("/api/oncall/coverage", oncallCoverageHandler)
+	http.HandleFunc("/api/oncall/schedules", oncallScheduleHandler)
+	http.HandleFunc("/api/oncall/schedules/", oncallScheduleDetailHandler)
+	http.HandleFunc("/api/oncall/team-members", oncallTeamMembersHandler)
+	http.HandleFunc("/api/oncall/flags", oncallFlagHandler)
+	http.HandleFunc("/api/oncall/roster", oncallRosterHandler)
+	http.HandleFunc("/api/oncall/days", oncallDaysHandler)
+	http.HandleFunc("/api/oncall/project-teams", oncallProjectTeamsHandler)
+	http.HandleFunc("/api/oncall/covers", oncallCoverHandler)
+	http.HandleFunc("/api/oncall/covers/", oncallCoverHandler)
+	http.HandleFunc("/api/maintenance/notices", maintenanceNoticeHandler)
+	http.HandleFunc("/api/maintenance/windows", maintenanceWindowsHandler)
+	http.HandleFunc("/api/maintenance/windows/", maintenanceWindowDetailHandler)
 	http.HandleFunc("/api/devops/freezes", devopsFreezesHandler)
 	http.HandleFunc("/api/devops/me", devopsMeHandler)
 	http.HandleFunc("/api/devops/my-teams", devopsMyTeamsHandler)
@@ -772,9 +835,6 @@ func main() {
 	http.HandleFunc("/api/devops/approval-sla", devopsApprovalSLAHandler)
 	http.HandleFunc("/api/devops/service-heatmap", devopsServiceHeatmapHandler)
 	http.HandleFunc("/api/devops/change-risk", devopsChangeRiskHandler)
-	http.HandleFunc("/api/devops/environment-drift", devopsEnvironmentDriftHandler)
-	http.HandleFunc("/api/devops/environment-drift/fix", devopsEnvironmentDriftFixHandler)
-	http.HandleFunc("/api/devops/ops-command-center", devopsOpsCommandCenterHandler)
 	http.HandleFunc("/api/devops/cost-digest", devopsCostDigestHandler)
 	http.HandleFunc("/api/devops/project-dependencies", devopsProjectDependenciesHandler)
 	http.HandleFunc("/api/devops/k8s-connections", devopsK8sConnectionsHandler)
@@ -806,14 +866,105 @@ func main() {
 	http.HandleFunc("/api/devops/k8s-terminal-command", devopsK8sTerminalCommandHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
+	http.HandleFunc("/api/devops/iam", iamHandler)
+	http.HandleFunc("/api/devops/iam/", iamHandler)
 	http.HandleFunc("/api/devops/incidents", devopsIncidentsHandler)
 	http.HandleFunc("/api/devops/incidents/", devopsIncidentDetailHandler)
 	http.HandleFunc("/api/devops/changes", devopsChangesHandler)
 	http.HandleFunc("/api/devops/changes/", devopsChangeDetailHandler)
-	http.HandleFunc("/api/devops/health", devopsHealthHandler)
 	http.HandleFunc("/api/devops/slos", devopsSLOsHandler)
 	http.HandleFunc("/api/devops/services", devopsServiceMapHandler)
 	http.HandleFunc("/api/devops/services/", devopsServiceMapDetailHandler)
+	http.HandleFunc("/api/connections", connectionListHandler)
+	http.HandleFunc("/api/connections/", connectionDetailHandler)
+	http.HandleFunc("/api/outbox/events", outboxEventsHandler)
+	http.HandleFunc("/api/jobs/", jobActionHandler)
+	http.HandleFunc("/api/webhooks/inbox/", webhookInboxHandler)
+	http.HandleFunc("/api/webhooks/activity", webhookActivityHandler)
+	http.HandleFunc("/api/webhooks/mappings", webhookMappingHandler)
+	http.HandleFunc("/api/webhooks/mappings/", webhookMappingHandler)
+	http.HandleFunc("/api/templates/requests", templateRequestsHandler)
+	http.HandleFunc("/api/templates/certify", templateCertifyHandler)
+	http.HandleFunc("/api/templates/catalog", templateCatalogHandler)
+	http.HandleFunc("/api/approvals/subjects", approvalSubjectHandler)
+	http.HandleFunc("/api/approvals/exceptions", promotionExceptionHandler)
+	http.HandleFunc("/api/approvals/preflight", promotionPreflightHandler)
+	http.HandleFunc("/api/approvals/release", promotionReleaseHandler)
+	http.HandleFunc("/api/deployments/attempts", deploymentAttemptHandler)
+	http.HandleFunc("/api/deployments/callbacks", deploymentCallbackHandler)
+	http.HandleFunc("/api/deployments/runtime", deploymentRuntimeHandler)
+	http.HandleFunc("/api/changes", changeSubmitHandler)
+	http.HandleFunc("/api/changes/webhook", lifecycleChangeWebhookHandler)
+	http.HandleFunc("/api/changes/approval", changeApprovalHandler)
+	http.HandleFunc("/api/changes/close", changeCloseHandler)
+	http.HandleFunc("/api/changes/release", changeReleaseHandler)
+	http.HandleFunc("/api/scans/profiles", scanProfileHandler)
+	http.HandleFunc("/api/scans/assume", scanAssumeHandler)
+	http.HandleFunc("/api/scans/jobs", scanJobHandler)
+	http.HandleFunc("/api/scans/jobs/progress", scanProgressReportHandler)
+	http.HandleFunc("/api/findings/observations", findingObservationHandler)
+	http.HandleFunc("/api/findings", findingDetailHandler)
+	http.HandleFunc("/api/findings/close", findingCloseHandler)
+	http.HandleFunc("/api/coverage/pack", policyPackHandler)
+	http.HandleFunc("/api/coverage/native", nativeFindingHandler)
+	http.HandleFunc("/api/coverage/gaps", coverageGapHandler)
+	http.HandleFunc("/api/coverage", coverageReportHandler)
+	http.HandleFunc("/api/security/reports", securityReportHandler)
+	http.HandleFunc("/api/artifacts/sboms", sbomHandler)
+	http.HandleFunc("/api/artifacts/exposures", artifactExposureHandler)
+	http.HandleFunc("/api/artifacts/findings", artifactFindingHandler)
+	http.HandleFunc("/api/artifacts/context", artifactContextHandler)
+	http.HandleFunc("/api/security/gates/policies", securityGatePolicyHandler)
+	http.HandleFunc("/api/security/gates/summaries", securityGateSummaryHandler)
+	http.HandleFunc("/api/security/gates/overrides", securityGateOverrideHandler)
+	http.HandleFunc("/api/remediation/assignments", findingAssignmentHandler)
+	http.HandleFunc("/api/remediation/assignments/reassign", findingReassignHandler)
+	http.HandleFunc("/api/remediation/assignments/due", findingDueHandler)
+	http.HandleFunc("/api/remediation/triage", findingTriageHandler)
+	http.HandleFunc("/api/remediation/links", remediationLinkHandler)
+	http.HandleFunc("/api/remediation/links/delivery", remediationDeliveryHandler)
+	http.HandleFunc("/api/remediation/links/verification", remediationVerificationHandler)
+	http.HandleFunc("/api/remediation/exceptions", riskExceptionHandler)
+	http.HandleFunc("/api/remediation/exceptions/renew", riskExceptionRenewHandler)
+	http.HandleFunc("/api/remediation/exceptions/review", riskExceptionReviewHandler)
+	http.HandleFunc("/api/sre/slo/definitions", sloDefinitionHandler)
+	http.HandleFunc("/api/sre/slo/evaluations", sloEvaluationHandler)
+	http.HandleFunc("/api/sre/watches", serviceWatchHandler)
+	http.HandleFunc("/api/sre/watches/samples", serviceWatchSampleHandler)
+	http.HandleFunc("/api/sre/watches/freeze", serviceWatchFreezeHandler)
+	http.HandleFunc("/api/sre/health", serviceHealthHandler)
+	http.HandleFunc("/api/sre/failures", podFailureHandler)
+	http.HandleFunc("/api/sre/failures/events", podFailureEventHandler)
+	http.HandleFunc("/api/sre/failures/logs", podFailureLogHandler)
+	http.HandleFunc("/api/sre/failures/gaps", podFailureGapHandler)
+	http.HandleFunc("/api/sre/failures/retention", podFailureRetentionHandler)
+	http.HandleFunc("/api/sre/failures/history", podFailureHistoryHandler)
+	http.HandleFunc("/api/sre/incidents", sreIncidentHandler)
+	http.HandleFunc("/api/sre/incidents/timeline", sreIncidentTimelineHandler)
+	http.HandleFunc("/api/sre/incidents/runbooks", sreIncidentRunbookHandler)
+	http.HandleFunc("/api/sre/incidents/close", sreIncidentCloseHandler)
+	http.HandleFunc("/api/sre/incidents/reviews", sreIncidentReviewHandler)
+	http.HandleFunc("/api/sre/incidents/followups", sreIncidentFollowUpHandler)
+	http.HandleFunc("/api/sre/episodes", alertEpisodeHandler)
+	http.HandleFunc("/api/sre/episodes/manual", alertEpisodeManualHandler)
+	http.HandleFunc("/api/sre/problems", sreProblemHandler)
+	http.HandleFunc("/api/sre/problems/link", sreProblemLinkHandler)
+	http.HandleFunc("/api/sre/problems/known-error", sreProblemKnownErrorHandler)
+	http.HandleFunc("/api/sre/problems/verify", sreProblemVerifyHandler)
+	http.HandleFunc("/api/workspace", workspaceHandler)
+	http.HandleFunc("/api/workspace/work", workspaceWorkHandler)
+	http.HandleFunc("/api/workspace/services", workspaceServiceHandler)
+	http.HandleFunc("/api/automation/rules", automationRuleHandler)
+	http.HandleFunc("/api/automation/rules/disable", automationDisableHandler)
+	http.HandleFunc("/api/automation/runs", automationRunHandler)
+	http.HandleFunc("/api/automation/runs/retry", automationRetryHandler)
+	http.HandleFunc("/api/reports/definitions", reportDefinitionHandler)
+	http.HandleFunc("/api/reports/views", reportViewHandler)
+	http.HandleFunc("/api/reports/drafts", reportDraftHandler)
+	http.HandleFunc("/api/reports/drafts/publish", reportPublishHandler)
+	http.HandleFunc("/api/outbound-sync/gate", outboundSyncGateHandler)
+	http.HandleFunc("/api/outbound-sync/deliver", outboundSyncDeliverHandler)
+	http.HandleFunc("/api/outbound-sync/reconcile", outboundSyncReconcileHandler)
 	http.HandleFunc("/api/devops/problems", devopsProblemsHandler)
 	http.HandleFunc("/api/devops/problems/", devopsProblemDetailHandler)
 	http.HandleFunc("/api/devops/itsm-catalog", devopsITSMCatalogHandler)
@@ -821,11 +972,8 @@ func main() {
 	http.HandleFunc("/api/devops/knowledge/", devopsKnowledgeDetailHandler)
 	http.HandleFunc("/api/devops/release-notes", devopsReleaseNotesHandler)
 	http.HandleFunc("/api/devops/incident-workspace", devopsIncidentWorkspaceHandler)
-	http.HandleFunc("/api/devops/access-overrides", devopsAccessOverridesHandler)
-	http.HandleFunc("/api/devops/access-overrides/", devopsAccessOverrideDetailHandler)
 	http.HandleFunc("/api/devops/promotions", devopsPromotionsHandler)
 	http.HandleFunc("/api/devops/promotions/", devopsPromotionsHandler)
-	http.HandleFunc("/api/devops/rollback-console", devopsRollbackConsoleHandler)
 	http.HandleFunc("/api/devops/retry-center", devopsRetryCenterHandler)
 	http.HandleFunc("/api/devops/retry-center/", devopsRetryCenterDetailHandler)
 	http.HandleFunc("/api/devops/projects/bulk", devopsProjectsBulkHandler)
@@ -842,17 +990,16 @@ func main() {
 	http.HandleFunc("/api/devops/gitops/manage/access/", devopsGitOpsAccessDeleteHandler)
 	http.HandleFunc("/api/devops/templates", devopsTemplatesRouter)
 	http.HandleFunc("/api/devops/templates/", devopsTemplatesRouter)
-	http.HandleFunc("/api/devops/identity", devopsIdentityHandler)
 	http.HandleFunc("/api/devops/previews", devopsPreviewsHandler)
 	http.HandleFunc("/api/devops/scorecards", devopsScorecardsHandler)
 	http.HandleFunc("/api/devops/evidence", devopsEvidenceHandler)
-	http.HandleFunc("/api/devops/policies", devopsPoliciesHandler)
 	http.HandleFunc("/api/devops/credential-audit", devopsCredentialAuditHandler)
 	http.HandleFunc("/api/devops/expiry-tracker/actions", devopsExpiryTrackerActionsHandler)
 	http.HandleFunc("/api/webhooks/github", githubWebhookHandler)
 	http.HandleFunc("/api/webhooks/ci", ciWebhookHandler)
 	http.HandleFunc("/api/webhooks/change", changeWebhookHandler)
 	http.HandleFunc("/api/webhooks/alerts", alertWebhookHandler)
+	http.HandleFunc("/api/webhooks/iam-access", iamAccessWebhookHandler)
 	http.HandleFunc("/api/webhooks/irm", irmWebhookHandler)
 	http.HandleFunc("/api/webhooks/irm/", irmWebhookHandler)
 	http.HandleFunc("/api/webhooks/pagerduty", irmWebhookHandler)
@@ -921,7 +1068,7 @@ func main() {
 	log.Println("  GET  /health         - Health check")
 	log.Println("  GET  /api-docs       - Swagger UI")
 
-	if err := http.ListenAndServe(addr, withCORS(withObservability(withRecovery(http.DefaultServeMux)))); err != nil {
+	if err := http.ListenAndServe(addr, withCORS(withBrowserCSRF(withCanonicalWebhookPath(withObservability(withRecovery(withSectionGate(http.DefaultServeMux))))))); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

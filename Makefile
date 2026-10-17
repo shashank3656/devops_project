@@ -15,8 +15,6 @@ HELM_PROD_VALUES ?= $(HELM_CHART)/values-prod.yaml
 HELM_ARGS ?=
 
 .PHONY: help env-sync backend-deps backend-build backend-test backend-run \
-	frontend-install frontend-build frontend-lint frontend-dev \
-	admin-install admin-build admin-lint admin-dev \
 	devops-install devops-build devops-lint devops-dev \
 	install-all build-all lint-all test compose-dev compose-prod compose-down compose-logs compose-ps \
 	helm-lint helm-template helm-install helm-upgrade helm-uninstall \
@@ -42,30 +40,6 @@ backend-test: ## Run backend tests
 backend-run: ## Run the backend directly from source (loads ../config/.env)
 	cd backend && $(GO) run .
 
-frontend-install: ## Install user portal dependencies
-	cd frontend && $(NPM) install
-
-frontend-build: ## Build the user portal
-	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd frontend && exec $(NPM) run build'
-
-frontend-lint: ## Lint the user portal
-	cd frontend && $(NPM) run lint
-
-frontend-dev: ## Run the user portal locally
-	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd frontend && exec $(NPM) run dev'
-
-admin-install: ## Install admin portal dependencies
-	cd admin-frontend && $(NPM) install
-
-admin-build: ## Build the admin portal
-	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd admin-frontend && exec $(NPM) run build'
-
-admin-lint: ## Lint the admin portal
-	cd admin-frontend && $(NPM) run lint
-
-admin-dev: ## Run the admin portal locally
-	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd admin-frontend && exec $(NPM) run dev'
-
 devops-install: ## Install DevOps portal dependencies
 	cd devops-frontend && $(NPM) install
 
@@ -78,11 +52,11 @@ devops-lint: ## Lint the DevOps portal
 devops-dev: ## Run the DevOps portal locally
 	bash -lc 'set -a; [ -f config/.env ] && . ./config/.env; set +a; cd devops-frontend && exec $(NPM) run dev'
 
-install-all: frontend-install admin-install devops-install ## Install dependencies for all frontends
+install-all: devops-install ## Install portal dependencies
 
-build-all: backend-build frontend-build admin-build devops-build ## Build backend and all frontends
+build-all: backend-build devops-build ## Build backend and the portal
 
-lint-all: frontend-lint admin-lint devops-lint ## Run lint across all frontends
+lint-all: devops-lint ## Lint the portal
 
 test: backend-test ## Run the test suite that exists today
 

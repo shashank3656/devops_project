@@ -118,25 +118,26 @@ export default function DevOpsRetryCenterPage() {
       <Head>
         <title>Retry Center - DevOps Portal</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="alert-page">
+        <header className="work-page__head">
           <div>
-            <span className="portal-page__eyebrow">Operations Control</span>
-            <h1 className="portal-page__title">Webhook / Delivery Retry Center</h1>
-            <p className="portal-page__subtitle">
-              Review failed webhook and notification deliveries and retry them from one manager-only control surface.
-            </p>
+            <h1>Delivery retries</h1>
+            <p>Failed alert and webhook deliveries. Retry one when the destination is ready again.</p>
           </div>
-        </div>
+        </header>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
+        <div className="changes-facts">
+          <div><span>Waiting</span><strong>{loading ? '—' : failures.length}</strong></div>
+          <div><span>Retrying now</span><strong>{retryingId ? '1' : '0'}</strong></div>
+        </div>
+
         <section className="portal-surface">
           <div className="portal-surface__header">
             <div>
-              <span className="portal-surface__eyebrow">Delivery Failures</span>
-              <h2 className="portal-surface__title">Retry queue</h2>
+              <h2 className="portal-surface__title">Queue</h2>
             </div>
           </div>
           {loading ? (

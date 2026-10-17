@@ -5,9 +5,9 @@
 [![Features](https://img.shields.io/badge/Docs-All%20features-0A7-000000)](./docs/FEATURES.md)
 [![API](https://img.shields.io/badge/Docs-Full%20API-2088FF)](./docs/API.md)
 
-SetuOps is the control plane for **infrastructure requests**, **approvals**, **application deploys**, and **post-release health**.
+SetuOps is the control plane for **infrastructure requests**, **approvals**, **application deploys**, **on-call**, **IAM access**, **maintenance windows**, and **post-release health**.
 
-Three portals. One Go API. One Postgres record for a request, a Change Request (`CHG…`), or an Incident (`INC…`).
+One portal (`devops-frontend`). One Go API. One Postgres record for a request, a Change Request (`CHG…`), an Incident (`INC…`), a Problem, or a Maintenance window (`MNT…`). IAM access requests (`AR-…`) stay in memory until the API restarts.
 
 The display name is **SetuOps**. GitHub check IDs still use `infragate/*`.
 
@@ -19,6 +19,7 @@ Two repo docs list **everything**. Open these before Notion or deploy guides.
 
 | Doc | What it contains | File |
 | --- | --- | --- |
+| **Current flows** | On-call, IAM, change, incident, problem, maintenance, and webhooks, step by step | [docs/FLOWS.md](./docs/FLOWS.md) |
 | **All features and how they work** | Every shipped feature, who uses it, the flow, and the page | [docs/FEATURES.md](./docs/FEATURES.md) |
 | **Full API reference** | Every HTTP route: method, auth, query/body, what it does | [docs/API.md](./docs/API.md) |
 
@@ -45,9 +46,7 @@ flowchart LR
     end
 
     subgraph Portals
-        User["User portal<br/>:3000"]
-        Adm["Admin portal<br/>:3001"]
-        DevOps["DevOps portal<br/>:3002"]
+        DevOps["SetuOps portal<br/>devops-frontend :3002"]
     end
 
     API["Go API :8080"]
@@ -58,12 +57,10 @@ flowchart LR
     Graf["Grafana / logs"]
     Notify["Slack / email"]
 
-    Dev --> User
-    Lead --> User
-    Admin --> Adm
+    Dev --> DevOps
+    Lead --> DevOps
+    Admin --> DevOps
     Ops --> DevOps
-    User --> API
-    Adm --> API
     DevOps --> API
     API --> DB
     API --> Redis
@@ -77,7 +74,7 @@ flowchart LR
 
 ## All features (how they work)
 
-Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
+Step-by-step for the live screens: **[docs/FLOWS.md](./docs/FLOWS.md)**. Full catalog: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 
 ### Two paths
 
@@ -85,9 +82,15 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 
 **App deploy.** Merge to `main` → `POST /api/webhooks/change` (optional SBOM / attestation / digest) → `CHG…` → Health watch → Grafana `POST /api/webhooks/alerts` or watcher spike → `INC…` linked to the CHG. Ack/resolve can sync to PagerDuty or Grafana IRM. DevOps can also file a CHG by hand.
 
-**Identity.** User and DevOps portals can sign in with OIDC. CI can prove GitHub Actions or GitLab OIDC at `POST /api/auth/workload/github` and `POST /api/auth/workload/gitlab`, then assume `AWS_WORKLOAD_ROLE_ARN` (repo as subject). Cloud secrets are not stored. Agents use `POST /mcp` with an API key for catalog reads plus `comment_incident` / `request_rollback`.
+**Identity.** The portal can sign in with OIDC. CI can prove GitHub Actions or GitLab OIDC at `POST /api/auth/workload/github` and `POST /api/auth/workload/gitlab`, then assume `AWS_WORKLOAD_ROLE_ARN` (repo as subject). Cloud secrets are not stored. Agents use `POST /mcp` with an API key for catalog reads plus `comment_incident` / `request_rollback`.
 
-### User portal (`frontend/` · :3000 · token `token`)
+**On-call, IAM, maintenance.** On-call is a calendar plus onboard-project and cover requests. IAM is an `AR-…` request that a DevOps approver accepts; the grant waits for the access-file callback. Maintenance is a window that the creator’s manager, a DevOps manager, and an admin each approve or reject. Detail: [docs/FLOWS.md](./docs/FLOWS.md).
+
+### One portal (`devops-frontend/` · :3002 · token `devops_token`)
+
+Requesters, operators, managers, and admins share this shell. Grants hide the sections they cannot use. There is no Sign up page.
+
+### Requests (same portal)
 
 | Feature | How it works |
 | --- | --- |
@@ -99,7 +102,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | Incidents (read) | Assigned to the user **or** on a visible project. Users never create INCs. |
 | Templates / saved configs / notifications / search / copilot | Helpers around the request path. |
 
-### Admin portal (`admin-frontend/` · :3001 · token `admin_token`)
+### Portal Access (admins, same portal)
 
 | Feature | How it works |
 | --- | --- |
@@ -110,7 +113,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | Changes / Incidents (read) | Full catalogs. Admin does not own the queue. |
 | Deploy intel feed | Read-only briefs. |
 
-### DevOps portal (`devops-frontend/` · :3002 · token `devops_token`)
+### Operations and infrastructure (same portal)
 
 | Feature | How it works |
 | --- | --- |
@@ -119,7 +122,7 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | Changes | Catalog + **New change**. Resolve, close, fail, cancel, reopen. Canary / 10 / 50 / 100 rollout. Preview and flag types. Clean watch auto-resolves. Open linked incidents block resolve/close. |
 | Services | Separate catalog. Created services populate the CHG dropdown and fill omitted webhook env. |
 | Calendar / release notes / change risk | Planned windows and weekly notes from closed CHGs. |
-| Incidents / problems / workspace | Manual pages plus Grafana. Problems group repeats. DevOps generates a PIR from the INC timeline; Admin/User read it. SEV1/SEV2 pages the scorecard team. |
+| Incidents / problems / workspace | Manual pages plus Grafana. A record page, not a form dump. Known error is a checkbox on an existing problem. The first time an incident is major, today’s on-call roster is paged. SEV1/SEV2 still pages the scorecard team. |
 | Health / SLO / Identity | Watch window, baseline vs latest, rollback hint, DORA. Burned SLO writes a deploy freeze. Identity flags static keys, last cloud-role exchange, and OIDC verifies. |
 | Scorecards / Evidence / Policies | Per-service health score, including live-vs-last-CHG drift. 30-day evidence pack. Lightweight Rego deny on CHG and request.json (`infragate/policy`). |
 | Promotions / freezes / rollback | Env promotion with gates. Each hop writes a CHG. Freeze blocks risky ships. **NF-05:** shared guarded confirm on promote, rollback prepare, K8s day-2, and cloud disable — see [FEATURES.md](./docs/FEATURES.md). |
@@ -129,6 +132,10 @@ Full write-up: **[docs/FEATURES.md](./docs/FEATURES.md)**. Compact list below.
 | GitOps control | Which repo/path gets `request.json`. |
 | Kubernetes workspace (NF-02) | Cluster catalog → scoped workspace (overview + resource tabs); logs/terminal/rollout as drill-down. **Secure connect:** AWS/Azure/GCP IAM or workload identity, server `secret_ref`, encrypted kubeconfig/token — see [CONFIGURATION.md](./docs/CONFIGURATION.md#kubernetes-cluster-connections-devops). |
 | **Cloud workspace** (NF-01 + BRD-07) | **Accounts:** managers onboard AWS/Azure/GCP (trust on API host). **Inventory:** read-only resources by team/account/env/region; account landing + resource detail. Operators read; User/Admin do not browse inventory. See [FEATURES.md](./docs/FEATURES.md). |
+| On-call | Calendar, onboard project, day click shows team and users, cover request emails both people. |
+| IAM access | `AR-…` request. DevOps approves. Grant and email wait for `POST /api/webhooks/iam-access`. |
+| Maintenance | List plus Create. Manager, then DevOps manager, then admin. Approve and Reject on the current step. |
+| Webhooks | Filterable inbound sources. Sample shows one example and never the secret. |
 | Runbooks / access exceptions / secrets / retries / alerts | Day-2 ops. |
 
 ### Inbound (no form)

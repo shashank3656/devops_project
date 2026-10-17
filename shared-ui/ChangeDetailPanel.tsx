@@ -1,5 +1,3 @@
-import StatusChip from './StatusChip';
-
 export interface ChangeDetailModel {
   id: number;
   change_number: string;
@@ -84,14 +82,6 @@ function lifecycleIndex(item: ChangeDetailModel): number {
   return 3;
 }
 
-function statusTone(status: string): 'info' | 'ok' | 'danger' | undefined {
-  const s = normalizeStatus(status);
-  if (s === 'failed' || s === 'cancelled') return 'danger';
-  if (s === 'resolved' || s === 'closed') return 'ok';
-  if (s === 'scheduled' || s === 'new') return 'info';
-  return undefined;
-}
-
 function formatWhen(value?: string): string {
   if (!value) return '—';
   const d = new Date(value);
@@ -100,9 +90,9 @@ function formatWhen(value?: string): string {
 
 function DetailField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="chg-detail-field">
-      <span className="chg-detail-field__label">{label}</span>
-      <span className="chg-detail-field__value">{value || '—'}</span>
+    <div>
+      <span>{label}</span>
+      <strong>{value || '—'}</strong>
     </div>
   );
 }
@@ -155,21 +145,9 @@ export default function ChangeDetailPanel({
 
   return (
     <div className="chg-detail">
-      <section className="chg-detail__summary-card portal-surface">
-        <div className="chg-detail__lifecycle-head">
-          <div>
-            <span className="portal-surface__eyebrow">Change summary</span>
-            <h2 className="chg-detail__section-title">{item.change_number || `CHG${item.id}`}</h2>
-            <p className="chg-detail__title-line">{item.title || 'Untitled change'}</p>
-          </div>
-          <StatusChip tone={statusTone(item.status)} label={item.status || 'unknown'} />
-        </div>
-        <p className="chg-detail__prose chg-detail__summary-text">
-          {item.summary?.trim()
-            ? item.summary
-            : 'No summary provided yet. Add one when creating the change or send summary from CI so reviewers understand what ships.'}
-        </p>
-        <div className="portal-detail-grid chg-detail__grid chg-detail__summary-meta">
+      <section className="work-board">
+        {item.summary?.trim() ? <p className="chg-detail__prose" style={{ marginTop: 0 }}>{item.summary}</p> : null}
+        <div className="request-facts">
           <DetailField label="Service" value={item.service || '—'} />
           <DetailField label="Environment" value={item.environment === 'unspecified' ? '—' : item.environment || '—'} />
           <DetailField label="Type" value={item.change_type || '—'} />
@@ -178,12 +156,38 @@ export default function ChangeDetailPanel({
           <DetailField label="Assigned to" value={item.assignee_username || '—'} />
           <DetailField label="Author" value={item.author || '—'} />
           <DetailField label="CAB" value={item.cab_status || 'not required'} />
+          <DetailField
+            label="Project"
+            value={item.project_name ? `${item.project_name}${item.project_code ? ` (${item.project_code})` : ''}` : '—'}
+          />
+          <DetailField label="Planned start" value={formatWhen(item.cab_window_start)} />
+          <DetailField label="Planned end" value={formatWhen(item.cab_window_end)} />
+          <DetailField label="Repo" value={item.repo || '—'} />
+          <DetailField label="SHA" value={item.sha ? item.sha.slice(0, 12) : '—'} />
+          <DetailField label="Pull request" value={item.pr_number ? `#${item.pr_number}` : 'None'} />
+          <DetailField
+            label="Watch window"
+            value={`${item.watch_minutes} min${item.watch_until ? ` · until ${formatWhen(item.watch_until)}` : ''}`}
+          />
+          <DetailField label="Linked incidents" value={String(item.linked_incidents || 0)} />
+          <DetailField label="Created" value={formatWhen(item.created_at)} />
         </div>
-        {item.impact ? <p className="chg-detail__prose"><strong>Impact:</strong> {item.impact}</p> : null}
-        {item.backout_plan ? <p className="chg-detail__prose"><strong>Backout:</strong> {item.backout_plan}</p> : null}
+        {item.impact ? <p className="chg-detail__prose"><strong>Impact. </strong>{item.impact}</p> : null}
+        {item.backout_plan ? <p className="chg-detail__prose"><strong>Backout. </strong>{item.backout_plan}</p> : null}
+        {(item.pr_url || item.pipeline_url) ? (
+          <p className="chg-detail__links">
+            {item.pr_url ? (
+              <a href={item.pr_url} target="_blank" rel="noreferrer">Pull request</a>
+            ) : null}
+            {item.pr_url && item.pipeline_url ? ' · ' : null}
+            {item.pipeline_url ? (
+              <a href={item.pipeline_url} target="_blank" rel="noreferrer">Pipeline</a>
+            ) : null}
+          </p>
+        ) : null}
       </section>
 
-      <section className="chg-detail__lifecycle devops-workflow-card">
+      <section className="work-board chg-detail__lifecycle">
         <div className="chg-detail__lifecycle-head">
           <div>
             <h2 className="chg-detail__section-title">Lifecycle</h2>
@@ -218,13 +222,13 @@ export default function ChangeDetailPanel({
       </section>
 
       {hasManualActions ? (
-        <section className="chg-detail__actions devops-action-card">
+        <section className="work-board chg-detail__actions">
           <h2 className="chg-detail__section-title">Manual actions</h2>
-          <p className="chg-detail__hint">Use these when you are not waiting on CI, or to move a change through approval and close-out.</p>
+          <p className="chg-detail__hint">Approval records the decision. It does not deploy or execute the change. A material edit after approval invalidates that approval.</p>
           <div className="chg-detail__action-row">
             {actions?.canApprove ? (
               <button type="button" className="btn btn-primary" disabled={!!acting} onClick={actions.onApprove}>
-                {acting === 'approve' ? 'Approving…' : 'Approve'}
+                {acting === 'approve' ? 'Approving…' : 'Approve request'}
               </button>
             ) : null}
             {actions?.canSchedule ? (
@@ -281,42 +285,6 @@ export default function ChangeDetailPanel({
         </section>
       ) : null}
 
-      <section className="chg-detail__summary portal-surface">
-        <h2 className="chg-detail__section-title">Details</h2>
-        <div className="portal-detail-grid chg-detail__grid">
-          <DetailField
-            label="Project"
-            value={item.project_name ? `${item.project_name} (${item.project_code})` : '—'}
-          />
-          <DetailField label="Planned start" value={formatWhen(item.cab_window_start)} />
-          <DetailField label="Planned end" value={formatWhen(item.cab_window_end)} />
-          <DetailField label="Repo" value={item.repo} />
-          <DetailField label="SHA" value={item.sha} />
-          <DetailField label="Pull request" value={item.pr_number ? `#${item.pr_number}` : 'None'} />
-          <DetailField
-            label="Watch window"
-            value={`${item.watch_minutes} min${item.watch_until ? ` · until ${formatWhen(item.watch_until)}` : ''}`}
-          />
-          <DetailField label="Linked incidents" value={String(item.linked_incidents || 0)} />
-          <DetailField label="Created" value={formatWhen(item.created_at)} />
-          <DetailField label="Previous SHA" value={item.previous_sha || '—'} />
-        </div>
-        {(item.pr_url || item.pipeline_url) ? (
-          <p className="chg-detail__links">
-            {item.pr_url ? (
-              <a href={item.pr_url} target="_blank" rel="noreferrer">
-                Pull request
-              </a>
-            ) : null}
-            {item.pr_url && item.pipeline_url ? ' · ' : null}
-            {item.pipeline_url ? (
-              <a href={item.pipeline_url} target="_blank" rel="noreferrer">
-                Pipeline
-              </a>
-            ) : null}
-          </p>
-        ) : null}
-      </section>
     </div>
   );
 }

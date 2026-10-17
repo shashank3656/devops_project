@@ -426,13 +426,18 @@ func flagWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid body", err)
 		return
 	}
-	if !inboundWebhookAuthorized(inboundKindChange, r.Header, body) {
+	connection, authorized := matchedInboundConnection(inboundKindChange, r.Header, body)
+	if !authorized {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 		return
 	}
 	payload, err := parseFlagWebhook(body)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	if err := bindChangeWorker(&payload, connection); err != nil {
+		writeAPIError(w, r, http.StatusForbidden, "worker cannot leave its connection project", nil)
 		return
 	}
 	item, created, err := upsertChangeRequest(payload)
