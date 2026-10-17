@@ -2,7 +2,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BulkBar, ChangeCatalogTable, CopyButton, InspectorDrawer, SavedViews, type RowKey, type SavedView } from '@infragate/ui';
+import { BulkBar, ChangeCatalogTable, CopyButton, InspectorDrawer, SavedViews, type ChangeCatalogRow, type RowKey, type SavedView } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import BlockedAction from '../../components/BlockedAction';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -160,7 +160,7 @@ export default function ChangesCatalogPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [mine, setMine] = useState(false);
-  const [preview, setPreview] = useState<ChangeRow | null>(null);
+  const [preview, setPreview] = useState<ChangeCatalogRow | null>(null);
   const [filtersReady, setFiltersReady] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<RowKey>>(new Set());
   const [copied, setCopied] = useState(false);
