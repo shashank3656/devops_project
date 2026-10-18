@@ -739,6 +739,25 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	return project, nil
 }
 
+func deleteProjectCatalog(projectID int, updatedBy *int) error {
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return fmt.Errorf("project not found")
+	}
+	if _, err := DB.Exec(`DELETE FROM projects WHERE id = $1`, projectID); err != nil {
+		if strings.Contains(err.Error(), "foreign key") || strings.Contains(err.Error(), "23503") {
+			return fmt.Errorf("this project still has work attached, so it was not deleted")
+		}
+		return fmt.Errorf("the project was not deleted")
+	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+	AppendAuditLog(updatedBy, "project_delete", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", project.Name, project.Code))
+	return nil
+}
+
 func performProjectLifecycleAction(projectID int, action string, updatedBy *int) (*ProjectCatalog, error) {
 	project, err := getProjectCatalogByID(projectID)
 	if err != nil {
@@ -2379,6 +2398,26 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
+		return
+	}
+	if r.Method == "DELETE" {
+		userID, ok := requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
+			return
+		}
+		if err := deleteProjectCatalog(projectID, &userID); err != nil {
+			status := http.StatusBadRequest
+			if err.Error() == "project not found" {
+				status = http.StatusNotFound
+			}
+			writeAPIError(w, r, status, err.Error(), nil)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		encodeJSON(w, map[string]interface{}{"status": "ok"})
 		return
 	}
 	writeMethodNotAllowed(w, r)
