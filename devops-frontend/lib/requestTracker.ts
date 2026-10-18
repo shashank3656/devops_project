@@ -16,6 +16,7 @@ export type TrackerModel = {
   blockerWho: string;
   blockerNext: string;
   evidence: TrackerEvidence[];
+  verification: ResourceVerification;
   provisioned: boolean;
 };
 
@@ -33,7 +34,40 @@ export type TrackerInput = {
   applicationId?: string;
   promoteState?: string;
   rejectReason?: string;
+  resourceId?: string;
+  verificationCheck?: string;
+  verificationResult?: string;
+  verificationAt?: string;
+  verificationHref?: string;
 };
+
+export type ResourceVerification = {
+  recorded: boolean;
+  resourceId: string;
+  check: string;
+  result: string;
+  at: string;
+  href?: string;
+};
+
+const NOT_RECORDED = 'Verification not recorded';
+
+function resourceVerification(input: TrackerInput): ResourceVerification {
+  const resourceId = clean(input.resourceId);
+  const check = clean(input.verificationCheck);
+  const result = clean(input.verificationResult);
+  const at = clean(input.verificationAt);
+  const href = clean(input.verificationHref);
+  const recorded = Boolean(resourceId && check && result && at);
+  return {
+    recorded,
+    resourceId: resourceId || NOT_RECORDED,
+    check: check || NOT_RECORDED,
+    result: recorded ? result : NOT_RECORDED,
+    at: at || NOT_RECORDED,
+    href: recorded && href ? href : undefined,
+  };
+}
 
 const APPROVAL_WAITING = new Set([
   'pending_user_manager_approval',
@@ -73,8 +107,8 @@ export function buildRequestTracker(input: TrackerInput): TrackerModel {
   const failed = pipelineStatus === 'failed' || status === 'failed' || (status === 'rejected' && !cancelled);
   const approvalDone = !APPROVAL_WAITING.has(status) && status !== 'draft' && status !== 'rejected' && status !== 'cancelled';
   const hasPR = Boolean(clean(input.prUrl));
-  const hasPipelineEvidence = Boolean(clean(input.pipelineUrl) || clean(input.sha) || clean(input.imageDigest));
-  const verified = status === 'completed' && (hasPR || hasPipelineEvidence);
+  const verification = resourceVerification(input);
+  const verified = verification.recorded;
   const provisioned = pipelineStatus === 'success' && verified;
 
   const stages: TrackerStage[] = [
@@ -111,15 +145,13 @@ export function buildRequestTracker(input: TrackerInput): TrackerModel {
     {
       id: 'verification',
       label: 'Resource verification',
-      state: cancelled ? 'cancelled' : verified ? 'done' : status === 'completed' ? 'failed' : pipelineStatus === 'success' ? 'current' : 'waiting',
+      state: cancelled ? 'cancelled' : verified ? 'done' : 'waiting',
       who: 'OpsTrellis',
       detail: cancelled
         ? 'Cancelled.'
         : verified
-          ? 'Verification evidence is on this request.'
-          : status === 'completed'
-            ? 'Completed was recorded without pull request, commit, pipeline, or image evidence.'
-            : 'Completion waits for verification evidence.',
+          ? `${verification.check}: ${verification.result}.`
+          : NOT_RECORDED,
     },
   ];
 
@@ -143,15 +175,15 @@ export function buildRequestTracker(input: TrackerInput): TrackerModel {
     blockerWho = 'Pipeline';
     blockerNext = 'Retry the pipeline for this same request. A retry stays on this request.';
   } else if (status === 'completed' && !verified) {
-    blockerTitle = 'Completion is missing verification evidence.';
+    blockerTitle = NOT_RECORDED;
     blockerWho = 'DevOps reviewer';
-    blockerNext = 'Link the pull request, commit, or pipeline run before calling this provisioned.';
+    blockerNext = 'A pull request, pipeline result, or application identifier is not a resource check. Record the resource, the check, the result, the time, and the evidence.';
   } else if (!provisioned) {
     blockerTitle = 'Approved work is not provisioned yet.';
     blockerWho = hasPR ? 'Pipeline' : 'GitHub';
     blockerNext = hasPR ? 'Wait for the pipeline result, then verify the resource.' : 'Open or link the pull request.';
   } else {
-    blockerTitle = 'Verification evidence is present.';
+    blockerTitle = `${verification.check}: ${verification.result}.`;
     blockerWho = 'OpsTrellis';
     blockerNext = clean(input.promoteState) || 'No further action is required on this request.';
   }
@@ -164,5 +196,5 @@ export function buildRequestTracker(input: TrackerInput): TrackerModel {
     { label: 'Application', value: clean(input.applicationId) || 'Not recorded' },
   ];
 
-  return { stages, blockerTitle, blockerWho, blockerNext, evidence, provisioned };
+  return { stages, blockerTitle, blockerWho, blockerNext, evidence, verification, provisioned };
 }

@@ -245,6 +245,7 @@ export default function ServiceDeskPage() {
       if (['created', 'type', 'priority', 'status', 'owner'].includes(String(saved.sortKey))) setSortKey(saved.sortKey as SortKey);
       if (saved.sortDir === 'asc' || saved.sortDir === 'desc') setSortDir(saved.sortDir);
       if (typeof saved.page === 'number' && saved.page > 0) setPage(saved.page);
+      if (typeof saved.selectedKey === 'string' && saved.selectedKey) setSelectedKey(saved.selectedKey);
       if (typeof saved.scrollY === 'number') {
         const scrollY = saved.scrollY;
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
@@ -260,12 +261,12 @@ export default function ServiceDeskPage() {
     try {
       sessionStorage.setItem(
         DESK_VIEW_KEY,
-        JSON.stringify({ tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page }),
+        JSON.stringify({ tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page, selectedKey }),
       );
     } catch {
       // Storage can be unavailable in private windows.
     }
-  }, [tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page]);
+  }, [tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page, selectedKey]);
 
   useEffect(() => {
     const saveScroll = () => {
@@ -420,7 +421,7 @@ export default function ServiceDeskPage() {
             updatedAt: str(row.updated_at),
           });
         };
-        if (historyData.ok) asList(historyData.body?.requests).forEach((row) => pushRequest(row, `/requests/${num(row.id)}`));
+        if (historyData.ok) asList(historyData.body?.requests).forEach((row) => pushRequest(row, `/requests/${num(row.id)}?from=${encodeURIComponent('/service-desk')}`));
         if (queueData.ok) asList(queueData.body?.requests || queueData.body?.tickets).forEach((row) => pushRequest(row, `/tickets?id=${num(row.id)}`));
         requestRows.forEach((item) => next.push(item));
         if (!historyData.ok && !queueData.ok) {
@@ -458,7 +459,16 @@ export default function ServiceDeskPage() {
           const visible = next.filter((item) => item.href.startsWith('/requests/') || ticketVisible([item.owner, item.requester || ''], audience));
           visible.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setItems(visible);
-          if (!selectedKey && visible[0]) setSelectedKey(visible[0].key);
+          setSelectedKey((current) => {
+            if (current) return current;
+            try {
+              const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as { selectedKey?: string };
+              if (typeof saved.selectedKey === 'string' && saved.selectedKey) return saved.selectedKey;
+            } catch {
+              // A missing saved ticket falls through to the first visible row.
+            }
+            return visible[0]?.key || null;
+          });
         });
       })
       .catch(() => setError('The service desk could not load. Check your connection, then try again.'))
@@ -1099,9 +1109,20 @@ export default function ServiceDeskPage() {
               </section>
 
               <section className="sd-section">
-                <h3>Next action</h3>
-                <p>{selected.nextAction || 'No next action configured'}</p>
-                <p className="access-hint">{selected.dueAt ? `Due ${formatCalendarDate(selected.dueAt)}` : 'No due date'}</p>
+                {['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(selected.status.toLowerCase()) ? (
+                  <>
+                    <h3>Completion</h3>
+                    <p>No action required.</p>
+                    <p className="access-hint">Completed {formatOperationalTime(selected.updatedAt || selected.createdAt)}.</p>
+                    <p className="access-hint">{selected.dueAt ? `Requested date ${formatCalendarDate(selected.dueAt)}. This is the original requested date.` : 'No requested date was recorded.'}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3>Next action</h3>
+                    <p>{selected.nextAction || 'No next action configured'}</p>
+                    <p className="access-hint">{selected.dueAt ? `Due ${formatCalendarDate(selected.dueAt)}` : 'No due date'}</p>
+                  </>
+                )}
               </section>
 
               <section className="sd-section">

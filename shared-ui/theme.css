@@ -6492,6 +6492,30 @@ html[data-theme] .devops-sidebar-new__link--active:hover {
   border-radius: 12px;
 }
 
+html[data-theme] .devops-sidebar-new__sublink {
+  color: #e7e9ef;
+  background: transparent;
+}
+
+html[data-theme] .devops-sidebar-new__sublink:hover {
+  color: #f5f7fc;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme] .devops-sidebar-new__sublink:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+  color: #f5f7fc;
+}
+
+html[data-theme] .devops-sidebar-new__sublink--active,
+html[data-theme] .devops-sidebar-new__sublink--active:hover,
+html[data-theme] .devops-sidebar-new__sublink--active:focus-visible {
+  background: #6d4aff;
+  color: #f5f7fc;
+  border-radius: 8px;
+}
+
 html[data-theme] .devops-navbar {
   margin: 12px 16px 0;
   padding: 10px 16px;
@@ -10496,6 +10520,60 @@ html[data-theme='dark'] .service-360 .access-hint {
 html[data-theme='dark'] .service-360__tabs button.is-selected {
   background: #6d4aff;
   color: #f5f7fc;
+}
+
+html[data-theme] .service-360__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+html[data-theme] .service-360__facts button {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid #e2e7f0;
+  border-radius: 12px;
+  background: #fff;
+  color: #17233b;
+  text-align: left;
+  cursor: pointer;
+}
+
+html[data-theme] .service-360__facts button:hover,
+html[data-theme] .service-360__facts button:focus-visible {
+  border-color: #6d4aff;
+}
+
+html[data-theme] .service-360__facts span,
+html[data-theme] .service-360__facts small {
+  color: #58677f;
+  font-size: 12px;
+}
+
+html[data-theme] .service-360__facts strong {
+  color: #17233b;
+  font-size: 16px;
+}
+
+html[data-theme='dark'] .service-360__facts button {
+  border-color: #2a2150;
+  background: #192238;
+}
+
+html[data-theme='dark'] .service-360__facts span,
+html[data-theme='dark'] .service-360__facts small {
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .service-360__facts strong {
+  color: #f5f7fc;
+}
+
+html[data-theme] .ops-service dd .btn {
+  margin-left: 8px;
 }
 
 html[data-theme='dark'] .request-tracker__step.is-done { background: #14352f; }

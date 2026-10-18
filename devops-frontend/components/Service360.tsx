@@ -86,6 +86,8 @@ export default function Service360({
   serviceName,
   projectId,
   environment,
+  ownerTeam,
+  repo,
   overview,
 }: {
   apiUrl: string;
@@ -93,6 +95,8 @@ export default function Service360({
   serviceName: string;
   projectId?: number;
   environment?: string;
+  ownerTeam?: string;
+  repo?: string;
   overview: ReactNode;
 }) {
   const [tab, setTab] = useState<TabId>('overview');
@@ -148,17 +152,31 @@ export default function Service360({
     const extras = siblings.map((item) => (item.environment || '').toLowerCase()).filter((name) => name && !names.includes(name));
     return [...names, ...Array.from(new Set(extras))].map((name) => {
       const sibling = siblings.find((item) => (item.environment || '').toLowerCase() === name);
-      const change = changes.find((item) => (item.environment || '').toLowerCase() === name);
+      const change = changes
+        .filter((item) => (item.environment || '').toLowerCase() === name)
+        .sort((left, right) => (right.updated_at || '').localeCompare(left.updated_at || ''))[0];
+      const commit = (change?.sha || '').trim();
+      const digest = (change?.image_digest || '').trim();
+      const revision = commit.startsWith('manual-') || commit.startsWith('manual_')
+        ? `Manual reference ${commit}`
+        : commit || digest || 'Unknown';
       return {
         environment: name,
-        revision: mask(change?.sha),
-        digest: mask(change?.image_digest),
-        approval: change?.status ? change.status.replaceAll('_', ' ') : 'No change recorded',
+        latestChange: change?.status ? change.status.replaceAll('_', ' ') : 'No change recorded',
+        approval: 'Unknown',
+        revision,
+        digest: mask(digest),
         owner: sibling?.team || 'Unknown',
         repo: sibling?.repo || 'Unknown',
       };
     });
   }, [changes, siblings]);
+
+  const activeIncidents = incidents.filter((item) => !['resolved', 'closed', 'cancelled'].includes((item.status || '').toLowerCase()));
+  const latestChange = [...changes].sort((left, right) => (right.updated_at || '').localeCompare(left.updated_at || ''))[0];
+  const accessAttention = grants.filter((item) => !['approved', 'completed', 'rejected', 'revoked', 'expired'].includes((item.status || '').toLowerCase()));
+  const ownerLabel = (ownerTeam || '').trim() || 'Unknown';
+  const repoLabel = (repo || '').trim() || 'Unknown';
 
   const source = loadedAt
     ? `Source: service catalogue, changes, incidents, cloud resources, and access requests. Loaded ${formatOperationalTime(loadedAt)}. Missing telemetry stays Unknown.`
@@ -181,7 +199,35 @@ export default function Service360({
         </div>
       ) : null}
       {loading ? <p className="work-empty">Loading service context…</p> : null}
-      {tab === 'overview' ? overview : null}
+      {tab === 'overview' ? (
+        <>
+          <div className="service-360__facts">
+            <button type="button" onClick={() => setTab('overview')}>
+              <span>Ownership</span>
+              <strong>{loading ? 'Unknown' : ownerLabel}</strong>
+              <small>{loading ? 'Unknown' : repoLabel}</small>
+            </button>
+            <button type="button" onClick={() => setTab('resources')}>
+              <span>Linked resources</span>
+              <strong>{loading || error ? 'Unknown' : String(resources.length)}</strong>
+            </button>
+            <button type="button" onClick={() => setTab('incidents')}>
+              <span>Active incidents</span>
+              <strong>{loading || error ? 'Unknown' : String(activeIncidents.length)}</strong>
+            </button>
+            <button type="button" onClick={() => setTab('changes')}>
+              <span>Latest change</span>
+              <strong>{loading || error ? 'Unknown' : latestChange ? (latestChange.change_number || recordReference('CHG', latestChange.id)) : 'Unknown'}</strong>
+              <small>{loading || error ? 'Unknown' : latestChange?.status ? latestChange.status.replaceAll('_', ' ') : 'Unknown'}</small>
+            </button>
+            <button type="button" onClick={() => setTab('access')}>
+              <span>Access needing attention</span>
+              <strong>{loading || error ? 'Unknown' : String(accessAttention.length)}</strong>
+            </button>
+          </div>
+          {overview}
+        </>
+      ) : null}
       {tab === 'resources' && !loading ? (
         resources.length === 0 ? <p className="work-empty">No cloud resources matched this service. An empty list is not a healthy inventory.</p> : (
           <ul className="request-timeline">
@@ -242,9 +288,10 @@ export default function Service360({
             <thead>
               <tr>
                 <th>Environment</th>
-                <th>Revision</th>
-                <th>Image digest</th>
+                <th>Latest change status</th>
                 <th>Approval readiness</th>
+                <th>Deployed revision</th>
+                <th>Image digest</th>
                 <th>Owner</th>
                 <th>Repository</th>
               </tr>
@@ -253,16 +300,17 @@ export default function Service360({
               {comparison.map((row) => (
                 <tr key={row.environment}>
                   <td>{row.environment}</td>
+                  <td>{row.latestChange}</td>
+                  <td>{row.approval}</td>
                   <td>{row.revision}</td>
                   <td>{row.digest}</td>
-                  <td>{row.approval}</td>
                   <td>{row.owner}</td>
                   <td>{row.repo}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="access-hint">Configuration values are not compared here, so secrets are not shown. A missing revision or digest is Unknown.</p>
+          <p className="access-hint">Latest change status is the change record. Approval readiness stays Unknown until an approval decision is stored. A value that starts with a manual reference is not a commit SHA. Configuration values are not compared here.</p>
         </div>
       ) : null}
     </section>

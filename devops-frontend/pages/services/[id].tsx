@@ -6,6 +6,7 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import Service360 from '../../components/Service360';
 import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { serviceTicketHref } from '../../lib/scopeHref';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { rememberService } from '../../lib/recentServices';
 
@@ -80,6 +81,7 @@ export default function ServiceDetailPage() {
   const [dashboardURL, setDashboardURL] = useState('');
   const [metricsURL, setMetricsURL] = useState('');
   const [promql, setPromql] = useState('');
+  const [editFocus, setEditFocus] = useState('');
   useUnsavedChanges(editing && Boolean(item) && (
     service !== (item?.service || '')
     || repo !== (item?.repo || '')
@@ -181,8 +183,9 @@ export default function ServiceDetailPage() {
       .catch(() => setProjectEnvs(fromProject));
   }, [apiUrl, editing, projectId, projects]);
 
-  const startEdit = () => {
+  const startEdit = (focus = '') => {
     if (!item) return;
+    setEditFocus(focus);
     setService(item.service || '');
     setRepo(item.repo || '');
     setProjectId(item.project_id ? String(item.project_id) : '');
@@ -196,6 +199,13 @@ export default function ServiceDetailPage() {
     setNotice('');
     setEditing(true);
   };
+
+  useEffect(() => {
+    if (!editing || !editFocus) return;
+    const fieldId = editFocus === 'monitoring' ? 'service-dashboard' : editFocus === 'repo' ? 'service-repo' : 'service-team';
+    const field = document.getElementById(fieldId);
+    field?.focus();
+  }, [editFocus, editing]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -248,7 +258,7 @@ export default function ServiceDetailPage() {
           </div>
           <div className="portal-page__actions">
             {isManager && item && !editing ? (
-              <button type="button" className="btn btn-primary" onClick={startEdit}>Edit</button>
+              <button type="button" className="btn btn-primary" onClick={() => startEdit()}>Edit</button>
             ) : null}
             <Link href="/services" className="btn btn-secondary">Back to services</Link>
           </div>
@@ -257,8 +267,8 @@ export default function ServiceDetailPage() {
         {notice ? <div className="alert">{notice}</div> : null}
         {item && !editing ? (
           <>
-            {(!item.repo.trim() || !(item.team || '').trim()) ? (
-              <p className="ops-note"><strong>Setup incomplete</strong><span>Repository and owner team are not configured. Monitoring status is unknown.</span></p>
+            {(!item.repo.trim() || !(item.team || '').trim() || !(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql)) ? (
+              <p className="ops-note"><strong>Setup incomplete</strong><span>Repository, owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
             ) : null}
             <div className="ops-catalogue">
               <section className="ops-service">
@@ -266,14 +276,25 @@ export default function ServiceDetailPage() {
                 <dl>
                   <dt>Project</dt><dd>{known(item.project_name)}</dd>
                   <dt>Environment</dt><dd>{known(item.environment)}</dd>
-                  <dt>Owner team</dt><dd>{(item.team || '').trim() ? item.team : 'Not assigned'}</dd>
-                  <dt>Repository</dt><dd>{item.repo.trim() ? item.repo : 'Not connected'}</dd>
+                  <dt>Owner team</dt>
+                  <dd>
+                    {(item.team || '').trim() ? item.team : 'Not assigned'}
+                    {!(item.team || '').trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('team')}>Assign owner</button> : null}
+                  </dd>
+                  <dt>Repository</dt>
+                  <dd>
+                    {item.repo.trim() ? item.repo : 'Not connected'}
+                    {!item.repo.trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('repo')}>Connect repository</button> : null}
+                  </dd>
                 </dl>
               </section>
               <section className="ops-service">
                 <h2>Monitoring is not connected</h2>
                 <p>Connect a dashboard or metric source to see health. Missing telemetry is not a healthy result.</p>
                 {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <span>Grafana {known(item.grafana_uid)}</span>}
+                {!(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql) && isManager ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('monitoring')}>Configure monitoring</button>
+                ) : null}
               </section>
             </div>
             {sessionToken ? (
@@ -283,13 +304,15 @@ export default function ServiceDetailPage() {
                 serviceName={item.service}
                 projectId={item.project_id}
                 environment={item.environment}
+                ownerTeam={item.team}
+                repo={item.repo}
                 overview={(
                   <section className="ops-caught">
-                    <h2>Overview</h2>
-                    <p>Owners, resources, changes, incidents, and access stay on this page. Missing telemetry stays Unknown.</p>
+                    <h2>Start work</h2>
+                    <p>Creating a change or incident keeps this project, service, and environment. You can change that scope on the next page.</p>
                     <div className="portal-page__actions">
-                      <Link href="/changes/new" className="btn btn-primary">Create change</Link>
-                      <Link href="/incidents/new" className="btn btn-secondary">Report incident</Link>
+                      <Link href={serviceTicketHref('/changes/new', item)} className="btn btn-primary">Create change</Link>
+                      <Link href={serviceTicketHref('/incidents/new', item)} className="btn btn-secondary">Report incident</Link>
                     </div>
                   </section>
                 )}
@@ -305,7 +328,7 @@ export default function ServiceDetailPage() {
                 <legend className="form-section__title">Basics</legend>
                 <div className="portal-form-grid">
               <label className="label">Service<span className="form-req" aria-hidden="true"> *</span><input className="input" value={service} onChange={(event) => setService(event.target.value)} required /></label>
-              <label className="label">Repo <span className="onboard-optional">Optional</span><input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
+              <label className="label">Repo <span className="onboard-optional">Optional</span><input id="service-repo" className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
               <label className="label">
                 Project
                 <select className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setEnvironment(''); }}>
@@ -326,7 +349,7 @@ export default function ServiceDetailPage() {
               </label>
               <label className="label">
                 Owner team
-                <select className="input" value={team} onChange={(event) => setTeam(event.target.value)} disabled={teams.length === 0}>
+                <select id="service-team" className="input" value={team} onChange={(event) => setTeam(event.target.value)} disabled={teams.length === 0}>
                   <option value="">{teams.length ? 'Select an owner team' : 'No teams'}</option>
                   {teams.map((entry) => (
                     <option key={entry.id} value={entry.name}>{entry.name}</option>
@@ -335,12 +358,12 @@ export default function ServiceDetailPage() {
               </label>
                 </div>
               </fieldset>
-              <details className="onboard-advanced" open={Boolean(grafanaUID || dashboardURL || metricsURL || promql) || undefined}>
+              <details className="onboard-advanced" open={editFocus === 'monitoring' || Boolean(grafanaUID || dashboardURL || metricsURL || promql) || undefined}>
                 <summary>Monitoring <span className="onboard-optional">Optional</span></summary>
                 <p className="form-section__copy">Without these links, health on this service stays Unknown.</p>
                 <div className="portal-form-grid">
               <label className="label">Grafana UID<input className="input" value={grafanaUID} onChange={(event) => setGrafanaUID(event.target.value)} /></label>
-              <label className="label">Dashboard URL<input className="input" value={dashboardURL} onChange={(event) => setDashboardURL(event.target.value)} /></label>
+              <label className="label">Dashboard URL<input id="service-dashboard" className="input" value={dashboardURL} onChange={(event) => setDashboardURL(event.target.value)} /></label>
               <label className="label">Metrics JSON URL<input className="input" value={metricsURL} onChange={(event) => setMetricsURL(event.target.value)} /></label>
               <label className="label">PromQL<textarea className="input" rows={3} value={promql} onChange={(event) => setPromql(event.target.value)} /></label>
                 </div>

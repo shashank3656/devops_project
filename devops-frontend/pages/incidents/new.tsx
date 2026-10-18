@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { focusField } from '../../lib/focusField';
-import { scopeListHref } from '../../lib/scopeHref';
+import { scopeListHref, safeReturnPath } from '../../lib/scopeHref';
 import { FALLBACK_ITSM_CATEGORIES, IMPACT_URGENCY, INCIDENT_STATES, ITSM_PRIORITIES, ITSMCategory, normalizeCategories, priorityFromImpactUrgency, subcategoriesFor } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
 import { expireSession } from '../../lib/sessionExpiry';
@@ -171,6 +171,12 @@ export default function NewIncidentPage() {
     const value = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment;
     return (value || '').trim();
   }, [router.query.environment]);
+  const scopedService = useMemo(() => {
+    const value = Array.isArray(router.query.service) ? router.query.service[0] : router.query.service;
+    return (value || '').trim();
+  }, [router.query.service]);
+  const scopedServiceId = useMemo(() => parsePositiveIntQuery(router.query.service_id) || 0, [router.query.service_id]);
+  const returnPath = safeReturnPath(router.query.return);
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
   const [scopeServices, setScopeServices] = useState<ScopeService[]>([]);
   const [projectChoice, setProjectChoice] = useState('');
@@ -331,6 +337,19 @@ export default function NewIncidentPage() {
   }, [impact, urgency]);
 
   useEffect(() => {
+    if (!projectChoice || (!scopedService && !scopedServiceId)) return;
+    const match = scopedServiceId
+      ? scopeServices.find((item) => item.id === scopedServiceId)
+      : scopeServices.find((item) => {
+        if (!scopedService || item.service !== scopedService) return false;
+        if (projectChoice !== 'cross' && String(item.project_id) !== projectChoice) return false;
+        if (incidentEnvironment && item.environment && item.environment !== incidentEnvironment) return false;
+        return true;
+      });
+    if (match) setIncidentService((current) => current || match.service);
+  }, [incidentEnvironment, projectChoice, scopeServices, scopedService, scopedServiceId]);
+
+  useEffect(() => {
     if (!teamId || !ownerUserId) return;
     const ownerStillInTeam = selectedTeamMembers.some((member) => String(member.user_id) === ownerUserId);
     if (!ownerStillInTeam) {
@@ -443,15 +462,19 @@ export default function NewIncidentPage() {
           <div>
             <span className="portal-page__eyebrow">Incident Editor</span>
             <h1 className="portal-page__title">Create incident</h1>
-            <p className="portal-page__subtitle">Record what broke, who is affected, and how urgent it is.</p>
+            <p className="portal-page__subtitle">
+              {returnPath
+                ? 'Project, environment, and service are filled from the service you opened. Change any of them if this incident belongs somewhere else.'
+                : 'Record what broke, who is affected, and how urgent it is.'}
+            </p>
             <details className="onboard-advanced">
               <summary>How an incident moves</summary>
               <p className="form-section__copy">Impact and urgency suggest a priority. States run from New to In Progress, On Hold, Resolved, and Closed. A number is assigned when you save.</p>
             </details>
           </div>
           <div className="portal-page__actions">
-            <Link href={scopeListHref('/incidents', router.query)} className="btn btn-secondary">
-              Back to incidents
+            <Link href={returnPath || scopeListHref('/incidents', router.query)} className="btn btn-secondary">
+              {returnPath.startsWith('/services/') ? 'Back to service' : 'Back to incidents'}
             </Link>
           </div>
         </div>
@@ -480,7 +503,11 @@ export default function NewIncidentPage() {
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
                 <legend className="form-section__title">Affected scope</legend>
-                <p className="form-section__copy">Choose the project this incident belongs to. Use Unknown / cross-project when it is not one project.</p>
+                <p className="form-section__copy">
+                  {returnPath
+                    ? 'These values came from the service. You can change the project, environment, or service.'
+                    : 'Choose the project this incident belongs to. Use Unknown / cross-project when it is not one project.'}
+                </p>
                 <div className="portal-form-grid">
                   <label className="label">
                     Project<span className="form-req" aria-hidden="true"> *</span>

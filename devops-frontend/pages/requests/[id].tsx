@@ -8,6 +8,7 @@ import { sessionAuthHeaders } from '../../lib/portalAccess';
 import { CopyButton, formatCalendarDate, formatOperationalTime } from '@infragate/ui';
 import { recordReference } from '../../lib/recordRef';
 import { approvalLevel, requestPriorityName } from '../../lib/requestPriority';
+import { safeReturnPath } from '../../lib/scopeHref';
 import { buildRequestTracker, dedupeActivity, publicDetail } from '../../lib/requestTracker';
 
 type RequestRecord = {
@@ -58,6 +59,9 @@ export default function RequestDetailPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const requestId = Number(router.query.id);
+  const returnPath = safeReturnPath(router.query.from);
+  const backHref = returnPath || '/my-requests';
+  const backLabel = returnPath.startsWith('/service-desk') ? 'Back to Service Desk' : returnPath ? 'Back' : 'Back to my requests';
   const [request, setRequest] = useState<RequestRecord | null>(null);
   const [canApprove, setCanApprove] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -216,14 +220,14 @@ export default function RequestDetailPage() {
                   {tracker.stages.map((item) => (
                     <li key={item.id} className={`request-tracker__step is-${item.state}`} aria-current={item.state === 'current' || item.state === 'failed' ? 'step' : undefined}>
                       <strong>{item.label}</strong>
-                      <span>{item.state === 'done' ? 'Done' : item.state === 'failed' ? 'Failed' : item.state === 'cancelled' ? 'Cancelled' : item.state === 'current' ? 'Current' : 'Waiting'}</span>
+                      <span>{item.id === 'verification' && item.state !== 'done' && item.state !== 'cancelled' ? 'Not recorded' : item.state === 'done' ? 'Done' : item.state === 'failed' ? 'Failed' : item.state === 'cancelled' ? 'Cancelled' : item.state === 'current' ? 'Current' : 'Waiting'}</span>
                       <small>{item.who}. {item.detail}</small>
                     </li>
                   ))}
                 </ol>
               ) : null}
             </div>
-            <Link href="/my-requests" className="btn btn-secondary">Back to my requests</Link>
+            <Link href={backHref} className="btn btn-secondary">{backLabel}</Link>
           </header>
           {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
@@ -252,6 +256,14 @@ export default function RequestDetailPage() {
                 ) : null}
                 {tracker ? (
                   <div className="request-facts">
+                    <div><span>Resource</span><strong>{tracker.verification.resourceId}</strong></div>
+                    <div><span>Verification check</span><strong>{tracker.verification.check}</strong></div>
+                    <div><span>Result</span><strong>{tracker.verification.result}</strong></div>
+                    <div><span>Verified at</span><strong>{tracker.verification.recorded ? formatOperationalTime(tracker.verification.at) : tracker.verification.at}</strong></div>
+                    <div>
+                      <span>Evidence</span>
+                      <strong>{tracker.verification.href ? <a href={tracker.verification.href} target="_blank" rel="noreferrer">Open evidence</a> : 'Verification not recorded'}</strong>
+                    </div>
                     {tracker.evidence.map((item) => (
                       <div key={item.label}>
                         <span>{item.label}</span>

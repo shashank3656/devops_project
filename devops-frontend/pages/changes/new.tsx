@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { scopeListHref } from '../../lib/scopeHref';
+import { scopeListHref, safeReturnPath } from '../../lib/scopeHref';
 import { CHANGE_DRAFT_KEY } from '../../lib/returnPath';
 import { ITSM_PRIORITIES } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
@@ -145,6 +145,7 @@ export default function NewChangeRequestPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
+  const urlScopeApplied = useRef(false);
   const [error, setError] = useState('');
   const [pendingScope, setPendingScope] = useState<WorkspaceScope | null>(null);
 
@@ -158,6 +159,7 @@ export default function NewChangeRequestPage() {
     ? services.filter((item) => !item.project_id || String(item.project_id) === projectId)
     : [];
   const selectedProject = projects.find((project) => String(project.id) === projectId) || null;
+  const returnPath = safeReturnPath(router.query.return);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -217,9 +219,35 @@ export default function NewChangeRequestPage() {
   }, []);
 
   useEffect(() => {
+    if (!router.isReady || urlScopeApplied.current || services.length === 0) return;
+    const project = typeof router.query.project_id === 'string' ? router.query.project_id : '';
+    const serviceName = typeof router.query.service === 'string' ? router.query.service : '';
+    const serviceRecord = typeof router.query.service_id === 'string' ? router.query.service_id : '';
+    const environment = typeof router.query.environment === 'string' ? router.query.environment : '';
+    if (!project && !serviceName && !serviceRecord) return;
+    urlScopeApplied.current = true;
+    const match = serviceRecord
+      ? services.find((item) => String(item.id) === serviceRecord)
+      : services.find((item) => {
+        if (!serviceName || item.service !== serviceName) return false;
+        if (project && item.project_id && String(item.project_id) !== project) return false;
+        if (environment && item.environment && item.environment !== environment) return false;
+        return true;
+      });
+    if (project) setProjectId(project);
+    if (match) {
+      setServiceId(String(match.id));
+      if (match.project_id) setProjectId(String(match.project_id));
+      if (match.repo) setRepo(match.repo);
+    }
+  }, [router.isReady, router.query.environment, router.query.project_id, router.query.service, router.query.service_id, services]);
+
+  useEffect(() => {
+    if (urlScopeApplied.current) return;
+    if (typeof router.query.project_id === 'string' && router.query.project_id) return;
     const scope = readWorkspaceScope();
     if (scope.projectId) setProjectId((current) => current || scope.projectId);
-  }, [projects]);
+  }, [projects, router.query.project_id]);
 
   useEffect(() => {
     if (!draftDirty) return;
@@ -371,15 +399,17 @@ export default function NewChangeRequestPage() {
             <span className="portal-page__eyebrow">Change request</span>
             <h1 className="portal-page__title">Create change request</h1>
             <p className="portal-page__subtitle">
-              Name the project, the service, and the window.
+              {returnPath
+                ? 'Project and service are filled from the service you opened. Change either of them if this change belongs somewhere else.'
+                : 'Name the project, the service, and the window.'}
             </p>
             <details className="onboard-advanced">
               <summary>How a change moves</summary>
               <p className="form-section__copy">Saving a request is not a deployment. Approval is not execution.</p>
             </details>
           </div>
-          <Link href={scopeListHref('/changes', router.query)} className="btn btn-secondary">
-            Back to changes
+          <Link href={returnPath || scopeListHref('/changes', router.query)} className="btn btn-secondary">
+            {returnPath.startsWith('/services/') ? 'Back to service' : 'Back to changes'}
           </Link>
         </div>
 
@@ -433,7 +463,7 @@ export default function NewChangeRequestPage() {
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
                 <legend className="form-section__title">Scope</legend>
-                <p className="form-section__copy">Pick the project first. The service list only shows services in that project.</p>
+                <p className="form-section__copy">{returnPath ? 'These values came from the service. You can change the project or the service.' : 'Pick the project first. The service list only shows services in that project.'}</p>
                 <div className="portal-form-grid">
                   <label className="label">
                     Project<span className="form-req" aria-hidden="true"> *</span>
