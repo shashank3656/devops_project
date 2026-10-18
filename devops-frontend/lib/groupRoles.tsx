@@ -14,6 +14,16 @@ export function isDevopsGroup(kind: string): boolean {
   return kind === 'devops' || kind === 'devops_user';
 }
 
+export function groupRoleLabel(kind: string): string {
+  return isDevopsGroup(kind) ? 'Membership role' : 'Job title';
+}
+
+export function groupRoleHint(kind: string): string {
+  return isDevopsGroup(kind)
+    ? 'This DevOps group uses Member or Lead. Developer, Senior developer, and Manager are job titles on requester groups.'
+    : 'This requester group uses Developer, Senior developer, Lead, or Manager. Member and Lead are used on DevOps groups.';
+}
+
 function withCurrent(options: { value: string; label: string }[], current: string) {
   if (!current || options.some((option) => option.value === current)) return options;
   return [...options, { value: current, label: current }];
@@ -32,46 +42,23 @@ export function GroupRoleFields({
   idPrefix: string;
   compact?: boolean;
 }) {
-  const devops = isDevopsGroup(kind);
-  const jobValue = devops ? '' : role;
-  const membershipValue = devops ? role : '';
+  const current = typeof role === 'string' ? role : '';
+  const options = withCurrent(isDevopsGroup(kind) ? MEMBERSHIP_ROLES : JOB_TITLES, current);
+  const label = groupRoleLabel(kind);
   return (
-    <>
-      <label className="label" htmlFor={`${idPrefix}-job`}>Job title
-        <select
-          id={`${idPrefix}-job`}
-          className="input"
-          value={jobValue}
-          disabled={devops}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {devops ? <option value="">Not stored for a DevOps group</option> : null}
-          {withCurrent(JOB_TITLES, jobValue).map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </label>
-      <label className="label" htmlFor={`${idPrefix}-membership`}>Membership role
-        <select
-          id={`${idPrefix}-membership`}
-          className="input"
-          value={membershipValue}
-          disabled={!devops}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {!devops ? <option value="">Not stored for a requester group</option> : null}
-          {withCurrent(MEMBERSHIP_ROLES, membershipValue).map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </label>
-      {compact ? null : (
-        <p className="access-hint">
-          {devops
-            ? 'A DevOps group stores Membership role: Member or Lead. Job title is not stored on this group.'
-            : 'A requester group stores Job title: Developer, Senior developer, Lead, or Manager. Membership role is not stored on this group.'}
-        </p>
-      )}
-    </>
+    <label className="label" htmlFor={`${idPrefix}-role`}>
+      {compact ? <span className="ig-sr-only">{label}</span> : label}
+      <select
+        id={`${idPrefix}-role`}
+        className="input"
+        aria-label={compact ? label : undefined}
+        value={current}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
   );
 }

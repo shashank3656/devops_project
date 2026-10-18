@@ -22,17 +22,18 @@ export default function ScopeBar({
     [projects, scope.projectId],
   );
   const environments = useMemo(() => {
-    const fromCatalog = (catalogEnvironments || []).map((item) => item.trim()).filter(Boolean);
+    const fromCatalog = (catalogEnvironments || []).map((item) => String(item || '').trim()).filter(Boolean);
     if (scope.projectId && fromCatalog.length) {
       return Array.from(new Set(fromCatalog));
     }
     const fromProject = selected?.environments?.length ? selected.environments : [];
     const fromAll = projects.flatMap((project) => project.environments || []);
-    const unique = Array.from(new Set((fromProject.length ? fromProject : fromAll).map((item) => item.trim()).filter(Boolean)));
+    const unique = Array.from(new Set((fromProject.length ? fromProject : fromAll).map((item) => String(item || '').trim()).filter(Boolean)));
     return unique.length ? unique : FALLBACK_ENVIRONMENTS;
   }, [projects, selected, catalogEnvironments, scope.projectId]);
-  const hasScope = Boolean(scope.projectId || scope.environment);
-  const isProduction = /^prod/i.test(scope.environment.trim());
+  const environmentName = typeof scope?.environment === 'string' ? scope.environment : '';
+  const hasScope = Boolean(scope?.projectId || environmentName);
+  const isProduction = /^prod/i.test(environmentName.trim());
 
   return (
     <div className="ig-scope-bar" role="group" aria-label="Workspace scope">
@@ -40,12 +41,12 @@ export default function ScopeBar({
         <span className="ig-scope-bar__label">Project</span>
         <select
           className="ig-scope-bar__control"
-          value={scope.projectId}
+          value={typeof scope?.projectId === 'string' ? scope.projectId : ''}
           onChange={(event) => {
             const projectId = event.target.value;
             onChange({
               projectId,
-              environment: defaultEnvironmentForProject(projects, projectId, scope.environment),
+              environment: defaultEnvironmentForProject(projects, projectId, environmentName),
             });
           }}
         >
@@ -61,7 +62,7 @@ export default function ScopeBar({
         <span className="ig-scope-bar__label">Environment</span>
         <select
           className="ig-scope-bar__control"
-          value={scope.environment}
+          value={environmentName}
           onChange={(event) => onChange({ environment: event.target.value })}
         >
           <option value="">All environments</option>
@@ -84,7 +85,7 @@ export default function ScopeBar({
       ) : null}
       {selected ? (
         <p className="ig-scope-bar__facts">
-          Team {selected.team || 'Unknown'} · Cloud {selected.cloud || 'Unknown'} · Environments {selected.environments?.length ? selected.environments.join(', ') : 'Unknown'}
+          Team {typeof selected.team === 'string' && selected.team ? selected.team : 'Unknown'} · Cloud {typeof selected.cloud === 'string' && selected.cloud ? selected.cloud : 'Unknown'} · Environments {selected.environments?.length ? selected.environments.map((item) => String(item)).join(', ') : 'Unknown'}
         </p>
       ) : null}
     </div>

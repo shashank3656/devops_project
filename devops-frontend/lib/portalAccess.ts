@@ -108,11 +108,17 @@ export function pageKeyForPath(pathname: string): string {
   return match?.key || '';
 }
 
+function pageMap(pages: PortalGrants['pages']): Record<string, boolean> | null {
+  if (!pages || typeof pages !== 'object' || Array.isArray(pages)) return null;
+  return pages;
+}
+
 export function pageAllowed(pathname: string, grants: PortalGrants): boolean {
   const key = pageKeyForPath(pathname);
-  if (!key || !grants.pages) return true;
-  if (!(key in grants.pages)) return true;
-  return Boolean(grants.pages[key]);
+  const pages = pageMap(grants.pages);
+  if (!key || !pages) return true;
+  if (!(key in pages)) return true;
+  return Boolean(pages[key]);
 }
 
 export function homeFor(grants: PortalGrants): string {
@@ -132,8 +138,9 @@ function matches(pathname: string, prefix: string): boolean {
 }
 
 function pageOn(grants: PortalGrants, key: string, fallback: boolean): boolean {
-  if (!grants.pages || !(key in grants.pages)) return fallback;
-  return Boolean(grants.pages[key]);
+  const pages = pageMap(grants.pages);
+  if (!pages || !(key in pages)) return fallback;
+  return Boolean(pages[key]);
 }
 
 export function pathAllowed(pathname: string, grants: PortalGrants): boolean {

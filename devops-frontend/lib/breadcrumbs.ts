@@ -143,7 +143,13 @@ export interface Crumb {
 }
 
 function humanize(segment: string): string {
-  const text = decodeURIComponent(segment).replace(/[-_]+/g, ' ').trim();
+  let decoded = segment;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    decoded = segment;
+  }
+  const text = decoded.replace(/[-_]+/g, ' ').trim();
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : segment;
 }
 
@@ -164,7 +170,7 @@ export function buildBreadcrumbs(pathname: string, asPath: string, titles: Recor
     const dynamic = part.startsWith('[');
     let label = titles[pattern] || '';
     if (!label) {
-      if (dynamic) label = value.startsWith('[') ? '…' : /^\d+$/.test(value) ? `#${value}` : decodeURIComponent(value);
+      if (dynamic) label = value.startsWith('[') ? '…' : /^\d+$/.test(value) ? `#${value}` : humanize(value);
       else label = humanize(part);
     }
     const isLast = index === patternParts.length - 1;

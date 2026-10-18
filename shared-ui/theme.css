@@ -8369,7 +8369,20 @@ html[data-theme] .devops-layout .access-form .btn {
 }
 
 .group-add {
-  grid-template-columns: minmax(140px, 180px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 200px) auto;
+}
+
+.group-add .btn {
+  white-space: nowrap;
+  align-self: end;
+}
+
+.access-members__name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .group-defaults {
@@ -8398,6 +8411,10 @@ html[data-theme] .devops-layout .request-note .input {
 }
 
 .group-card .access-members li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 180px) auto;
+  align-items: center;
+  gap: 12px;
   padding: 10px 0;
   border-bottom: 1px solid var(--ig-border, rgba(255, 255, 255, 0.08));
 }
@@ -8486,9 +8503,9 @@ html[data-theme] .devops-layout .request-note .input {
   }
 }
 
-html[data-theme] .devops-layout .access-members select.input {
-  width: 148px;
-  flex: 0 0 148px;
+html[data-theme] .devops-layout .group-card .access-members select.input {
+  width: 100%;
+  flex: 1 1 auto;
 }
 
 .access-people,

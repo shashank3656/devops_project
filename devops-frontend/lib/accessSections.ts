@@ -62,18 +62,19 @@ export function emptyGrants(): SectionGrants {
 }
 
 function withPages(grants: SectionGrants, saved?: Record<string, boolean> | null): SectionGrants {
-  const explicit = Boolean(saved && Object.keys(saved).length);
+  const pageMap = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : null;
+  const explicit = Boolean(pageMap && Object.keys(pageMap).length);
   const pages: Record<string, boolean> = {};
   for (const page of SECTION_PAGES) {
     if (!grants[page.section]) pages[page.key] = false;
-    else if (!explicit || !saved || !(page.key in saved)) pages[page.key] = true;
-    else pages[page.key] = Boolean(saved[page.key]);
+    else if (!explicit || !pageMap || !(page.key in pageMap)) pages[page.key] = true;
+    else pages[page.key] = Boolean(pageMap[page.key]);
   }
   return { ...grants, pages };
 }
 
 export function grantsForTeam(team: { team_type?: string; grants?: Partial<SectionGrants> | null }): SectionGrants {
-  if (team.grants) return grantsFrom(team.grants);
+  if (team.grants && typeof team.grants === 'object') return grantsFrom(team.grants);
   if (team.team_type === 'devops') {
     return withPages({
       requests: false,
@@ -103,14 +104,14 @@ export function grantsFrom(saved: Partial<SectionGrants> | undefined): SectionGr
 }
 
 export function sameGrants(left: SectionGrants, right: SectionGrants) {
-  return ACCESS_SECTIONS.every((section) => left[section.key] === right[section.key])
-    && SECTION_PAGES.every((page) => Boolean(left.pages[page.key]) === Boolean(right.pages[page.key]));
+  return ACCESS_SECTIONS.every((section) => Boolean(left?.[section.key]) === Boolean(right?.[section.key]))
+    && SECTION_PAGES.every((page) => Boolean(left?.pages?.[page.key]) === Boolean(right?.pages?.[page.key]));
 }
 
 export function grantSummary(grants: SectionGrants) {
   const names = ACCESS_SECTIONS.filter((section) => grants[section.key]).map((section) => {
     const children = pagesFor(section.key);
-    const open = children.filter((page) => grants.pages[page.key]);
+    const open = children.filter((page) => grants.pages?.[page.key]);
     if (children.length && open.length && open.length < children.length) {
       return `${section.label} (${open.map((page) => page.label).join(', ')})`;
     }

@@ -61,7 +61,7 @@ export function queryString(query: Record<string, string | string[] | undefined>
 export function defaultEnvironmentForProject(projects: ScopeProject[], projectId: string, current?: string): string {
   if (!projectId) return '';
   const project = projects.find((item) => String(item.id) === String(projectId));
-  const environments = project?.environments?.filter(Boolean) || [];
+  const environments = (project?.environments || []).map((item) => String(item || '').trim()).filter(Boolean);
   if (current && environments.includes(current)) return current;
   return environments[0] || current || '';
 }

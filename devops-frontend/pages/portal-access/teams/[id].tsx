@@ -7,7 +7,7 @@ import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { ACCESS_SECTIONS, grantsForTeam, pagesFor, sameGrants, type SectionGrants, type SectionKey } from '../../../lib/accessSections';
 import { sessionAuthHeaders } from '../../../lib/portalAccess';
-import { GroupRoleFields } from '../../../lib/groupRoles';
+import { GroupRoleFields, groupRoleHint } from '../../../lib/groupRoles';
 
 type Team = {
   id: number;
@@ -72,7 +72,10 @@ export default function GroupAccessPage() {
         if (!response.ok) return;
         if (cancel) return;
         const rows = Array.isArray(body?.users) ? body.users : [];
-        setPeople(rows.map((account: Person) => ({ id: account.id, username: account.username })));
+        setPeople(rows.map((account: Person) => ({
+          id: Number(account.id) || 0,
+          username: typeof account.username === 'string' && account.username ? account.username : 'Person',
+        })));
       })
       .catch(() => undefined);
     fetch(`${apiUrl}/api/admin/teams/${teamId}`, { headers: sessionAuthHeaders() })
@@ -81,8 +84,8 @@ export default function GroupAccessPage() {
         if (!response.ok || cancel) return;
         const detail = body?.team && typeof body.team === 'object' ? body.team as { default_env?: string; default_cloud?: string; team_type?: string } : null;
         if (detail) {
-          const env = detail.default_env || '';
-          const cloud = detail.default_cloud || '';
+          const env = typeof detail.default_env === 'string' ? detail.default_env : '';
+          const cloud = typeof detail.default_cloud === 'string' ? detail.default_cloud : '';
           setDefaultEnv(env);
           setDefaultCloud(cloud);
           setSavedEnv(env);
@@ -91,9 +94,9 @@ export default function GroupAccessPage() {
         }
         const rows = Array.isArray(body?.members) ? body.members : [];
         setMembers(rows.map((member: { user_id: number; username: string; role: string }) => ({
-          user_id: member.user_id,
-          username: member.username,
-          role: member.role,
+          user_id: Number(member.user_id) || 0,
+          username: typeof member.username === 'string' && member.username ? member.username : 'Person',
+          role: typeof member.role === 'string' ? member.role : '',
         })));
       })
       .catch(() => undefined);
@@ -107,7 +110,7 @@ export default function GroupAccessPage() {
         const links = Array.isArray(body?.links) ? body.links : [];
         const mapped = links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
           project_id: Number(link.project_id) || 0,
-          name: link.name || 'Project',
+          name: typeof link.name === 'string' && link.name ? link.name : 'Project',
           k8s_access: asK8sLevel(link.k8s_access),
         }));
         setK8sLinks(mapped);
@@ -115,7 +118,7 @@ export default function GroupAccessPage() {
         const projects = Array.isArray(body?.projects) ? body.projects : [];
         setK8sProjects(projects.map((project: { id: number; name: string }) => ({
           id: Number(project.id) || 0,
-          name: project.name || 'Project',
+          name: typeof project.name === 'string' && project.name ? project.name : 'Project',
         })));
       })
       .catch(() => undefined);
@@ -279,7 +282,7 @@ export default function GroupAccessPage() {
       const links = Array.isArray(body?.links) ? body.links : [];
       const mapped = links.map((link: { project_id: number; name: string; k8s_access: string }) => ({
         project_id: Number(link.project_id) || 0,
-        name: link.name || 'Project',
+        name: typeof link.name === 'string' && link.name ? link.name : 'Project',
         k8s_access: asK8sLevel(link.k8s_access),
       }));
       setK8sLinks(mapped);
@@ -317,7 +320,7 @@ export default function GroupAccessPage() {
   function toggle(key: SectionKey) {
     setDraft((current) => {
       const on = !current[key];
-      const pages = { ...current.pages };
+      const pages = { ...(current.pages || {}) };
       for (const page of pagesFor(key)) pages[page.key] = on;
       return { ...current, [key]: on, pages };
     });
@@ -325,7 +328,7 @@ export default function GroupAccessPage() {
 
   function togglePage(section: SectionKey, pageKey: string) {
     setDraft((current) => {
-      const pages = { ...current.pages, [pageKey]: !current.pages[pageKey] };
+      const pages = { ...(current.pages || {}), [pageKey]: !current.pages?.[pageKey] };
       const on = pagesFor(section).some((page) => pages[page.key]);
       return { ...current, [section]: on, pages };
     });
@@ -372,7 +375,7 @@ export default function GroupAccessPage() {
           <header className="work-page__head">
             <div>
               <p className="ops-kicker">Portal Access</p>
-              <h1>{team?.name || 'Group'}</h1>
+              <h1>{typeof team?.name === 'string' && team.name ? team.name : 'Group'}</h1>
               <p>{team ? (team.team_type === 'devops' ? 'DevOps group' : 'Requester group') : 'Choose the sections this group can open.'}</p>
             </div>
             <div className="access-create__end">
@@ -393,19 +396,16 @@ export default function GroupAccessPage() {
                   {ACCESS_SECTIONS.filter((section) => draft[section.key]).map((section) => section.label).join(' · ') || 'No sections are on.'}
                   {dirty ? ' Section changes are not saved yet.' : ' Saved sections are what members see.'}
                 </p>
-                <p className="access-hint">
-                  Membership, request defaults, and Kubernetes each save on their own. Job title and membership role are both shown below. Only the one this group stores can be changed. Manager for approvals is an account flag, set on the person.
-                </p>
                 <p className="access-hint">Kubernetes group level is {teamK8s}. {k8sLinks.length ? `${k8sLinks.length} project links.` : 'No project links yet.'}</p>
               </section>
               <section className="portal-surface group-card">
                 <h2 className="access-form__title">People</h2>
-                <p className="access-hint">Adding, removing, and role changes save immediately.</p>
+                <p className="access-hint">{groupRoleHint(team.team_type || '')} Adding, removing, and role changes save immediately.</p>
                 {members.length === 0 ? <p className="work-empty">No one is in this group yet.</p> : (
                   <ul className="access-members">
                     {members.map((member) => (
                       <li key={member.user_id}>
-                        <span>{member.username}</span>
+                        <span className="access-members__name">{member.username}</span>
                         <GroupRoleFields
                           kind={team.team_type || ''}
                           role={member.role}
@@ -419,8 +419,7 @@ export default function GroupAccessPage() {
                   </ul>
                 )}
                 <div className="group-add">
-                  <GroupRoleFields kind={team.team_type || ''} role={memberRole} onChange={setMemberRole} idPrefix="add" />
-                  <label className="label" htmlFor="add-person">Add someone
+                  <label className="label" htmlFor="add-person">Person
                     <select id="add-person" className="input" value={personId} onChange={(event) => setPersonId(event.target.value)}>
                       <option value="">{available.length ? 'Choose a person' : 'Everyone is already in this group'}</option>
                       {available.map((person) => (
@@ -428,8 +427,9 @@ export default function GroupAccessPage() {
                       ))}
                     </select>
                   </label>
+                  <GroupRoleFields kind={team.team_type || ''} role={memberRole} onChange={setMemberRole} idPrefix="add" />
                   <button type="button" className="btn btn-primary" disabled={!personId || adding} onClick={addPerson}>
-                    {adding ? 'Adding…' : 'Add to group'}
+                    {adding ? 'Adding…' : 'Add'}
                   </button>
                 </div>
               </section>
@@ -541,7 +541,7 @@ export default function GroupAccessPage() {
                       <label className={draft[section.key] ? 'access-chip is-on' : 'access-chip'}>
                         <input
                           type="checkbox"
-                          checked={draft[section.key]}
+                          checked={Boolean(draft[section.key])}
                           onChange={() => toggle(section.key)}
                         />
                         {section.label}
@@ -550,10 +550,10 @@ export default function GroupAccessPage() {
                         <ul className="access-pages" aria-label={`${section.label} pages`}>
                           {pagesFor(section.key).map((page) => (
                             <li key={page.key}>
-                              <label className={draft.pages[page.key] ? 'access-chip is-on' : 'access-chip'}>
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(draft.pages[page.key])}
+                          <label className={draft.pages?.[page.key] ? 'access-chip is-on' : 'access-chip'}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(draft.pages?.[page.key])}
                                   onChange={() => togglePage(section.key, page.key)}
                                 />
                                 {page.label}

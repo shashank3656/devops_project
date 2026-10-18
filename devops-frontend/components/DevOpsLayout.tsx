@@ -29,6 +29,7 @@ import { buildBreadcrumbs } from '../lib/breadcrumbs';
 import {
   CommandPalette,
   MobileTabBar,
+  PortalErrorBoundary,
   SearchTrigger,
   ScopeBar,
   ThemeToggle,
@@ -1213,7 +1214,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             </ol>
           </nav>
           <span className="ops-crumb__context">
-            {crumbProject ? `${crumbProject.name} · ${crumbProject.team || 'Team unknown'} · ${(crumbProject.cloud || 'cloud unknown').toUpperCase()}` : 'All projects'}
+            {crumbProject ? `${typeof crumbProject.name === 'string' ? crumbProject.name : 'Project'} · ${typeof crumbProject.team === 'string' && crumbProject.team ? crumbProject.team : 'Team unknown'} · ${String(typeof crumbProject.cloud === 'string' && crumbProject.cloud ? crumbProject.cloud : 'cloud unknown').toUpperCase()}` : 'All projects'}
             {scope.environment ? ` · ${scope.environment}` : ''}
           </span>
         </div>
@@ -1227,7 +1228,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               </button>
             </div>
           ) : null}
-          {sessionReady ? children : null}
+          {sessionReady ? <PortalErrorBoundary>{children}</PortalErrorBoundary> : null}
         </main>
       </div>
       <MobileTabBar
