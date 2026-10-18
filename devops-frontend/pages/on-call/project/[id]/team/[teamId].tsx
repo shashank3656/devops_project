@@ -173,12 +173,12 @@ export default function OnCallTeamUsersPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>{known(teamName)} on-call people</title></Head>
+      <Head><title>{loading ? 'Loading team…' : `${known(teamName)} on-call people`}</title></Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">{known(projectName)}</span>
-            <h1 className="portal-page__title">{known(teamName)}</h1>
+            <span className="portal-page__eyebrow">{loading ? 'Loading project…' : known(projectName)}</span>
+            <h1 className="portal-page__title">{loading ? 'Loading team…' : known(teamName)}</h1>
             <p className="portal-page__subtitle">Choose who rotates. Shift timing, handover, and rotation order are in the weekly schedule on this page.</p>
           </div>
           <Link href={`/on-call/project/${projectId}`} className="btn btn-secondary">Back to teams</Link>

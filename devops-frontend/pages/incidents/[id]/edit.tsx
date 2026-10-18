@@ -9,6 +9,7 @@ import ITSMJournal from '../../../components/ITSMJournal';
 import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentCanFinish, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
 import { asRecord, getString } from '../../../lib/payload';
 import { expireSession } from '../../../lib/sessionExpiry';
+import { CopyButton } from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -439,7 +440,10 @@ export default function EditIncidentPage() {
       <div className="work-page">
         <header className="work-page__head">
           <div>
-            <p className="ops-kicker">{currentIncidentNumber || 'Incident'}</p>
+            <p className="ops-kicker">
+              {currentIncidentNumber || 'Incident'}
+              {currentIncidentNumber ? <CopyButton value={currentIncidentNumber} label="incident number" /> : null}
+            </p>
             <h1>{summary.trim() || 'Incident'}</h1>
             <p>{loading ? 'Loading this incident.' : `${status || 'Unknown status'} · ${severity || 'No priority'} · ${ownerUserId ? `Owner #${ownerUserId}` : 'Owner unassigned'}`}</p>
           </div>

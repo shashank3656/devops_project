@@ -1,4 +1,5 @@
 import DataTable, { type DataTableColumn } from './DataTable';
+import CopyButton from './CopyButton';
 
 export interface IncidentCatalogRow {
   id: number;
@@ -30,6 +31,7 @@ function buildUserColumns(): DataTableColumn<IncidentCatalogRow>[] {
       cell: (incident) => (
         <div>
           <strong>{incidentReference(incident)}</strong>
+          <CopyButton value={incidentReference(incident)} label="incident number" />
           <div className="incidents-page__meta">
             {[incident.service || incident.request_service || 'service', incident.environment || incident.request_env || '']
               .filter(Boolean)
@@ -60,6 +62,7 @@ function buildAdminColumns(): DataTableColumn<IncidentCatalogRow>[] {
       cell: (item) => (
         <>
           <strong>{incidentReference(item)}</strong>
+          <CopyButton value={incidentReference(item)} label="incident number" />
           <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.summary || 'No summary'}</div>
         </>
       ),

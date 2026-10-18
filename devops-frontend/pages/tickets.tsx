@@ -811,6 +811,7 @@ export default function DevOpsTickets() {
             <span className="ig-cell-title">{req.service || 'Request'}</span>
             <span className="ig-cell-meta">
               <span className="ig-mono">#{req.id}</span>
+              <CopyButton value={String(req.id)} label="request reference" />
               {context ? ` · ${context}` : ''}
               {bundleCount > 1 ? ` · ${bundleCount}` : ''}
               {isAccessRequest(req) ? ' · Access' : ''}

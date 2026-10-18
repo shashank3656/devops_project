@@ -212,6 +212,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCountKnown, setPendingCountKnown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -469,7 +470,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         if (data?.status === 'ok' && typeof data.pending_approval_count === 'number')
           setPendingCount(data.pending_approval_count);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPendingCountKnown(true));
   }, [isManager, apiUrl, clearSessionAndRedirect]);
 
   useEffect(() => {
@@ -776,12 +778,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const statusLabel = !sessionReady
     ? 'Checking session'
     : isManager
-    ? pendingCount > 0
+    ? !pendingCountKnown
+      ? 'Checking approvals'
+      : pendingCount > 0
       ? `${pendingCount} pending approvals`
       : 'No pending approvals'
     : 'Active session';
   const getSidebarBadge = (href: string): string | null => {
-    if ((href === '/service-desk' || href === '/tickets') && isManager && pendingCount > 0) {
+    if ((href === '/service-desk' || href === '/tickets') && isManager && pendingCountKnown && pendingCount > 0) {
       return pendingCount > 99 ? '99+' : String(pendingCount);
     }
     return null;
@@ -1004,7 +1008,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 writeScopeQuery(updateScope({ projectId: '', environment: '' }));
               }}
             />
-            <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
+            <span className={`devops-navbar__status-chip ${isManager && pendingCountKnown && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
               {statusLabel}
             </span>
           </div>
@@ -1038,14 +1042,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                       setSupportOpen(false);
                     }}
                     ref={notifyButtonRef}
-                    title={pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
-                    aria-label={pendingCount > seenNotifyIds.length ? `Notifications, ${Math.max(pendingCount - seenNotifyIds.length, 0)} unread` : pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
+                    title={!pendingCountKnown ? 'Checking approvals' : pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
+                    aria-label={!pendingCountKnown ? 'Notifications, checking approvals' : pendingCount > seenNotifyIds.length ? `Notifications, ${Math.max(pendingCount - seenNotifyIds.length, 0)} unread` : pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
                     aria-expanded={notifyOpen}
                     aria-haspopup="dialog"
                     aria-controls="devops-notify-panel"
                   >
                     <IconBell />
-                    {pendingCount > seenNotifyIds.length && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
+                    {pendingCountKnown && pendingCount > seenNotifyIds.length && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
                   </button>
 
                   {notifyOpen && (
@@ -1057,9 +1061,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                         </button>
                       </div>
                       <div className="devops-navbar__notify-summary">
-                        <strong>{pendingCount > 99 ? '99+' : pendingCount}</strong>
+                        <strong>{!pendingCountKnown || pendingApprovalsLoading ? '…' : pendingCount > 99 ? '99+' : pendingCount}</strong>
                         <span>
-                          {pendingCount > 0
+                          {!pendingCountKnown || pendingApprovalsLoading
+                            ? 'Checking approval tickets.'
+                            : pendingCount > 0
                             ? 'Approval work is waiting across projects and release flows.'
                             : 'No approval tickets are waiting right now.'}
                         </span>

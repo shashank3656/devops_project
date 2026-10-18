@@ -503,9 +503,7 @@ export default function OnCallPage() {
                               ) : shiftText(row.shift)}
                             </td>
                             <td>
-                              {people.length ? people.map((person) => person.name).join(', ') : (
-                                <Link href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Add users</Link>
-                              )}
+                              {people.length ? people.map((person) => person.name).join(', ') : 'No one on this team'}
                             </td>
                             <td>
                               {canRequest(row) ? (

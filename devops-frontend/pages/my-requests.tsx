@@ -5,6 +5,7 @@ import AccessFilters from '../components/AccessFilters';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../lib/portalAccess';
+import { CopyButton } from '@infragate/ui';
 
 type HistoryRequest = {
   id: number;
@@ -18,6 +19,10 @@ type HistoryRequest = {
   due_date?: string;
   created_at?: string;
 };
+
+function requestReference(id: number): string {
+  return `REQ${String(id).padStart(7, '0')}`;
+}
 
 function statusLabel(status?: string) {
   switch (status) {
@@ -149,8 +154,13 @@ export default function MyRequestsPage() {
                   {visible.map((item) => (
                     <tr key={item.id}>
                       <td>
-                        <Link href={`/requests/${item.id}`}>{item.service || 'Request'} #{item.id}</Link>
-                        {item.cloud ? ` · ${item.cloud}` : ''}
+                        <Link href={`/requests/${item.id}`}>{item.service || 'Request'}</Link>
+                        <span className="ig-cell-meta">
+                          {' '}
+                          {requestReference(item.id)}
+                          <CopyButton value={requestReference(item.id)} label="request number" />
+                          {item.cloud ? ` · ${item.cloud}` : ''}
+                        </span>
                       </td>
                       <td>{item.env || '—'}</td>
                       <td>{item.project_name || item.team || '—'}</td>

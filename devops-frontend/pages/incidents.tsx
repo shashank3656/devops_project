@@ -382,8 +382,12 @@ export default function DevOpsIncidentsPage() {
           const context = [incident.request_service, incident.project_name, incident.request_env, incident.owner_username || incident.team_name].filter(Boolean).join(' · ');
           return (
             <div className="ig-cell-stack">
-              <span className="ig-cell-title">{getIncidentReference(incident)}</span>
-              {context ? <span className="ig-cell-meta">{context}</span> : null}
+              <span className="ig-cell-title">{incident.summary || getIncidentReference(incident)}</span>
+              <span className="ig-cell-meta">
+                {getIncidentReference(incident)}
+                <CopyButton value={getIncidentReference(incident)} label="incident number" />
+                {context ? ` · ${context}` : ''}
+              </span>
             </div>
           );
         },

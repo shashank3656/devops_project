@@ -5403,10 +5403,19 @@ th[aria-sort='descending'] .sd-sort-btn { color: var(--ig-text); }
 }
 
 .sd-ticket-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--ig-muted);
+}
+
+.ops-kicker:has(.copy-chip) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .sd-ticket-cell strong {

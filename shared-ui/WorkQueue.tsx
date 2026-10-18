@@ -39,11 +39,13 @@ export default function WorkQueue({
   loading = false,
   emptyTitle = "You're all caught up",
   emptyBody = 'New approvals, incidents, and risky merges will show up here.',
+  emptyPresentation = 'success',
 }: {
   items: QueueItem[];
   loading?: boolean;
   emptyTitle?: string;
   emptyBody?: string;
+  emptyPresentation?: 'success' | 'scope' | 'empty';
 }) {
   if (loading) {
     return (
@@ -61,12 +63,14 @@ export default function WorkQueue({
 
   if (items.length === 0) {
     return (
-      <div className="ig-home-panel ig-home-empty">
-        <span className="ig-home-empty__icon" aria-hidden>
-          <svg viewBox="0 0 24 24">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
-        </span>
+      <div className={`ig-home-panel ig-home-empty${emptyPresentation === 'success' ? '' : ' ig-home-empty--plain'}`}>
+        {emptyPresentation === 'success' ? (
+          <span className="ig-home-empty__icon" aria-hidden>
+            <svg viewBox="0 0 24 24">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </span>
+        ) : null}
         <div>
           <strong>{emptyTitle}</strong>
           <p>{emptyBody}</p>

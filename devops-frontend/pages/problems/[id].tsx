@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
+import { buildPortalApiUrl, CopyButton, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import ITSMClock from '../../components/ITSMClock';
 import ITSMJournal from '../../components/ITSMJournal';
@@ -103,7 +103,10 @@ export default function ProblemDetailPage() {
       <div className="work-page">
         <header className="work-page__head">
           <div>
-            <p className="ops-kicker">{item?.problem_number || 'Problem'}</p>
+            <p className="ops-kicker">
+              {item?.problem_number || 'Problem'}
+              {item?.problem_number ? <CopyButton value={item.problem_number} label="problem number" /> : null}
+            </p>
             <h1>{item?.summary || 'Problem'}</h1>
             <p>{item ? [problemStateLabel(item.status), priorityLabel(item.priority || 'p3'), item.assignee_username ? `Owner ${item.assignee_username}` : 'Owner unassigned', item.service || 'No service'].join(' · ') : 'Recurring alert fingerprint.'}</p>
           </div>

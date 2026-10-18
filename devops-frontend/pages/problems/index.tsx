@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { PROBLEM_STATES, priorityLabel, problemStateLabel } from '../../lib/itsm';
+import { CopyButton } from '@infragate/ui';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -127,7 +128,10 @@ export default function ProblemsPage() {
                 {visible.map((item) => (
                   <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/problems/${item.id}`)}>
                     <td>
-                      <strong><Link href={`/problems/${item.id}`} onClick={(event) => event.stopPropagation()}>{item.problem_number}</Link></strong>
+                      <strong>
+                        <Link href={`/problems/${item.id}`} onClick={(event) => event.stopPropagation()}>{item.problem_number}</Link>
+                        <CopyButton value={item.problem_number} label="problem number" />
+                      </strong>
                       <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.summary || item.fingerprint}</div>
                     </td>
                     <td>{priorityLabel(item.priority || 'p3')}</td>

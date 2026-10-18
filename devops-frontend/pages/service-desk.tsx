@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { queryString, useConfirm, useWorkspaceScope } from '@infragate/ui';
+import { CopyButton, queryString, useConfirm, useWorkspaceScope } from '@infragate/ui';
 import { productionDetailLines } from '../lib/productionConfirm';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -157,6 +157,12 @@ function num(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value);
   return 0;
+}
+
+function recordReference(prefix: 'CHG' | 'INC' | 'PRB' | 'REQ', id: number, stored: string): string {
+  const text = stored.trim();
+  if (text && !text.includes('-')) return text;
+  return `${prefix}${String(id).padStart(7, '0')}`;
 }
 
 function namedEnvironment(value: string): string {
@@ -317,6 +323,7 @@ export default function ServiceDeskPage() {
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/changes/${id}`,
+            reference: recordReference('CHG', id, str(row.change_number)),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
@@ -343,6 +350,7 @@ export default function ServiceDeskPage() {
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/incidents/${id}/edit`,
+            reference: recordReference('INC', id, str(row.incident_number)),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
@@ -369,6 +377,7 @@ export default function ServiceDeskPage() {
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/problems/${id}`,
+            reference: recordReference('PRB', id, str(row.problem_number)),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
@@ -396,6 +405,7 @@ export default function ServiceDeskPage() {
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href,
+            reference: recordReference('REQ', id, ''),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
@@ -658,11 +668,11 @@ export default function ServiceDeskPage() {
 
   const ticketIdLabel = (item: DeskTicket) => {
     if (item.reference) return item.reference;
-    if (item.kind === 'change') return `CHG-${String(item.id).padStart(3, '0')}`;
-    if (item.kind === 'incident') return `INC-${String(item.id).padStart(3, '0')}`;
-    if (item.kind === 'problem') return `PRB-${String(item.id).padStart(3, '0')}`;
-    if (item.kind === 'access') return `ACC-${String(item.id).padStart(3, '0')}`;
-    return `REQ-${String(item.id).padStart(3, '0')}`;
+    if (item.kind === 'change') return recordReference('CHG', item.id, '');
+    if (item.kind === 'incident') return recordReference('INC', item.id, '');
+    if (item.kind === 'problem') return recordReference('PRB', item.id, '');
+    if (item.kind === 'access') return `ACC${String(item.id).padStart(7, '0')}`;
+    return recordReference('REQ', item.id, '');
   };
 
   return (
@@ -884,7 +894,10 @@ export default function ServiceDeskPage() {
                         </td>
                         <td>
                           <div className="sd-ticket-cell">
-                            <span className="sd-ticket-id">{ticketIdLabel(item)}</span>
+                            <span className="sd-ticket-id">
+                              {ticketIdLabel(item)}
+                              <CopyButton value={ticketIdLabel(item)} label="ticket number" />
+                            </span>
                             <strong>{item.title}</strong>
                             <span className="sd-ticket-summary">{item.summary || 'Unknown'}</span>
                           </div>
@@ -941,7 +954,10 @@ export default function ServiceDeskPage() {
             <aside className="sd-inspector" aria-label="Ticket details">
               <div className="sd-inspector__head">
                 <div>
-                  <span className="sd-ticket-id">{ticketIdLabel(selected)}</span>
+                  <span className="sd-ticket-id">
+                    {ticketIdLabel(selected)}
+                    <CopyButton value={ticketIdLabel(selected)} label="ticket number" />
+                  </span>
                   <h2 className="sd-inspector__title">{selected.title}</h2>
                 </div>
                 <button type="button" className="sd-inspector__close" onClick={() => setSelectedKey(null)} aria-label="Close">
@@ -1031,13 +1047,8 @@ export default function ServiceDeskPage() {
 
               <section className="sd-section">
                 <h3>Next action</h3>
-                <label className="sd-next">
-                  <input type="checkbox" disabled checked={false} />
-                  <span>
-                    {selected.nextAction || 'Unknown'}
-                    <small>{selected.owner} · {selected.dueAt ? `Due ${formatWhen(selected.dueAt)}` : 'Due Unknown'}</small>
-                  </span>
-                </label>
+                <p>{selected.nextAction || 'No next action configured'}</p>
+                <p className="access-hint">{selected.dueAt ? `Due ${formatWhen(selected.dueAt)}` : 'No due date'}</p>
               </section>
 
               <section className="sd-section">

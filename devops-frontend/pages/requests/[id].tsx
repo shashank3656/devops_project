@@ -6,6 +6,7 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import ExecutionStage from '../../components/ExecutionStage';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
+import { CopyButton } from '@infragate/ui';
 
 type RequestRecord = {
   id: number;
@@ -178,7 +179,10 @@ export default function RequestDetailPage() {
           <header className="work-page__head">
             <div>
               <p className="ops-kicker">Requests</p>
-              <p className="ig-cell-meta">{request ? `REQ${String(request.id).padStart(7, '0')}` : 'Request'}</p>
+              <p className="ig-cell-meta">
+                {request ? `REQ${String(request.id).padStart(7, '0')}` : 'Request'}
+                {request ? <CopyButton value={`REQ${String(request.id).padStart(7, '0')}`} label="request number" /> : null}
+              </p>
               <h1>{request ? (request.service || 'Request') : 'Request'}</h1>
               <p>{request ? `${statusLabel(request.status)} · ${request.priority || 'No priority'} · Owner ${request.team || 'unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
               {request ? (

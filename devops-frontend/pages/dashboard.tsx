@@ -145,13 +145,16 @@ export default function DevOpsDashboard() {
           <section className="ops-card" aria-label="Needs my action">
             <div className="ops-card__head">
               <h2>Needs my action</h2>
-              <span>{loading ? 'Loading…' : `${actionItems.length} in ${envLabel}`}</span>
+              <span>
+                {loading ? 'Loading…' : needsProject ? 'No project selected' : error ? 'Could not load' : actionItems.length === 0 ? 'Nothing waiting' : `${actionItems.length} in ${envLabel}`}
+              </span>
             </div>
             <WorkQueue
               items={actionItems}
               loading={loading}
-              emptyTitle={needsProject ? 'Select a project' : "You're all caught up"}
-              emptyBody={needsProject ? 'Approvals, assigned incidents, failed requests, and coverage gaps stay with the project you choose.' : 'Approvals, assigned incidents, failed requests, and coverage gaps will show up here.'}
+              emptyPresentation={needsProject ? 'scope' : error ? 'empty' : 'success'}
+              emptyTitle={needsProject ? 'Select a project' : error ? 'Could not load work' : "You're all caught up"}
+              emptyBody={needsProject ? 'Approvals, assigned incidents, failed requests, and coverage gaps stay with the project you choose.' : error ? 'Try again after the workspace loads.' : 'Approvals, assigned incidents, failed requests, and coverage gaps will show up here.'}
             />
             <details className="access-hint">
               <summary>How these words are used</summary>
@@ -211,9 +214,9 @@ export default function DevOpsDashboard() {
               </div>
               <section className="ops-scores" aria-label="Operational scorecards" aria-busy={loading}>
                 <Link href={scoped('/incidents?mine=1')} className="ops-score ops-score--mint">
-                  <span>Open incidents</span>
+                  <span>My open incidents</span>
                   <strong>{loading ? '…' : countText(incidentCount)}</strong>
-                  <small>{loading ? 'Loading…' : error ? 'Unknown · could not load' : `Open now · ${freshness || 'not refreshed yet'}`}</small>
+                  <small>{loading ? 'Loading…' : error ? 'Unknown · could not load' : `Assigned to you · ${freshness || 'not refreshed yet'}`}</small>
                 </Link>
                 <Link href={scoped('/tickets?status=pending_devops_approval')} className="ops-score ops-score--lilac">
                   <span>Awaiting your review</span>
@@ -239,7 +242,7 @@ export default function DevOpsDashboard() {
               </section>
 
               <p className="ops-scores__meta">
-                Open incidents and reviews count stored records. Service readiness on Scorecards uses known checks only. Scan coverage stays Not connected until a scanner reports. Missing telemetry is Unknown.
+                My open incidents and reviews count stored records. Service readiness on Scorecards uses known checks only. Scan coverage stays Not connected until a scanner reports. Missing telemetry is Unknown.
               </p>
             </>
           )}
