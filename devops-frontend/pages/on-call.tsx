@@ -343,7 +343,7 @@ export default function OnCallPage() {
         ) : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
         <section className="portal-surface">
-          <div className="svc-filters">
+          <div className="oncall-filters">
             <label>
               Search
               <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Project, team, or person" />
@@ -362,7 +362,7 @@ export default function OnCallPage() {
                 {teamNames.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
-            <label>
+            <label className="oncall-filters__month">
               Month
               <span className="oncall-month">
                 <button type="button" className="oncall-month__step" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
@@ -375,19 +375,19 @@ export default function OnCallPage() {
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setMonth(currentMonth(timezone)); setSelectedDate(todayDate); }}>Today</button>
               </span>
             </label>
-            <label>
+            <label className="oncall-filters__zone">
               Timezone
               <select className="input" aria-label="Roster timezone" value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
                 {TIMEZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
               </select>
-              <p className="access-hint">A day starts at 00:00 in {timezone}. Today, month changes, and handover use that boundary. Changing the timezone reloads coverage for the current month.</p>
             </label>
             {query || projectId || team ? (
-              <div className="svc-filters__actions">
+              <div className="oncall-filters__actions">
                 <button type="button" className="btn btn-secondary" onClick={() => { setQuery(''); setProjectId(''); setTeam(''); }}>Clear</button>
               </div>
             ) : null}
           </div>
+          <p className="access-hint oncall-filters__hint">A day starts at 00:00 in {timezone}. Today, month changes, and handover use that boundary. Changing the timezone reloads coverage for the current month.</p>
 
           {loading ? <div className="empty-state">Loading on-call...</div> : null}
 

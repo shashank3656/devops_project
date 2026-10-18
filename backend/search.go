@@ -174,6 +174,32 @@ func searchCatalog(query string, user *User) []searchHit {
 		}
 	}
 
+	if user != nil && (user.Role == "admin" || user.UserType == "devops_user") {
+		if rows, err := DB.Query(`
+			SELECT id, username
+			FROM users
+			WHERE LOWER(username) LIKE $1
+			ORDER BY username
+			LIMIT 5
+		`, like); err == nil {
+			defer func() { _ = rows.Close() }()
+			for rows.Next() {
+				var id int
+				var username string
+				if err := rows.Scan(&id, &username); err != nil {
+					continue
+				}
+				hits = append(hits, searchHit{
+					ID:       fmt.Sprintf("person-%d", id),
+					Kind:     "person",
+					Title:    username,
+					Subtitle: "Person",
+					Href:     "/portal-access/users/" + strconv.Itoa(id),
+				})
+			}
+		}
+	}
+
 	if n, err := strconv.Atoi(strings.TrimPrefix(strings.ToLower(query), "pr #")); err == nil && n > 0 {
 		hits = append([]searchHit{{
 			ID:    fmt.Sprintf("pr-%d", n),

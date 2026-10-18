@@ -354,14 +354,18 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	requests, err := GetPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
+	assignedTo := 0
+	if r.URL.Query().Get("mine") == "1" {
+		assignedTo = userID
+	}
+	requests, err := listPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "", assignedTo)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
+	totalCount, _ := countPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "", assignedTo)
 	userIDs := make([]int, 0)
 	for _, req := range requests {
 		if req.CreatedBy != nil && *req.CreatedBy > 0 {

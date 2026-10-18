@@ -441,7 +441,7 @@ export default function EditIncidentPage() {
           <div>
             <p className="ops-kicker">{currentIncidentNumber || 'Incident'}</p>
             <h1>{summary.trim() || 'Incident'}</h1>
-            <p>{loading ? 'Loading this incident.' : 'Update state, assignment, and notes. The queue stays on the list.'}</p>
+            <p>{loading ? 'Loading this incident.' : `${status || 'Unknown status'} · ${severity || 'No priority'} · ${ownerUserId ? `Owner #${ownerUserId}` : 'Owner unassigned'}`}</p>
           </div>
           <div className="request-actions" style={{ marginTop: 0 }}>
             {problemId > 0 ? (

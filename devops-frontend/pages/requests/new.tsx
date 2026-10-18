@@ -281,6 +281,11 @@ export default function NewRequestPage() {
             <label className="label" htmlFor="request-note">Note for the reviewer</label>
             <input id="request-note" className="input" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="What should the reviewer know?" />
             </details>
+            <section className="portal-surface portal-surface--tight" aria-label="Review before raising">
+              <h2>Review before raising</h2>
+              <p>{serviceLabel(cloud, serviceId) || 'Choose a service'} · {projects.find((item) => String(item.id) === projectId)?.name || 'No project'} · {env || 'No environment'} · {priority}</p>
+              <p className="access-hint">If something is wrong, change it in the section above. This raises the request for the selected project.</p>
+            </section>
             <div className="portal-form-actions">
               <BlockedAction blocked={teams.length === 0} reason="You need a team before you can raise a request.">
               <button type="submit" className="btn btn-primary" disabled={saving || teams.length === 0} title={teams.length === 0 ? 'You need a team before you can raise a request.' : 'Raise request'}>

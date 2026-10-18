@@ -178,8 +178,9 @@ export default function RequestDetailPage() {
           <header className="work-page__head">
             <div>
               <p className="ops-kicker">Requests</p>
-              <h1>{request ? `${request.service || 'Request'} #${request.id}` : 'Request'}</h1>
-              <p>{request ? statusLabel(request.status) : 'Open a request from your list.'}</p>
+              <p className="ig-cell-meta">{request ? `REQ${String(request.id).padStart(7, '0')}` : 'Request'}</p>
+              <h1>{request ? (request.service || 'Request') : 'Request'}</h1>
+              <p>{request ? `${statusLabel(request.status)} · ${request.priority || 'No priority'} · Owner ${request.team || 'unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
               {request ? (
                 <ExecutionStage
                   status={request.status}

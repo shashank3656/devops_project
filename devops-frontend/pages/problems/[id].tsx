@@ -105,7 +105,7 @@ export default function ProblemDetailPage() {
           <div>
             <p className="ops-kicker">{item?.problem_number || 'Problem'}</p>
             <h1>{item?.summary || 'Problem'}</h1>
-            <p>{item ? problemStateLabel(item.status) : 'Recurring alert fingerprint.'}</p>
+            <p>{item ? [problemStateLabel(item.status), priorityLabel(item.priority || 'p3'), item.assignee_username ? `Owner ${item.assignee_username}` : 'Owner unassigned', item.service || 'No service'].join(' · ') : 'Recurring alert fingerprint.'}</p>
           </div>
           <div className="request-actions" style={{ marginTop: 0 }}>
             <Link

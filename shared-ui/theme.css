@@ -4449,6 +4449,51 @@ a.svc-tree__folder:hover,
   margin-bottom: 14px;
 }
 
+.oncall-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 12px;
+}
+
+.oncall-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 160px;
+  color: var(--ig-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.oncall-filters .input {
+  width: 100%;
+}
+
+.oncall-filters__month {
+  flex: 0 0 auto;
+}
+
+.oncall-filters .oncall-month {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.oncall-filters__zone {
+  flex: 1 1 220px;
+}
+
+.oncall-filters__actions {
+  display: flex;
+  align-items: end;
+  flex: 0 0 auto;
+}
+
+.oncall-filters__hint {
+  margin: 8px 0 14px;
+}
+
 .oncall-month {
   display: inline-flex;
   align-items: center;
@@ -9837,10 +9882,27 @@ html[data-theme] .recent-services li {
   gap: 12px;
 }
 
-html[data-theme] .devops-layout .ops-home__head {
+html[data-theme='light'] .devops-layout .ops-home__head {
   padding: 22px 24px;
   border-radius: 16px;
   background: var(--ot-tint-violet, #f0ebff);
+  color: #17233b;
+}
+
+html[data-theme='dark'] .devops-layout .ops-home__head {
+  padding: 22px 24px;
+  border-radius: 16px;
+  background: #1a1d26;
+  color: #f2f4f8;
+}
+
+html[data-theme='dark'] .devops-layout .ops-home__head h1,
+html[data-theme='dark'] .devops-layout .ops-home__head p {
+  color: #f2f4f8;
+}
+
+html[data-theme='dark'] .devops-layout .ops-home__head p {
+  color: #b8c2d3;
 }
 
 html[data-theme] .devops-layout .ops-actions .ops-action:not(:first-child) {
@@ -9897,14 +9959,14 @@ html[data-theme] .devops-layout .changes-facts > div {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  color: var(--ot-ink, #17233b);
+  color: var(--ig-text, #17233b);
 }
 
 html[data-theme] .devops-layout .ops-frame .ops-mini strong,
 html[data-theme] .devops-layout .devops-incident-pill__value,
 html[data-theme] .devops-layout .changes-facts strong {
   margin: 0;
-  color: var(--ot-ink, #17233b);
+  color: var(--ig-text, #17233b);
   font-size: 16px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
@@ -9943,8 +10005,32 @@ html[data-theme] .devops-layout .ig-table {
 html[data-theme] .devops-layout .ig-table td.ig-col-title .ig-cell-title {
   display: block;
   max-width: none;
-  color: var(--ot-ink, #17233b);
+  color: var(--ig-text, #17233b);
   font-weight: 600;
+}
+
+html[data-theme='dark'] .devops-layout .ig-table td.ig-col-title .ig-cell-title,
+html[data-theme='dark'] .devops-layout .ig-table .ig-cell-meta,
+html[data-theme='dark'] .devops-layout .sd-ticket-id,
+html[data-theme='dark'] .devops-layout .sd-ticket-cell strong {
+  color: #f2f4f8;
+}
+
+html[data-theme='dark'] .devops-layout .ig-table .ig-cell-meta,
+html[data-theme='dark'] .devops-layout .sd-ticket-summary {
+  color: #b8c2d3;
+}
+
+html[data-density='compact'] .devops-layout .ig-table td,
+html[data-density='compact'] .devops-layout .sd-table td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+html[data-density='comfortable'] .devops-layout .ig-table td,
+html[data-density='comfortable'] .devops-layout .sd-table td {
+  padding-top: 14px;
+  padding-bottom: 14px;
 }
 
 html[data-theme] .devops-layout .ig-table td.ig-col-num,

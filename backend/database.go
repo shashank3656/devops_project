@@ -1679,6 +1679,10 @@ func GetTotalCountForHistory(team, env, cloud string, projectID int, statusFilte
 
 // GetPRRequests retrieves PR requests with optional filters. fromDate, toDate: YYYY-MM-DD for created_at range.
 func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string) ([]PRRequest, error) {
+	return listPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, userIDInt, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, fromDate, toDate, 0)
+}
+
+func listPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string, assignedTo int) ([]PRRequest, error) {
 	query := `
 		SELECT r.id, r.team, r.env, r.cloud, r.service, COALESCE(r.client_name,'') AS client_name, COALESCE(r.application_id,'') AS application_id,
 		       COALESCE(r.priority,'medium') AS priority, r.due_date, r.pr_url, r.branch, r.file_path, r.status,
@@ -1769,6 +1773,12 @@ func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorit
 	if toDate != "" {
 		query += fmt.Sprintf(" AND r.created_at < ($%d::date + interval '1 day')", argPos)
 		args = append(args, toDate)
+		argPos++
+	}
+	if assignedTo > 0 {
+		query += fmt.Sprintf(" AND (r.assigned_to = $%d OR r.created_by = $%d)", argPos, argPos)
+		args = append(args, assignedTo)
+		argPos++
 	}
 	var orderCol string
 	switch sortBy {
@@ -2772,6 +2782,10 @@ func GetStats(userIDInt int) (*Stats, error) {
 
 // GetTotalCount returns total count of PR requests (for pagination). Same filters as GetPRRequests. fromDate, toDate optional.
 func GetTotalCount(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string) (int, error) {
+	return countPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, userIDInt, createdByIn, atRiskOnly, fromDate, toDate, 0)
+}
+
+func countPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string, assignedTo int) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests r LEFT JOIN projects p ON p.id = r.project_id WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
@@ -2847,6 +2861,11 @@ func GetTotalCount(team, env, cloud string, projectID int, statusFilter, priorit
 	if toDate != "" {
 		query += fmt.Sprintf(" AND r.created_at < ($%d::date + interval '1 day')", argPos)
 		args = append(args, toDate)
+		argPos++
+	}
+	if assignedTo > 0 {
+		query += fmt.Sprintf(" AND (r.assigned_to = $%d OR r.created_by = $%d)", argPos, argPos)
+		args = append(args, assignedTo)
 	}
 
 	var count int

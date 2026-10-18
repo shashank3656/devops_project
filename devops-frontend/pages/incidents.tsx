@@ -14,8 +14,9 @@ import BlockedAction from '../components/BlockedAction';
 type IncidentView = { severity: string; status: string; environment: string; mine: string };
 
 const INCIDENT_VIEW_PRESETS: SavedView<IncidentView>[] = [
-  { name: 'My production incidents', filters: { severity: '', status: '', environment: 'prod', mine: '1' } },
+  { name: 'Assigned to me', filters: { severity: '', status: '', environment: '', mine: '1' } },
   { name: 'Open incidents', filters: { severity: '', status: 'new', environment: '', mine: '' } },
+  { name: 'My production incidents', filters: { severity: '', status: '', environment: 'prod', mine: '1' } },
 ];
 
 function incidentStateBadge(status: string): string {

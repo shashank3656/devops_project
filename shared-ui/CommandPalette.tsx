@@ -90,7 +90,7 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const commandHits = commands
+    const commandHits: SearchHit[] = commands
       .filter((command) => !needle || command.label.toLowerCase().includes(needle) || (command.hint || '').toLowerCase().includes(needle))
       .map((command) => ({
         id: `cmd-${command.id}`,
@@ -99,8 +99,28 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
         subtitle: command.hint || '',
         href: command.href,
       }));
-    return [...commandHits, ...hits].slice(0, 20);
+    return [...commandHits, ...hits].slice(0, 24);
   }, [commands, hits, query]);
+
+  const grouped = useMemo(() => {
+    const order = ['Tickets', 'Services', 'Projects', 'People', 'Pages', 'Other'] as const;
+    const bucket = (kind: string) => {
+      if (kind === 'request' || kind === 'incident' || kind === 'change' || kind === 'problem' || kind === 'pr') return 'Tickets';
+      if (kind === 'service') return 'Services';
+      if (kind === 'project') return 'Projects';
+      if (kind === 'person' || kind === 'user') return 'People';
+      if (kind === 'page') return 'Pages';
+      return 'Other';
+    };
+    const groups = new Map<string, Array<SearchHit & { index: number }>>();
+    results.forEach((item, index) => {
+      const name = bucket(item.kind);
+      const list = groups.get(name) || [];
+      list.push({ ...item, index });
+      groups.set(name, list);
+    });
+    return order.filter((name) => groups.has(name)).map((name) => ({ name, items: groups.get(name) || [] }));
+  }, [results]);
 
   useEffect(() => {
     setActive(0);
@@ -164,24 +184,29 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
                 : `No matches for "${trimmed}". Try a ticket number, service name, or repo.`}
             </div>
           ) : (
-            results.map((item, index) => (
-              <button
-                key={item.id}
-                id={`ig-palette-option-${index}`}
-                type="button"
-                role="option"
-                aria-selected={index === active}
-                tabIndex={-1}
-                className={`ig-palette__item ${index === active ? 'is-active' : ''}`}
-                onMouseEnter={() => setActive(index)}
-                onClick={() => go(item.href)}
-              >
-                <span>
-                  <strong>{item.title}</strong>
-                  {item.subtitle ? <div className="ig-muted">{item.subtitle}</div> : null}
-                </span>
-                <span className="ig-muted">{item.kind === 'page' ? item.href : item.kind}</span>
-              </button>
+            grouped.map((group) => (
+              <div key={group.name} className="ig-palette__group">
+                <p className="ig-palette__group-label">{group.name}</p>
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    id={`ig-palette-option-${item.index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={item.index === active}
+                    tabIndex={-1}
+                    className={`ig-palette__item ${item.index === active ? 'is-active' : ''}`}
+                    onMouseEnter={() => setActive(item.index)}
+                    onClick={() => go(item.href)}
+                  >
+                    <span>
+                      <strong>{item.title}</strong>
+                      {item.subtitle ? <div className="ig-muted">{item.subtitle}</div> : null}
+                    </span>
+                    <span className="ig-muted">{item.kind === 'page' ? item.href : item.kind}</span>
+                  </button>
+                ))}
+              </div>
             ))
           )}
         </div>

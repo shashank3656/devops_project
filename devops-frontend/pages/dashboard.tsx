@@ -4,7 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { useWorkspaceScope, WORKSPACE_SCOPE_EVENT, readWorkspaceScope, type WorkspacePayload } from '@infragate/ui';
+import { useWorkspaceScope, WORKSPACE_SCOPE_EVENT, WorkQueue, readWorkspaceScope, type QueueItem, type WorkspacePayload } from '@infragate/ui';
 import { loadTicketAudience } from '../lib/ticketAudience';
 import { readRecentServices, type RecentService } from '../lib/recentServices';
 
@@ -82,7 +82,7 @@ export default function DevOpsDashboard() {
             setWorkspace(data.workspace);
             return;
           }
-          setWorkspace({ ...data.workspace, needs_you: [], failed: [], activity: [] });
+          setWorkspace({ ...data.workspace, activity: [] });
         });
       })
       .catch((err: Error) => {
@@ -119,6 +119,10 @@ export default function DevOpsDashboard() {
     const query = params.toString();
     return query ? `${path}?${query}` : path;
   };
+  const actionItems: QueueItem[] = needsProject ? [] : [
+    ...(workspace.needs_you || []),
+    ...(workspace.failed || []),
+  ].map((item) => ({ ...item, href: scoped(item.href) }));
   const setupHref = setupService?.id ? `/services/${setupService.id}` : scoped('/services');
   const setupDone = setupService ? Number(!setupService.missingOwner) + Number(!setupService.missingRepo) : 0;
 
@@ -137,6 +141,23 @@ export default function DevOpsDashboard() {
             </div>
             <Link href={scoped('/my-work')} className="ops-home__primary">Open my work</Link>
           </header>
+
+          <section className="ops-card" aria-label="Needs my action">
+            <div className="ops-card__head">
+              <h2>Needs my action</h2>
+              <span>{loading ? 'Loading…' : `${actionItems.length} in ${envLabel}`}</span>
+            </div>
+            <WorkQueue
+              items={actionItems}
+              loading={loading}
+              emptyTitle={needsProject ? 'Select a project' : "You're all caught up"}
+              emptyBody={needsProject ? 'Approvals, assigned incidents, failed requests, and coverage gaps stay with the project you choose.' : 'Approvals, assigned incidents, failed requests, and coverage gaps will show up here.'}
+            />
+            <details className="access-hint">
+              <summary>How these words are used</summary>
+              <p>A team is the group that owns the work. A person is someone with a portal account. The owner is accountable for the record; the assignee is the person doing the current step. A service is the catalog entry; a resource is one cloud object that belongs to it.</p>
+            </details>
+          </section>
 
           <section className="ops-actions" aria-label="Everyday tasks">
             <Link href={scoped('/changes?status=new&mine=1')} className="ops-action ops-action--lilac">
@@ -189,15 +210,15 @@ export default function DevOpsDashboard() {
                 <span aria-live="polite">{loading ? 'Refreshing…' : error ? 'Not refreshed' : freshness}</span>
               </div>
               <section className="ops-scores" aria-label="Operational scorecards" aria-busy={loading}>
-                <Link href={scoped('/incidents')} className="ops-score ops-score--mint">
+                <Link href={scoped('/incidents?mine=1')} className="ops-score ops-score--mint">
                   <span>Open incidents</span>
                   <strong>{loading ? '…' : countText(incidentCount)}</strong>
-                  <small>{loading ? 'Loading…' : error ? 'Unknown · could not load' : incidentCount ? `${incidentCount} open now` : 'None open right now'}</small>
+                  <small>{loading ? 'Loading…' : error ? 'Unknown · could not load' : `Open now · ${freshness || 'not refreshed yet'}`}</small>
                 </Link>
-                <Link href={scoped('/my-work')} className="ops-score ops-score--lilac">
+                <Link href={scoped('/tickets?status=pending_devops_approval')} className="ops-score ops-score--lilac">
                   <span>Awaiting your review</span>
                   <strong>{loading ? '…' : countText(waitingCount)}</strong>
-                  <small>{loading ? 'Loading…' : error ? 'Unknown · could not load' : waitingCount ? `${waitingCount} waiting for you` : 'Your queue is clear'}</small>
+                  <small>{loading ? 'Loading…' : error ? 'Unknown · could not load' : `Waiting now · ${freshness || 'not refreshed yet'}`}</small>
                 </Link>
                 <Link href={scoped('/services')} className="ops-score ops-score--blue">
                   <span>Registered services</span>
@@ -207,17 +228,13 @@ export default function DevOpsDashboard() {
                       ? 'Loading…'
                       : serviceCount === null
                         ? 'Unknown · could not load'
-                        : serviceCount === 0
-                          ? 'No services registered yet'
-                          : setupService
-                            ? 'At least 1 needs setup'
-                            : 'All have an owner and repo'}
+                        : `Catalog total · ${freshness || 'not refreshed yet'}`}
                   </small>
                 </Link>
                 <Link href={scoped('/security/findings')} className="ops-score ops-score--peach ops-score--disconnected">
                   <span>Scan coverage</span>
                   <strong>Not connected</strong>
-                  <small>Connect a scanner to begin →</small>
+                  <small>No scanner timeframe yet. Connect a scanner to begin.</small>
                 </Link>
               </section>
 

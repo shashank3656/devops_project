@@ -238,11 +238,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [accessNotice, setAccessNotice] = useState('');
   const [submission, setSubmission] = useState<SubmissionResult | null>(null);
   const [seenNotifyIds, setSeenNotifyIds] = useState<string[]>([]);
+  const [compactRows, setCompactRows] = useState(false);
   const keyboardHelpTimer = useRef<number | null>(null);
 
   const clearSessionAndRedirect = useCallback(() => {
     expireSession(router.asPath || '');
   }, [router]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem('opstrellis-density');
+    const compact = stored === 'compact';
+    setCompactRows(compact);
+    document.documentElement.dataset.density = compact ? 'compact' : 'comfortable';
+  }, []);
 
   useEffect(() => {
     const onInvalid = (event: Event) => {
@@ -500,11 +508,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [notifyOpen, refreshPendingApprovals]);
 
   useEffect(() => {
-    if (!notifyOpen) return;
-    const seen = pendingCount;
-    setSeenNotifyIds([String(seen)]);
-    localStorage.setItem('opstrellis-notify-seen', String(seen));
-  }, [notifyOpen, pendingCount]);
+    const stored = window.localStorage.getItem('opstrellis-notify-read') || '';
+    setSeenNotifyIds(stored.split(',').map((id) => id.trim()).filter(Boolean));
+  }, []);
 
   useEffect(() => {
     setNotifyOpen(false);
@@ -1005,6 +1011,21 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           <div className="devops-navbar__right">
             <SearchTrigger placeholder="Search tickets, services, infrastructure, people…" />
             <div className="devops-navbar__actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                aria-pressed={compactRows}
+                title={compactRows ? 'Comfortable rows' : 'Compact rows'}
+                onClick={() => {
+                  const next = !compactRows;
+                  setCompactRows(next);
+                  const value = next ? 'compact' : 'comfortable';
+                  document.documentElement.dataset.density = value;
+                  window.localStorage.setItem('opstrellis-density', value);
+                }}
+              >
+                {compactRows ? 'Compact' : 'Comfortable'}
+              </button>
               <ThemeToggle />
               {isManager && (
                 <div className="devops-navbar__notify-wrap" ref={notifyRef}>
@@ -1018,19 +1039,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                     }}
                     ref={notifyButtonRef}
                     title={pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
-                    aria-label={pendingCount > Number(seenNotifyIds[0] || 0) ? `Notifications, ${pendingCount - Number(seenNotifyIds[0] || 0)} unread` : pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
+                    aria-label={pendingCount > seenNotifyIds.length ? `Notifications, ${Math.max(pendingCount - seenNotifyIds.length, 0)} unread` : pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
                     aria-expanded={notifyOpen}
                     aria-haspopup="dialog"
                     aria-controls="devops-notify-panel"
                   >
                     <IconBell />
-                    {pendingCount > Number(seenNotifyIds[0] || 0) && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
+                    {pendingCount > seenNotifyIds.length && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
                   </button>
 
                   {notifyOpen && (
                     <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Pending approvals">
                       <div className="devops-navbar__notify-header">
-                        <h3 className="devops-navbar__notify-title">Pending Approvals</h3>
+                        <h3 className="devops-navbar__notify-title">Action required</h3>
                         <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
                           Close
                         </button>
@@ -1061,8 +1082,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                             <Link
                               key={request.id}
                               href={`/tickets?id=${request.id}`}
-                              className="devops-navbar__notify-ticket"
-                              onClick={() => setNotifyOpen(false)}
+                              className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
+                              onClick={() => {
+                                setSeenNotifyIds((current) => {
+                                  if (current.includes(String(request.id))) return current;
+                                  const next = [...current, String(request.id)];
+                                  window.localStorage.setItem('opstrellis-notify-read', next.join(','));
+                                  return next;
+                                });
+                                setNotifyOpen(false);
+                              }}
                             >
                               <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
                               {request.project_name ? (
@@ -1077,6 +1106,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                           ))
                         )}
                       </div>
+                      <p className="devops-navbar__notify-empty">Updates such as status changes stay on the record timeline. This list is only work waiting on you.</p>
                     </div>
                   )}
                 </div>

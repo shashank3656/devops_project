@@ -117,8 +117,11 @@ func buildWorkspacePayload(portal, projectID string, viewerID int) workspacePayl
 			payload.Viewer = user.Username
 		}
 	}
-	payload.NeedsYou = workspaceNeedsYou(portal, viewerID)
-	payload.Failed = workspaceFailedDeliveries(portal, viewerID)
+	payload.NeedsYou = workspaceNeedsYou(portal, projectID, viewerID)
+	payload.Failed = workspaceFailedDeliveries(portal, projectID, viewerID)
+	if gap := workspaceCoverageGap(projectID); gap.ID != "" {
+		payload.NeedsYou = append([]workspaceQueueItem{gap}, payload.NeedsYou...)
+	}
 	payload.Pipeline.ProjectName, payload.Pipeline.Stages = workspacePipeline(portal, projectID, viewerID)
 	payload.Activity = workspaceRecentActivity(portal, viewerID)
 	switch portal {
@@ -132,7 +135,68 @@ func buildWorkspacePayload(portal, projectID string, viewerID int) workspacePayl
 	return payload
 }
 
-func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
+func workspaceProjectID(projectID string) int {
+	id, err := strconv.Atoi(strings.TrimSpace(projectID))
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
+func workspaceMatchesProject(projectID string, id *int) bool {
+	want := workspaceProjectID(projectID)
+	if want <= 0 {
+		return true
+	}
+	return id != nil && *id == want
+}
+
+func workspaceCoverageGap(projectID string) workspaceQueueItem {
+	id := workspaceProjectID(projectID)
+	if id <= 0 || DB == nil {
+		return workspaceQueueItem{}
+	}
+	rows, err := DB.Query(`SELECT days FROM oncall_schedules WHERE project_id = $1`, id)
+	if err != nil {
+		return workspaceQueueItem{}
+	}
+	defer func() { _ = rows.Close() }()
+	gaps := 0
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			continue
+		}
+		var days map[string]int
+		if json.Unmarshal([]byte(raw), &days) != nil {
+			continue
+		}
+		for _, userID := range days {
+			if userID <= 0 {
+				gaps++
+				break
+			}
+		}
+	}
+	if gaps == 0 {
+		return workspaceQueueItem{}
+	}
+	label := "schedules still have an uncovered day"
+	if gaps == 1 {
+		label = "schedule still has an uncovered day"
+	}
+	return workspaceQueueItem{
+		ID:     fmt.Sprintf("coverage-%d", id),
+		Kind:   "coverage",
+		Title:  "On-call coverage gap",
+		Meta:   fmt.Sprintf("%d %s", gaps, label),
+		Href:   fmt.Sprintf("/on-call?project_id=%d", id),
+		Action: "Assign people",
+		Tone:   "medium",
+	}
+}
+
+func workspaceNeedsYou(portal, projectID string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 12)
 	if DB == nil {
 		return items
@@ -141,10 +205,10 @@ func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
 	if portal == "user" {
 		items = append(items, workspaceUserQueue(viewerID)...)
 	} else {
-		items = append(items, workspaceApprovalQueue(portal)...)
+		items = append(items, workspaceApprovalQueue(portal, projectID)...)
 	}
-	items = append(items, workspaceIncidentQueue(portal, viewerID)...)
-	items = append(items, workspaceChangeQueue(portal, viewerID, false)...)
+	items = append(items, workspaceIncidentQueue(portal, projectID, viewerID)...)
+	items = append(items, workspaceChangeQueue(portal, projectID, viewerID, false)...)
 	if portal != "user" {
 		items = append(items, workspaceRiskyPRQueue(portal, false)...)
 	}
@@ -166,13 +230,13 @@ func workspaceNeedsYou(portal string, viewerID int) []workspaceQueueItem {
 	return capWorkspaceQueue(items, 12)
 }
 
-func workspaceFailedDeliveries(portal string, viewerID int) []workspaceQueueItem {
+func workspaceFailedDeliveries(portal, projectID string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 8)
 	if DB == nil {
 		return items
 	}
-	items = append(items, workspaceChangeQueue(portal, viewerID, true)...)
-	items = append(items, workspaceFailedTicketQueue(portal, viewerID)...)
+	items = append(items, workspaceChangeQueue(portal, projectID, viewerID, true)...)
+	items = append(items, workspaceFailedTicketQueue(portal, projectID, viewerID)...)
 	seen := map[string]struct{}{}
 	for _, item := range items {
 		if item.Ref != "" {
@@ -194,15 +258,20 @@ func workspaceFailedDeliveries(portal string, viewerID int) []workspaceQueueItem
 	return capWorkspaceQueue(items, 8)
 }
 
-func workspaceApprovalQueue(portal string) []workspaceQueueItem {
+func workspaceApprovalQueue(portal, projectID string) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 6)
-	rows, err := DB.Query(`
-		SELECT id, team, env, cloud, service, status, COALESCE(priority, 'medium'), updated_at
+	query := `
+		SELECT id, team, env, cloud, service, status, COALESCE(priority, 'medium'), updated_at, project_id
 		FROM pr_requests
 		WHERE status IN ('pending_approval', 'pending_user_manager_approval', 'pending_devops_approval')
-		ORDER BY updated_at DESC
-		LIMIT 6
-	`)
+	`
+	args := []interface{}{}
+	if id := workspaceProjectID(projectID); id > 0 {
+		query += ` AND project_id = $1`
+		args = append(args, id)
+	}
+	query += ` ORDER BY updated_at DESC LIMIT 6`
+	rows, err := DB.Query(query, args...)
 	if err != nil {
 		return items
 	}
@@ -211,7 +280,8 @@ func workspaceApprovalQueue(portal string) []workspaceQueueItem {
 		var id int
 		var team, env, cloud, service, status, priority string
 		var updated sql.NullTime
-		if err := rows.Scan(&id, &team, &env, &cloud, &service, &status, &priority, &updated); err != nil {
+		var rowProject sql.NullInt64
+		if err := rows.Scan(&id, &team, &env, &cloud, &service, &status, &priority, &updated, &rowProject); err != nil {
 			continue
 		}
 		items = append(items, workspaceQueueItem{
@@ -318,7 +388,7 @@ func workspaceUserQueue(viewerID int) []workspaceQueueItem {
 	return items
 }
 
-func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
+func workspaceIncidentQueue(portal, projectID string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 4)
 	listed, err := listRequestIncidentsFiltered("", nil, false)
 	if err != nil {
@@ -336,7 +406,7 @@ func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
 		if !incidentInScope(subject, item, authzRead) {
 			continue
 		}
-		if !incidentNeedsViewerAction(item, portal, viewerID) {
+		if !incidentNeedsViewerAction(item, portal, viewerID) || !workspaceMatchesProject(projectID, item.ProjectID) {
 			continue
 		}
 		title := strings.TrimSpace(item.Summary)
@@ -362,9 +432,9 @@ func workspaceIncidentQueue(portal string, viewerID int) []workspaceQueueItem {
 	return items
 }
 
-func workspaceChangeQueue(portal string, viewerID int, failedOnly bool) []workspaceQueueItem {
+func workspaceChangeQueue(portal, projectID string, viewerID int, failedOnly bool) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 3)
-	listed, err := listChangeRequests(0, "", "", "")
+	listed, err := listChangeRequests(workspaceProjectID(projectID), "", "", "")
 	if err != nil {
 		return items
 	}
@@ -394,9 +464,9 @@ func workspaceChangeQueue(portal string, viewerID int, failedOnly bool) []worksp
 		if title == "" {
 			title = "Change request"
 		}
-		href := "/changes"
-		if item.ID > 0 {
-			href = fmt.Sprintf("/changes/%d", item.ID)
+		href := "/changes?status=new&mine=1"
+		if failedOnly {
+			href = "/changes?status=failed"
 		}
 		kind := "change"
 		action := "Open"
@@ -485,18 +555,24 @@ func workspaceRiskyPRQueue(portal string, failedOnly bool) []workspaceQueueItem 
 	return items
 }
 
-func workspaceFailedTicketQueue(portal string, viewerID int) []workspaceQueueItem {
+func workspaceFailedTicketQueue(portal, projectID string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 4)
 	query := `
 		SELECT id, env, service, status, COALESCE(reject_reason, ''), updated_at, created_by
 		FROM pr_requests
-		WHERE LOWER(COALESCE(status, '')) IN ('failed', 'apply_failed', 'plan_failed', 'deploy_failed', 'blocked', 'rejected')
-		   OR LOWER(COALESCE(status, '')) LIKE '%fail%'
-		   OR LOWER(COALESCE(status, '')) LIKE '%block%'
-		ORDER BY updated_at DESC
-		LIMIT 12
+		WHERE (
+		  LOWER(COALESCE(status, '')) IN ('failed', 'apply_failed', 'plan_failed', 'deploy_failed', 'blocked', 'rejected')
+		  OR LOWER(COALESCE(status, '')) LIKE '%fail%'
+		  OR LOWER(COALESCE(status, '')) LIKE '%block%'
+		)
 	`
-	rows, err := DB.Query(query)
+	args := []interface{}{}
+	if id := workspaceProjectID(projectID); id > 0 {
+		query += ` AND project_id = $1`
+		args = append(args, id)
+	}
+	query += ` ORDER BY updated_at DESC LIMIT 12`
+	rows, err := DB.Query(query, args...)
 	if err != nil {
 		return items
 	}
@@ -753,7 +829,7 @@ func workspaceIncidentHref(id int) string {
 	if id <= 0 {
 		return "/incidents"
 	}
-	return fmt.Sprintf("/incidents/%d", id)
+	return "/incidents?mine=1"
 }
 
 func workspaceChangeNeedsAction(status string) bool {
@@ -817,7 +893,7 @@ func workspaceRequestHref(portal string, id int, approval bool) string {
 		return "/requests?id=" + strconv.Itoa(id)
 	case "devops":
 		if approval {
-			return "/approval-center"
+			return "/tickets?status=pending_devops_approval&id=" + strconv.Itoa(id)
 		}
 		return "/tickets?id=" + strconv.Itoa(id)
 	default:
