@@ -38,7 +38,19 @@ interface CloudResource {
   display_name: string;
   status: string;
   updated_at?: string;
+  purpose?: string;
+  owner_name?: string;
+  expires_at?: string;
+  lifecycle_state?: string;
 }
+
+const DEMO_RESOURCE_IDS = new Set([
+  'i-0a1b2c3d4e5f67890',
+  'db-platform-prod',
+  'setuops-artifacts-uat',
+  'arn:aws:eks:us-west-2:444455556666:cluster/dev',
+  'arn:aws:lambda:us-west-2:444455556666:function:webhook-relay',
+]);
 
 const PAGE_SIZE = 25;
 
@@ -58,6 +70,7 @@ export default function CloudResourcesPage() {
   const [env, setEnv] = useState('');
   const [region, setRegion] = useState('');
   const [cloud, setCloud] = useState<CloudProviderId>('aws');
+  const [lifecycleNotice, setLifecycleNotice] = useState('');
   const [accountContext, setAccountContext] = useState<{
     message?: string;
     account_status?: string;
@@ -249,6 +262,27 @@ export default function CloudResourcesPage() {
   };
 
   const activeRegions = useMemo(() => new Set(rows.map((row) => row.region).filter(Boolean)).size, [rows]);
+
+  async function requestLifecycle(id: number, action: 'renewal' | 'decommission') {
+    const token = localStorage.getItem('devops_token');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+    setLifecycleNotice('');
+    const response = await fetch(`${apiUrl}/api/devops/cloud/resources/${id}/lifecycle`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(typeof body?.error === 'string' ? body.error : 'The lifecycle request was not saved.');
+      return;
+    }
+    setLifecycleNotice(typeof body?.message === 'string' ? body.message : 'Approval was requested. The resource was not deleted.');
+    setReloadToken((current) => current + 1);
+  }
 
   return (
     <DevOpsLayout>
@@ -448,6 +482,27 @@ export default function CloudResourcesPage() {
                     />
                   }
                 />
+
+                <section className="portal-surface">
+                  <h2 className="portal-surface__title">Lifecycle</h2>
+                  <p className="access-hint">Request renewal or decommission approval. Nothing on this page deletes a resource.</p>
+                  {lifecycleNotice ? <p className="access-hint">{lifecycleNotice}</p> : null}
+                  <ul className="request-timeline">
+                    {rows.filter((row) => !DEMO_RESOURCE_IDS.has(row.resource_id)).length === 0 ? (
+                      <li><span>No managed resources are on this page. Demo inventory is left out.</span></li>
+                    ) : rows.filter((row) => !DEMO_RESOURCE_IDS.has(row.resource_id)).map((row) => (
+                      <li key={`life-${row.id}`}>
+                        <strong>{row.display_name || row.service_type || 'Resource'}</strong>
+                        <span>Owner {row.owner_name || 'Unassigned'} · Purpose {row.purpose || 'Not recorded'} · Expiry {row.expires_at || 'Not recorded'} · {row.lifecycle_state || 'No request'}</span>
+                        <span>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void requestLifecycle(row.id, 'renewal')}>Request renewal</button>
+                          {' '}
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void requestLifecycle(row.id, 'decommission')}>Request decommission approval</button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
 
                 {total > PAGE_SIZE ? (
                   <div className="ig-table-toolbar" style={{ marginTop: 16, justifyContent: 'space-between' }}>

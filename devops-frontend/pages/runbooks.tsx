@@ -97,6 +97,10 @@ export default function DevOpsRunbooksPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [diagnosticRunbookID, setDiagnosticRunbookID] = useState('');
+  const [diagnosticEnvironment, setDiagnosticEnvironment] = useState('dev');
+  const [diagnosticLog, setDiagnosticLog] = useState<string[]>([]);
+  const [diagnosticRunning, setDiagnosticRunning] = useState(false);
 
   const selectedProjectRunbooks = useMemo(() => {
     return runbooks.filter((runbook) => {
@@ -342,6 +346,44 @@ export default function DevOpsRunbooksPage() {
     }
   };
 
+  async function runDiagnostic() {
+    const runbook = selectedProjectRunbooks.find((item) => String(item.id) === diagnosticRunbookID);
+    if (!runbook || !runbook.service.trim()) {
+      setError('Choose a runbook that already has a service.');
+      return;
+    }
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      expireSession();
+      return;
+    }
+    setDiagnosticRunning(true);
+    setError('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/runbooks/diagnostic`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'diagnostic',
+          runbook_id: runbook.id,
+          project_id: runbook.project_id,
+          service: runbook.service,
+          environment: diagnosticEnvironment,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof body?.error === 'string' ? body.error : 'The diagnostic was not recorded.');
+        return;
+      }
+      setDiagnosticLog(Array.isArray(body?.log) ? body.log.map((line: unknown) => String(line)) : ['The diagnostic returned no log.']);
+    } catch {
+      setError('The diagnostic could not be reached.');
+    } finally {
+      setDiagnosticRunning(false);
+    }
+  }
+
   return (
     <DevOpsLayout>
       <Head>
@@ -362,6 +404,36 @@ export default function DevOpsRunbooksPage() {
             </button>
           </div>
         </div>
+
+        <section className="portal-surface">
+          <h2 className="portal-surface__title">Read-only diagnostic</h2>
+          <p className="access-hint">This check reads the latest recorded change for the runbook service and environment. It does not restart or scale anything.</p>
+          <div className="portal-form-grid">
+            <label className="label">Runbook
+              <select className="input" value={diagnosticRunbookID} onChange={(event) => setDiagnosticRunbookID(event.target.value)}>
+                <option value="">Choose a runbook</option>
+                {selectedProjectRunbooks.map((runbook) => (
+                  <option key={runbook.id} value={runbook.id}>{runbook.title} · {runbook.service || 'General'}</option>
+                ))}
+              </select>
+            </label>
+            <label className="label">Environment
+              <select className="input" value={diagnosticEnvironment} onChange={(event) => setDiagnosticEnvironment(event.target.value)}>
+                <option value="dev">dev</option>
+                <option value="uat">uat</option>
+                <option value="prod">prod</option>
+              </select>
+            </label>
+          </div>
+          <button type="button" className="btn btn-primary" disabled={diagnosticRunning || !diagnosticRunbookID} onClick={() => void runDiagnostic()}>
+            {diagnosticRunning ? 'Checking…' : 'Run read-only diagnostic'}
+          </button>
+          {diagnosticLog.length > 0 ? (
+            <ul className="request-timeline">
+              {diagnosticLog.map((line) => <li key={line}><span>{line}</span></li>)}
+            </ul>
+          ) : null}
+        </section>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}

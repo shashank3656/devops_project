@@ -50,6 +50,10 @@ interface IncidentItem {
   owner_username?: string;
   summary: string;
   notes: string;
+  suspected_change_id?: number;
+  suspected_change_number?: string;
+  service?: string;
+  environment?: string;
   created_at: string;
   updated_at: string;
 }
@@ -541,6 +545,24 @@ export default function IncidentWorkspacePage() {
                       <span className="portal-pill">Escalation: {detail.incident.escalation_level}</span>
                       <span className="portal-pill">Owner: {detail.incident.owner_username || 'Unassigned'}</span>
                     </div>
+                    <section className="portal-surface incident-workspace__subsurface">
+                      <h3 className="portal-surface__title incident-workspace__section-title">Investigation</h3>
+                      <p>Owner: {detail.incident.owner_username || 'Unassigned'}</p>
+                      <p>
+                        Suspected cause:{' '}
+                        {detail.incident.suspected_change_id ? (
+                          <Link href={`/changes/${detail.incident.suspected_change_id}`}>{detail.incident.suspected_change_number || 'Linked change'}</Link>
+                        ) : 'None recorded.'}
+                        {' '}A suspected change is not a confirmed cause.
+                      </p>
+                      <p>
+                        Confirmed cause:{' '}
+                        {detail.postmortem?.status === 'completed' && detail.postmortem.root_cause
+                          ? detail.postmortem.root_cause
+                          : 'No confirmed cause.'}
+                      </p>
+                      <p>Handover: {detail.postmortem?.review_notes || 'No handover summary yet. Add one below before handing the incident over.'}</p>
+                    </section>
 
                     <div className="portal-grid incident-workspace__grid">
                       <div className="portal-surface incident-workspace__subsurface">
@@ -569,7 +591,7 @@ export default function IncidentWorkspacePage() {
                         <h3 className="portal-surface__title incident-workspace__section-title">Post-incident notes</h3>
                         {detail.review?.caused_by_change || detail.review?.previous_sha ? (
                           <p className="portal-surface__subtitle">
-                            {detail.review.caused_by_change ? `Caused by ${detail.review.caused_by_change}` : 'No linked change'}
+                            {detail.review.caused_by_change ? `Suspected change ${detail.review.caused_by_change}. This is not a confirmed cause.` : 'No suspected change'}
                             {detail.review.watch_result ? ` · Watch ${detail.review.watch_result}` : ''}
                             {detail.review.previous_sha ? ` · previous SHA ${detail.review.previous_sha}` : ''}
                           </p>
@@ -617,7 +639,7 @@ export default function IncidentWorkspacePage() {
                             </select>
                           </div>
                           <div>
-                            <label className="credential-audit-label" htmlFor="postmortem-review-notes">Review notes</label>
+                            <label className="credential-audit-label" htmlFor="postmortem-review-notes">Handover summary</label>
                             <textarea id="postmortem-review-notes" className="input" rows={3} value={form.review_notes} onChange={(event) => setForm((current) => ({ ...current, review_notes: event.target.value }))} />
                           </div>
                           <div className="incident-workspace__save-row">

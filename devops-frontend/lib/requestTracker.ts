@@ -1,0 +1,168 @@
+export type TrackerState = 'done' | 'current' | 'waiting' | 'failed' | 'cancelled';
+
+export type TrackerStage = {
+  id: 'submitted' | 'approvals' | 'pr' | 'pipeline' | 'verification';
+  label: string;
+  state: TrackerState;
+  who: string;
+  detail: string;
+};
+
+export type TrackerEvidence = { label: string; value: string; href?: string };
+
+export type TrackerModel = {
+  stages: TrackerStage[];
+  blockerTitle: string;
+  blockerWho: string;
+  blockerNext: string;
+  evidence: TrackerEvidence[];
+  provisioned: boolean;
+};
+
+export type TrackerInput = {
+  status?: string;
+  team?: string;
+  owner?: string;
+  prUrl?: string;
+  pipelineUrl?: string;
+  pipelineStatus?: string;
+  pipelineLabel?: string;
+  ciResult?: string;
+  sha?: string;
+  imageDigest?: string;
+  applicationId?: string;
+  promoteState?: string;
+  rejectReason?: string;
+};
+
+const APPROVAL_WAITING = new Set([
+  'pending_user_manager_approval',
+  'pending_devops_approval',
+  'pending_approval',
+]);
+
+function clean(value?: string): string {
+  return (value || '').trim();
+}
+
+export function publicDetail(value?: string): string {
+  const text = clean(value);
+  if (!text) return '';
+  if (/password|secret|token|bearer|\beyJ/i.test(text)) return 'Details withheld.';
+  return text.replaceAll('_', ' ');
+}
+
+export function dedupeActivity<T extends { id?: number; action: string; details?: string; created_at?: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const sticky = item.action === 'request_ci_update' || item.action === 'request_completed_by_pipeline' || item.action === 'request_verification_missing';
+    const key = sticky
+      ? `${item.action}|${item.details || ''}`
+      : `${item.id || ''}|${item.action}|${item.details || ''}|${item.created_at || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function buildRequestTracker(input: TrackerInput): TrackerModel {
+  const status = clean(input.status).toLowerCase();
+  const owner = clean(input.owner) || clean(input.team) || 'Unassigned';
+  const pipelineStatus = clean(input.pipelineStatus).toLowerCase();
+  const cancelled = status === 'cancelled' || /cancel/i.test(clean(input.rejectReason));
+  const failed = pipelineStatus === 'failed' || status === 'failed' || (status === 'rejected' && !cancelled);
+  const approvalDone = !APPROVAL_WAITING.has(status) && status !== 'draft' && status !== 'rejected' && status !== 'cancelled';
+  const hasPR = Boolean(clean(input.prUrl));
+  const hasPipelineEvidence = Boolean(clean(input.pipelineUrl) || clean(input.sha) || clean(input.imageDigest));
+  const verified = status === 'completed' && (hasPR || hasPipelineEvidence);
+  const provisioned = pipelineStatus === 'success' && verified;
+
+  const stages: TrackerStage[] = [
+    {
+      id: 'submitted',
+      label: 'Submitted',
+      state: status === 'draft' ? 'current' : 'done',
+      who: owner,
+      detail: status === 'draft' ? 'Still a draft.' : 'The request is on record.',
+    },
+    {
+      id: 'approvals',
+      label: 'Required approvals',
+      state: cancelled ? 'cancelled' : status === 'rejected' ? 'failed' : approvalDone ? 'done' : APPROVAL_WAITING.has(status) || status === 'draft' ? 'current' : 'waiting',
+      who: status === 'pending_user_manager_approval' ? 'Manager' : 'DevOps reviewer',
+      detail: cancelled ? 'Cancelled before the resource was provisioned.' : approvalDone ? 'Approval is finished. The resource is not provisioned by approval alone.' : 'Waiting for an approval decision.',
+    },
+    {
+      id: 'pr',
+      label: 'PR',
+      state: cancelled ? 'cancelled' : hasPR ? 'done' : approvalDone ? 'current' : 'waiting',
+      who: 'GitHub',
+      detail: cancelled ? 'Cancelled.' : hasPR ? 'Pull request is linked.' : 'No pull request is linked yet.',
+    },
+    {
+      id: 'pipeline',
+      label: 'Pipeline',
+      state: cancelled ? 'cancelled' : failed && pipelineStatus === 'failed' ? 'failed' : pipelineStatus === 'success' ? 'done' : pipelineStatus === 'running' ? 'current' : approvalDone ? 'waiting' : 'waiting',
+      who: 'Pipeline',
+      detail: cancelled ? 'Cancelled.' : failed && pipelineStatus === 'failed'
+        ? `Pipeline failed. ${publicDetail(input.ciResult || input.pipelineLabel) || 'No reason was recorded.'}`
+        : clean(input.pipelineLabel) || 'No pipeline result yet.',
+    },
+    {
+      id: 'verification',
+      label: 'Resource verification',
+      state: cancelled ? 'cancelled' : verified ? 'done' : status === 'completed' ? 'failed' : pipelineStatus === 'success' ? 'current' : 'waiting',
+      who: 'OpsTrellis',
+      detail: cancelled
+        ? 'Cancelled.'
+        : verified
+          ? 'Verification evidence is on this request.'
+          : status === 'completed'
+            ? 'Completed was recorded without pull request, commit, pipeline, or image evidence.'
+            : 'Completion waits for verification evidence.',
+    },
+  ];
+
+  let blockerTitle = 'Nothing is blocking the recorded stage.';
+  let blockerWho = owner;
+  let blockerNext = 'Open the evidence below before treating this as provisioned.';
+  if (cancelled) {
+    blockerTitle = 'This request was cancelled.';
+    blockerWho = owner;
+    blockerNext = 'Raise a new request if the work should continue. This record stays cancelled.';
+  } else if (status === 'rejected') {
+    blockerTitle = 'Approval was rejected.';
+    blockerWho = 'DevOps reviewer';
+    blockerNext = 'Raise again from this request. The retry stays tied to a new draft, and this decision remains in the activity.';
+  } else if (APPROVAL_WAITING.has(status)) {
+    blockerTitle = 'Approval is waiting. Nothing has been provisioned.';
+    blockerWho = status === 'pending_user_manager_approval' ? 'Manager' : 'DevOps reviewer';
+    blockerNext = 'The next permitted action is the approval decision.';
+  } else if (pipelineStatus === 'failed') {
+    blockerTitle = 'The pipeline failed. Approval does not mean the resource exists.';
+    blockerWho = 'Pipeline';
+    blockerNext = 'Retry the pipeline for this same request. A retry stays on this request.';
+  } else if (status === 'completed' && !verified) {
+    blockerTitle = 'Completion is missing verification evidence.';
+    blockerWho = 'DevOps reviewer';
+    blockerNext = 'Link the pull request, commit, or pipeline run before calling this provisioned.';
+  } else if (!provisioned) {
+    blockerTitle = 'Approved work is not provisioned yet.';
+    blockerWho = hasPR ? 'Pipeline' : 'GitHub';
+    blockerNext = hasPR ? 'Wait for the pipeline result, then verify the resource.' : 'Open or link the pull request.';
+  } else {
+    blockerTitle = 'Verification evidence is present.';
+    blockerWho = 'OpsTrellis';
+    blockerNext = clean(input.promoteState) || 'No further action is required on this request.';
+  }
+
+  const evidence: TrackerEvidence[] = [
+    { label: 'Pull request', value: clean(input.prUrl) || 'Not linked', href: clean(input.prUrl) || undefined },
+    { label: 'Pipeline', value: clean(input.pipelineUrl) || clean(input.pipelineLabel) || 'Not linked', href: clean(input.pipelineUrl) || undefined },
+    { label: 'Commit', value: clean(input.sha) || 'Not recorded' },
+    { label: 'Image digest', value: clean(input.imageDigest) || 'Not recorded' },
+    { label: 'Application', value: clean(input.applicationId) || 'Not recorded' },
+  ];
+
+  return { stages, blockerTitle, blockerWho, blockerNext, evidence, provisioned };
+}

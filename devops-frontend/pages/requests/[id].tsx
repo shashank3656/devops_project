@@ -3,12 +3,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
-import ExecutionStage from '../../components/ExecutionStage';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 import { CopyButton, formatCalendarDate, formatOperationalTime } from '@infragate/ui';
 import { recordReference } from '../../lib/recordRef';
 import { approvalLevel, requestPriorityName } from '../../lib/requestPriority';
+import { buildRequestTracker, dedupeActivity, publicDetail } from '../../lib/requestTracker';
 
 type RequestRecord = {
   id: number;
@@ -22,11 +22,24 @@ type RequestRecord = {
   status?: string;
   reject_reason?: string;
   created_at?: string;
+  created_by_username?: string;
+  pr_url?: string;
+  application_id?: string;
   approval_context?: { summary?: string; current_stage?: string; next_stage?: string };
+  delivery?: {
+    pipeline_status?: string;
+    pipeline_label?: string;
+    ci_result?: string;
+    last_sha?: string;
+    pipeline_url?: string;
+    pr_url?: string;
+    image_digest?: string;
+    promote_state?: string;
+  };
 };
 
 type Comment = { id: number; username: string; body: string; created_at?: string };
-type TimelineItem = { id: number; action: string; username: string; created_at?: string };
+type TimelineItem = { id: number; action: string; username: string; details?: string; created_at?: string };
 
 function statusLabel(status?: string) {
   switch (status) {
@@ -82,7 +95,11 @@ export default function RequestDetailPage() {
         status: record.status,
         reject_reason: record.reject_reason,
         created_at: record.created_at,
+        created_by_username: record.created_by_username,
+        pr_url: record.pr_url,
+        application_id: record.application_id,
         approval_context: record.approval_context,
+        delivery: detail.delivery,
       });
       setCanApprove(Boolean(detail.can_approve_by_manager));
       const notes = Array.isArray(commentBody?.comments) ? commentBody.comments : [];
@@ -93,12 +110,13 @@ export default function RequestDetailPage() {
         created_at: item.created_at,
       })));
       const events = Array.isArray(timelineBody?.timeline) ? timelineBody.timeline : [];
-      setTimeline(events.map((item: TimelineItem) => ({
+      setTimeline(dedupeActivity(events.map((item: TimelineItem) => ({
         id: item.id,
         action: item.action || 'update',
         username: item.username || 'Someone',
+        details: item.details,
         created_at: item.created_at,
-      })));
+      }))));
     }).catch(() => setError('This request could not be loaded.'))
       .finally(() => setLoading(false));
   }
@@ -161,6 +179,21 @@ export default function RequestDetailPage() {
   }
 
   const stage = request?.approval_context;
+  const tracker = request ? buildRequestTracker({
+    status: request.status,
+    team: request.team,
+    owner: request.created_by_username,
+    prUrl: request.delivery?.pr_url || request.pr_url,
+    pipelineUrl: request.delivery?.pipeline_url,
+    pipelineStatus: request.delivery?.pipeline_status,
+    pipelineLabel: request.delivery?.pipeline_label,
+    ciResult: request.delivery?.ci_result,
+    sha: request.delivery?.last_sha,
+    imageDigest: request.delivery?.image_digest,
+    applicationId: request.application_id,
+    promoteState: request.delivery?.promote_state,
+    rejectReason: request.reject_reason,
+  }) : null;
 
   return (
     <>
@@ -177,16 +210,17 @@ export default function RequestDetailPage() {
                 {request ? <CopyButton value={recordReference('REQ', request.id)} label="request number" /> : null}
               </p>
               <h1>{request ? (request.service || 'Request') : 'Request'}</h1>
-              <p>{request ? `${statusLabel(request.status)} · ${requestPriorityName(request.priority)} · Owner ${request.team || 'unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
-              {request ? (
-                <ExecutionStage
-                  status={request.status}
-                  recovery={
-                    <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('resubmit')}>
-                      Raise again
-                    </button>
-                  }
-                />
+              <p>{request ? `${statusLabel(request.status)} · ${request.env || 'Unknown'} · Owner ${request.created_by_username || request.team || 'Unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
+              {tracker ? (
+                <ol className="request-tracker" aria-label="Request progress">
+                  {tracker.stages.map((item) => (
+                    <li key={item.id} className={`request-tracker__step is-${item.state}`} aria-current={item.state === 'current' || item.state === 'failed' ? 'step' : undefined}>
+                      <strong>{item.label}</strong>
+                      <span>{item.state === 'done' ? 'Done' : item.state === 'failed' ? 'Failed' : item.state === 'cancelled' ? 'Cancelled' : item.state === 'current' ? 'Current' : 'Waiting'}</span>
+                      <small>{item.who}. {item.detail}</small>
+                    </li>
+                  ))}
+                </ol>
               ) : null}
             </div>
             <Link href="/my-requests" className="btn btn-secondary">Back to my requests</Link>
@@ -208,7 +242,24 @@ export default function RequestDetailPage() {
                 </div>
                 {stage?.summary ? <p className="access-hint">{stage.summary}</p> : null}
                 {stage?.next_stage ? <p className="access-hint">Next: {stage.next_stage}</p> : null}
-                {request.reject_reason ? <p className="access-hint">Rejected: {request.reject_reason}</p> : null}
+                {request.reject_reason ? <p className="access-hint">{/cancel/i.test(request.reject_reason) ? 'Cancelled' : 'Rejected'}: {request.reject_reason}</p> : null}
+                {tracker ? (
+                  <div className="request-blocker" role="status">
+                    <strong>{tracker.blockerTitle}</strong>
+                    <p>Who can resolve it: {tracker.blockerWho}</p>
+                    <p>Next permitted action: {tracker.blockerNext}</p>
+                  </div>
+                ) : null}
+                {tracker ? (
+                  <div className="request-facts">
+                    {tracker.evidence.map((item) => (
+                      <div key={item.label}>
+                        <span>{item.label}</span>
+                        <strong>{item.href ? <a href={item.href} target="_blank" rel="noreferrer">{item.value}</a> : item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="request-actions">
                   {canApprove ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('approve-by-manager')}>Approve as manager</button> : null}
                   {request.status === 'draft' ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('submit')}>Submit for approval</button> : null}
@@ -246,9 +297,10 @@ export default function RequestDetailPage() {
                   {timeline.length === 0 ? <p className="work-empty">No activity yet.</p> : (
                     <ul className="request-timeline">
                       {timeline.map((item) => (
-                        <li key={`${item.id}-${item.action}`}>
+                        <li key={`${item.id}-${item.action}-${item.created_at || ''}`}>
                           <strong>{item.username}</strong>
-                          <span>{item.action.replaceAll('_', ' ')}</span>
+                          <span>{publicDetail(item.action) || 'Update'}</span>
+                          {item.details ? <span>{publicDetail(item.details)}</span> : null}
                           {item.created_at ? <small>{formatOperationalTime(item.created_at)}</small> : null}
                         </li>
                       ))}

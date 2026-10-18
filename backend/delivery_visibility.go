@@ -18,9 +18,24 @@ type DeliveryVisibility struct {
 	PromoteState    string `json:"promote_state,omitempty"`
 	PipelineURL     string `json:"pipeline_url,omitempty"`
 	PRURL           string `json:"pr_url,omitempty"`
+	ImageDigest     string `json:"image_digest,omitempty"`
 	DeployIntelHref string `json:"deploy_intel_href,omitempty"`
 	Repo            string `json:"repo,omitempty"`
 	UpdatedAt       string `json:"updated_at,omitempty"`
+}
+
+func requestHasVerificationEvidence(req *PRRequest) bool {
+	if req == nil {
+		return false
+	}
+	if strings.TrimSpace(req.PRURL) != "" {
+		return true
+	}
+	change, err := latestChangeForRequest(req.ID)
+	if err != nil || change == nil {
+		return false
+	}
+	return strings.TrimSpace(change.SHA) != "" || strings.TrimSpace(change.PipelineURL) != "" || strings.TrimSpace(change.ImageDigest) != ""
 }
 
 func buildRequestDeliveryVisibility(req *PRRequest) DeliveryVisibility {
@@ -46,16 +61,17 @@ func buildRequestDeliveryVisibility(req *PRRequest) DeliveryVisibility {
 			out.PRURL = strings.TrimSpace(merge.PRURL)
 		}
 	}
-	if out.LastSHA == "" {
-		if chg, _ := latestChangeForRequest(req.ID); chg != nil {
+	if chg, _ := latestChangeForRequest(req.ID); chg != nil {
+		if out.LastSHA == "" {
 			out.LastSHA = strings.TrimSpace(chg.SHA)
-			if out.PipelineURL == "" {
-				out.PipelineURL = strings.TrimSpace(chg.PipelineURL)
-			}
-			if out.Repo == "" {
-				out.Repo = strings.TrimSpace(chg.Repo)
-			}
 		}
+		if out.PipelineURL == "" {
+			out.PipelineURL = strings.TrimSpace(chg.PipelineURL)
+		}
+		if out.Repo == "" {
+			out.Repo = strings.TrimSpace(chg.Repo)
+		}
+		out.ImageDigest = strings.TrimSpace(chg.ImageDigest)
 	}
 	out.PromoteState = promotionStateForRequest(req.ID)
 	out.DeployIntelHref = deployIntelHrefForRepo(out.Repo, out.PRURL)

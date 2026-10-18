@@ -13,6 +13,7 @@ import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../li
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import BlockedAction from '../../components/BlockedAction';
 import { readWorkspaceScope, WORKSPACE_SCOPE_EVENT, type WorkspaceScope } from '@infragate/ui';
+import { catalogueNote, catalogueTemplate, CATALOGUE_TEMPLATES } from '../../lib/catalogueTemplates';
 
 const REQUEST_DRAFT_KEY = 'opstrellis-request-draft';
 const REQUEST_ATTEMPT_KEY = 'opstrellis-request-attempt';
@@ -34,6 +35,8 @@ export default function NewRequestPage() {
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
   const [comment, setComment] = useState('');
+  const [catalogueKey, setCatalogueKey] = useState('');
+  const [catalogueValues, setCatalogueValues] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -136,6 +139,13 @@ export default function NewRequestPage() {
   }, [env, projectId, projects, team]);
 
   const router = useRouter();
+  useEffect(() => {
+    if (!router.isReady) return;
+    const raw = router.query.template;
+    const key = Array.isArray(raw) ? raw[0] : raw;
+    if (catalogueTemplate(key || '')) setCatalogueKey(key || '');
+  }, [router.isReady, router.query.template]);
+  const selectedCatalogue = catalogueTemplate(catalogueKey);
   const { allowLeave } = useUnsavedChanges(Boolean(projectId || cloud || serviceId || comment.trim() || dueDate));
   const selectedProject = projects.find((item) => String(item.id) === projectId);
   const cloudOptions = selectedProject?.clouds || [];
@@ -165,6 +175,19 @@ export default function NewRequestPage() {
       setError('Choose a service from this project.');
       return;
     }
+    if (selectedCatalogue) {
+      const missing = selectedCatalogue.inputs.find((input) => !(catalogueValues[input.id] || '').trim());
+      if (missing) {
+        focusField(`catalogue-${missing.id}`, `${missing.label} is required for ${selectedCatalogue.name}.`);
+        setError(`${missing.label} is required for ${selectedCatalogue.name}.`);
+        return;
+      }
+      const secretLike = Object.values(catalogueValues).some((value) => /password\s*[:=]|bearer\s+|eyJ|AKIA/i.test(value));
+      if (secretLike) {
+        setError('Leave secret values out of this request.');
+        return;
+      }
+    }
     if (submitLock.current) return;
     submitLock.current = true;
     setSaving(true);
@@ -178,7 +201,9 @@ export default function NewRequestPage() {
       project_id: projectId ? Number(projectId) : undefined,
       priority,
       due_date: dueDate || undefined,
-      initial_comment: comment.trim() || undefined,
+      initial_comment: [selectedCatalogue ? catalogueNote(selectedCatalogue, catalogueValues) : '', comment.trim()].filter(Boolean).join('\n\n') || undefined,
+      catalogue_template: selectedCatalogue?.key,
+      catalogue_version: selectedCatalogue?.version,
     };
     const attemptKey = rememberAttempt(REQUEST_ATTEMPT_KEY, JSON.stringify(payload));
     try {
@@ -242,6 +267,35 @@ export default function NewRequestPage() {
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           <form className="portal-surface access-form" onSubmit={submit}>
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+            <fieldset className="form-section">
+              <legend className="form-section__title">Approved catalogue</legend>
+              <p className="form-section__copy">Start from a versioned template. Each one names its owner and approval policy. Raising the request still does not create the resource.</p>
+              <div className="service-360__tabs" role="list">
+                <button type="button" className={catalogueKey === '' ? 'is-selected' : ''} onClick={() => setCatalogueKey('')}>No template</button>
+                {CATALOGUE_TEMPLATES.map((item) => (
+                  <button key={item.key} type="button" className={catalogueKey === item.key ? 'is-selected' : ''} onClick={() => setCatalogueKey(item.key)}>
+                    {item.name} v{item.version}
+                  </button>
+                ))}
+              </div>
+              {selectedCatalogue ? (
+                <div className="request-facts">
+                  <div><span>Owner</span><strong>{selectedCatalogue.owner}</strong></div>
+                  <div><span>Approval</span><strong>{selectedCatalogue.approval}</strong></div>
+                  <div><span>Version</span><strong>{selectedCatalogue.version}</strong></div>
+                  {selectedCatalogue.inputs.map((input) => (
+                    <label key={input.id} className="label" htmlFor={`catalogue-${input.id}`}>{input.label}<span className="form-req" aria-hidden="true"> *</span>
+                      <input
+                        id={`catalogue-${input.id}`}
+                        className="input"
+                        value={catalogueValues[input.id] || ''}
+                        onChange={(event) => setCatalogueValues((current) => ({ ...current, [input.id]: event.target.value }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </fieldset>
             {teams.length === 0 ? (
               <p className="onboard-unavailable">
                 You need a team before you can raise a request.{' '}

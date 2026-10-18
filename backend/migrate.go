@@ -1484,6 +1484,10 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_resources_scope ON cloud_resources(team_slug, cloud, account_id, environment, region)`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_resources_name ON cloud_resources(display_name, resource_id)`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS lifecycle_state TEXT NOT NULL DEFAULT ''`)
 	seedCloudResourceInventoryDemo()
 
 	// NF-01: cloud account onboarding (credentials stay on API host)

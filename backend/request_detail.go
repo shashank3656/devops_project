@@ -10,6 +10,23 @@ import (
 	"time"
 )
 
+func callerCanReadRequest(userID int, req *PRRequest) bool {
+	if req == nil || userID <= 0 {
+		return false
+	}
+	if req.CreatedBy != nil && *req.CreatedBy == userID {
+		return true
+	}
+	if req.AssignedTo != nil && *req.AssignedTo == userID {
+		return true
+	}
+	if CanApproveByManager(req, userID) {
+		return true
+	}
+	visible, err := projectPointerVisible(userID, req.ProjectID)
+	return err == nil && visible
+}
+
 // requestDetailHandler handles /api/request/<id>, /api/request/<id>/submit, /api/request/<id>/comments
 func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -92,6 +109,10 @@ func requestDetailHandler(w http.ResponseWriter, r *http.Request) {
 			requestPRImpactHandler(w, r, id, userID)
 			return
 		case "timeline":
+			if !callerCanReadRequest(userID, req) {
+				writeAPIError(w, r, http.StatusNotFound, "request not found", nil)
+				return
+			}
 			handleRequestTimeline(w, r, id, userID)
 			return
 		case "dependencies":

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import Service360 from '../../components/Service360';
 import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
@@ -61,6 +62,7 @@ export default function ServiceDetailPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [item, setItem] = useState<ServiceDetail | null>(null);
+  const [sessionToken, setSessionToken] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
@@ -106,6 +108,7 @@ export default function ServiceDetailPage() {
     if (!resourceId) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
+    setSessionToken(token);
     portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${resourceId}`), { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -273,14 +276,25 @@ export default function ServiceDetailPage() {
                 {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <span>Grafana {known(item.grafana_uid)}</span>}
               </section>
             </div>
-            <section className="ops-caught">
-              <h2>No related work yet</h2>
-              <p>Changes and incidents for this service will appear here.</p>
-              <div className="portal-page__actions">
-                <Link href="/changes/new" className="btn btn-primary">Create change</Link>
-                <Link href="/incidents/new" className="btn btn-secondary">Report incident</Link>
-              </div>
-            </section>
+            {sessionToken ? (
+              <Service360
+                apiUrl={apiUrl}
+                token={sessionToken}
+                serviceName={item.service}
+                projectId={item.project_id}
+                environment={item.environment}
+                overview={(
+                  <section className="ops-caught">
+                    <h2>Overview</h2>
+                    <p>Owners, resources, changes, incidents, and access stay on this page. Missing telemetry stays Unknown.</p>
+                    <div className="portal-page__actions">
+                      <Link href="/changes/new" className="btn btn-primary">Create change</Link>
+                      <Link href="/incidents/new" className="btn btn-secondary">Report incident</Link>
+                    </div>
+                  </section>
+                )}
+              />
+            ) : null}
           </>
         ) : null}
         {editing ? (

@@ -642,6 +642,13 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	applyProjectDefaultLifetimeIfEligible(prRequest.ID, prRequest.ProjectID, prRequest.Env)
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
+	if key := catalogueTemplateKey(fmt.Sprint(payload["catalogue_template"])); key != "" {
+		version := strings.TrimSpace(fmt.Sprint(payload["catalogue_version"]))
+		if version == "" || version == "<nil>" {
+			version = "1"
+		}
+		recordRequestActivityOnce(userIDPtr, prRequest.ID, "request_catalogue_template", "template="+key+" version="+version)
+	}
 	if !draft {
 		NotifyRequestRaised(prRequest)
 	}
@@ -920,6 +927,7 @@ func main() {
 	http.HandleFunc("/api/devops/k8s-terminal-session", devopsK8sTerminalSessionHandler)
 	http.HandleFunc("/api/devops/k8s-terminal-attach", devopsK8sTerminalAttachHandler)
 	http.HandleFunc("/api/devops/k8s-terminal-command", devopsK8sTerminalCommandHandler)
+	http.HandleFunc("/api/devops/runbooks/diagnostic", devopsRunbookDiagnosticHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
 	http.HandleFunc("/api/devops/iam", iamHandler)

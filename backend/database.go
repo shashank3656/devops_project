@@ -2289,6 +2289,20 @@ type TimelineEntry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+func timelineDuplicate(existing []TimelineEntry, next TimelineEntry) bool {
+	switch next.Action {
+	case "request_ci_update", "request_completed_by_pipeline", "request_verification_missing":
+	default:
+		return false
+	}
+	for _, item := range existing {
+		if item.Action == next.Action && item.Details == next.Details {
+			return true
+		}
+	}
+	return false
+}
+
 // GetRequestTimeline returns a merged timeline of user activity, admin audit, and comments for a request
 func GetRequestTimeline(requestID int) ([]TimelineEntry, error) {
 	if DB == nil {
@@ -2313,6 +2327,9 @@ func GetRequestTimeline(requestID int) ([]TimelineEntry, error) {
 				continue
 			}
 			e.Kind = "user_activity"
+			if timelineDuplicate(out, e) {
+				continue
+			}
 			out = append(out, e)
 		}
 	}
