@@ -40,7 +40,15 @@ export function exactTimeTitle(iso?: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-  const exact = date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZoneName: 'short' });
+  // dateStyle/timeStyle cannot be combined with timeZoneName in this Chromium.
+  const exact = date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
   return zone ? `${exact} (${zone})` : exact;
 }
 

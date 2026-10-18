@@ -334,6 +334,14 @@ export default function GroupAccessPage() {
     });
   }
 
+  function setSectionPages(key: SectionKey, on: boolean) {
+    setDraft((current) => {
+      const pages = { ...(current.pages || {}) };
+      for (const page of pagesFor(key)) pages[page.key] = on;
+      return { ...current, [key]: on, pages };
+    });
+  }
+
   async function save() {
     if (!team) return;
     setSaving(true);
@@ -505,8 +513,8 @@ export default function GroupAccessPage() {
                 ) : (
                   <p className="access-hint">This group is not linked to a project yet.</p>
                 )}
-                <div className="group-defaults">
-                  <label className="label" htmlFor="add-k8s-project">Add project
+                <div className="group-add">
+                  <label className="label" htmlFor="add-k8s-project">Project
                     <select id="add-k8s-project" className="input" value={addProjectId} onChange={(event) => setAddProjectId(event.target.value)}>
                       <option value="">Choose a project</option>
                       {k8sProjects.filter((project) => !k8sLinks.some((link) => link.project_id === project.id)).map((project) => (
@@ -529,41 +537,60 @@ export default function GroupAccessPage() {
                 <div className="group-card__head">
                   <div>
                     <h2 className="access-form__title">Sections{dirty ? ' · Unsaved' : ''}</h2>
-                    <p className="access-hint">Turn a section on, then keep only the pages this group should open. Infrastructure can be IAM on its own.</p>
+                    <p className="access-hint">Each row is one sidebar group. Turn the group on, then choose the pages this group can open.</p>
                   </div>
                   <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={save}>
                     {saving ? 'Saving…' : 'Save sections'}
                   </button>
                 </div>
-                <ul className="access-menu" aria-label="Sections">
-                  {ACCESS_SECTIONS.map((section) => (
-                    <li key={section.key}>
-                      <label className={draft[section.key] ? 'access-chip is-on' : 'access-chip'}>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(draft[section.key])}
-                          onChange={() => toggle(section.key)}
-                        />
-                        {section.label}
-                      </label>
-                      {draft[section.key] ? (
-                        <ul className="access-pages" aria-label={`${section.label} pages`}>
-                          {pagesFor(section.key).map((page) => (
-                            <li key={page.key}>
-                          <label className={draft.pages?.[page.key] ? 'access-chip is-on' : 'access-chip'}>
+                <ul className="grant-board" aria-label="Sections">
+                  {ACCESS_SECTIONS.map((section) => {
+                    const pages = pagesFor(section.key);
+                    const openCount = pages.filter((page) => draft.pages?.[page.key]).length;
+                    const on = Boolean(draft[section.key]);
+                    return (
+                      <li key={section.key} className={on ? 'grant-section is-on' : 'grant-section'}>
+                        <div className="grant-section__head">
+                          <label className="grant-section__toggle">
                             <input
                               type="checkbox"
-                              checked={Boolean(draft.pages?.[page.key])}
-                                  onChange={() => togglePage(section.key, page.key)}
-                                />
-                                {page.label}
-                              </label>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </li>
-                  ))}
+                              checked={on}
+                              onChange={() => toggle(section.key)}
+                            />
+                            <span>
+                              <strong>{section.label}</strong>
+                              <small>{on ? `${openCount} of ${pages.length} pages` : 'Off'}</small>
+                            </span>
+                          </label>
+                          {on ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => setSectionPages(section.key, openCount < pages.length)}
+                            >
+                              {openCount === pages.length ? 'Clear pages' : 'All pages'}
+                            </button>
+                          ) : null}
+                        </div>
+                        {on ? (
+                          <ul className="grant-section__pages" aria-label={`${section.label} pages`}>
+                            {pages.map((page) => (
+                              <li key={page.key}>
+                                <label className={draft.pages?.[page.key] ? 'grant-section__page is-on' : 'grant-section__page'}>
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(draft.pages?.[page.key])}
+                                    onChange={() => togglePage(section.key, page.key)}
+                                  />
+                                  {page.label}
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             </div>

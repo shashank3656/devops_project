@@ -8621,6 +8621,90 @@ html[data-theme] .devops-layout .access-members .btn {
   list-style: none;
 }
 
+.grant-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grant-section {
+  border: 1px solid var(--ig-border);
+  border-radius: 12px;
+  background: var(--ig-surface);
+}
+
+.grant-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.grant-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.grant-section__toggle strong {
+  display: block;
+  font-size: 14px;
+}
+
+.grant-section__toggle small {
+  display: block;
+  margin-top: 2px;
+  color: var(--ig-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.grant-section__head .btn {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.grant-section__pages {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0 14px 14px;
+  list-style: none;
+}
+
+.grant-section__page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--ig-border);
+  border-radius: 8px;
+  background: var(--ig-bg);
+  color: var(--ig-text);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.grant-section__page input {
+  margin: 0;
+  accent-color: var(--ig-accent);
+}
+
+.grant-section__page.is-on {
+  border-color: var(--ig-accent-border);
+  background: var(--ig-accent-soft);
+}
+
 .access-team {
   border: 1px solid #e7e9f0;
   border-radius: 16px;
