@@ -11,9 +11,11 @@ export function safeReturnPath(value: string | string[] | undefined): string {
 
 export function serviceTicketHref(path: string, item: { id: number; project_id?: number; environment?: string; service?: string }): string {
   const params = new URLSearchParams();
+  const environment = (item.environment || '').trim();
+  const service = (item.service || '').trim();
   if (item.project_id) params.set('project_id', String(item.project_id));
-  if ((item.environment || '').trim()) params.set('environment', item.environment.trim());
-  if ((item.service || '').trim()) params.set('service', item.service.trim());
+  if (environment) params.set('environment', environment);
+  if (service) params.set('service', service);
   params.set('service_id', String(item.id));
   params.set('return', `/services/${item.id}`);
   return `${path}?${params.toString()}`;
