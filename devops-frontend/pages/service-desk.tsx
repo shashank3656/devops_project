@@ -445,6 +445,13 @@ export default function ServiceDeskPage() {
       .finally(() => setLoading(false));
   }, [apiUrl, router, reloadTick]);
 
+  const scopeProject = (router.isReady ? queryString(router.query, 'project_id') : '') || scope.projectId;
+  const scopeEnvironment = (router.isReady ? queryString(router.query, 'environment') : '') || scope.environment;
+  const scopedItems = useMemo(() => items.filter((item) => {
+    if (scopeProject && item.projectId !== scopeProject) return false;
+    return environmentMatches(item.environment, scopeEnvironment);
+  }), [items, scopeEnvironment, scopeProject]);
+
   const selected = useMemo(() => scopedItems.find((item) => item.key === selectedKey) || null, [scopedItems, selectedKey]);
 
   const finishIncident = async (ticket: DeskTicket, action: 'close' | 'cancel') => {
@@ -479,12 +486,6 @@ export default function ServiceDeskPage() {
     }
   };
 
-  const scopeProject = (router.isReady ? queryString(router.query, 'project_id') : '') || scope.projectId;
-  const scopeEnvironment = (router.isReady ? queryString(router.query, 'environment') : '') || scope.environment;
-  const scopedItems = useMemo(() => items.filter((item) => {
-    if (scopeProject && item.projectId !== scopeProject) return false;
-    return environmentMatches(item.environment, scopeEnvironment);
-  }), [items, scopeEnvironment, scopeProject]);
   const owners = useMemo(() => Array.from(new Set(scopedItems.map((item) => item.owner))).sort(), [scopedItems]);
 
   const filtered = useMemo(() => {
