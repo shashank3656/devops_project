@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { serviceLabel } from '../../lib/cloudServices';
+import { serviceLabel, servicesForCloud } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { focusField } from '../../lib/focusField';
@@ -37,6 +37,7 @@ export default function NewRequestPage() {
   const [comment, setComment] = useState('');
   const [catalogueKey, setCatalogueKey] = useState('');
   const [catalogueValues, setCatalogueValues] = useState<Record<string, string>>({});
+  const [serviceQuery, setServiceQuery] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -56,10 +57,14 @@ export default function NewRequestPage() {
         }
       })
       .catch(() => setTeams([]));
-    fetch(`${apiUrl}/api/me/projects`, { headers })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body) => setProjects(Array.isArray(body?.projects) ? body.projects : []))
-      .catch(() => setProjects([]));
+    Promise.all([
+      fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => (res.ok ? res.json() : { projects: [] })),
+      fetch(`${apiUrl}/api/me/projects`, { headers }).then((res) => (res.ok ? res.json() : { projects: [] })),
+    ]).then(([managedBody, mineBody]) => {
+      const managed = Array.isArray(managedBody?.projects) ? managedBody.projects : [];
+      const mine = Array.isArray(mineBody?.projects) ? mineBody.projects : [];
+      setProjects(managed.length ? managed : mine);
+    }).catch(() => setProjects([]));
   }, [apiUrl]);
 
   useEffect(() => {
@@ -140,18 +145,46 @@ export default function NewRequestPage() {
 
   const router = useRouter();
   useEffect(() => {
+    if (!router.isReady || restoredDraft.current) return;
+    const projectQuery = router.query.project_id;
+    const environmentQuery = router.query.environment;
+    const nextProject = String(Array.isArray(projectQuery) ? projectQuery[0] : projectQuery || readWorkspaceScope().projectId || '');
+    const nextEnvironment = String(Array.isArray(environmentQuery) ? environmentQuery[0] : environmentQuery || readWorkspaceScope().environment || '');
+    if (nextProject) setProjectId(nextProject);
+    if (nextEnvironment) {
+      setEnv(nextEnvironment);
+      envLocked.current = true;
+    }
+  }, [router.isReady, router.query.project_id, router.query.environment]);
+  useEffect(() => {
     if (!router.isReady) return;
     const raw = router.query.template;
     const key = Array.isArray(raw) ? raw[0] : raw;
     if (catalogueTemplate(key || '')) setCatalogueKey(key || '');
   }, [router.isReady, router.query.template]);
+  useEffect(() => {
+    const project = projects.find((item) => String(item.id) === projectId);
+    if (!project) return;
+    const clouds = project.clouds?.length ? project.clouds : ['aws', 'azure', 'gcp'];
+    if (!clouds.some((name) => name.toLowerCase() === cloud.toLowerCase())) {
+      setCloud(clouds[0]);
+      setServiceId('');
+    }
+  }, [projects, projectId, cloud]);
   const selectedCatalogue = catalogueTemplate(catalogueKey);
   const { allowLeave } = useUnsavedChanges(Boolean(projectId || cloud || serviceId || comment.trim() || dueDate));
   const selectedProject = projects.find((item) => String(item.id) === projectId);
-  const cloudOptions = selectedProject?.clouds || [];
+  const cloudOptions = selectedProject?.clouds?.length ? selectedProject.clouds : ['aws', 'azure', 'gcp'];
   const environmentOptions = (selectedProject?.environments || []).filter(Boolean);
-  const serviceOptions = (selectedProject?.services || []).filter((item) => item.cloud.toLowerCase() === cloud.toLowerCase());
-  const chosenService = serviceOptions.find((item) => item.service === serviceId);
+  const cloudKey = cloud.toLowerCase();
+  const catalog = servicesForCloud(cloudKey);
+  const catalogIds = new Set(catalog.map((item) => item.id));
+  const projectServices = (selectedProject?.services || [])
+    .filter((item) => String(item.cloud || '').toLowerCase() === cloudKey && catalogIds.has(item.service))
+    .map((item) => ({ id: item.service, label: serviceLabel(cloudKey, item.service) }));
+  const serviceOptions = projectServices.length ? projectServices : catalog;
+  const visibleServices = serviceOptions.filter((item) => item.label.toLowerCase().includes(serviceQuery.trim().toLowerCase()));
+  const chosenService = serviceOptions.find((item) => item.id === serviceId);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -197,7 +230,7 @@ export default function NewRequestPage() {
       team,
       env,
       cloud,
-      service: chosenService.service,
+      service: chosenService.id,
       project_id: projectId ? Number(projectId) : undefined,
       priority,
       due_date: dueDate || undefined,
@@ -265,11 +298,11 @@ export default function NewRequestPage() {
           </header>
           {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-          <form className="portal-surface access-form" onSubmit={submit}>
+          <form className="portal-surface request-form" onSubmit={submit}>
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
             <fieldset className="form-section">
               <legend className="form-section__title">Approved catalogue</legend>
-              <p className="form-section__copy">Start from a versioned template. Each one names its owner and approval policy. Raising the request still does not create the resource.</p>
+              <p className="form-section__copy">Start from a versioned template, or leave this unset and choose a service below. Raising the request still does not create the resource.</p>
               <div className="service-360__tabs" role="list">
                 <button type="button" className={catalogueKey === '' ? 'is-selected' : ''} onClick={() => setCatalogueKey('')}>No template</button>
                 {CATALOGUE_TEMPLATES.map((item) => (
@@ -279,21 +312,21 @@ export default function NewRequestPage() {
                 ))}
               </div>
               {selectedCatalogue ? (
-                <div className="request-facts">
-                  <div><span>Owner</span><strong>{selectedCatalogue.owner}</strong></div>
-                  <div><span>Approval</span><strong>{selectedCatalogue.approval}</strong></div>
-                  <div><span>Version</span><strong>{selectedCatalogue.version}</strong></div>
-                  {selectedCatalogue.inputs.map((input) => (
-                    <label key={input.id} className="label" htmlFor={`catalogue-${input.id}`}>{input.label}<span className="form-req" aria-hidden="true"> *</span>
-                      <input
-                        id={`catalogue-${input.id}`}
-                        className="input"
-                        value={catalogueValues[input.id] || ''}
-                        onChange={(event) => setCatalogueValues((current) => ({ ...current, [input.id]: event.target.value }))}
-                      />
-                    </label>
-                  ))}
-                </div>
+                <>
+                  <p className="form-section__copy">Owner {selectedCatalogue.owner}. Version {selectedCatalogue.version}. {selectedCatalogue.approval}</p>
+                  <div className="portal-form-grid">
+                    {selectedCatalogue.inputs.map((input) => (
+                      <label key={input.id} className="label" htmlFor={`catalogue-${input.id}`}>{input.label}<span className="form-req" aria-hidden="true"> *</span>
+                        <input
+                          id={`catalogue-${input.id}`}
+                          className="input"
+                          value={catalogueValues[input.id] || ''}
+                          onChange={(event) => setCatalogueValues((current) => ({ ...current, [input.id]: event.target.value }))}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </>
               ) : null}
             </fieldset>
             {teams.length === 0 ? (
@@ -305,8 +338,9 @@ export default function NewRequestPage() {
             ) : null}
             <fieldset className="form-section">
               <legend className="form-section__title">Scope</legend>
-              <p className="form-section__copy">Choose the project, then the cloud, then a service saved on that project.</p>
-            <label className="label" htmlFor="request-team">Team<span className="form-req" aria-hidden="true"> *</span></label>
+              <p className="form-section__copy">Project and environment come from the page address when they are present. Services are the same catalogue used on the access request.</p>
+            <div className="portal-form-grid">
+            <label className="label" htmlFor="request-team">Team<span className="form-req" aria-hidden="true"> *</span>
             <select
               id="request-team"
               className="input"
@@ -323,7 +357,8 @@ export default function NewRequestPage() {
                 <option key={item.id} value={item.slug}>{item.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="request-project">Project<span className="form-req" aria-hidden="true"> *</span></label>
+            </label>
+            <label className="label" htmlFor="request-project">Project<span className="form-req" aria-hidden="true"> *</span>
             <select
               id="request-project"
               className="input"
@@ -342,7 +377,8 @@ export default function NewRequestPage() {
                 <option key={item.id} value={item.id}>{item.code ? `${item.name} (${item.code})` : item.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="request-env">Environment<span className="form-req" aria-hidden="true"> *</span></label>
+            </label>
+            <label className="label" htmlFor="request-env">Environment<span className="form-req" aria-hidden="true"> *</span>
             <select
               id="request-env"
               className="input"
@@ -358,38 +394,41 @@ export default function NewRequestPage() {
               <option value="">{projectId ? 'Choose an environment' : 'Choose a project first'}</option>
               {environmentOptions.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
-            {!projectId ? <p className="access-hint">Environment stays unset until a project is chosen. It then uses the selected scope when that environment belongs to the project.</p> : null}
-            {envNote ? <p className="access-hint">{envNote}</p> : null}
-            <label className="label" htmlFor="request-cloud">Cloud<span className="form-req" aria-hidden="true"> *</span></label>
-            <BlockedAction blocked={!projectId} reason="Choose a project to continue.">
+            </label>
+            {!projectId ? <p className="access-hint portal-form-grid__span-2">Environment stays unset until a project is chosen. It then uses the selected scope when that environment belongs to the project.</p> : null}
+            {envNote ? <p className="access-hint portal-form-grid__span-2">{envNote}</p> : null}
+            <label className="label" htmlFor="request-cloud">Cloud<span className="form-req" aria-hidden="true"> *</span>
             <select
               id="request-cloud"
               className="input"
               value={cloud}
-              onChange={(event) => { setCloud(event.target.value); setServiceId(''); }}
+              onChange={(event) => { setCloud(event.target.value); setServiceId(''); setServiceQuery(''); }}
               required
               disabled={!projectId}
             >
               <option value="">{projectId ? 'Select a cloud' : 'Choose a project first'}</option>
               {cloudOptions.map((name) => <option key={name} value={name}>{name.toUpperCase()}</option>)}
             </select>
-            </BlockedAction>
-            <label className="label" htmlFor="request-service">Service<span className="form-req" aria-hidden="true"> *</span></label>
-            <BlockedAction blocked={!cloud || serviceOptions.length === 0} reason={!projectId ? 'Choose a project to continue.' : !cloud ? 'Choose a cloud to continue.' : 'No service is saved for this cloud. Add one on the project before raising a request.'}>
-            <select id="request-service" className="input" value={serviceId} onChange={(event) => setServiceId(event.target.value)} required disabled={!cloud || serviceOptions.length === 0} title={!cloud ? 'Choose a cloud to continue.' : serviceOptions.length === 0 ? 'No service is saved for this cloud.' : 'Service'}>
-              <option value="">{!cloud ? 'Select a cloud first' : serviceOptions.length ? 'Select a service' : 'No services were saved for this cloud on the project'}</option>
-              {serviceOptions.map((item) => (
-                <option key={`${item.cloud}-${item.service}`} value={item.service}>{serviceLabel(item.cloud, item.service)}</option>
-              ))}
-            </select>
-            </BlockedAction>
-            <label className="label" htmlFor="request-priority">Priority</label>
+            </label>
+            <label className="label" htmlFor="request-priority">Priority
             <select id="request-priority" className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
               <option value="critical">Critical</option>
             </select>
+            </label>
+            </div>
+            <label className="label" htmlFor="request-service-search">Service<span className="form-req" aria-hidden="true"> *</span></label>
+            <input id="request-service-search" className="input" type="search" value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Search services" disabled={!cloud} />
+            <div className="iam-choices" role="radiogroup" aria-label="Services">
+              {!cloud ? <p className="access-hint">Choose a cloud to see its services.</p> : visibleServices.length === 0 ? <p className="access-hint">No services match that search.</p> : visibleServices.map((item) => (
+                <label key={item.id} className={serviceId === item.id ? 'is-current' : undefined}>
+                  <input type="radio" name="request-service" value={item.id} checked={serviceId === item.id} onChange={() => setServiceId(item.id)} />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
             </fieldset>
             <details className="onboard-advanced">
               <summary>Timing and note <span className="onboard-optional">Optional</span></summary>
@@ -400,7 +439,7 @@ export default function NewRequestPage() {
             </details>
             <section className="portal-surface portal-surface--tight" aria-label="Review before raising">
               <h2>Review before raising</h2>
-              <p>{serviceLabel(cloud, serviceId) || 'Choose a service'} · {projects.find((item) => String(item.id) === projectId)?.name || 'No project'} · {env || 'No environment'} · {priority}</p>
+              <p>{chosenService?.label || 'Choose a service'} · {selectedProject?.name || 'No project'} · {env || 'No environment'} · {priority}</p>
               <p className="access-hint">If something is wrong, change it in the section above. This raises the request for the selected project.</p>
             </section>
             <div className="portal-form-actions">

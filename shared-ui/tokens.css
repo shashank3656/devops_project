@@ -54,8 +54,8 @@ html[data-theme='light'] {
   --ig-shadow-pop: 0 12px 32px rgba(20, 32, 24, 0.08), 0 0 0 1px var(--ig-border);
   --ig-focus-ring: 0 0 0 3px rgba(109, 74, 255, 0.28);
 
-  --ig-font: 'Roboto', 'Segoe UI', sans-serif;
-  --ig-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ig-font: var(--font-roboto, 'Segoe UI'), sans-serif;
+  --ig-mono: var(--font-mono, ui-monospace), SFMono-Regular, Menlo, Consolas, monospace;
 
   --ig-text-xs: 12px;
   --ig-text-sm: 13px;
@@ -124,8 +124,14 @@ html[data-theme='dark'] {
   --ig-shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--ig-border);
   --ig-focus-ring: 0 0 0 3px rgba(196, 181, 253, 0.4);
 
-  --ig-font: 'Roboto', 'Segoe UI', sans-serif;
-  --ig-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ig-font: var(--font-roboto, 'Segoe UI'), sans-serif;
+  --ig-mono: var(--font-mono, ui-monospace), SFMono-Regular, Menlo, Consolas, monospace;
 
   color-scheme: dark;
+}
+
+.ot-fonts {
+  display: contents;
+  --ig-font: var(--font-roboto), 'Segoe UI', sans-serif;
+  --ig-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }

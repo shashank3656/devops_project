@@ -8375,6 +8375,23 @@ html[data-theme] .devops-layout .devops-sidebar-new--collapsed .devops-sidebar-n
   align-items: end;
 }
 
+html[data-theme] .devops-layout .request-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(100%, 920px);
+  max-width: 920px;
+  padding: 20px;
+}
+
+html[data-theme] .devops-layout .request-form .form-section .label {
+  margin: 0;
+}
+
+html[data-theme] .devops-layout .request-form .iam-choices {
+  max-height: 280px;
+}
+
 html[data-theme] .devops-layout .access-form {
   display: flex;
   flex-direction: column;
