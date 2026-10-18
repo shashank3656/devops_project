@@ -7,6 +7,7 @@ import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { ACCESS_SECTIONS, grantsForTeam, pagesFor, sameGrants, type SectionGrants, type SectionKey } from '../../../lib/accessSections';
 import { sessionAuthHeaders } from '../../../lib/portalAccess';
+import { GroupRoleFields } from '../../../lib/groupRoles';
 
 type Team = {
   id: number;
@@ -356,14 +357,6 @@ export default function GroupAccessPage() {
     }
   }
 
-  const roleOptions = team?.team_type === 'devops'
-    ? [{ value: 'member', label: 'Member' }, { value: 'lead', label: 'Lead' }]
-    : [
-      { value: 'developer', label: 'Developer' },
-      { value: 'senior_developer', label: 'Senior developer' },
-      { value: 'lead', label: 'Lead' },
-      { value: 'manager', label: 'Manager' },
-    ];
   const available = people.filter((person) => !members.some((member) => member.user_id === person.id));
   const dirty = !sameGrants(draft, saved) || !custom;
   const defaultsDirty = defaultEnv !== savedEnv || defaultCloud !== savedCloud;
@@ -401,7 +394,7 @@ export default function GroupAccessPage() {
                   {dirty ? ' Section changes are not saved yet.' : ' Saved sections are what members see.'}
                 </p>
                 <p className="access-hint">
-                  Membership, request defaults, and Kubernetes each save on their own. A group role such as Developer or Manager is the job in this group. It is not the Manager account flag used for approvals.
+                  Membership, request defaults, and Kubernetes each save on their own. Job title and membership role are both shown below. Only the one this group stores can be changed. Manager for approvals is an account flag, set on the person.
                 </p>
                 <p className="access-hint">Kubernetes group level is {teamK8s}. {k8sLinks.length ? `${k8sLinks.length} project links.` : 'No project links yet.'}</p>
               </section>
@@ -413,20 +406,20 @@ export default function GroupAccessPage() {
                     {members.map((member) => (
                       <li key={member.user_id}>
                         <span>{member.username}</span>
-                        <select className="input" aria-label={`Role for ${member.username}`} value={member.role} onChange={(event) => changeRole(member.user_id, event.target.value)}>
-                          {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
+                        <GroupRoleFields
+                          kind={team.team_type || ''}
+                          role={member.role}
+                          onChange={(role) => changeRole(member.user_id, role)}
+                          idPrefix={`member-${member.user_id}`}
+                          compact
+                        />
                         <button type="button" className="btn btn-secondary" onClick={() => removePerson(member.user_id)}>Remove</button>
                       </li>
                     ))}
                   </ul>
                 )}
                 <div className="group-add">
-                  <label className="label" htmlFor="add-role">Role
-                    <select id="add-role" className="input" value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
-                      {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </label>
+                  <GroupRoleFields kind={team.team_type || ''} role={memberRole} onChange={setMemberRole} idPrefix="add" />
                   <label className="label" htmlFor="add-person">Add someone
                     <select id="add-person" className="input" value={personId} onChange={(event) => setPersonId(event.target.value)}>
                       <option value="">{available.length ? 'Choose a person' : 'Everyone is already in this group'}</option>

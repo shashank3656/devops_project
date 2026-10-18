@@ -14,6 +14,7 @@ import { expireSession } from '../../lib/sessionExpiry';
 import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import BlockedAction from '../../components/BlockedAction';
+import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -117,6 +118,7 @@ function withSignedInAssignee(users: PortalUserOption[]): PortalUserOption[] {
 export default function NewChangeRequestPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const zoneLabel = useBrowserTimeZoneLabel();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [users, setUsers] = useState<PortalUserOption[]>([]);
@@ -537,7 +539,7 @@ export default function NewChangeRequestPage() {
               </fieldset>
               <fieldset className="form-section">
                 <legend className="form-section__title">Window <span className="onboard-optional">Optional</span></legend>
-                <p className="access-hint">Planned start and end use this browser’s timezone.</p>
+                <p className="access-hint">Planned start and end use {zoneLabel || 'this browser’s timezone'}.</p>
                 <div className="portal-form-grid">
                   <label className="label">
                     Planned start
@@ -575,7 +577,7 @@ export default function NewChangeRequestPage() {
                   </label>
                 </div>
               </details>
-              <p className="form-section__meta">Submitting saves the request. It does not deploy. A later material edit invalidates an existing approval. Approval is not execution.</p>
+              <p className="form-section__meta">Submitting saves the request. It does not deploy. The window uses {zoneLabel || 'this browser’s timezone'}. A later material edit invalidates an existing approval. Approval is not execution.</p>
               <div className="portal-form-actions">
                 <BlockedAction
                   blocked={!saving && (!title.trim() || !projectId || !serviceId || !assigneeUserId || !services.length)}

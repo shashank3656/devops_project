@@ -18,7 +18,7 @@ func TestCloudAccountJSONOmitsSecrets(t *testing.T) {
 		DisplayName:   "Prod",
 		TeamSlug:      "platform-team",
 		AuthMode:      "assume_role",
-		RoleARN:       "arn:aws:iam::111122223333:role/ReadOnly",
+		RoleARNSet:    true,
 		ExternalIDSet: true,
 		Status:        "connected",
 	}

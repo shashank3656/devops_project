@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useConfirm } from '@infragate/ui';
+import { queryString, useConfirm, useWorkspaceScope } from '@infragate/ui';
 import { productionDetailLines } from '../lib/productionConfirm';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -24,8 +24,11 @@ interface DeskTicket {
   status: string;
   priority: string;
   owner: string;
+  author?: string;
   requester?: string;
   service: string;
+  serviceId?: number;
+  projectId?: string;
   environment: string;
   source: string;
   href: string;
@@ -156,6 +159,17 @@ function num(value: unknown): number {
   return 0;
 }
 
+function namedEnvironment(value: string): string {
+  const text = value.trim().toLowerCase();
+  if (!text || text === 'unknown' || text === 'unspecified' || text === '—' || text === '-') return '';
+  return text;
+}
+
+function environmentMatches(itemEnvironment: string, selected: string): boolean {
+  if (!selected.trim()) return true;
+  return namedEnvironment(itemEnvironment) === selected.trim().toLowerCase();
+}
+
 function storedIsAdmin(): boolean {
   try {
     const raw = localStorage.getItem(DEVOPS_USER_KEY);
@@ -205,6 +219,7 @@ export default function ServiceDeskPage() {
   const viewHydrated = useRef(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
+  const { scope } = useWorkspaceScope();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [finishing, setFinishing] = useState('');
@@ -291,9 +306,12 @@ export default function ServiceDeskPage() {
             summary: str(row.summary) || str(row.service) || str(row.repo),
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
-            owner: str(row.assignee_username) || str(row.author) || 'Unassigned',
+            owner: str(row.assignee_username) || 'Unassigned',
+            author: str(row.author),
             requester: str(row.created_by_username) || str(row.author),
             service: str(row.service) || 'Unknown',
+            serviceId: num(row.service_id) || num(row.service_map_id) || undefined,
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.pipeline_url) ? 'Webhook' : 'Manual',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
@@ -318,6 +336,8 @@ export default function ServiceDeskPage() {
             owner: str(row.owner_username) || str(row.assignee_username) || 'Unassigned',
             requester: str(row.created_by_username) || str(row.caller) || str(row.owner_username),
             service: str(row.service) || 'Unknown',
+            serviceId: num(row.service_id) || undefined,
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.source) || 'Webhook',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
@@ -340,8 +360,10 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || 'Unassigned',
+            author: str(row.created_by_username),
             requester: str(row.created_by_username),
             service: str(row.service) || 'Unknown',
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
@@ -364,9 +386,11 @@ export default function ServiceDeskPage() {
             summary: `${str(row.cloud)} · ${str(row.env) || str(row.environment)}`.replace(/^ · | · $/g, '').trim() || 'Infrastructure request',
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
-            owner: str(row.assignee_username) || str(row.created_by_username) || 'Unassigned',
+            owner: str(row.assignee_username) || 'Unassigned',
+            author: str(row.created_by_username),
             requester: str(row.created_by_username),
             service: str(row.service) || 'Unknown',
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
@@ -421,7 +445,7 @@ export default function ServiceDeskPage() {
       .finally(() => setLoading(false));
   }, [apiUrl, router, reloadTick]);
 
-  const selected = useMemo(() => items.find((item) => item.key === selectedKey) || null, [items, selectedKey]);
+  const selected = useMemo(() => scopedItems.find((item) => item.key === selectedKey) || null, [scopedItems, selectedKey]);
 
   const finishIncident = async (ticket: DeskTicket, action: 'close' | 'cancel') => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -455,11 +479,17 @@ export default function ServiceDeskPage() {
     }
   };
 
-  const owners = useMemo(() => Array.from(new Set(items.map((item) => item.owner))).sort(), [items]);
+  const scopeProject = (router.isReady ? queryString(router.query, 'project_id') : '') || scope.projectId;
+  const scopeEnvironment = (router.isReady ? queryString(router.query, 'environment') : '') || scope.environment;
+  const scopedItems = useMemo(() => items.filter((item) => {
+    if (scopeProject && item.projectId !== scopeProject) return false;
+    return environmentMatches(item.environment, scopeEnvironment);
+  }), [items, scopeEnvironment, scopeProject]);
+  const owners = useMemo(() => Array.from(new Set(scopedItems.map((item) => item.owner))).sort(), [scopedItems]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const next = items.filter((item) => {
+    const next = scopedItems.filter((item) => {
       if (tab === 'mine' && username && !item.owner.toLowerCase().includes(username.toLowerCase())) return false;
       if (tab === 'approval') {
         const s = item.status.toLowerCase();
@@ -484,7 +514,7 @@ export default function ServiceDeskPage() {
       return delta * direction;
     });
     return next;
-  }, [items, tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, username]);
+  }, [scopedItems, tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, username]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -607,23 +637,23 @@ export default function ServiceDeskPage() {
   };
 
   const stats = useMemo(() => {
-    const open = items.filter((item) => !['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(item.status.toLowerCase())).length;
-    const critical = items.filter((item) => {
+    const open = scopedItems.filter((item) => !['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(item.status.toLowerCase())).length;
+    const critical = scopedItems.filter((item) => {
       const p = item.priority.toLowerCase();
       return item.kind === 'incident' && (p.includes('critical') || p === 'p1');
     }).length;
-    const awaiting = items.filter((item) => {
+    const awaiting = scopedItems.filter((item) => {
       const s = item.status.toLowerCase();
       return s.includes('approv') || s === 'new' || s.includes('pending');
     }).length;
-    const dueToday = items.filter((item) => {
+    const dueToday = scopedItems.filter((item) => {
       if (!item.dueAt) return false;
       const due = new Date(item.dueAt);
       if (Number.isNaN(due.getTime())) return false;
       return due.toDateString() === new Date().toDateString();
     }).length;
     return { open, critical, awaiting, dueToday };
-  }, [items]);
+  }, [scopedItems]);
 
   const ticketIdLabel = (item: DeskTicket) => {
     if (item.reference) return item.reference;
@@ -644,7 +674,11 @@ export default function ServiceDeskPage() {
           <div>
             <p className="ops-kicker">Service management</p>
             <h1 className="sd-hero__title">Great service starts here.</h1>
-            <p className="sd-hero__subtitle">Resolve incidents, plan changes and keep every request moving.</p>
+            <p className="sd-hero__subtitle">
+              {scopeEnvironment || scopeProject
+                ? `Showing ${scopeEnvironment || 'every environment'}${scopeProject ? ' in the selected project' : ''}.`
+                : 'Resolve incidents, plan changes and keep every request moving.'}
+            </p>
           </div>
           <Link href="/changes/new" className="btn btn-primary">Create change</Link>
         </header>
@@ -681,8 +715,8 @@ export default function ServiceDeskPage() {
           <div className="sd-main">
             <div className="sd-tabs" role="tablist">
               {[
-                { id: 'all' as const, label: `All tickets (${items.length})` },
-                { id: 'mine' as const, label: `Assigned to me (${items.filter((i) => username && i.owner.toLowerCase().includes(username.toLowerCase())).length})` },
+                { id: 'all' as const, label: `All tickets (${scopedItems.length})` },
+                { id: 'mine' as const, label: `Assigned to me (${scopedItems.filter((i) => username && i.owner !== 'Unassigned' && i.owner.toLowerCase().includes(username.toLowerCase())).length})` },
                 { id: 'approval' as const, label: `Needs approval (${stats.awaiting})` },
               ].map((entry) => (
                 <button
@@ -782,14 +816,14 @@ export default function ServiceDeskPage() {
 
             <div className="sd-table-wrap">
               {loading ? <div className="empty-state" role="status">Loading service desk…</div> : null}
-              {!loading && !error && items.length === 0 ? (
+              {!loading && !error && scopedItems.length === 0 ? (
                 <div className="sd-empty">
-                  <h3>No tickets yet</h3>
-                  <p>Incidents, changes, problems and requests you can see will appear here.</p>
+                  <h3>{items.length === 0 ? 'No tickets yet' : 'No tickets in this scope'}</h3>
+                  <p>{items.length === 0 ? 'Incidents, changes, problems and requests you can see will appear here.' : 'The selected project and environment have no matching tickets. Tickets from other environments stay out of this list.'}</p>
                   <Link href="/incidents/new" className="btn btn-primary btn-sm">Report an incident</Link>
                 </div>
               ) : null}
-              {!loading && items.length > 0 && filtered.length === 0 ? (
+              {!loading && scopedItems.length > 0 && filtered.length === 0 ? (
                 <div className="sd-empty">
                   <h3>No tickets match these filters</h3>
                   <p>Try a different search, or clear the filters to see every ticket.</p>
@@ -812,7 +846,7 @@ export default function ServiceDeskPage() {
                       <th scope="col" aria-sort={ariaSort('created')}>
                         <button type="button" className="sd-sort-btn" onClick={() => sortBy('created')}>Ticket</button>
                       </th>
-                      <th scope="col" aria-sort={ariaSort('type')}>
+                      <th scope="col" className="sd-col-type" aria-sort={ariaSort('type')}>
                         <button type="button" className="sd-sort-btn" onClick={() => sortBy('type')}>Type</button>
                       </th>
                       <th scope="col" aria-sort={ariaSort('priority')}>
@@ -821,10 +855,10 @@ export default function ServiceDeskPage() {
                       <th scope="col" aria-sort={ariaSort('status')}>
                         <button type="button" className="sd-sort-btn" onClick={() => sortBy('status')}>Status</button>
                       </th>
-                      <th scope="col" aria-sort={ariaSort('owner')}>
+                      <th scope="col" className="sd-col-owner" aria-sort={ariaSort('owner')}>
                         <button type="button" className="sd-sort-btn" onClick={() => sortBy('owner')}>Owner</button>
                       </th>
-                      <th scope="col">Source</th>
+                      <th scope="col" className="sd-col-source">Source</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -854,10 +888,10 @@ export default function ServiceDeskPage() {
                             <span className="sd-ticket-summary">{item.summary || 'Unknown'}</span>
                           </div>
                         </td>
-                        <td>
-                          <span className={`sd-type sd-type--${item.kind}`}>
+                        <td className="sd-col-type">
+                          <span className={`sd-type sd-type--${item.kind}`} title={kindLabel(item.kind)}>
                             {item.kind === 'problem' ? <IconSearch /> : item.kind === 'change' ? <IconLink /> : <IconAlert />}
-                            {kindLabel(item.kind)}
+                            <span className="sd-clip">{kindLabel(item.kind)}</span>
                           </span>
                         </td>
                         <td>
@@ -866,18 +900,18 @@ export default function ServiceDeskPage() {
                         <td>
                           <span className={`sd-badge sd-badge--${statusTone(item.status)}`}>{sentence(item.status)}</span>
                         </td>
-                        <td>
-                          <span className="sd-owner">
+                        <td className="sd-col-owner">
+                          <span className="sd-owner" title={item.owner}>
                             <span className="sd-avatar" aria-hidden>
                               {initials(item.owner)}
                             </span>
-                            {item.owner}
+                            <span className="sd-clip">{item.owner}</span>
                           </span>
                         </td>
-                        <td>
-                          <span className="sd-source">
+                        <td className="sd-col-source">
+                          <span className="sd-source" title={sentence(item.source)}>
                             {item.source.toLowerCase().includes('webhook') ? <IconLink /> : <IconDoc />}
-                            {sentence(item.source)}
+                            <span className="sd-clip">{sentence(item.source)}</span>
                           </span>
                         </td>
                       </tr>
@@ -960,12 +994,16 @@ export default function ServiceDeskPage() {
                 </div>
                 <div>
                   <dt>Assigned to</dt>
-                  <dd className="sd-owner">
+                  <dd className="sd-owner" title={selected.owner}>
                     <span className="sd-avatar" aria-hidden>
                       {initials(selected.owner)}
                     </span>
-                    {selected.owner}
+                    <span className="sd-clip">{selected.owner}</span>
                   </dd>
+                </div>
+                <div>
+                  <dt>Author</dt>
+                  <dd title={selected.author || 'Unknown'}>{selected.author || 'Unknown'}</dd>
                 </div>
                 <div>
                   <dt>Affected service</dt>
@@ -1003,10 +1041,18 @@ export default function ServiceDeskPage() {
 
               <section className="sd-section">
                 <h3>Related items</h3>
-                <Link href={selected.href} className="sd-related-card">
-                  <span>{selected.service}</span>
-                  <small>Service · {selected.environment}</small>
-                </Link>
+                {selected.serviceId ? (
+                  <Link href={`/services/${selected.serviceId}`} className="sd-related-card">
+                    <span>{selected.service}</span>
+                    <small>Service · {selected.environment}</small>
+                  </Link>
+                ) : (
+                  <div className="sd-related-card">
+                    <span>Service not linked</span>
+                    <small>{selected.service && selected.service !== 'Unknown' ? selected.service : 'This ticket has no catalog service.'}</small>
+                    <Link className="sd-related" href={`/services?q=${encodeURIComponent(selected.service && selected.service !== 'Unknown' ? selected.service : '')}`}>Link a service</Link>
+                  </div>
+                )}
               </section>
             </aside>
           ) : null}

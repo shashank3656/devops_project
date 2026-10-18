@@ -5028,7 +5028,13 @@ html[data-theme] .changes-page__sample {
 }
 
 .sd-page--with-inspector .sd-workspace {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1600px) {
+  .sd-page--with-inspector .sd-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  }
 }
 
 .sd-hero {
@@ -5471,6 +5477,44 @@ html[data-theme='dark'] .sd-badge--prio-low { background: rgba(255,255,255,.08);
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.sd-type,
+.sd-source {
+  max-width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.sd-col-type {
+  width: 128px;
+  min-width: 128px;
+}
+
+.sd-col-owner {
+  width: 168px;
+  min-width: 168px;
+}
+
+.sd-col-source {
+  width: 128px;
+  min-width: 128px;
+}
+
+.sd-clip {
+  display: block;
+  min-width: 0;
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sd-avatar {
@@ -5605,8 +5649,14 @@ html[data-theme='dark'] .sd-badge--prio-low { background: rgba(255,255,255,.08);
 
 .sd-meta dd {
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
   color: var(--ig-text);
   font-size: var(--ig-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .sd-section h3 {
@@ -5640,10 +5690,6 @@ html[data-theme='dark'] .sd-badge--prio-low { background: rgba(255,255,255,.08);
   }
   .sd-page--with-inspector .sd-workspace {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .sd-inspector {
-    position: static;
-    max-height: none;
   }
 }
 
@@ -9191,7 +9237,8 @@ html[data-theme] .alert-trends--three {
 /* Required fields are marked by text, not colour alone. Assistive tech reads the `required` attribute. */
 html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > .label:not(:has(.form-req))::after,
 html[data-theme] .devops-layout .form-group:has(> :is(input, select, textarea)[required]) > label:not(:has(.form-req))::after,
-html[data-theme] .devops-layout label:not(:has(.form-req)):has(+ :is(input, select, textarea)[required])::after {
+html[data-theme] .devops-layout label:not(:has(.form-req)):has(+ :is(input, select, textarea)[required])::after,
+html[data-theme] .devops-layout label:not(:has(.form-req)):has(> :is(input, select, textarea)[required])::after {
   content: ' *';
   color: var(--ig-danger);
   font-weight: 700;
@@ -9781,7 +9828,20 @@ html[data-theme='dark'] .devops-layout .sd-table thead th {
 }
 
 html[data-theme] .devops-layout .sd-table td:not(:nth-child(2)) {
+  overflow-wrap: normal;
+  word-break: normal;
   white-space: nowrap;
+}
+
+@media (max-width: 1599px) {
+  .sd-page--with-inspector .sd-inspector {
+    position: fixed;
+    top: calc(var(--ig-topbar-height, 64px) + 12px);
+    right: 16px;
+    z-index: 40;
+    width: min(380px, calc(100vw - 32px));
+    box-shadow: 0 16px 48px rgba(16, 21, 37, 0.28);
+  }
 }
 
 html[data-theme] .ig-table-pager {

@@ -69,7 +69,7 @@ func (m *securityReportMem) findingsFor(reportID int) []securityReportFinding {
 	return items
 }
 
-func reportActor(userID int, role string) authzSubject {
+func securityReportActor(userID int, role string) authzSubject {
 	return authzSubject{
 		UserID: userID, OrganizationID: pilotOrganizationID,
 		Grants: []projectGrant{{OrganizationID: pilotOrganizationID, ProjectID: 10, Role: role, Environments: []string{"*"}}},
@@ -81,8 +81,8 @@ func validReport() securityReportInput {
 		ProjectID: 99, OrganizationID: 99, ConnectionID: 7,
 		Repository: "setuops/api", Branch: "main",
 		CommitSHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		Scanner: "semgrep",
-		Findings: []securityReportFindingInput{{RuleID: "generic-secret", Path: "config.yml", Message: "token found"}},
+		Scanner:   "semgrep",
+		Findings:  []securityReportFindingInput{{RuleID: "generic-secret", Path: "config.yml", Message: "token found"}},
 	}
 }
 
@@ -92,20 +92,20 @@ func TestMalformedReportIsRejected(t *testing.T) {
 	defer restore()
 	malformed := validReport()
 	malformed.CommitSHA = "not-a-sha"
-	if _, err := ingestSecurityReport(reportActor(4, "operator"), malformed); err != errReportInvalid || len(mem.reports) != 0 {
+	if _, err := ingestSecurityReport(securityReportActor(4, "operator"), malformed); err != errReportInvalid || len(mem.reports) != 0 {
 		t.Fatalf("sha err %v rows %d", err, len(mem.reports))
 	}
 	oversized := validReport()
 	oversized.Payload = strings.Repeat("x", maxReportBytes+1)
-	if _, err := ingestSecurityReport(reportActor(4, "operator"), oversized); err != errReportInvalid || len(mem.reports) != 0 {
+	if _, err := ingestSecurityReport(securityReportActor(4, "operator"), oversized); err != errReportInvalid || len(mem.reports) != 0 {
 		t.Fatalf("size err %v rows %d", err, len(mem.reports))
 	}
 	wrongAdapter := validReport()
 	wrongAdapter.AdapterVersion = "sarif-0"
-	if _, err := ingestSecurityReport(reportActor(4, "operator"), wrongAdapter); err != errReportInvalid || len(mem.reports) != 0 {
+	if _, err := ingestSecurityReport(securityReportActor(4, "operator"), wrongAdapter); err != errReportInvalid || len(mem.reports) != 0 {
 		t.Fatalf("adapter err %v rows %d", err, len(mem.reports))
 	}
-	if _, err := ingestSecurityReport(reportActor(5, "viewer"), validReport()); err != errReportDenied || len(mem.reports) != 0 {
+	if _, err := ingestSecurityReport(securityReportActor(5, "viewer"), validReport()); err != errReportDenied || len(mem.reports) != 0 {
 		t.Fatalf("viewer err %v rows %d", err, len(mem.reports))
 	}
 }
@@ -114,11 +114,11 @@ func TestRetriesDeduplicate(t *testing.T) {
 	mem := &securityReportMem{}
 	restore := mem.install()
 	defer restore()
-	first, err := ingestSecurityReport(reportActor(4, "operator"), validReport())
+	first, err := ingestSecurityReport(securityReportActor(4, "operator"), validReport())
 	if err != nil || first.AdapterVersion != pinnedReportAdapter || first.ProjectID != 10 || first.OrganizationID != pilotOrganizationID || len(first.Findings) != 1 {
 		t.Fatalf("first %+v err %v", first, err)
 	}
-	second, err := ingestSecurityReport(reportActor(4, "operator"), validReport())
+	second, err := ingestSecurityReport(securityReportActor(4, "operator"), validReport())
 	if err != nil || second.ID != first.ID || len(mem.reports) != 1 || len(mem.findings) != 1 {
 		t.Fatalf("retry %+v rows %d findings %d err %v", second, len(mem.reports), len(mem.findings), err)
 	}
@@ -132,7 +132,7 @@ func TestSecretValuesNeverPersist(t *testing.T) {
 	input := validReport()
 	input.Findings[0].Message = "leaked " + secret
 	input.Findings[0].Secret = secret
-	saved, err := ingestSecurityReport(reportActor(4, "operator"), input)
+	saved, err := ingestSecurityReport(securityReportActor(4, "operator"), input)
 	if err != nil || len(saved.Findings) != 1 || strings.Contains(saved.Findings[0].Message, secret) || saved.Findings[0].Message != "leaked "+redactedReportValue {
 		t.Fatalf("saved %+v err %v", saved, err)
 	}

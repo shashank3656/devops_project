@@ -7,6 +7,7 @@ import { useApiUrl } from '../../context/ApiUrlContext';
 import { permissionsForService, serviceLabel, servicesForCloud } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 import { saveSubmissionResult } from '../../lib/submissionResult';
+import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
 
 type Team = { id: string; name: string };
 type Principal = { id: string; name: string; teamId: string; verified: boolean };
@@ -29,6 +30,7 @@ function toggle(list: string[], id: string): string[] {
 export default function IamRequestPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const zoneLabel = useBrowserTimeZoneLabel();
   const [teams, setTeams] = useState<Team[]>([]);
   const [principals, setPrincipals] = useState<Principal[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -295,7 +297,7 @@ export default function IamRequestPage() {
           </div>
           <section>
             <h2>When</h2>
-            <p className="access-hint">Times use this browser’s timezone.</p>
+            <p className="access-hint">Times use {zoneLabel || 'this browser’s timezone'}.</p>
             <div className="iam-split">
               <div>
                 <label className="label" htmlFor="iam-start">Start time</label>
@@ -320,7 +322,7 @@ export default function IamRequestPage() {
               Scope: {selectedProject ? selectedProject.name : 'not chosen'}{environment ? ` · ${environment}` : ''}.
               Services: {services.length ? services.join(', ') : 'none'}.
               Permissions: {permissions.length ? permissions.join(', ') : 'none until a service is selected'}.
-              The window uses this browser’s timezone.
+              The window uses {zoneLabel || 'this browser’s timezone'}.
             </p>
             <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Raising…' : 'Raise access request'}</button>
           </div>

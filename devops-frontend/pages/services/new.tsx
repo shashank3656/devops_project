@@ -52,9 +52,9 @@ export default function NewServiceMapPage() {
   const [metricsURL, setMetricsURL] = useState('');
   const [team, setTeam] = useState('');
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
-  const [incompleteDraft, setIncompleteDraft] = useState(false);
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
+  const saveIntent = useRef<'draft' | 'active'>('active');
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const { allowLeave } = useUnsavedChanges(dirty);
@@ -136,8 +136,8 @@ export default function NewServiceMapPage() {
       setError('Service name is required');
       return;
     }
-    if (!projectId && !incompleteDraft) {
-      setError('Choose a project for an active service, or save it as an incomplete draft.');
+    if (!projectId && saveIntent.current !== 'draft') {
+      setError('Choose a project to create an active service, or save a draft.');
       return;
     }
     if (submitLock.current) return;
@@ -167,7 +167,7 @@ export default function NewServiceMapPage() {
       saveSubmissionResult({
         kind: 'Service',
         id: saved.service || service.trim(),
-        status: 'saved',
+        status: saveIntent.current === 'draft' ? 'incomplete draft' : 'active',
         next: saved.id ? `Open service #${saved.id} to confirm the owner and monitoring links. Health stays Unknown until those links exist.` : 'Confirm the owner and monitoring links. Health stays Unknown until those links exist.',
         href: saved.id ? `/services/${saved.id}` : scopeListHref('/services', router.query),
       });
@@ -202,7 +202,7 @@ export default function NewServiceMapPage() {
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
             <fieldset className="form-section">
               <legend className="form-section__title">Basics</legend>
-              <p className="form-section__copy">An active service needs a project. Without one, save it as an incomplete draft. Owner team stays optional.</p>
+              <p className="form-section__copy">An active service needs a project. Without one, Save draft keeps it incomplete. Owner team stays optional.</p>
               <div className="portal-form-grid">
                 <label className="label">
                   Service<span className="form-req" aria-hidden="true"> *</span>
@@ -210,7 +210,7 @@ export default function NewServiceMapPage() {
                 </label>
                 <label className="label">
                   Project
-                  <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setEnvironment(''); if (e.target.value) setIncompleteDraft(false); }}>
+                  <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setEnvironment(''); }}>
                     <option value="">No project</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
@@ -219,12 +219,6 @@ export default function NewServiceMapPage() {
                     ))}
                   </select>
                 </label>
-                {!projectId ? (
-                  <label className="access-chip">
-                    <input type="checkbox" checked={incompleteDraft} onChange={(event) => setIncompleteDraft(event.target.checked)} />
-                    Save as an incomplete draft
-                  </label>
-                ) : null}
                 <label className="label">
                   Environment
                   <select className="input" value={environment} onChange={(e) => setEnvironment(e.target.value)} disabled={!projectId || projectEnvs.length === 0} required={Boolean(projectId)}>
@@ -272,7 +266,29 @@ export default function NewServiceMapPage() {
               </div>
             </details>
             <div className="portal-form-actions">
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save service'}</button>
+              <p className="access-hint">
+                {projectId
+                  ? 'Create active service saves this service on the selected project.'
+                  : 'Save draft keeps this service incomplete until a project is chosen.'}
+              </p>
+              <button
+                type="submit"
+                className="btn btn-secondary"
+                disabled={saving || Boolean(projectId) || !service.trim()}
+                title={projectId ? 'A project is selected, so this save creates an active service.' : 'Save an incomplete draft'}
+                onClick={() => { saveIntent.current = 'draft'; }}
+              >
+                {saving && saveIntent.current === 'draft' ? 'Saving...' : 'Save draft'}
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving || !projectId || !service.trim()}
+                title={projectId ? 'Create an active service' : 'Choose a project to create an active service.'}
+                onClick={() => { saveIntent.current = 'active'; }}
+              >
+                {saving && saveIntent.current === 'active' ? 'Saving...' : 'Create active service'}
+              </button>
               <Link href="/services" className="btn btn-secondary">Cancel</Link>
             </div>
           </form>

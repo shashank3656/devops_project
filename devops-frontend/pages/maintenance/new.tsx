@@ -7,6 +7,7 @@ import { sessionRole } from '../../components/deskClient';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
+import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -30,6 +31,7 @@ export default function NewMaintenancePage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const canWrite = sessionRole() !== 'viewer';
+  const zoneLabel = useBrowserTimeZoneLabel();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [teams, setTeams] = useState<TeamOption[]>([]);
@@ -225,8 +227,9 @@ export default function NewMaintenancePage() {
         {loadError ? <div className="alert alert-error">{loadError}</div> : null}
         {message ? <div className="alert alert-error">{message}</div> : null}
         <form className="portal-surface" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+          <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
           <div className="portal-field-grid portal-field-grid--two">
-            <label className="label">Project
+            <label className="label">Project<span className="form-req" aria-hidden="true"> *</span>
               <select id="maint-project" className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setEnvironment(''); setServiceId(''); setChangeId(''); }} required>
                 <option value="">Select a project</option>
                 {projects.map((project) => (
@@ -234,13 +237,13 @@ export default function NewMaintenancePage() {
                 ))}
               </select>
             </label>
-            <label className="label">Environment
+            <label className="label">Environment<span className="form-req" aria-hidden="true"> *</span>
               <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} required disabled={!projectId}>
                 <option value="">{projectId ? 'Select an environment' : 'Select a project first'}</option>
                 {projectId ? environments.map((name) => <option key={name} value={name}>{name}</option>) : null}
               </select>
             </label>
-            <label className="label">Service
+            <label className="label">Service<span className="form-req" aria-hidden="true"> *</span>
               <select id="maint-service" className="input" value={serviceId} disabled={!projectId} onChange={(event) => {
                 const next = event.target.value;
                 setServiceId(next);
@@ -253,19 +256,19 @@ export default function NewMaintenancePage() {
                 )) : null}
               </select>
             </label>
-            <label className="label">Team
+            <label className="label">Team<span className="form-req" aria-hidden="true"> *</span>
               <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwner(''); }} required>
                 <option value="">Select a team</option>
                 {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
               </select>
             </label>
-            <label className="label">Owner
+            <label className="label">Owner<span className="form-req" aria-hidden="true"> *</span>
               <select className="input" value={owner} onChange={(event) => setOwner(event.target.value)} required disabled={!teamId}>
                 <option value="">{teamId ? 'Select an owner' : 'Select a team first'}</option>
                 {people.map((person) => <option key={person.user_id} value={person.name}>{person.name}</option>)}
               </select>
             </label>
-            <label className="label">Change request
+            <label className="label">Change request<span className="form-req" aria-hidden="true"> *</span>
               <select className="input" value={changeId} onChange={(event) => setChangeId(event.target.value)} required disabled={!projectId}>
                 <option value="">{projectId ? 'Select a change' : 'Select a project first'}</option>
                 {projectId ? projectChanges.map((change) => (
@@ -273,7 +276,7 @@ export default function NewMaintenancePage() {
                 )) : null}
               </select>
             </label>
-            <label className="label">Linked incident
+            <label className="label">Linked incident <span className="onboard-optional">Optional</span>
               <select className="input" value={incidentId} onChange={(event) => setIncidentId(event.target.value)}>
                 <option value="">None</option>
                 {incidents.map((incident) => (
@@ -283,20 +286,21 @@ export default function NewMaintenancePage() {
                 ))}
               </select>
             </label>
-            <label className="label">Start
+            <label className="label">Start<span className="form-req" aria-hidden="true"> *</span>
               <input className="input" type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} required />
             </label>
-            <label className="label">End
+            <label className="label">End<span className="form-req" aria-hidden="true"> *</span>
               <input className="input" type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} required />
             </label>
-            <p className="access-hint">Start and end use this browser’s timezone.</p>
-            <label className="label">Impact
+            <p className="access-hint">Start and end use {zoneLabel || 'this browser’s timezone'}.</p>
+            <label className="label">Impact<span className="form-req" aria-hidden="true"> *</span>
               <input className="input" value={impact} onChange={(event) => setImpact(event.target.value)} required />
             </label>
-            <label className="label" style={{ gridColumn: '1 / -1' }}>Description
+            <label className="label" style={{ gridColumn: '1 / -1' }}>Description<span className="form-req" aria-hidden="true"> *</span>
               <textarea className="input" rows={3} maxLength={200} value={description} onChange={(event) => setDescription(event.target.value)} required />
             </label>
           </div>
+          <p className="access-hint">Review: the window is {zoneLabel || 'this browser’s timezone'}.</p>
           <div className="portal-page__actions">
             <button className="btn btn-primary" type="submit" disabled={!canWrite || saving}>{saving ? 'Creating...' : 'Create'}</button>
           </div>

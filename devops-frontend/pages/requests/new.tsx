@@ -26,7 +26,8 @@ export default function NewRequestPage() {
   const [team, setTeam] = useState('');
   const [projectId, setProjectId] = useState('');
   const [cloud, setCloud] = useState('');
-  const [env, setEnv] = useState('dev');
+  const [env, setEnv] = useState('');
+  const [envNote, setEnvNote] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
   const [comment, setComment] = useState('');
@@ -35,6 +36,7 @@ export default function NewRequestPage() {
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
   const restoredDraft = useRef(false);
+  const envLocked = useRef(false);
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
@@ -45,7 +47,6 @@ export default function NewRequestPage() {
         setTeams(list);
         if (list[0]?.slug && !restoredDraft.current) {
           setTeam(list[0].slug);
-          if (list[0].default_env) setEnv(list[0].default_env);
         }
       })
       .catch(() => setTeams([]));
@@ -65,7 +66,10 @@ export default function NewRequestPage() {
       if (saved.projectId) setProjectId(saved.projectId);
       if (saved.cloud) setCloud(saved.cloud);
       if (saved.serviceId) setServiceId(saved.serviceId);
-      if (saved.env) setEnv(saved.env);
+      if (saved.env) {
+        setEnv(saved.env);
+        envLocked.current = true;
+      }
       if (saved.priority) setPriority(saved.priority);
       if (saved.dueDate) setDueDate(saved.dueDate);
       if (saved.comment) setComment(saved.comment);
@@ -90,18 +94,49 @@ export default function NewRequestPage() {
         setProjectId(next.projectId);
         setCloud('');
         setServiceId('');
+        envLocked.current = false;
       }
-      if (next.environment) setEnv(next.environment);
     };
     window.addEventListener(WORKSPACE_SCOPE_EVENT, onScope);
     return () => window.removeEventListener(WORKSPACE_SCOPE_EVENT, onScope);
   }, [projectId]);
 
+  useEffect(() => {
+    if (restoredDraft.current && envLocked.current) return;
+    if (!projectId) {
+      setEnv('');
+      setEnvNote('');
+      return;
+    }
+    const project = projects.find((item) => String(item.id) === projectId);
+    const allowed = (project?.environments || []).filter(Boolean);
+    if (!allowed.length) {
+      setEnv('');
+      setEnvNote(project ? 'This project has no environment yet.' : '');
+      return;
+    }
+    const preferred = readWorkspaceScope().environment;
+    const teamDefault = teams.find((item) => item.slug === team)?.default_env || '';
+    if (envLocked.current && allowed.includes(env)) return;
+    if (preferred && allowed.includes(preferred)) {
+      setEnv(preferred);
+      setEnvNote('');
+      return;
+    }
+    if (teamDefault && allowed.includes(teamDefault)) {
+      setEnv(teamDefault);
+      setEnvNote(preferred ? `${preferred} is not on this project, so the environment is ${teamDefault}.` : '');
+      return;
+    }
+    setEnv(allowed[0]);
+    setEnvNote(preferred ? `${preferred} is not on this project, so the environment is ${allowed[0]}.` : '');
+  }, [env, projectId, projects, team]);
+
   const router = useRouter();
   const { allowLeave } = useUnsavedChanges(Boolean(projectId || cloud || serviceId || comment.trim() || dueDate));
   const selectedProject = projects.find((item) => String(item.id) === projectId);
   const cloudOptions = selectedProject?.clouds || [];
-  const environmentOptions = selectedProject?.environments?.length ? selectedProject.environments : ['dev', 'uat', 'prod'];
+  const environmentOptions = (selectedProject?.environments || []).filter(Boolean);
   const serviceOptions = (selectedProject?.services || []).filter((item) => item.cloud.toLowerCase() === cloud.toLowerCase());
   const chosenService = serviceOptions.find((item) => item.service === serviceId);
 
@@ -110,6 +145,11 @@ export default function NewRequestPage() {
     if (!projectId) {
       focusField('request-project', 'Choose a project.');
       setError('Choose a project.');
+      return;
+    }
+    if (!env) {
+      focusField('request-env', 'Choose an environment from this project.');
+      setError('Choose an environment from this project.');
       return;
     }
     if (!cloud) {
@@ -208,8 +248,7 @@ export default function NewRequestPage() {
               onChange={(event) => {
                 const slug = event.target.value;
                 setTeam(slug);
-                const chosen = teams.find((item) => item.slug === slug);
-                if (chosen?.default_env) setEnv(chosen.default_env);
+                envLocked.current = false;
               }}
               required
             >
@@ -225,12 +264,10 @@ export default function NewRequestPage() {
               value={projectId}
               onChange={(event) => {
                 const nextId = event.target.value;
-                const nextProject = projects.find((item) => String(item.id) === nextId);
-                const nextEnvironments = nextProject?.environments || [];
                 setProjectId(nextId);
                 setCloud('');
                 setServiceId('');
-                setEnv(nextEnvironments.includes(env) ? env : (nextEnvironments[0] || 'dev'));
+                envLocked.current = false;
               }}
               required
             >
@@ -239,10 +276,24 @@ export default function NewRequestPage() {
                 <option key={item.id} value={item.id}>{item.code ? `${item.name} (${item.code})` : item.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="request-env">Environment</label>
-            <select id="request-env" className="input" value={env} onChange={(event) => setEnv(event.target.value)}>
+            <label className="label" htmlFor="request-env">Environment<span className="form-req" aria-hidden="true"> *</span></label>
+            <select
+              id="request-env"
+              className="input"
+              value={projectId ? env : ''}
+              onChange={(event) => {
+                envLocked.current = true;
+                setEnv(event.target.value);
+                setEnvNote('');
+              }}
+              required={Boolean(projectId)}
+              disabled={!projectId}
+            >
+              <option value="">{projectId ? 'Choose an environment' : 'Choose a project first'}</option>
               {environmentOptions.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
+            {!projectId ? <p className="access-hint">Environment stays unset until a project is chosen. It then uses the selected scope when that environment belongs to the project.</p> : null}
+            {envNote ? <p className="access-hint">{envNote}</p> : null}
             <label className="label" htmlFor="request-cloud">Cloud<span className="form-req" aria-hidden="true"> *</span></label>
             <BlockedAction blocked={!projectId} reason="Choose a project to continue.">
             <select

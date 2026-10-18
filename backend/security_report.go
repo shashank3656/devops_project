@@ -70,6 +70,7 @@ var (
 	findSecurityReport    = findSecurityReportFromDB
 	insertSecurityFinding = insertSecurityFindingToDB
 	loadSecurityReport    = loadSecurityReportFromDB
+	listSecurityReports   = listSecurityReportsFromDB
 )
 
 func ingestSecurityReport(actor authzSubject, input securityReportInput) (securityReport, error) {
@@ -250,6 +251,32 @@ func listSecurityFindingsFromDB(reportID int) ([]securityReportFinding, error) {
 	return items, rows.Err()
 }
 
+func listSecurityReportsFromDB(projectID int) ([]securityReport, error) {
+	if DB == nil || projectID <= 0 {
+		return nil, nil
+	}
+	rows, err := DB.Query(`
+		SELECT id, project_id, repository, commit_sha, scanner, state
+		FROM security_reports
+		WHERE project_id = $1
+		ORDER BY id DESC
+		LIMIT 50
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]securityReport, 0)
+	for rows.Next() {
+		var item securityReport
+		if err := rows.Scan(&item.ID, &item.ProjectID, &item.Repository, &item.CommitSHA, &item.Scanner, &item.State); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func loadSecurityReportFromDB(id int) (securityReport, error) {
 	if DB == nil || id <= 0 {
 		return securityReport{}, errReportHidden
@@ -326,6 +353,33 @@ func securityReportDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reportID, _ := strconv.Atoi(r.URL.Query().Get("report_id"))
+	if reportID <= 0 {
+		projectID, _ := strconv.Atoi(r.URL.Query().Get("project_id"))
+		if projectID <= 0 || !mappingAllowed(actor, projectID, authzRead) {
+			writeReportError(w, r, errReportHidden)
+			return
+		}
+		items, err := listSecurityReports(projectID)
+		if err != nil {
+			writeReportError(w, r, errReportInvalid)
+			return
+		}
+		if items == nil {
+			items = []securityReport{}
+		}
+		summaries := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			summaries = append(summaries, map[string]any{
+				"id":         item.ID,
+				"repository": item.Repository,
+				"commit_sha": item.CommitSHA,
+				"scanner":    item.Scanner,
+				"state":      item.State,
+			})
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"reports": summaries})
+		return
+	}
 	saved, err := loadSecurityReport(reportID)
 	if err != nil || saved.ID <= 0 || !mappingAllowed(actor, saved.ProjectID, authzRead) {
 		writeReportError(w, r, errReportHidden)

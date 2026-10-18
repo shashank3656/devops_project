@@ -6,6 +6,7 @@ import AccessNav from '../../../components/AccessNav';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../../../lib/portalAccess';
+import { GroupRoleFields, isDevopsGroup } from '../../../lib/groupRoles';
 
 export default function NewPersonPage() {
   const apiUrl = useApiUrl();
@@ -106,14 +107,6 @@ export default function NewPersonPage() {
   }
 
   const matchingTeams = teams.filter((team) => (userType === 'devops_user' ? team.team_type === 'devops' : team.team_type !== 'devops'));
-  const roleOptions = userType === 'devops_user'
-    ? [{ value: 'member', label: 'Member' }, { value: 'lead', label: 'Lead' }]
-    : [
-      { value: 'developer', label: 'Developer' },
-      { value: 'senior_developer', label: 'Senior developer' },
-      { value: 'lead', label: 'Lead' },
-      { value: 'manager', label: 'Manager' },
-    ];
 
   return (
     <>
@@ -166,7 +159,7 @@ export default function NewPersonPage() {
                 const next = event.target.value;
                 setUserType(next);
                 setTeamId('');
-                setMemberRole(next === 'devops_user' ? 'member' : 'developer');
+                setMemberRole(isDevopsGroup(next) ? 'member' : 'developer');
               }}
             >
               <option value="portal_user">Requester</option>
@@ -200,15 +193,12 @@ export default function NewPersonPage() {
                 <option key={team.id} value={team.id}>{team.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="new-member-role">Role in the group</label>
-            <select id="new-member-role" className="input" value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>
-              {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-            <p className="access-hint">Role in the group is their job there, such as Developer or Lead. The Manager checkbox is separate: it marks the account as a manager for approvals. It does not change the group role.</p>
+            <GroupRoleFields kind={userType} role={memberRole} onChange={setMemberRole} idPrefix="new-member" />
             <label className="access-chip">
               <input type="checkbox" checked={isManager} onChange={(event) => setIsManager(event.target.checked)} />
               Manager for approvals
             </label>
+            <p className="access-hint">Manager for approvals is an account flag. It is not the job title and not the membership role.</p>
             <button type="submit" className="btn btn-primary" disabled={saving || !teamsReady}>{saving ? 'Adding…' : 'Add person'}</button>
           </form>
         </div>

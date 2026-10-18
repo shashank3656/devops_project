@@ -23,6 +23,17 @@ export function formatRelativeTime(iso?: string, now: number = Date.now()): stri
   return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** Named zone and UTC offset for the browser clock, such as Asia/Kolkata · UTC+05:30. */
+export function browserTimeZoneLabel(date: Date = new Date()): string {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown';
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const abs = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(abs / 60)).padStart(2, '0');
+  const minutes = String(abs % 60).padStart(2, '0');
+  return `${zone} · UTC${sign}${hours}:${minutes}`;
+}
+
 /** Exact local date, time, and timezone for a hover title. */
 export function exactTimeTitle(iso?: string): string {
   if (!iso) return '';

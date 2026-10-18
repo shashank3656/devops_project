@@ -8,6 +8,7 @@ import {
   buildPortalApiUrl,
   buildChangeDetailActions,
   ChangeDetailPanel,
+  changeScopeIncomplete,
   DeliveryVisibilityCard,
   ResourceContextPanel,
   parsePortalNumericId,
@@ -198,7 +199,7 @@ export default function ChangeDetailPage() {
             <h1>{item?.title || (loading ? 'Loading change' : 'Change')}</h1>
             <p>
               {item
-                ? [item.status, item.priority || item.risk_level || 'No priority', item.assignee_username ? `Owner ${item.assignee_username}` : 'Owner unassigned', item.project_name || 'No project'].filter(Boolean).join(' · ')
+                ? [item.status, item.priority || item.risk_level || 'No priority', item.assignee_username ? `Owner ${item.assignee_username}` : 'Owner unassigned', changeScopeIncomplete(item) ? 'Scope incomplete' : (item.project_name || 'No project')].filter(Boolean).join(' · ')
                 : 'Approval, schedule, and implementation for this change.'}
             </p>
             {item ? (

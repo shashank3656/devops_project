@@ -167,6 +167,38 @@ func TestParseChangeWebhookOmitsEnvironment(t *testing.T) {
 	}
 }
 
+func TestParseChangeWebhookAliasesIgnoreDescription(t *testing.T) {
+	payload, err := parseChangeWebhookJSON([]byte(`{
+		"repo":"acme/payments-api",
+		"sha":"a1b2c3d",
+		"service":"payments-api",
+		"env":"dev",
+		"project":"12",
+		"title":"deploy to uat project 99",
+		"summary":"environment prod and project 4"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Environment != "dev" || payload.ProjectID != 12 {
+		t.Fatalf("aliases = env %q project %d", payload.Environment, payload.ProjectID)
+	}
+
+	omitted, err := parseChangeWebhookJSON([]byte(`{
+		"repo":"acme/payments-api",
+		"sha":"a1b2c3d",
+		"service":"payments-api",
+		"title":"deploy to dev project 12",
+		"summary":"environment uat"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if omitted.Environment != "unspecified" || omitted.ProjectID != 0 {
+		t.Fatalf("description must not set scope, got env %q project %d", omitted.Environment, omitted.ProjectID)
+	}
+}
+
 func TestParseGrafanaAlertWebhook(t *testing.T) {
 	events, err := parseAlertWebhookJSON([]byte(`{
 		"receiver":"setuops",

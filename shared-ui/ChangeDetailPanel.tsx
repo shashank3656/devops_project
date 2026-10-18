@@ -1,6 +1,7 @@
 export interface ChangeDetailModel {
   id: number;
   change_number: string;
+  project_id?: number;
   project_name?: string;
   project_code?: string;
   service: string;
@@ -119,6 +120,13 @@ export type ChangeDetailActions = {
   acting?: string;
 };
 
+export function changeScopeIncomplete(item: ChangeDetailModel): boolean {
+  const env = (item.environment || '').trim().toLowerCase();
+  const envMissing = !env || env === 'unspecified' || env === 'unknown' || env === '—' || env === '-';
+  const projectMissing = !(item.project_name || '').trim() && !(item.project_code || '').trim() && !(item.project_id && item.project_id > 0);
+  return envMissing || projectMissing;
+}
+
 export default function ChangeDetailPanel({
   item,
   actions,
@@ -143,13 +151,20 @@ export default function ChangeDetailPanel({
         actions.canRollout),
   );
 
+  const scopeIncomplete = changeScopeIncomplete(item);
+
   return (
     <div className="chg-detail">
       <section className="work-board">
+        {scopeIncomplete ? (
+          <div className="alert alert-warning" role="status">
+            Scope incomplete. The recorded project, environment, or both are missing. The title and description are not treated as the scope.
+          </div>
+        ) : null}
         {item.summary?.trim() ? <p className="chg-detail__prose" style={{ marginTop: 0 }}>{item.summary}</p> : null}
         <div className="request-facts">
           <DetailField label="Service" value={item.service || '—'} />
-          <DetailField label="Environment" value={item.environment === 'unspecified' ? '—' : item.environment || '—'} />
+          <DetailField label="Environment" value={scopeIncomplete && (!(item.environment || '').trim() || item.environment === 'unspecified' || item.environment === 'unknown') ? 'Scope incomplete' : item.environment || '—'} />
           <DetailField label="Type" value={item.change_type || '—'} />
           <DetailField label="Priority" value={item.priority || 'medium'} />
           <DetailField label="Risk" value={item.risk_level || 'medium'} />
@@ -158,7 +173,7 @@ export default function ChangeDetailPanel({
           <DetailField label="CAB" value={item.cab_status || 'not required'} />
           <DetailField
             label="Project"
-            value={item.project_name ? `${item.project_name}${item.project_code ? ` (${item.project_code})` : ''}` : '—'}
+            value={item.project_name ? `${item.project_name}${item.project_code ? ` (${item.project_code})` : ''}` : scopeIncomplete ? 'Scope incomplete' : '—'}
           />
           <DetailField label="Planned start" value={formatWhen(item.cab_window_start)} />
           <DetailField label="Planned end" value={formatWhen(item.cab_window_end)} />

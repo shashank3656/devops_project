@@ -16,6 +16,7 @@ const MODES = [
 export default function PortalSsoPage() {
   const apiUrl = useApiUrl();
   const [settings, setSettings] = useState<SsoSettings | null>(null);
+  const [baseline, setBaseline] = useState({ user: 'disabled', devops: 'disabled' });
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,9 +33,17 @@ export default function PortalSsoPage() {
       })
       .then((body) => {
         if (cancel) return;
-        setSettings(body?.settings && typeof body.settings === 'object' ? body.settings : {});
+        const next = body?.settings && typeof body.settings === 'object' ? body.settings as SsoSettings : {};
         const oidc = body?.oidc || {};
-        setReady(Boolean(oidc.issuer_set && oidc.client_id_set && oidc.client_secret_set));
+        const directoryReady = Boolean(oidc.issuer_set && oidc.client_id_set && oidc.client_secret_set);
+        const userMode = typeof next.user_portal_sso_mode === 'string' ? next.user_portal_sso_mode : 'disabled';
+        const devopsMode = typeof next.devops_portal_sso_mode === 'string' ? next.devops_portal_sso_mode : 'disabled';
+        setSettings(next);
+        setReady(directoryReady);
+        setBaseline({
+          user: !directoryReady && userMode === 'required' ? 'disabled' : userMode,
+          devops: !directoryReady && devopsMode === 'required' ? 'disabled' : devopsMode,
+        });
       })
       .catch((err: Error) => {
         if (!cancel) setError(err.message);
@@ -70,6 +79,10 @@ export default function PortalSsoPage() {
         return;
       }
       setNotice('Sign-in choices saved.');
+      setBaseline({
+        user: typeof payload.user_portal_sso_mode === 'string' ? payload.user_portal_sso_mode : 'disabled',
+        devops: typeof payload.devops_portal_sso_mode === 'string' ? payload.devops_portal_sso_mode : 'disabled',
+      });
     } catch {
       setError('Sign-in settings could not be saved.');
     } finally {
@@ -79,6 +92,9 @@ export default function PortalSsoPage() {
 
   const userMode = typeof settings?.user_portal_sso_mode === 'string' ? settings.user_portal_sso_mode : 'disabled';
   const devopsMode = typeof settings?.devops_portal_sso_mode === 'string' ? settings.devops_portal_sso_mode : 'disabled';
+  const shownUser = ready ? userMode : (userMode === 'required' ? 'disabled' : userMode);
+  const shownDevops = ready ? devopsMode : (devopsMode === 'required' ? 'disabled' : devopsMode);
+  const dirty = shownUser !== baseline.user || shownDevops !== baseline.devops;
 
   return (
     <>
@@ -136,7 +152,7 @@ export default function PortalSsoPage() {
                     ))}
                   </select>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+                <button type="submit" className="btn btn-primary" disabled={!dirty || saving} title={dirty ? 'Save sign-in choices' : 'No changes to save'}>{saving ? 'Saving…' : 'Save'}</button>
               </div>
             </form>
           ) : null}
