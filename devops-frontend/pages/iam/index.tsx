@@ -177,6 +177,7 @@ export default function IamHomePage() {
           </div>
         ) : null}
         {grantView ? null : (
+        <>
         <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
           <label>
             Search
@@ -244,6 +245,7 @@ export default function IamHomePage() {
             </tbody>
           </table>
         </div>
+        </>
         )}
       </IamFrame>
     </DevOpsLayout>
