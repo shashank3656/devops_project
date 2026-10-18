@@ -5213,7 +5213,8 @@ html[data-theme] .devops-layout .sd-filters select.input {
 
 .sd-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .sd-table th {
@@ -5239,13 +5240,13 @@ html[data-theme] .devops-layout .sd-filters select.input {
   transition: background var(--ig-duration) var(--ig-ease);
 }
 
-.sd-table tbody tr:nth-child(even) {
+.sd-table tbody tr:nth-child(even) td {
   background: var(--ig-surface-2);
 }
 
-.sd-table tbody tr:hover,
-.sd-table tbody tr.is-selected,
-.sd-table tbody tr.is-checked {
+.sd-table tbody tr:hover td,
+.sd-table tbody tr.is-selected td,
+.sd-table tbody tr.is-checked td {
   background: var(--ig-accent-soft);
 }
 
@@ -5265,7 +5266,10 @@ html[data-theme] .devops-layout .sd-filters select.input {
 .sd-table thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
+  background: var(--ig-surface, #ffffff);
+  white-space: nowrap;
+  box-shadow: inset 0 -1px 0 var(--ig-border, #e7e9f0);
 }
 
 .sd-table__check {
@@ -9740,7 +9744,7 @@ html[data-theme] .devops-layout .portal-form-grid__span-2 {
 }
 
 /* Long names, ticket lists, and error text stay inside the page. */
-html[data-theme] .devops-layout :is(.portal-page__title, .devops-navbar__title, .alert, .ops-crumb__list, .ig-scope-bar__field, .sd-table td, .ig-table td) {
+html[data-theme] .devops-layout :is(.portal-page__title, .devops-navbar__title, .alert, .ops-crumb__list, .ig-scope-bar__field, .ig-table td) {
   overflow-wrap: anywhere;
 }
 
@@ -9765,7 +9769,19 @@ html[data-theme] .devops-layout .ops-banner-stack {
 }
 
 html[data-theme] .devops-layout .sd-table {
-  max-height: min(70vh, 720px);
+  max-height: none;
+}
+
+html[data-theme] .devops-layout .sd-table thead th {
+  background: var(--ig-surface, #ffffff);
+}
+
+html[data-theme='dark'] .devops-layout .sd-table thead th {
+  background: #1a1d26;
+}
+
+html[data-theme] .devops-layout .sd-table td:not(:nth-child(2)) {
+  white-space: nowrap;
 }
 
 html[data-theme] .ig-table-pager {
@@ -9858,14 +9874,37 @@ html[data-theme] .blocked-action__reason {
 }
 
 html[data-theme] .copy-chip {
-  margin-left: 6px;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: var(--ot-tint-violet);
-  color: var(--ot-ink);
-  font-size: 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ig-muted, #58677f);
+  vertical-align: middle;
   cursor: pointer;
+}
+
+html[data-theme] .copy-chip svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+html[data-theme] .copy-chip:hover,
+html[data-theme] .copy-chip:focus-visible {
+  background: var(--ot-tint-violet, #f0ebff);
+  color: var(--ig-text, #17233b);
+}
+
+html[data-theme='dark'] .copy-chip:hover,
+html[data-theme='dark'] .copy-chip:focus-visible {
+  background: rgba(185, 167, 255, 0.16);
+  color: #f2f4f8;
 }
 
 html[data-theme] .recent-services {
