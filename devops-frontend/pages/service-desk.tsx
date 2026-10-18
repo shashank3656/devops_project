@@ -214,6 +214,7 @@ export default function ServiceDeskPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkNotice, setBulkNotice] = useState('');
   const viewHydrated = useRef(false);
+  const urlWriteReady = useRef(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
   const { scope } = useWorkspaceScope();
@@ -235,23 +236,36 @@ export default function ServiceDeskPage() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = {
+      query: params.get('q') || '',
+      typeFilter: params.get('kind') || '',
+      priorityFilter: params.get('priority') || '',
+      ownerFilter: params.get('owner') || '',
+      page: Number(params.get('page') || ''),
+    };
     try {
       const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as Record<string, unknown>;
-      if (saved.tab === 'all' || saved.tab === 'mine' || saved.tab === 'approval') setTab(saved.tab);
-      if (typeof saved.query === 'string') setQuery(saved.query);
-      if (typeof saved.typeFilter === 'string') setTypeFilter(saved.typeFilter);
-      if (typeof saved.priorityFilter === 'string') setPriorityFilter(saved.priorityFilter);
-      if (typeof saved.ownerFilter === 'string') setOwnerFilter(saved.ownerFilter);
+      if (!fromUrl.query && (saved.tab === 'all' || saved.tab === 'mine' || saved.tab === 'approval')) setTab(saved.tab);
+      if (fromUrl.query) setQuery(fromUrl.query);
+      else if (typeof saved.query === 'string') setQuery(saved.query);
+      if (fromUrl.typeFilter) setTypeFilter(fromUrl.typeFilter);
+      else if (typeof saved.typeFilter === 'string') setTypeFilter(saved.typeFilter);
+      if (fromUrl.priorityFilter) setPriorityFilter(fromUrl.priorityFilter);
+      else if (typeof saved.priorityFilter === 'string') setPriorityFilter(saved.priorityFilter);
+      if (fromUrl.ownerFilter) setOwnerFilter(fromUrl.ownerFilter);
+      else if (typeof saved.ownerFilter === 'string') setOwnerFilter(saved.ownerFilter);
       if (['created', 'type', 'priority', 'status', 'owner'].includes(String(saved.sortKey))) setSortKey(saved.sortKey as SortKey);
       if (saved.sortDir === 'asc' || saved.sortDir === 'desc') setSortDir(saved.sortDir);
-      if (typeof saved.page === 'number' && saved.page > 0) setPage(saved.page);
+      if (fromUrl.page > 0) setPage(fromUrl.page);
+      else if (typeof saved.page === 'number' && saved.page > 0) setPage(saved.page);
       if (typeof saved.selectedKey === 'string' && saved.selectedKey) setSelectedKey(saved.selectedKey);
       if (typeof saved.scrollY === 'number') {
         const scrollY = saved.scrollY;
         window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
       }
     } catch {
-      // A broken saved view falls back to defaults.
+      // A broken saved view falls back to the address, then defaults.
     }
     viewHydrated.current = true;
   }, []);
@@ -267,6 +281,29 @@ export default function ServiceDeskPage() {
       // Storage can be unavailable in private windows.
     }
   }, [tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page, selectedKey]);
+
+  useEffect(() => {
+    if (!viewHydrated.current) return;
+    if (!urlWriteReady.current) {
+      urlWriteReady.current = true;
+      return;
+    }
+    const url = new URL(window.location.href);
+    const write = (key: string, value: string) => {
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    };
+    write('q', query.trim());
+    write('kind', typeFilter);
+    write('priority', priorityFilter);
+    write('owner', ownerFilter);
+    if (page > 1) url.searchParams.set('page', String(page));
+    else url.searchParams.delete('page');
+    const next = `${url.pathname}${url.search}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState(window.history.state, '', next);
+    }
+  }, [query, typeFilter, priorityFilter, ownerFilter, page]);
 
   useEffect(() => {
     const saveScroll = () => {

@@ -62,6 +62,7 @@ export default function RequestDetailPage() {
   const returnPath = safeReturnPath(router.query.from);
   const backHref = returnPath || '/my-requests';
   const backLabel = returnPath.startsWith('/service-desk') ? 'Back to Service Desk' : returnPath ? 'Back' : 'Back to my requests';
+  const [canOpenRetries, setCanOpenRetries] = useState(false);
   const [request, setRequest] = useState<RequestRecord | null>(null);
   const [canApprove, setCanApprove] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -126,9 +127,21 @@ export default function RequestDetailPage() {
   }
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem('devops_user');
+      const user = raw ? JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } } : null;
+      setCanOpenRetries(Boolean(user?.devops_profile?.is_manager) || user?.role === 'admin');
+    } catch {
+      setCanOpenRetries(false);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!router.isReady) return;
     load();
   }, [apiUrl, requestId, router.isReady]);
+
+  const pipelineFailed = request?.delivery?.pipeline_status === 'failed';
 
   async function act(path: string) {
     setWorking(true);
@@ -276,7 +289,8 @@ export default function RequestDetailPage() {
                   {canApprove ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('approve-by-manager')}>Approve as manager</button> : null}
                   {request.status === 'draft' ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('submit')}>Submit for approval</button> : null}
                   {request.status === 'rejected' ? <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('resubmit')}>Raise again</button> : null}
-                  {request.status === 'completed' || request.status === 'in_progress' ? <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('promote')}>Promote to next environment</button> : null}
+                  {request.status === 'completed' || (request.status === 'in_progress' && !pipelineFailed) ? <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('promote')}>Promote to next environment</button> : null}
+                  {pipelineFailed && canOpenRetries ? <Link href="/retry-center" className="btn btn-secondary">Open retries</Link> : null}
                   <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('clone')}>Copy as draft</button>
                   {request.status === 'draft' || request.status === 'pending_user_manager_approval' || request.status === 'pending_devops_approval' || request.status === 'pending_approval' ? (
                     <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('cancel')}>Cancel request</button>

@@ -481,8 +481,8 @@ export default function NewChangeRequestPage() {
                   </label>
                   <label className="label">
                     Service<span className="form-req" aria-hidden="true"> *</span>
-                    <select id="change-service" className="input" value={serviceId} onChange={(event) => applyService(event.target.value)} required>
-                      <option value="">Select a service</option>
+                    <select id="change-service" className="input" value={serviceId} onChange={(event) => applyService(event.target.value)} required disabled={!projectId}>
+                      <option value="">{projectId ? 'Select a service' : 'Select a project first'}</option>
                       {servicesForProject.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.service}

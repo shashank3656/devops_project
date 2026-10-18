@@ -8056,11 +8056,15 @@ html[data-theme='dark'] .devops-layout .textarea::placeholder {
 }
 
 html[data-theme='dark'] .devops-layout .input:disabled,
+html[data-theme='dark'] .devops-layout .select:disabled,
+html[data-theme='dark'] .devops-layout select:disabled,
 html[data-theme='dark'] .devops-layout select.input:disabled,
 html[data-theme='dark'] .devops-layout textarea:disabled,
+html[data-theme='dark'] .devops-layout .textarea:disabled,
 html[data-theme='dark'] .devops-layout .btn:disabled {
   color: #b8c2d3;
-  background: #222633;
+  background: #1a1d26;
+  border-color: rgba(255, 255, 255, 0.08);
   opacity: 1;
 }
 
@@ -9180,10 +9184,15 @@ html[data-theme='dark'] .devops-layout .ops-note strong {
 }
 
 html[data-theme='dark'] .devops-layout .input,
+html[data-theme='dark'] .devops-layout .select,
+html[data-theme='dark'] .devops-layout .textarea,
+html[data-theme='dark'] .devops-layout select,
+html[data-theme='dark'] .devops-layout textarea,
 html[data-theme='dark'] .devops-layout select.input {
   background-color: #222633;
   color: #f2f4f8;
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.16);
+  color-scheme: dark;
 }
 
 html[data-theme='dark'] .devops-layout .sd-filters select.input {
@@ -10089,6 +10098,17 @@ html[data-theme] .devops-layout .sd-table td:not(:nth-child(2)) {
   }
 }
 
+@media (max-width: 800px) {
+  html[data-theme] .sd-page--with-inspector .sd-inspector {
+    position: static;
+    top: auto;
+    right: auto;
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+  }
+}
+
 html[data-theme] .ig-table-pager {
   display: flex;
   align-items: center;
@@ -10581,6 +10601,32 @@ html[data-theme='dark'] .request-tracker__step.is-current { background: #2a2150;
 html[data-theme='dark'] .request-tracker__step.is-failed,
 html[data-theme='dark'] .request-tracker__step.is-cancelled,
 html[data-theme='dark'] .request-blocker { background: #3a2a22; }
+
+html[data-theme='dark'] .devops-layout .alert {
+  color: #f2f4f8;
+  background: #222633;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme='dark'] .devops-layout .sd-inspector,
+html[data-theme='dark'] .devops-layout .sd-inspector__title,
+html[data-theme='dark'] .devops-layout .sd-section,
+html[data-theme='dark'] .devops-layout .sd-meta,
+html[data-theme='dark'] .devops-layout .form-section,
+html[data-theme='dark'] .devops-layout .form-section__title,
+html[data-theme='dark'] .devops-layout .form-section__copy {
+  color: #f2f4f8;
+}
+
+html[data-theme='dark'] .devops-layout .sd-inspector {
+  background: #1a1d26;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme] .devops-layout :is(input, select, textarea, button, a):focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+}
 
 @media (max-width: 900px) {
   html[data-theme] .request-tracker {

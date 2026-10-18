@@ -99,8 +99,8 @@ export default function ServiceDetailPage() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DEVOPS_USER_KEY);
-      const parsed = raw ? (JSON.parse(raw) as { devops_profile?: { is_manager?: boolean } }) : null;
-      setIsManager(Boolean(parsed?.devops_profile?.is_manager));
+      const parsed = raw ? (JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } }) : null;
+      setIsManager(Boolean(parsed?.devops_profile?.is_manager) || parsed?.role === 'admin');
     } catch {
       setIsManager(false);
     }

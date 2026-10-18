@@ -192,20 +192,26 @@ export default function NewIncidentPage() {
       return;
     }
     try {
-      const saved = JSON.parse(raw) as { summary?: string; notes?: string; impact?: string; urgency?: string; category?: string; subcategory?: string };
+      const saved = JSON.parse(raw) as { summary?: string; notes?: string; impact?: string; urgency?: string; category?: string; subcategory?: string; projectChoice?: string; incidentEnvironment?: string; incidentService?: string };
       if (saved.summary) setSummary(saved.summary);
       if (saved.notes) setNotes(saved.notes);
       if (saved.impact) setImpact(saved.impact);
       if (saved.urgency) setUrgency(saved.urgency);
       if (saved.category) setCategory(saved.category);
       if (saved.subcategory) setSubcategory(saved.subcategory);
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get('project_id') && !params.get('service') && !params.get('service_id')) {
+        if (saved.projectChoice) setProjectChoice(saved.projectChoice);
+        if (saved.incidentEnvironment) setIncidentEnvironment(saved.incidentEnvironment);
+        if (saved.incidentService) setIncidentService(saved.incidentService);
+      }
     } catch {
       sessionStorage.removeItem('opstrellis-incident-draft');
     }
   }, []);
 
   useEffect(() => {
-    const blob = JSON.stringify({ summary, notes, impact, urgency, category, subcategory });
+    const blob = JSON.stringify({ summary, notes, impact, urgency, category, subcategory, projectChoice, incidentEnvironment, incidentService });
     if (/(password|secret|token)/i.test(blob)) {
       sessionStorage.removeItem('opstrellis-incident-draft');
       sessionStorage.removeItem('opstrellis-incident-note');
@@ -213,7 +219,7 @@ export default function NewIncidentPage() {
     }
     if (summary.trim() || notes.trim()) sessionStorage.setItem('opstrellis-incident-draft', blob);
     else sessionStorage.removeItem('opstrellis-incident-draft');
-  }, [summary, notes, impact, urgency, category, subcategory]);
+  }, [summary, notes, impact, urgency, category, subcategory, projectChoice, incidentEnvironment, incidentService]);
 
   useEffect(() => {
     if (requestedRequestId && !requestId) {
