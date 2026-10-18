@@ -5,7 +5,9 @@ import AccessFilters from '../components/AccessFilters';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../lib/portalAccess';
-import { CopyButton } from '@infragate/ui';
+import { CopyButton, formatCalendarDate, formatOperationalTime } from '@infragate/ui';
+import { recordReference } from '../lib/recordRef';
+import { requestPriorityName } from '../lib/requestPriority';
 
 type HistoryRequest = {
   id: number;
@@ -19,10 +21,6 @@ type HistoryRequest = {
   due_date?: string;
   created_at?: string;
 };
-
-function requestReference(id: number): string {
-  return `REQ${String(id).padStart(7, '0')}`;
-}
 
 function statusLabel(status?: string) {
   switch (status) {
@@ -76,7 +74,7 @@ export default function MyRequestsPage() {
     if (status !== 'all' && item.status !== status) return false;
     if (priority !== 'all' && (item.priority || 'medium') !== priority) return false;
     if (!needle) return true;
-    return `${item.service || ''} ${item.project_name || ''} ${item.team || ''} ${item.env || ''} ${item.id}`.toLowerCase().includes(needle);
+    return `${item.service || ''} ${item.project_name || ''} ${item.team || ''} ${item.env || ''} ${item.id} ${recordReference('REQ', item.id)}`.toLowerCase().includes(needle);
   });
 
   return (
@@ -116,10 +114,10 @@ export default function MyRequestsPage() {
             extraLabel="Priority"
             extraOptions={[
               { value: 'all', label: 'Any priority' },
-              { value: 'low', label: 'Low · L1' },
-              { value: 'medium', label: 'Medium · L2' },
-              { value: 'high', label: 'High · L3' },
-              { value: 'critical', label: 'Critical · L4' },
+              { value: 'low', label: 'Low' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'high', label: 'High' },
+              { value: 'critical', label: 'Critical' },
             ]}
           />
           {loading ? <p className="work-empty">Loading your requests…</p> : null}
@@ -157,17 +155,17 @@ export default function MyRequestsPage() {
                         <Link href={`/requests/${item.id}`}>{item.service || 'Request'}</Link>
                         <span className="ig-cell-meta">
                           {' '}
-                          {requestReference(item.id)}
-                          <CopyButton value={requestReference(item.id)} label="request number" />
+                          {recordReference('REQ', item.id)}
+                          <CopyButton value={recordReference('REQ', item.id)} label="request number" />
                           {item.cloud ? ` · ${item.cloud}` : ''}
                         </span>
                       </td>
                       <td>{item.env || '—'}</td>
                       <td>{item.project_name || item.team || '—'}</td>
-                      <td>{item.priority || 'medium'}</td>
-                      <td>{item.due_date ? String(item.due_date).slice(0, 10) : '—'}</td>
+                      <td>{requestPriorityName(item.priority)}</td>
+                      <td>{formatCalendarDate(item.due_date)}</td>
                       <td>{statusLabel(item.status)}</td>
-                      <td>{item.created_at ? new Date(item.created_at).toLocaleString() : '—'}</td>
+                      <td>{formatOperationalTime(item.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>

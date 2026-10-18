@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 
-const LEAVE_MESSAGE = 'You have unsaved changes. Leave this page and discard them?';
+const LEAVE_MESSAGE = 'You have unsaved entries. Leave this page? Entries already stored in this browser stay here. Passwords are not stored.';
 const DIRTY_KEY = 'opstrellis-form-dirty';
 
 /**

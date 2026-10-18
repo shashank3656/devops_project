@@ -9,7 +9,8 @@ import ITSMJournal from '../../../components/ITSMJournal';
 import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentCanFinish, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
 import { asRecord, getString } from '../../../lib/payload';
 import { expireSession } from '../../../lib/sessionExpiry';
-import { CopyButton } from '@infragate/ui';
+import { CopyButton, formatOperationalTime } from '@infragate/ui';
+import { recordReference } from '../../../lib/recordRef';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -473,7 +474,7 @@ export default function EditIncidentPage() {
           <section className="work-board">
             <div className="request-facts">
               <div><span>Reference</span><strong>{currentIncidentNumber || '—'}</strong></div>
-              <div><span>Linked request</span><strong>{requestId ? `#${requestId}` : 'Not linked'}</strong></div>
+              <div><span>Linked request</span><strong>{requestId ? recordReference('REQ', Number(requestId)) : 'Not linked'}</strong></div>
               <div>
                 <span>Source</span>
                 <strong>{source === 'alert' ? `${alertSource || 'alert'}${fingerprint ? ` · ${fingerprint}` : ''}` : source || 'Unknown'}</strong>
@@ -601,7 +602,7 @@ export default function EditIncidentPage() {
                 </p>
               ) : null}
               {silencedUntil ? (
-                <p className="portal-surface__subtitle">Silenced until {new Date(silencedUntil).toLocaleString()}</p>
+                <p className="portal-surface__subtitle">Silenced until {formatOperationalTime(silencedUntil)}</p>
               ) : null}
               {childIncidents.length ? (
                 <p className="portal-surface__subtitle">

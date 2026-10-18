@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import CalendarDateInput from '../components/CalendarDateInput';
 import ApprovalsSectionNav from '../components/ApprovalsSectionNav';
+import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -59,10 +60,7 @@ const EMPTY_SUMMARY: GateApprovalSummary = {
 };
 
 function formatDateTime(value?: string): string {
-  if (!value) return '—';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return formatOperationalTime(value);
 }
 
 function stateTone(state: string): { background: string; color: string } {

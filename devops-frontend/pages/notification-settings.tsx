@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -52,10 +53,7 @@ const defaultSettings: NotificationSettings = {
 };
 
 function formatDateTime(value?: string): string {
-  if (!value) return 'Never';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return formatOperationalTime(value, 'Never');
 }
 
 export default function NotificationSettingsPage() {

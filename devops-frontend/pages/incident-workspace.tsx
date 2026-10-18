@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -187,10 +188,7 @@ function clearSessionAndRedirect(_router: ReturnType<typeof useRouter>) {
 }
 
 function formatDateTime(value?: string | null): string {
-  if (!value) return '—';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return formatOperationalTime(value);
 }
 
 function getIncidentReference(incident?: Pick<IncidentItem, 'id' | 'incident_number'> | null): string {

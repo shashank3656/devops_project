@@ -131,6 +131,12 @@ func maintenanceWindowDetailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func createMaintenanceWindow(w http.ResponseWriter, r *http.Request, userID int) {
+	capture, finish, handled := beginIdempotentPost(w, r, userID, "maintenance")
+	if handled {
+		return
+	}
+	defer finish()
+	w = capture
 	var body struct {
 		ProjectID      int    `json:"project_id"`
 		Environment    string `json:"environment"`

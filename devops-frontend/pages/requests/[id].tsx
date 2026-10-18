@@ -6,7 +6,9 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import ExecutionStage from '../../components/ExecutionStage';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
-import { CopyButton } from '@infragate/ui';
+import { CopyButton, formatCalendarDate, formatOperationalTime } from '@infragate/ui';
+import { recordReference } from '../../lib/recordRef';
+import { approvalLevel, requestPriorityName } from '../../lib/requestPriority';
 
 type RequestRecord = {
   id: number;
@@ -36,15 +38,6 @@ function statusLabel(status?: string) {
     case 'completed': return 'Completed';
     case 'rejected': return 'Rejected';
     default: return status ? status.replaceAll('_', ' ') : 'Unknown';
-  }
-}
-
-function levelFor(priority?: string) {
-  switch ((priority || 'medium').toLowerCase()) {
-    case 'low': return 'L1';
-    case 'high': return 'L3';
-    case 'critical': return 'L4';
-    default: return 'L2';
   }
 }
 
@@ -172,7 +165,7 @@ export default function RequestDetailPage() {
   return (
     <>
       <Head>
-        <title>{request ? `Request ${request.id} - OpsTrellis` : 'Request - OpsTrellis'}</title>
+        <title>{request ? `${recordReference('REQ', request.id)} - OpsTrellis` : 'Request - OpsTrellis'}</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">
@@ -180,11 +173,11 @@ export default function RequestDetailPage() {
             <div>
               <p className="ops-kicker">Requests</p>
               <p className="ig-cell-meta">
-                {request ? `REQ${String(request.id).padStart(7, '0')}` : 'Request'}
-                {request ? <CopyButton value={`REQ${String(request.id).padStart(7, '0')}`} label="request number" /> : null}
+                {request ? recordReference('REQ', request.id) : 'Request'}
+                {request ? <CopyButton value={recordReference('REQ', request.id)} label="request number" /> : null}
               </p>
               <h1>{request ? (request.service || 'Request') : 'Request'}</h1>
-              <p>{request ? `${statusLabel(request.status)} · ${request.priority || 'No priority'} · Owner ${request.team || 'unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
+              <p>{request ? `${statusLabel(request.status)} · ${requestPriorityName(request.priority)} · Owner ${request.team || 'unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
               {request ? (
                 <ExecutionStage
                   status={request.status}
@@ -208,9 +201,10 @@ export default function RequestDetailPage() {
                   <div><span>Project</span><strong>{request.project_name || request.team || 'No project'}</strong></div>
                   <div><span>Environment</span><strong>{request.env || 'Unknown'}</strong></div>
                   <div><span>Cloud</span><strong>{request.cloud || '—'}</strong></div>
-                  <div><span>Priority</span><strong>{request.priority || 'medium'} · {levelFor(request.priority)}</strong></div>
-                  <div><span>Needed by</span><strong>{request.due_date ? String(request.due_date).slice(0, 10) : '—'}</strong></div>
-                  <div><span>Raised</span><strong>{request.created_at ? new Date(request.created_at).toLocaleString() : '—'}</strong></div>
+                  <div><span>Priority</span><strong>{requestPriorityName(request.priority)}</strong></div>
+                  <div><span>Approval level</span><strong>{approvalLevel(request.priority)}</strong></div>
+                  <div><span>Needed by</span><strong>{formatCalendarDate(request.due_date)}</strong></div>
+                  <div><span>Raised</span><strong>{formatOperationalTime(request.created_at)}</strong></div>
                 </div>
                 {stage?.summary ? <p className="access-hint">{stage.summary}</p> : null}
                 {stage?.next_stage ? <p className="access-hint">Next: {stage.next_stage}</p> : null}
@@ -235,7 +229,7 @@ export default function RequestDetailPage() {
                         <li key={comment.id}>
                           <strong>{comment.username}</strong>
                           <span>{comment.body}</span>
-                          {comment.created_at ? <small>{new Date(comment.created_at).toLocaleString()}</small> : null}
+                          {comment.created_at ? <small>{formatOperationalTime(comment.created_at)}</small> : null}
                         </li>
                       ))}
                     </ul>
@@ -255,7 +249,7 @@ export default function RequestDetailPage() {
                         <li key={`${item.id}-${item.action}`}>
                           <strong>{item.username}</strong>
                           <span>{item.action.replaceAll('_', ' ')}</span>
-                          {item.created_at ? <small>{new Date(item.created_at).toLocaleString()}</small> : null}
+                          {item.created_at ? <small>{formatOperationalTime(item.created_at)}</small> : null}
                         </li>
                       ))}
                     </ul>

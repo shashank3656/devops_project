@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import CopyButton from './CopyButton';
 import DataTable, { type DataTableColumn, type RowKey } from './DataTable';
+import { formatOperationalTime } from './time';
 
 export interface ChangeCatalogRow {
   id: number;
@@ -27,10 +28,7 @@ function changeNumber(row: ChangeCatalogRow): string {
 }
 
 function formatWhen(value?: string): string {
-  if (!value) return 'Unknown';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Unknown';
-  return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return formatOperationalTime(value, 'Unknown');
 }
 
 function statusBadge(status?: string): string {

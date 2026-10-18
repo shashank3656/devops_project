@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
+import { recordReference } from '../lib/recordRef';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
 
@@ -101,6 +103,7 @@ export default function DevOpsWorkload() {
   const apiUrl = useApiUrl();
   const [pendingApprovals, setPendingApprovals] = useState<Request[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
+  const [pendingError, setPendingError] = useState('');
   const [workload, setWorkload] = useState<WorkloadItem[]>([]);
   const [byTeam, setByTeam] = useState<WorkloadSummaryRow[]>([]);
   const [byPerson, setByPerson] = useState<WorkloadSummaryRow[]>([]);
@@ -136,16 +139,21 @@ export default function DevOpsWorkload() {
   const fetchPending = useCallback(() => {
     if (!token) return;
     setPendingLoading(true);
+    setPendingError('');
     fetch(`${apiUrl}/api/devops/pending-approvals`, { headers })
-      .then((res) => {
-        if (res.status === 401 || res.status === 403) router.replace('/login');
-        return res.json().catch(() => ({}));
-      })
-      .then((rawData) => {
-        const data = asRecord(rawData);
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          router.replace('/login');
+          return;
+        }
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok) {
+          setPendingError(getString(data.error, 'Approvals could not be loaded.'));
+          return;
+        }
         setPendingApprovals(Array.isArray(data.requests) ? (data.requests as Request[]) : []);
       })
-      .catch(() => {})
+      .catch(() => setPendingError('Approvals could not be loaded.'))
       .finally(() => setPendingLoading(false));
   }, [token, apiUrl, router]);
 
@@ -195,12 +203,32 @@ export default function DevOpsWorkload() {
 
   const handleApprove = (id: number) => {
     setActioningId(id);
-    fetch(`${apiUrl}/api/devops/requests/${id}/approve`, { method: 'POST', headers })
-      .then((res) => res.json().catch(() => ({})))
+    setError('');
+    fetch(`${apiUrl}/api/devops/pending-approvals`, { headers })
+      .then(async (res) => {
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok) throw new Error(getString(data.error, 'This request could not be rechecked. It was not approved.'));
+        const waiting = Array.isArray(data.requests) ? (data.requests as Request[]) : [];
+        if (!waiting.some((request) => request.id === id)) {
+          setPendingApprovals(waiting);
+          throw new Error('This request is no longer waiting for approval. It was not approved.');
+        }
+        return fetch(`${apiUrl}/api/devops/requests/${id}/approve`, { method: 'POST', headers });
+      })
+      .then((res) => {
+        if (!res) return null;
+        return res.json().catch(() => ({}));
+      })
       .then((rawData) => {
+        if (!rawData) return;
         const data = asRecord(rawData);
         if (getString(data.status) === 'ok') {
           setPendingApprovals((previous) => previous.filter((request) => request.id !== id));
+          setSelectedIds((previous) => {
+            const next = new Set(previous);
+            next.delete(id);
+            return next;
+          });
           fetchPending();
           fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
@@ -208,7 +236,7 @@ export default function DevOpsWorkload() {
           setError(getString(data.error, 'Approve failed'));
         }
       })
-      .catch(() => setError('Approve request failed'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Approve request failed'))
       .finally(() => setActioningId(null));
   };
 
@@ -229,41 +257,68 @@ export default function DevOpsWorkload() {
     }
   };
 
+  const visibleSelectedIds = () => {
+    const visible = new Set(pendingApprovals.map((request) => request.id));
+    return Array.from(selectedIds).filter((id) => visible.has(id));
+  };
+
   const handleBulkApprove = () => {
-    const ids = Array.from(selectedIds);
+    const ids = visibleSelectedIds();
+    const hidden = selectedIds.size - ids.length;
+    if (hidden > 0) {
+      setSelectedIds(new Set(ids));
+      setError(`${hidden} selected request${hidden === 1 ? ' is' : 's are'} outside this list and will not be approved.`);
+    }
     if (ids.length === 0) return;
     setBulkActioning(true);
-    fetch(`${apiUrl}/api/devops/requests/bulk-approve`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    })
-      .then((res) => res.json().catch(() => ({})))
+    fetch(`${apiUrl}/api/devops/pending-approvals`, { headers })
+      .then(async (res) => {
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok) throw new Error(getString(data.error, 'These requests could not be rechecked. Nothing was approved.'));
+        const waiting = Array.isArray(data.requests) ? (data.requests as Request[]) : [];
+        const waitingIds = new Set(waiting.map((request) => request.id));
+        const current = ids.filter((id) => waitingIds.has(id));
+        if (current.length !== ids.length) {
+          setPendingApprovals(waiting);
+          setSelectedIds(new Set(current));
+          setError(`${ids.length - current.length} selected request${ids.length - current.length === 1 ? '' : 's'} changed and ${ids.length - current.length === 1 ? 'was' : 'were'} not approved.`);
+        }
+        if (current.length === 0) return null;
+        return fetch(`${apiUrl}/api/devops/requests/bulk-approve`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: current }),
+        });
+      })
+      .then((res) => (res ? res.json().catch(() => ({})) : null))
       .then((rawData) => {
+        if (!rawData) return;
         const data = asRecord(rawData);
         if (getString(data.status) === 'ok') {
-          setPendingApprovals((previous) => previous.filter((request) => !ids.includes(request.id)));
+          const approved = ids;
+          setPendingApprovals((previous) => previous.filter((request) => !approved.includes(request.id)));
           setSelectedIds(new Set());
           fetchPending();
           fetchWorkload();
           window.dispatchEvent(new CustomEvent('devops-notifications-refresh'));
           if (Array.isArray(data.errors) && data.errors.length > 0) {
-            setError(
-              data.errors
-                .filter((value): value is string => typeof value === 'string')
-                .join('; ')
-            );
+            setError(data.errors.filter((value): value is string => typeof value === 'string').join('; '));
           }
         } else {
           setError(getString(data.error, 'Bulk approve failed'));
         }
       })
-      .catch(() => setError('Bulk approve failed'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Bulk approve failed'))
       .finally(() => setBulkActioning(false));
   };
 
   const handleBulkReject = () => {
-    const ids = Array.from(selectedIds);
+    const ids = visibleSelectedIds();
+    const hidden = selectedIds.size - ids.length;
+    if (hidden > 0) {
+      setSelectedIds(new Set(ids));
+      setError(`${hidden} selected request${hidden === 1 ? ' is' : 's are'} outside this list and will not be rejected.`);
+    }
     if (ids.length === 0) return;
     setBulkActioning(true);
     fetch(`${apiUrl}/api/devops/requests/bulk-reject`, {
@@ -380,7 +435,7 @@ export default function DevOpsWorkload() {
               </div>
               <div className="portal-page__actions">
                 <div className="portal-pill-row">
-                  <span className="portal-pill">Pending {pendingApprovals.length}</span>
+                  <span className="portal-pill">Pending {pendingError ? '—' : pendingApprovals.length}</span>
                   <span className="portal-pill">Tracked {workload.length}</span>
                   <span className="portal-pill">Users {devopsUsers.length}</span>
                 </div>
@@ -509,6 +564,13 @@ export default function DevOpsWorkload() {
               <div className="portal-empty">
                 <p>Loading approvals...</p>
               </div>
+            ) : pendingError ? (
+              <div className="portal-empty" role="alert">
+                <p>{pendingError}</p>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={fetchPending}>
+                  Retry
+                </button>
+              </div>
             ) : pendingApprovals.length === 0 ? (
               <div className="portal-empty">
                 <p>No requests pending approval.</p>
@@ -543,7 +605,7 @@ export default function DevOpsWorkload() {
                           <input type="checkbox" checked={selectedIds.has(request.id)} onChange={() => toggleSelect(request.id)} />
                         </td>
                         <td>
-                          <code>#{request.id}</code>
+                          <code>{recordReference('REQ', request.id)}</code>
                         </td>
                         <td>{request.team}</td>
                         <td>{request.env}</td>
@@ -554,7 +616,7 @@ export default function DevOpsWorkload() {
                         <td>
                           <span className={getPriorityClass(request.priority)}>{request.priority}</span>
                         </td>
-                        <td className="devops-ticket-updated">{new Date(request.updated_at).toLocaleString()}</td>
+                        <td className="devops-ticket-updated">{formatOperationalTime(request.updated_at)}</td>
                         <td>
                           <div className="portal-page__actions">
                             <button type="button" className="btn btn-primary btn-sm" disabled={actioningId === request.id} onClick={() => handleApprove(request.id)}>
@@ -691,7 +753,7 @@ export default function DevOpsWorkload() {
                             '-'
                           )}
                         </td>
-                        <td className="devops-ticket-updated">{new Date(item.request.updated_at).toLocaleString()}</td>
+                        <td className="devops-ticket-updated">{formatOperationalTime(item.request.updated_at)}</td>
                       </tr>
                     ))}
                   </tbody>

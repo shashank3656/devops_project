@@ -1,3 +1,4 @@
+import { formatOperationalTime } from '@infragate/ui';
 import { asRecord, getString } from './payload';
 
 export const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -564,8 +565,7 @@ export function buildK8sHref(
 }
 
 export function formatDateTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
+  return formatOperationalTime(value, 'Unknown');
 }
 
 export function authModeRequiresCredential(mode: string): boolean {

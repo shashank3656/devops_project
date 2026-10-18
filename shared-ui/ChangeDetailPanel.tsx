@@ -1,3 +1,5 @@
+import { formatOperationalTime } from './time';
+
 export interface ChangeDetailModel {
   id: number;
   change_number: string;
@@ -84,9 +86,7 @@ function lifecycleIndex(item: ChangeDetailModel): number {
 }
 
 function formatWhen(value?: string): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
+  return formatOperationalTime(value);
 }
 
 function DetailField({ label, value }: { label: string; value: string }) {

@@ -7,8 +7,10 @@ import { sessionRole } from '../../components/deskClient';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
+import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
 
+const MAINTENANCE_ATTEMPT_KEY = 'opstrellis-maintenance-attempt';
 const TOKEN_KEY = 'devops_token';
 
 type ProjectOption = { id: number; name: string; code: string; environments: string[] };
@@ -172,29 +174,37 @@ export default function NewMaintenancePage() {
     if (submitLock.current) return;
     submitLock.current = true;
     setSaving(true);
+    const payload = {
+      project_id: Number(projectId),
+      environment,
+      service: service.service,
+      team_id: Number(teamId),
+      owner_name: owner.trim(),
+      change_number: changeId,
+      incident_number: incidentId,
+      impact: impact.trim(),
+      description: description.trim(),
+      start: startIso,
+      end: endIso,
+    };
     try {
       const res = await fetch(`${apiUrl}/api/maintenance/windows`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: Number(projectId),
-          environment,
-          service: service.service,
-          team_id: Number(teamId),
-          owner_name: owner.trim(),
-          change_number: changeId,
-          incident_number: incidentId,
-          impact: impact.trim(),
-          description: description.trim(),
-          start: startIso,
-          end: endIso,
-        }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': rememberAttempt(MAINTENANCE_ATTEMPT_KEY, JSON.stringify(payload)),
+        },
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessage(typeof data.error === 'string' ? data.error : 'Maintenance could not be created.');
+        const outcome = outcomeForFailedSubmit(res.status, typeof data.error === 'string' ? data.error : '');
+        if (!outcome.keepAttempt) forgetAttempt(MAINTENANCE_ATTEMPT_KEY);
+        setMessage(outcome.message);
         return;
       }
+      forgetAttempt(MAINTENANCE_ATTEMPT_KEY);
       const id = data.window && typeof data.window.id === 'number' ? data.window.id : 0;
       saveSubmissionResult({
         kind: 'Maintenance',
@@ -205,7 +215,7 @@ export default function NewMaintenancePage() {
       });
       if (id > 0) void router.push(`/maintenance/${id}`);
     } catch {
-      setMessage('Maintenance could not be created.');
+      setMessage(outcomeForFailedSubmit(0, '').message);
     } finally {
       submitLock.current = false;
       setSaving(false);

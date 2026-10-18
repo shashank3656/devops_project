@@ -7,7 +7,9 @@ import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { scopeListHref } from '../../lib/scopeHref';
+import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 
+const SERVICE_ATTEMPT_KEY = 'opstrellis-service-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
 interface ProjectOption {
@@ -144,24 +146,34 @@ export default function NewServiceMapPage() {
     submitLock.current = true;
     setSaving(true);
     setError('');
+    const payload = {
+      service: service.trim(),
+      repo: repo.trim(),
+      environment: environment.trim(),
+      grafana_uid: grafanaUID.trim(),
+      promql: promql.trim(),
+      dashboard_url: dashboardURL.trim(),
+      metrics_url: metricsURL.trim(),
+      team: team.trim(),
+      project_id: projectId ? Number(projectId) : undefined,
+    };
     try {
       const response = await fetch(`${apiUrl}/api/devops/services`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          service: service.trim(),
-          repo: repo.trim(),
-          environment: environment.trim(),
-          grafana_uid: grafanaUID.trim(),
-          promql: promql.trim(),
-          dashboard_url: dashboardURL.trim(),
-          metrics_url: metricsURL.trim(),
-          team: team.trim(),
-          project_id: projectId ? Number(projectId) : undefined,
-        }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': rememberAttempt(SERVICE_ATTEMPT_KEY, JSON.stringify(payload)),
+        },
+        body: JSON.stringify(payload),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || 'Failed to save service');
+      if (!response.ok) {
+        const outcome = outcomeForFailedSubmit(response.status, typeof data?.error === 'string' ? data.error : '');
+        if (!outcome.keepAttempt) forgetAttempt(SERVICE_ATTEMPT_KEY);
+        throw new Error(outcome.message);
+      }
+      forgetAttempt(SERVICE_ATTEMPT_KEY);
       const saved = data?.service && typeof data.service === 'object' ? data.service as { id?: number; service?: string } : {};
       allowLeave();
       saveSubmissionResult({
@@ -173,7 +185,8 @@ export default function NewServiceMapPage() {
       });
       await router.push(scopeListHref('/services', router.query));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save service');
+      const message = err instanceof Error ? err.message : 'Failed to save service';
+      setError(message === 'Failed to fetch' ? outcomeForFailedSubmit(0, '').message : message);
     } finally {
       submitLock.current = false;
       setSaving(false);

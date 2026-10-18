@@ -482,6 +482,12 @@ func devopsServiceMapHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		capture, finish, handled := beginIdempotentPost(w, r, userID, "service")
+		if handled {
+			return
+		}
+		defer finish()
+		w = capture
 		var body serviceMapEntry
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)

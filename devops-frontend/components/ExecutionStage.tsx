@@ -56,9 +56,19 @@ export default function ExecutionStage({
         {STEPS.map((step) => {
           const reached = current !== '' && STEPS.indexOf(step) <= STEPS.indexOf(current as (typeof STEPS)[number]);
           const failedHere = phase === 'failed' && step === 'Succeeded';
+          const isCurrent = step === current;
+          const complete = phase === 'succeeded' && isCurrent;
+          const done = reached && !isCurrent && !failedHere;
           return (
-            <li key={step} className={`execution-stage__step${reached ? ' is-reached' : ''}${step === current ? ' is-current' : ''}${failedHere ? ' is-failed' : ''}`}>
-              {failedHere ? 'Failed' : step}
+            <li
+              key={step}
+              className={`execution-stage__step${done ? ' is-done' : ''}${isCurrent ? ' is-current' : ''}${complete ? ' is-complete' : ''}${failedHere ? ' is-failed' : ''}`}
+              aria-current={isCurrent ? 'step' : undefined}
+            >
+              <span className="execution-stage__mark" aria-hidden="true">{failedHere ? '!' : done || complete ? '✓' : ''}</span>
+              <span>{failedHere ? 'Failed' : step}</span>
+              {isCurrent && !complete && !failedHere ? <span className="execution-stage__state">Current</span> : null}
+              {complete ? <span className="execution-stage__state">Complete</span> : null}
             </li>
           );
         })}

@@ -1548,6 +1548,7 @@ func MigrateDatabase() error {
 	migrateOncallDutySchema()
 	migrateMaintenanceNoticeSchema()
 	migrateMaintenanceWindowSchema()
+	migrateAPIIdempotencySchema()
 	migrateSectionGrantsSchema()
 	migrateK8sAccessSchema()
 

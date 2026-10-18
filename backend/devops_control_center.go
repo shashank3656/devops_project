@@ -1697,6 +1697,12 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			"status":               "ok",
 		})
 	case "POST":
+		capture, finish, handled := beginIdempotentPost(w, r, managerID, "incident")
+		if handled {
+			return
+		}
+		defer finish()
+		w = capture
 		var body struct {
 			RequestID        int    `json:"request_id"`
 			TeamID           *int   `json:"team_id"`

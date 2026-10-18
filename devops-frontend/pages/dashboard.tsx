@@ -152,9 +152,11 @@ export default function DevOpsDashboard() {
             <WorkQueue
               items={actionItems}
               loading={loading}
-              emptyPresentation={needsProject ? 'scope' : error ? 'empty' : 'success'}
-              emptyTitle={needsProject ? 'Select a project' : error ? 'Could not load work' : "You're all caught up"}
-              emptyBody={needsProject ? 'Approvals, assigned incidents, failed requests, and coverage gaps stay with the project you choose.' : error ? 'Try again after the workspace loads.' : 'Approvals, assigned incidents, failed requests, and coverage gaps will show up here.'}
+              emptyPresentation={needsProject ? 'scope' : 'success'}
+              error={needsProject ? '' : error || ''}
+              onRetry={() => loadWorkspace()}
+              emptyTitle={needsProject ? 'Select a project' : "You're all caught up"}
+              emptyBody={needsProject ? 'Approvals, assigned incidents, failed requests, and coverage gaps stay with the project you choose.' : 'Approvals, assigned incidents, failed requests, and coverage gaps will show up here.'}
             />
             <details className="access-hint">
               <summary>How these words are used</summary>

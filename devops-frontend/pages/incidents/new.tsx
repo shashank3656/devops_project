@@ -10,7 +10,9 @@ import { scopeListHref } from '../../lib/scopeHref';
 import { FALLBACK_ITSM_CATEGORIES, IMPACT_URGENCY, INCIDENT_STATES, ITSM_PRIORITIES, ITSMCategory, normalizeCategories, priorityFromImpactUrgency, subcategoriesFor } from '../../lib/itsm';
 import { asRecord, getString } from '../../lib/payload';
 import { expireSession } from '../../lib/sessionExpiry';
+import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 
+const INCIDENT_ATTEMPT_KEY = 'opstrellis-incident-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 
@@ -361,13 +363,7 @@ export default function NewIncidentPage() {
     if (mode !== 'draft' && (normalizedStatus === 'resolved' || normalizedStatus === 'closed') && !notes.trim()) {
       throw new Error('Resolve needs a recovery note before this incident can close.');
     }
-      const response = await fetch(`${apiUrl}/api/devops/incidents`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const payload = {
           request_id: linkedRequestID || 0,
           team_id: teamId ? Number(teamId) : null,
           priority,
@@ -389,7 +385,15 @@ export default function NewIncidentPage() {
           major,
           conference_url: conferenceURL,
           conference_notes: conferenceNotes,
-        }),
+      };
+      const response = await fetch(`${apiUrl}/api/devops/incidents`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': rememberAttempt(INCIDENT_ATTEMPT_KEY, JSON.stringify(payload)),
+        },
+        body: JSON.stringify(payload),
       });
       if (response.status === 401 || response.status === 403) {
         clearSessionAndRedirect();
@@ -397,8 +401,11 @@ export default function NewIncidentPage() {
       }
       const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(getString(data.error, 'Failed to save incident'));
+        const outcome = outcomeForFailedSubmit(response.status, getString(data.error, ''));
+        if (!outcome.keepAttempt) forgetAttempt(INCIDENT_ATTEMPT_KEY);
+        throw new Error(outcome.message);
       }
+      forgetAttempt(INCIDENT_ATTEMPT_KEY);
       const savedIncident = normalizeIncident(data.incident);
       setCurrentIncidentNumber(savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`);
       if (!requestedRequestId && savedIncident.request_id > 0) {
@@ -414,7 +421,12 @@ export default function NewIncidentPage() {
       }
       void loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save incident');
+      const message = err instanceof Error ? err.message : 'Failed to save incident';
+      if (message === 'Failed to fetch' || message === 'NetworkError when attempting to fetch resource.') {
+        setError(outcomeForFailedSubmit(0, '').message);
+      } else {
+        setError(message);
+      }
     } finally {
       submitLock.current = false;
       setSaving(false);

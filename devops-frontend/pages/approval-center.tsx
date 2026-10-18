@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { DataTable, RelativeTime, exactTimeTitle, type DataTableColumn } from '@infragate/ui';
+import { recordReference } from '../lib/recordRef';
 import ApprovalsSectionNav from '../components/ApprovalsSectionNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -47,7 +48,7 @@ const reviewColumns: DataTableColumn<ApprovalRequest>[] = [
     cell: (request) => (
       <div className="ig-cell-stack">
         <span className="ig-cell-title">
-          <span className="ig-mono">#{request.id}</span> {request.service}
+          <span className="ig-mono">{recordReference('REQ', request.id)}</span> {request.service}
         </span>
         <span className="ig-cell-meta">{request.created_by_username || 'Unknown requester'}</span>
       </div>

@@ -2,10 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { ProjectHealthCard, useConfirm, type ProjectHealth } from '@infragate/ui';
+import { ProjectHealthCard, formatOperationalTime, useConfirm, type ProjectHealth } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
+import { recordReference } from '../../lib/recordRef';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -360,9 +361,7 @@ function releaseHealthTone(health?: string): { background: string; color: string
 }
 
 function formatDateTime(value?: string): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  return formatOperationalTime(value);
 }
 
 function buildPortalHref(path: string, query: Record<string, string | number | undefined | null>): string {
@@ -1724,7 +1723,7 @@ export default function DevOpsProjectDetailPage() {
                                   {item.health}
                                 </span>
                               </td>
-                              <td>{item.latest_request_id ? `#${item.latest_request_id}` : '—'}</td>
+                              <td>{item.latest_request_id ? recordReference('REQ', item.latest_request_id) : '—'}</td>
                               <td>{item.latest_service ? `${item.latest_service} (${item.latest_cloud || 'n/a'})` : '—'}</td>
                               <td>{item.pending_count}</td>
                               <td>{item.completed_count}</td>

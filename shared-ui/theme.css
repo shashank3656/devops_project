@@ -2776,6 +2776,7 @@ html[data-theme] .ig-table-card {
 
 html[data-theme] .ig-table {
   width: 100%;
+  min-width: 760px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--ig-text-sm);
@@ -3060,6 +3061,33 @@ html[data-theme] .ig-drawer .portal-preview-grid {
 
 html[data-theme] .ig-drawer .devops-approval-workspace__grid {
   grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 800px) {
+  .ig-drawer {
+    top: 0;
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  .ig-drawer__header,
+  .ig-drawer__header-actions,
+  .ig-drawer__footer {
+    flex-wrap: wrap;
+  }
+
+  .ig-drawer__header-actions,
+  .ig-drawer__footer {
+    width: 100%;
+  }
+
+  html[data-theme] .ig-drawer .portal-detail-grid,
+  html[data-theme] .ig-drawer .admin-request-detail-modal__summary-grid,
+  html[data-theme] .ig-drawer .devops-approval-workspace__meta-grid,
+  html[data-theme] .ig-drawer .devops-approval-workspace__dependency-strip,
+  html[data-theme] .ig-drawer .portal-preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 html[data-theme] .ig-drawer .devops-approval-workspace {
@@ -5219,8 +5247,30 @@ html[data-theme] .devops-layout .sd-filters select.input {
 
 .sd-table {
   width: 100%;
+  min-width: 760px;
   border-collapse: separate;
   border-spacing: 0;
+}
+
+.sd-table th,
+.sd-table td {
+  white-space: nowrap;
+}
+
+.sd-table .sd-ticket-cell {
+  white-space: normal;
+  min-width: 16rem;
+}
+
+@media (max-width: 800px) {
+  .sd-inspector {
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .sd-inspector__actions {
+    flex-wrap: wrap;
+  }
 }
 
 .sd-table th {
@@ -5551,6 +5601,7 @@ html[data-theme='dark'] .sd-badge--prio-low { background: rgba(255,255,255,.08);
   position: sticky;
   top: calc(var(--ig-topbar-height) + 12px);
   max-height: calc(100vh - var(--ig-topbar-height) - 32px);
+  max-width: 100%;
   overflow: auto;
   box-shadow: 0 1px 2px rgba(20, 32, 24, 0.03);
 }
@@ -7173,6 +7224,27 @@ html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .devops-navbar .ig-
 html[data-theme] .devops-layout .ig-scope-bar__facts,
 html[data-theme] .devops-layout .ig-scope-bar__clear {
   display: none;
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__facts.is-visible {
+  display: block;
+  flex: 1 1 100%;
+  min-width: 100%;
+  color: var(--ig-text-2);
+}
+
+html[data-theme] .devops-layout .ig-scope-bar:has(.ig-scope-bar__facts.is-visible) {
+  flex-wrap: wrap;
+  width: min(100%, 720px);
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__field:first-child {
+  flex: 0 0 auto;
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__field:first-child .ig-scope-bar__control {
+  min-width: 280px;
+  max-width: 460px;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__label {
@@ -9981,32 +10053,79 @@ html[data-theme] .execution-stage__copy {
 html[data-theme] .execution-stage__steps {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 html[data-theme] .execution-stage__step {
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: var(--ot-tint-blue);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
   color: var(--ig-muted);
   font-size: 14px;
 }
 
-html[data-theme] .execution-stage__step.is-reached {
-  color: var(--ot-ink);
+html[data-theme] .execution-stage__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--ig-border);
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+}
+
+html[data-theme] .execution-stage__step.is-done {
+  color: var(--ig-text);
+}
+
+html[data-theme] .execution-stage__step.is-done .execution-stage__mark {
+  border-color: transparent;
+  background: var(--ig-success-soft, #e7f7f1);
+  color: #0f766e;
 }
 
 html[data-theme] .execution-stage__step.is-current {
-  background: var(--ot-violet);
-  color: var(--ig-accent-on);
+  color: var(--ig-text);
+  font-weight: 700;
+}
+
+html[data-theme] .execution-stage__step.is-current .execution-stage__mark {
+  border-color: var(--ig-text);
+}
+
+html[data-theme] .execution-stage__step.is-complete,
+html[data-theme] .execution-stage__step.is-complete .execution-stage__state {
+  color: #0f766e;
+}
+
+html[data-theme] .execution-stage__step.is-complete .execution-stage__mark {
+  border-color: transparent;
+  background: var(--ig-success-soft, #e7f7f1);
+  color: #0f766e;
+}
+
+html[data-theme] .execution-stage__state {
+  color: var(--ig-muted);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 html[data-theme] .execution-stage__step.is-failed {
-  background: var(--ot-tint-peach, #fff1e6);
-  color: var(--ot-ink);
+  color: var(--ig-danger, #b91c1c);
+  font-weight: 700;
+}
+
+html[data-theme] .execution-stage__step.is-failed .execution-stage__mark {
+  border-color: transparent;
+  background: var(--ig-danger-soft, #fde8e8);
+  color: var(--ig-danger, #b91c1c);
 }
 
 html[data-theme] .execution-stage__recovery {

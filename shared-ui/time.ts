@@ -34,22 +34,48 @@ export function browserTimeZoneLabel(date: Date = new Date()): string {
   return `${zone} · UTC${sign}${hours}:${minutes}`;
 }
 
-/** Exact local date, time, and timezone for a hover title. */
-export function exactTimeTitle(iso?: string): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
+function parseDisplayDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (dateOnly) {
+    const date = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Calendar day for due dates and expiries: 26 Sept 2026. */
+export function formatCalendarDate(value?: string | null, empty = '—'): string {
+  const date = parseDisplayDate(value);
+  if (!date) return empty;
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Operational timestamp with the short zone name: 26 Sept 2026, 10:14 am GMT+5:30 (Asia/Kolkata). */
+export function formatOperationalTime(value?: string | null, empty = '—'): string {
+  const date = parseDisplayDate(value);
+  if (!date) return empty;
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
   // dateStyle/timeStyle cannot be combined with timeZoneName in this Chromium.
   const exact = date.toLocaleString(undefined, {
-    month: 'short',
     day: 'numeric',
+    month: 'short',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     timeZoneName: 'short',
   });
   return zone ? `${exact} (${zone})` : exact;
+}
+
+/** Exact local date, time, and timezone for a hover title. */
+export function exactTimeTitle(iso?: string): string {
+  if (!iso) return '';
+  const exact = formatOperationalTime(iso, '');
+  return exact;
 }
 
 export function greetingFor(date: Date = new Date()): string {

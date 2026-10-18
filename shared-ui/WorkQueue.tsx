@@ -40,12 +40,16 @@ export default function WorkQueue({
   emptyTitle = "You're all caught up",
   emptyBody = 'New approvals, incidents, and risky merges will show up here.',
   emptyPresentation = 'success',
+  error = '',
+  onRetry,
 }: {
   items: QueueItem[];
   loading?: boolean;
   emptyTitle?: string;
   emptyBody?: string;
   emptyPresentation?: 'success' | 'scope' | 'empty';
+  error?: string;
+  onRetry?: () => void;
 }) {
   if (loading) {
     return (
@@ -57,6 +61,22 @@ export default function WorkQueue({
             <span className="ig-skeleton ig-skeleton--button" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="ig-home-panel ig-home-empty ig-home-empty--plain" role="alert">
+        <div>
+          <strong>Work could not be loaded</strong>
+          <p>{error}</p>
+          {onRetry ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onRetry}>
+              Retry
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }

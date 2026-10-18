@@ -18,6 +18,8 @@ import {
   useSavedFilterViews,
   CopyButton,
   RelativeTime,
+  formatCalendarDate,
+  formatOperationalTime,
   queryString,
   useUndoQueue,
   type DataTableColumn,
@@ -35,6 +37,8 @@ import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 import { asRecord, getString } from '../lib/payload';
 import { expireSession } from '../lib/sessionExpiry';
+import { recordReference, requestIdFromQuery } from '../lib/recordRef';
+import { approvalLevel, priorityTone, requestPriorityName } from '../lib/requestPriority';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -100,27 +104,11 @@ function formatStatus(status: string): string {
 }
 
 function formatDateTime(value?: string | null): string {
-  if (!value) return 'Not available';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not available';
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date);
+  return value ? formatOperationalTime(value, 'Not available') : 'Not available';
 }
 
 function formatDateOnly(value?: string | null): string {
-  if (!value) return 'Not set';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not set';
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(date);
+  return value ? formatCalendarDate(value, 'Not set') : 'Not set';
 }
 
 interface TicketRow {
@@ -419,14 +407,24 @@ export default function DevOpsTickets() {
     sortBy !== 'created_at' ? sortBy : '',
     sortOrder !== 'desc' ? sortOrder : '',
   ].filter(Boolean).length;
-  const canActOnDetail = detailRequest?.status === 'pending_devops_approval';
+  const detailOutsideScope = Boolean(
+    detailRequest && (
+      (projectId && String(detailRequest.project_id || '') !== projectId) ||
+      (environment && detailRequest.env.toLowerCase() !== environment.toLowerCase()) ||
+      (status && detailRequest.status !== status) ||
+      (cloud && detailRequest.cloud !== cloud) ||
+      (team && detailRequest.team !== team) ||
+      (search.trim() && !`${detailRequest.service} ${detailRequest.team} ${detailRequest.project_name || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+    ),
+  );
+  const canActOnDetail = detailRequest?.status === 'pending_devops_approval' && !detailOutsideScope;
 
   const fetchTickets = () => {
     if (!token) return;
     setLoading(true);
     setListError('');
     const params = new URLSearchParams();
-    if (idFilter.trim()) params.set('id', idFilter.trim());
+    if (idFilter.trim()) params.set('id', requestIdFromQuery(idFilter));
     if (team) params.set('team', team);
     if (projectId) params.set('project_id', projectId);
     if (environment) params.set('env', environment);
@@ -508,6 +506,8 @@ export default function DevOpsTickets() {
       const commentsData = commentsRes.ok ? asRecord(await commentsRes.json().catch(() => ({}))) : {};
       const timelineData = timelineRes.ok ? asRecord(await timelineRes.json().catch(() => ({}))) : {};
       if (isStale()) return;
+      const loadedId = Number(asRecord(detailData.request).id);
+      if (loadedId && loadedId !== id) return;
 
       const detailRequestData = asRecord(detailData.request);
       setDetailRequest((detailData.request as TicketDetail | null) || null);
@@ -545,7 +545,9 @@ export default function DevOpsTickets() {
       setRecentIds(getRecentRequestIds());
 
       if (syncUrl) {
-        router.replace(`/tickets?id=${id}`, undefined, { shallow: true });
+        sessionStorage.setItem('opstrellis-tickets-scroll', String(window.scrollY));
+        const next = { ...(router.query as Record<string, string | string[]>), id: String(id) };
+        void router.push({ pathname: '/tickets', query: next }, undefined, { shallow: true });
       }
     } catch (error) {
       if (isStale()) return;
@@ -561,6 +563,12 @@ export default function DevOpsTickets() {
 
   const closeDetail = () => {
     detailSeq.current += 1;
+    if (router.query.id) {
+      const next = { ...(router.query as Record<string, string | string[]>) };
+      delete next.id;
+      void router.replace({ pathname: '/tickets', query: next }, undefined, { shallow: true });
+      return;
+    }
     setDetailLoading(false);
     setDetailId(null);
     setDetailRequest(null);
@@ -570,7 +578,8 @@ export default function DevOpsTickets() {
     setDetailNotice('');
     setCommentBody('');
     setRejectReason('');
-    router.replace('/tickets', undefined, { shallow: true });
+    const savedScroll = Number(sessionStorage.getItem('opstrellis-tickets-scroll') || '');
+    if (Number.isFinite(savedScroll)) window.requestAnimationFrame(() => window.scrollTo(0, savedScroll));
   };
 
   const refreshDetail = async () => {
@@ -701,9 +710,18 @@ export default function DevOpsTickets() {
     scheduleDecision(
       [id],
       action === 'approve' ? 'Approving' : 'Rejecting',
-      `${action === 'approve' ? 'Approved' : 'Rejected'} request #${id}`,
+      `${action === 'approve' ? 'Approved' : 'Rejected'} ${recordReference('REQ', id)}`,
       async () => {
         try {
+          const freshRes = await fetch(`${apiUrl}/api/devops/requests/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+          const freshData = asRecord(await freshRes.json().catch(() => ({})));
+          if (!freshRes.ok) {
+            throw new Error(getString(freshData.error, 'This request could not be rechecked. The decision was not applied.'));
+          }
+          const freshStatus = getString(asRecord(freshData.request).status);
+          if (freshStatus !== 'pending_devops_approval') {
+            throw new Error(`This request is now ${freshStatus.replace(/_/g, ' ') || 'in a different state'}. The decision was not applied. Refresh the queue before trying again.`);
+          }
           await sendDevopsAction(
             `/api/devops/requests/${id}/${action}`,
             action === 'reject'
@@ -772,10 +790,17 @@ export default function DevOpsTickets() {
         const outcomes: string[] = [];
         for (const id of ids) {
           try {
+            const freshRes = await fetch(`${apiUrl}/api/devops/requests/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+            const freshData = asRecord(await freshRes.json().catch(() => ({})));
+            const freshStatus = getString(asRecord(freshData.request).status);
+            if (!freshRes.ok || freshStatus !== 'pending_devops_approval') {
+              outcomes.push(`${recordReference('REQ', id)} is now ${freshStatus.replace(/_/g, ' ') || 'unavailable'}. It was left unchanged.`);
+              continue;
+            }
             await sendDevopsAction(`/api/devops/requests/${id}/${action}`, action === 'reject' ? { reason } : undefined);
-            outcomes.push(`#${id} recorded`);
+            outcomes.push(`${recordReference('REQ', id)} recorded`);
           } catch {
-            outcomes.push(`#${id} not recorded`);
+            outcomes.push(`${recordReference('REQ', id)} not recorded`);
           }
         }
         const failed = outcomes.filter((line) => line.endsWith('not recorded'));
@@ -810,8 +835,8 @@ export default function DevOpsTickets() {
           <div className="ig-cell-stack">
             <span className="ig-cell-title">{req.service || 'Request'}</span>
             <span className="ig-cell-meta">
-              <span className="ig-mono">#{req.id}</span>
-              <CopyButton value={String(req.id)} label="request reference" />
+              <span className="ig-mono">{recordReference('REQ', req.id)}</span>
+              <CopyButton value={recordReference('REQ', req.id)} label="request reference" />
               {context ? ` · ${context}` : ''}
               {bundleCount > 1 ? ` · ${bundleCount}` : ''}
               {isAccessRequest(req) ? ' · Access' : ''}
@@ -826,7 +851,7 @@ export default function DevOpsTickets() {
       sortable: true,
       cell: (req) => {
         const priority = typeof req.priority === 'string' && req.priority.trim() ? req.priority.trim().toLowerCase() : 'medium';
-        return <span className={`ig-priority ig-priority--${priority}`}>{priority}</span>;
+        return <span className={`ig-priority ig-priority--${priorityTone(priority)}`}>{requestPriorityName(priority)}</span>;
       },
     },
     {
@@ -877,6 +902,22 @@ export default function DevOpsTickets() {
   useEffect(() => {
     if (!token) router.replace('/login');
   }, [token, router]);
+
+  useEffect(() => {
+    const saveScroll = () => {
+      if (!window.location.pathname.startsWith('/tickets')) return;
+      sessionStorage.setItem('opstrellis-tickets-scroll', String(window.scrollY));
+    };
+    router.events.on('routeChangeStart', saveScroll);
+    return () => router.events.off('routeChangeStart', saveScroll);
+  }, [router]);
+
+  useEffect(() => {
+    if (!router.isReady || router.query.id) return;
+    const savedScroll = Number(sessionStorage.getItem('opstrellis-tickets-scroll') || '');
+    if (!Number.isFinite(savedScroll) || savedScroll <= 0) return;
+    window.requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+  }, [router.isReady, router.query.id]);
 
   useEffect(() => {
     if (!token) return;
@@ -948,6 +989,21 @@ export default function DevOpsTickets() {
     const parsed = typeof idParam === 'string' ? parseInt(idParam, 10) : NaN;
     if (!Number.isNaN(parsed) && parsed > 0 && parsed !== detailId) {
       loadDetail(parsed, false);
+      return;
+    }
+    if ((typeof idParam !== 'string' || Number.isNaN(parsed) || parsed <= 0) && detailId) {
+      detailSeq.current += 1;
+      setDetailLoading(false);
+      setDetailId(null);
+      setDetailRequest(null);
+      setDetailComments([]);
+      setDetailTimeline([]);
+      setDetailError('');
+      setDetailNotice('');
+      setCommentBody('');
+      setRejectReason('');
+      const savedScroll = Number(sessionStorage.getItem('opstrellis-tickets-scroll') || '');
+      if (Number.isFinite(savedScroll)) window.requestAnimationFrame(() => window.scrollTo(0, savedScroll));
     }
   }, [router.isReady, router.query.id, token, detailId]);
 
@@ -1004,9 +1060,9 @@ export default function DevOpsTickets() {
                       className="btn btn-secondary"
                       style={{ padding: '6px 12px', fontSize: 13 }}
                       onClick={() => goToRecent(id)}
-                      title={`Open request #${id}`}
+                      title={`Open ${recordReference('REQ', id)}`}
                     >
-                      #{id}
+                      {recordReference('REQ', id)}
                     </button>
                   ))}
                 </div>
@@ -1043,7 +1099,7 @@ export default function DevOpsTickets() {
                 <span className="devops-filter-ribbon__key">Request #</span>
                 <input
                   type="text"
-                  placeholder="Any request"
+                  placeholder="REQ0000013"
                   value={idFilter}
                   onChange={(e) => setIdFilter(e.target.value)}
                   className="devops-filter-ribbon__control"
@@ -1293,13 +1349,14 @@ export default function DevOpsTickets() {
             <InspectorDrawer
               open
               onClose={closeDetail}
-              resetKey={detailRequest?.id ?? null}
+              resetKey={detailId}
+              returnFocusId={detailId ? `ig-row-${detailId}` : undefined}
               label="Request details"
               eyebrow={detailRequestIsAccess ? 'Access request' : 'Request'}
               title={
                 detailRequest ? (
                   <>
-                    <span className="ig-mono">#{detailRequest.id}</span> <CopyButton value={String(detailRequest.id)} label="request reference" /> {detailRequest.service}
+                    <span className="ig-mono">{recordReference('REQ', detailRequest.id)}</span> <CopyButton value={recordReference('REQ', detailRequest.id)} label="request reference" /> {detailRequest.service}
                   </>
                 ) : (
                   'Loading request'
@@ -1318,6 +1375,11 @@ export default function DevOpsTickets() {
               }
             >
               <div className="devops-approval-workspace">
+              {detailOutsideScope ? (
+                <div className="alert" role="status">
+                  This request is outside the current project, environment, or filters. Approvals stay off until it is back in the list.
+                </div>
+              ) : null}
               {detailId ? (
                 <ResourceContextPanel
                   apiUrl={apiUrl}
@@ -1355,7 +1417,8 @@ export default function DevOpsTickets() {
                       <div className="devops-approval-workspace__meta-grid">
                         <div className="devops-approval-workspace__meta-item"><span>Requested change</span><strong>{detailRequest.service || 'Unknown'}</strong></div>
                         <div className="devops-approval-workspace__meta-item"><span>Scope</span><strong>{[detailRequest.project_name, detailRequest.team, detailRequest.env].filter(Boolean).join(' · ') || 'Unknown'}</strong></div>
-                        <div className="devops-approval-workspace__meta-item"><span>Risk</span><strong>{detailRequest.priority || 'Unknown'}</strong></div>
+                        <div className="devops-approval-workspace__meta-item"><span>Priority</span><strong>{requestPriorityName(detailRequest.priority)}</strong></div>
+                        <div className="devops-approval-workspace__meta-item"><span>Approval level</span><strong>{approvalLevel(detailRequest.priority)}</strong></div>
                         <div className="devops-approval-workspace__meta-item"><span>Duration</span><strong>{detailRequest.due_date ? `Due ${formatDateOnly(detailRequest.due_date)}` : 'No duration recorded'}</strong></div>
                         <div className="devops-approval-workspace__meta-item"><span>Evidence</span><strong>{detailRequest.pr_url ? 'Pull request linked in this request' : 'No supporting link yet'}</strong></div>
                       </div>
@@ -1402,7 +1465,11 @@ export default function DevOpsTickets() {
                           </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Priority</span>
-                            <strong>{detailRequest.priority || 'medium'}</strong>
+                            <strong>{requestPriorityName(detailRequest.priority)}</strong>
+                          </div>
+                          <div className="devops-approval-workspace__meta-item">
+                            <span className="devops-approval-workspace__meta-label">Approval level</span>
+                            <strong>{approvalLevel(detailRequest.priority)}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Due date</span>
@@ -1441,14 +1508,14 @@ export default function DevOpsTickets() {
                           <div className="devops-approval-workspace__dependency-card">
                             <span className="devops-approval-workspace__meta-label">Depends on</span>
                             <strong>{detailRequest.depends_on?.length || 0}</strong>
-                            <p>{detailRequest.depends_on?.length ? detailRequest.depends_on.map((entry) => `#${entry}`).join(', ') : 'No upstream dependencies'}</p>
+                            <p>{detailRequest.depends_on?.length ? detailRequest.depends_on.map((entry) => recordReference('REQ', entry)).join(', ') : 'No upstream dependencies'}</p>
                           </div>
                           <div className="devops-approval-workspace__dependency-card">
                             <span className="devops-approval-workspace__meta-label">Blocking</span>
                             <strong>{detailRequest.blocked_by_with_status?.length || 0}</strong>
                             <p>
                               {detailRequest.blocked_by_with_status?.length
-                                ? detailRequest.blocked_by_with_status.map((entry) => `#${entry.id} (${formatStatus(entry.status)})`).join(', ')
+                                ? detailRequest.blocked_by_with_status.map((entry) => `${recordReference('REQ', entry.id)} (${formatStatus(entry.status)})`).join(', ')
                                 : 'No downstream dependencies'}
                             </p>
                           </div>

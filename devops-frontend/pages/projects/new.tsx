@@ -9,7 +9,9 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
 import { expireSession } from '../../lib/sessionExpiry';
+import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 
+const PROJECT_ATTEMPT_KEY = 'opstrellis-project-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 
@@ -403,6 +405,7 @@ export default function NewProjectPage() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'Idempotency-Key': rememberAttempt(PROJECT_ATTEMPT_KEY, JSON.stringify(payload)),
         },
         body: JSON.stringify(payload),
       });
@@ -410,14 +413,18 @@ export default function NewProjectPage() {
         clearSessionAndRedirect();
         return;
       }
+      const data = asRecord(await response.json().catch(() => ({})));
       if (response.status === 403) {
-        setError('You do not have access to create a project.');
+        forgetAttempt(PROJECT_ATTEMPT_KEY);
+        setError('You do not have access to create a project. Nothing was created, and your entries are still here.');
         return;
       }
-      const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(getString(data.cause) || getString(data.error, 'Failed to save project'));
+        const outcome = outcomeForFailedSubmit(response.status, getString(data.cause) || getString(data.error, ''));
+        if (!outcome.keepAttempt) forgetAttempt(PROJECT_ATTEMPT_KEY);
+        throw new Error(outcome.message);
       }
+      forgetAttempt(PROJECT_ATTEMPT_KEY);
       const savedProject = asRecord(data.project);
       const savedId = typeof savedProject.id === 'number' ? `#${savedProject.id}` : '';
       setNotice(savedId
@@ -428,7 +435,8 @@ export default function NewProjectPage() {
       setDirty(false);
       setStep('team');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save project');
+      const message = err instanceof Error ? err.message : 'Failed to save project';
+      setError(message === 'Failed to fetch' ? outcomeForFailedSubmit(0, '').message : message);
     } finally {
       submitLock.current = false;
       setSaving(false);

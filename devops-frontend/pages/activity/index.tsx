@@ -6,6 +6,7 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import {
   DataTable,
+  formatOperationalTime,
   PageHeader,
   WORKSPACE_SCOPE_EVENT,
   portalFetch,
@@ -98,7 +99,7 @@ export default function OperatorActivityPage() {
       {
         id: 'when',
         header: 'When',
-        cell: (row: OperatorEvent) => new Date(row.created_at).toLocaleString(),
+        cell: (row: OperatorEvent) => formatOperationalTime(row.created_at),
       },
       {
         id: 'actor',

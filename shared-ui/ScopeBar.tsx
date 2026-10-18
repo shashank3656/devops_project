@@ -9,6 +9,7 @@ export default function ScopeBar({
   onChange,
   onClear,
   catalogEnvironments,
+  showFacts = false,
 }: {
   projects: ScopeProject[];
   scope: WorkspaceScope;
@@ -16,6 +17,8 @@ export default function ScopeBar({
   onClear?: () => void;
   /** NF-03: when set for the selected project, overrides project.environments */
   catalogEnvironments?: string[];
+  /** Review screens keep the full project, team, and environment visible. */
+  showFacts?: boolean;
 }) {
   const selected = useMemo(
     () => projects.find((project) => String(project.id) === String(scope.projectId)) || null,
@@ -33,14 +36,19 @@ export default function ScopeBar({
   }, [projects, selected, catalogEnvironments, scope.projectId]);
   const environmentName = typeof scope?.environment === 'string' ? scope.environment : '';
   const hasScope = Boolean(scope?.projectId || environmentName);
+  const projectLabel = selected
+    ? (selected.code ? `${selected.name} (${selected.code})` : selected.name || 'Project')
+    : 'All projects';
   const isProduction = /^prod/i.test(environmentName.trim());
 
   return (
     <div className="ig-scope-bar" role="group" aria-label="Workspace scope">
       <label className="ig-scope-bar__field">
-        <span className="ig-scope-bar__label">Project</span>
+        <span className="ig-scope-bar__label">Project {projectLabel}</span>
         <select
           className="ig-scope-bar__control"
+          title={projectLabel}
+          aria-label={`Project ${projectLabel}`}
           value={typeof scope?.projectId === 'string' ? scope.projectId : ''}
           onChange={(event) => {
             const projectId = event.target.value;
@@ -84,7 +92,7 @@ export default function ScopeBar({
         </button>
       ) : null}
       {selected ? (
-        <p className="ig-scope-bar__facts">
+        <p className={`ig-scope-bar__facts${showFacts ? ' is-visible' : ''}`}>
           Team {typeof selected.team === 'string' && selected.team ? selected.team : 'Unknown'} · Cloud {typeof selected.cloud === 'string' && selected.cloud ? selected.cloud : 'Unknown'} · Environments {selected.environments?.length ? selected.environments.map((item) => String(item)).join(', ') : 'Unknown'}
         </p>
       ) : null}

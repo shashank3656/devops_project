@@ -280,6 +280,7 @@ export default function DataTable<T>({
             return (
               <tr
                 key={key}
+                id={`ig-row-${String(key).replace(/[^A-Za-z0-9_-]/g, '-')}`}
                 ref={(el) => {
                   rowRefs.current[index] = el;
                 }}

@@ -1,3 +1,5 @@
+import { recordReference, type RecordPrefix } from './recordRef';
+
 // Every route under pages/. A breadcrumb links only to entries here, so add new routes to this list.
 export const KNOWN_PAGES: ReadonlySet<string> = new Set([
   '/',
@@ -142,6 +144,17 @@ export interface Crumb {
   href?: string;
 }
 
+function canonicalRecord(pattern: string, value: string): string | null {
+  if (!/^\d+$/.test(value)) return null;
+  const id = Number(value);
+  let prefix: RecordPrefix | null = null;
+  if (pattern === '/requests/[id]') prefix = 'REQ';
+  else if (pattern.startsWith('/incidents/')) prefix = 'INC';
+  else if (pattern.startsWith('/changes/') && pattern.includes('[')) prefix = 'CHG';
+  else if (pattern.startsWith('/problems/') && pattern.includes('[')) prefix = 'PRB';
+  return prefix ? recordReference(prefix, id) : null;
+}
+
 function humanize(segment: string): string {
   let decoded = segment;
   try {
@@ -169,7 +182,9 @@ export function buildBreadcrumbs(pathname: string, asPath: string, titles: Recor
     const value = realParts[index] || part;
     const dynamic = part.startsWith('[');
     let label = titles[pattern] || '';
-    if (!label) {
+    const canonical = dynamic ? canonicalRecord(pattern, value) : null;
+    if (canonical) label = canonical;
+    else if (!label) {
       if (dynamic) label = value.startsWith('[') ? '…' : /^\d+$/.test(value) ? `#${value}` : humanize(value);
       else label = humanize(part);
     }

@@ -9,6 +9,10 @@ export function expireSession(returnTo?: string) {
   const path = returnTo || `${window.location.pathname}${window.location.search}`;
   rememberReturn(path);
   sessionStorage.setItem(NOTICE_KEY, 'expired');
+  const recoverable = ['opstrellis-form-dirty', 'opstrellis-request-draft', 'opstrellis-incident-draft', 'opstrellis-change-idempotency'].some(
+    (key) => sessionStorage.getItem(key),
+  );
+  if (recoverable) sessionStorage.setItem('opstrellis-auth-draft', '1');
   localStorage.removeItem('devops_token');
   localStorage.removeItem('devops_user');
   window.location.assign('/login');

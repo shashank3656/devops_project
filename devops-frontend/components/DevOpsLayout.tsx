@@ -203,7 +203,7 @@ function formatTime(iso: string): string {
   if (diffMins < 1) return 'Just now';
   if (diffMins < 60) return `${diffMins} min ago`;
   if (diffHours < 24) return `${diffHours} hour(s) ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
@@ -1000,6 +1000,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               projects={scopeProjects}
               scope={scope}
               catalogEnvironments={catalogEnvironments}
+              showFacts={/^\/(requests|changes|incidents|problems)\/.+/.test(pathname) && !pathname.endsWith('/new')}
               onChange={(partial) => {
                 if (sessionStorage.getItem('opstrellis-form-dirty') === '1' && !window.confirm('This page has unsaved work. Changing the project or environment refreshes dependent fields. Continue?')) return;
                 writeScopeQuery(updateScope(partial));

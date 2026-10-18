@@ -2187,6 +2187,12 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		capture, finish, handled := beginIdempotentPost(w, r, userID, "project")
+		if handled {
+			return
+		}
+		defer finish()
+		w = capture
 		var input ProjectCatalogInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)

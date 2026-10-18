@@ -10,7 +10,9 @@ import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { expireSession } from '../../lib/sessionExpiry';
 import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
+import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 
+const PROBLEM_ATTEMPT_KEY = 'opstrellis-problem-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 
@@ -203,14 +205,7 @@ export default function NewProblemPage() {
     submitLock.current = true;
     setSaving(true);
     setError('');
-    try {
-      const response = await fetch(`${apiUrl}/api/devops/problems`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+    const payload = {
           title: title.trim(),
           summary: title.trim(),
           description: `Cause (${causeState}): ${description.trim()}`,
@@ -227,7 +222,16 @@ export default function NewProblemPage() {
           related_incident_id: relatedIncidentId ? Number(relatedIncidentId) : 0,
           known_error: knownError,
           workaround: workaround.trim(),
-        }),
+    };
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/problems`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': rememberAttempt(PROBLEM_ATTEMPT_KEY, JSON.stringify(payload)),
+        },
+        body: JSON.stringify(payload),
       });
       if (response.status === 401 || response.status === 403) {
         clearSessionAndRedirect();
@@ -235,8 +239,11 @@ export default function NewProblemPage() {
       }
       const data = asRecord(await response.json().catch(() => ({})));
       if (!response.ok) {
-        throw new Error(getString(data.error, 'Failed to create problem'));
+        const outcome = outcomeForFailedSubmit(response.status, getString(data.error, ''));
+        if (!outcome.keepAttempt) forgetAttempt(PROBLEM_ATTEMPT_KEY);
+        throw new Error(outcome.message);
       }
+      forgetAttempt(PROBLEM_ATTEMPT_KEY);
       const problem = data.problem && typeof data.problem === 'object' ? (data.problem as Record<string, unknown>) : {};
       const id = typeof problem.id === 'number' ? problem.id : 0;
       allowLeave();
@@ -249,7 +256,8 @@ export default function NewProblemPage() {
       });
       await router.push(id > 0 ? `/problems/${id}` : '/problems');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create problem');
+      const message = err instanceof Error ? err.message : 'Failed to create problem';
+      setError(message === 'Failed to fetch' ? outcomeForFailedSubmit(0, '').message : message);
     } finally {
       submitLock.current = false;
       setSaving(false);

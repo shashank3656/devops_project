@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CopyButton, queryString, useConfirm, useWorkspaceScope } from '@infragate/ui';
+import { CopyButton, formatCalendarDate, formatOperationalTime, queryString, useConfirm, useWorkspaceScope } from '@infragate/ui';
 import { productionDetailLines } from '../lib/productionConfirm';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -44,15 +44,6 @@ function IconDoc() {
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <path d="M7 3.5h7l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-9.5A1.5 1.5 0 0 1 5.5 20V5A1.5 1.5 0 0 1 7 3.5z" />
       <path d="M14 3.5V8h4.5M8 12h8M8 16h6" />
-    </svg>
-  );
-}
-
-function IconAlert() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-      <path d="M12 4.5 20 19H4L12 4.5z" />
-      <path d="M12 10v4.5M12 17.2h.01" />
     </svg>
   );
 }
@@ -138,11 +129,11 @@ function kindLabel(kind: DeskKind): string {
   }
 }
 
-function formatWhen(value?: string): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+function typeIcon(kind: DeskKind) {
+  if (kind === 'problem') return <IconSearch />;
+  if (kind === 'change') return <IconLink />;
+  if (kind === 'incident') return <IconClock />;
+  return <IconDoc />;
 }
 
 function asList(raw: unknown): Record<string, unknown>[] {
@@ -254,6 +245,10 @@ export default function ServiceDeskPage() {
       if (['created', 'type', 'priority', 'status', 'owner'].includes(String(saved.sortKey))) setSortKey(saved.sortKey as SortKey);
       if (saved.sortDir === 'asc' || saved.sortDir === 'desc') setSortDir(saved.sortDir);
       if (typeof saved.page === 'number' && saved.page > 0) setPage(saved.page);
+      if (typeof saved.scrollY === 'number') {
+        const scrollY = saved.scrollY;
+        window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
+      }
     } catch {
       // A broken saved view falls back to defaults.
     }
@@ -271,6 +266,21 @@ export default function ServiceDeskPage() {
       // Storage can be unavailable in private windows.
     }
   }, [tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page]);
+
+  useEffect(() => {
+    const saveScroll = () => {
+      if (!window.location.pathname.startsWith('/service-desk')) return;
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as Record<string, unknown>;
+        saved.scrollY = window.scrollY;
+        sessionStorage.setItem(DESK_VIEW_KEY, JSON.stringify(saved));
+      } catch {
+        // Scroll restore is optional when storage is unavailable.
+      }
+    };
+    router.events.on('routeChangeStart', saveScroll);
+    return () => router.events.off('routeChangeStart', saveScroll);
+  }, [router]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -463,6 +473,48 @@ export default function ServiceDeskPage() {
   }), [items, scopeEnvironment, scopeProject]);
 
   const selected = useMemo(() => scopedItems.find((item) => item.key === selectedKey) || null, [scopedItems, selectedKey]);
+  const scopeWatch = useRef(`${scopeProject}|${scopeEnvironment}`);
+
+  useEffect(() => {
+    const nextScope = `${scopeProject}|${scopeEnvironment}`;
+    if (scopeWatch.current === nextScope || loading) return;
+    scopeWatch.current = nextScope;
+    if (!selectedKey || selected || !items.some((item) => item.key === selectedKey)) return;
+    const rowId = `sd-row-${selectedKey.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+    setSelectedKey(null);
+    setBulkNotice('That ticket is outside the current project or environment, so its details closed.');
+    window.requestAnimationFrame(() => document.getElementById(rowId)?.focus());
+  }, [items, loading, scopeEnvironment, scopeProject, selected, selectedKey]);
+
+  useEffect(() => {
+    if (!selectedKey || !selected) return;
+    const rowId = `sd-row-${selectedKey.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+    const panel = document.querySelector<HTMLElement>('.sd-inspector');
+    window.setTimeout(() => panel?.querySelector<HTMLElement>('.sd-inspector__close')?.focus(), 0);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        setSelectedKey(null);
+        window.requestAnimationFrame(() => document.getElementById(rowId)?.focus());
+        return;
+      }
+      if (event.key !== 'Tab' || !panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !panel.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected, selectedKey]);
 
   const finishIncident = async (ticket: DeskTicket, action: 'close' | 'cancel') => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -726,9 +778,9 @@ export default function ServiceDeskPage() {
           <div className="sd-main">
             <div className="sd-tabs" role="tablist">
               {[
-                { id: 'all' as const, label: `All tickets (${scopedItems.length})` },
-                { id: 'mine' as const, label: `Assigned to me (${scopedItems.filter((i) => username && i.owner !== 'Unassigned' && i.owner.toLowerCase().includes(username.toLowerCase())).length})` },
-                { id: 'approval' as const, label: `Needs approval (${stats.awaiting})` },
+                { id: 'all' as const, label: `All tickets (${loading || error ? '—' : scopedItems.length})` },
+                { id: 'mine' as const, label: `Assigned to me (${loading || error ? '—' : scopedItems.filter((i) => username && i.owner !== 'Unassigned' && i.owner.toLowerCase().includes(username.toLowerCase())).length})` },
+                { id: 'approval' as const, label: `Needs approval (${loading || error ? '—' : stats.awaiting})` },
               ].map((entry) => (
                 <button
                   key={entry.id}
@@ -876,6 +928,7 @@ export default function ServiceDeskPage() {
                     {pageRows.map((item) => (
                       <tr
                         key={item.key}
+                        id={`sd-row-${item.key.replace(/[^A-Za-z0-9_-]/g, '-')}`}
                         className={`${selectedKey === item.key ? 'is-selected' : ''}${checkedKeys.includes(item.key) ? ' is-checked' : ''}`.trim() || undefined}
                         onClick={() => setSelectedKey(item.key)}
                         onKeyDown={(event) => {
@@ -904,7 +957,7 @@ export default function ServiceDeskPage() {
                         </td>
                         <td className="sd-col-type">
                           <span className={`sd-type sd-type--${item.kind}`} title={kindLabel(item.kind)}>
-                            {item.kind === 'problem' ? <IconSearch /> : item.kind === 'change' ? <IconLink /> : <IconAlert />}
+                            {typeIcon(item.kind)}
                             <span className="sd-clip">{kindLabel(item.kind)}</span>
                           </span>
                         </td>
@@ -1032,11 +1085,11 @@ export default function ServiceDeskPage() {
                 </div>
                 <div>
                   <dt>Created</dt>
-                  <dd>{formatWhen(selected.createdAt)}</dd>
+                  <dd>{formatOperationalTime(selected.createdAt)}</dd>
                 </div>
                 <div>
                   <dt>Last update</dt>
-                  <dd>{formatWhen(selected.updatedAt || selected.createdAt)}</dd>
+                  <dd>{formatOperationalTime(selected.updatedAt || selected.createdAt)}</dd>
                 </div>
               </dl>
 
@@ -1048,7 +1101,7 @@ export default function ServiceDeskPage() {
               <section className="sd-section">
                 <h3>Next action</h3>
                 <p>{selected.nextAction || 'No next action configured'}</p>
-                <p className="access-hint">{selected.dueAt ? `Due ${formatWhen(selected.dueAt)}` : 'No due date'}</p>
+                <p className="access-hint">{selected.dueAt ? `Due ${formatCalendarDate(selected.dueAt)}` : 'No due date'}</p>
               </section>
 
               <section className="sd-section">
@@ -1061,8 +1114,8 @@ export default function ServiceDeskPage() {
                 ) : (
                   <div className="sd-related-card">
                     <span>Service not linked</span>
-                    <small>{selected.service && selected.service !== 'Unknown' ? selected.service : 'This ticket has no catalog service.'}</small>
-                    <Link className="sd-related" href={`/services?q=${encodeURIComponent(selected.service && selected.service !== 'Unknown' ? selected.service : '')}`}>Link a service</Link>
+                    <small>{selected.service && selected.service !== 'Unknown' ? `Search the catalog for ${selected.service}. This does not attach it to the ticket.` : 'Search the catalog. This does not attach a service to the ticket.'}</small>
+                    <Link className="sd-related" href={`/services?q=${encodeURIComponent(selected.service && selected.service !== 'Unknown' ? selected.service : '')}`}>Find matching service</Link>
                   </div>
                 )}
               </section>

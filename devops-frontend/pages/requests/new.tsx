@@ -8,11 +8,14 @@ import { serviceLabel } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { focusField } from '../../lib/focusField';
+import { recordReference } from '../../lib/recordRef';
+import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import BlockedAction from '../../components/BlockedAction';
 import { readWorkspaceScope, WORKSPACE_SCOPE_EVENT, type WorkspaceScope } from '@infragate/ui';
 
 const REQUEST_DRAFT_KEY = 'opstrellis-request-draft';
+const REQUEST_ATTEMPT_KEY = 'opstrellis-request-attempt';
 
 type TeamChoice = { id: number; name: string; slug: string; default_env?: string };
 type ProjectService = { cloud: string; service: string };
@@ -167,32 +170,41 @@ export default function NewRequestPage() {
     setSaving(true);
     setError('');
     setNotice('');
+    const payload = {
+      team,
+      env,
+      cloud,
+      service: chosenService.service,
+      project_id: projectId ? Number(projectId) : undefined,
+      priority,
+      due_date: dueDate || undefined,
+      initial_comment: comment.trim() || undefined,
+    };
+    const attemptKey = rememberAttempt(REQUEST_ATTEMPT_KEY, JSON.stringify(payload));
     try {
       const response = await fetch(`${apiUrl}/api/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...sessionAuthHeaders() },
-        body: JSON.stringify({
-          team,
-          env,
-          cloud,
-          service: chosenService.service,
-          project_id: projectId ? Number(projectId) : undefined,
-          priority,
-          due_date: dueDate || undefined,
-          initial_comment: comment.trim() || undefined,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...sessionAuthHeaders(),
+          'Idempotency-Key': attemptKey,
+        },
+        body: JSON.stringify(payload),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof body?.error === 'string' ? body.error : 'The request was not accepted.');
+        const outcome = outcomeForFailedSubmit(response.status, typeof body?.error === 'string' ? body.error : '');
+        if (!outcome.keepAttempt) forgetAttempt(REQUEST_ATTEMPT_KEY);
+        setError(outcome.message);
         return;
       }
       if (body?.id) {
         sessionStorage.removeItem(REQUEST_DRAFT_KEY);
+        forgetAttempt(REQUEST_ATTEMPT_KEY);
         allowLeave();
         saveSubmissionResult({
           kind: 'Request',
-          id: `#${body.id}`,
+          id: recordReference('REQ', Number(body.id)),
           status: 'waiting for review',
           next: 'It has not been applied. A reviewer approves it before any cloud change runs.',
           href: `/requests/${body.id}`,
@@ -204,7 +216,7 @@ export default function NewRequestPage() {
       setServiceId('');
       setCloud('');
     } catch {
-      setError('The request could not be sent.');
+      setError('No response came back, so this attempt may or may not have been saved. Your entries are unchanged. Retry uses the same attempt and will not create a second request if the first one landed.');
     } finally {
       submitLock.current = false;
       setSaving(false);
@@ -319,10 +331,10 @@ export default function NewRequestPage() {
             </BlockedAction>
             <label className="label" htmlFor="request-priority">Priority</label>
             <select id="request-priority" className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
-              <option value="low">Low — L1</option>
-              <option value="medium">Medium — L2</option>
-              <option value="high">High — L3</option>
-              <option value="critical">Critical — L4</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
             </select>
             </fieldset>
             <details className="onboard-advanced">

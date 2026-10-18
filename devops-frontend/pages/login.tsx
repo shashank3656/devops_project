@@ -48,7 +48,7 @@ export default function DevOpsLogin() {
   const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setDraftSaved(readChangeDraft());
+    setDraftSaved(readChangeDraft() || sessionStorage.getItem('opstrellis-auth-draft') === '1' || Boolean(sessionStorage.getItem('opstrellis-request-draft') || sessionStorage.getItem('opstrellis-incident-draft')));
     if (peekAuthNotice() !== 'expired') return;
     setSessionExpired(true);
     const clearNotice = window.setTimeout(() => {
@@ -262,10 +262,14 @@ export default function DevOpsLogin() {
             <h2 className="login-page__card-title">Welcome back</h2>
             <p className="login-page__card-subtitle">Sign in to OpsTrellis.</p>
             {sessionExpired ? (
-              <p className="alert" role="status">Your session expired. Sign in to return to the page you were using. Nothing you already saved was removed.</p>
+              <p className="alert" role="status">
+                {draftSaved
+                  ? 'Your session ended. Sign in to continue. Entries saved in this browser are still here. Passwords are not stored with them.'
+                  : 'Your session expired. Sign in to return to the page you were using. Nothing you already saved was removed.'}
+              </p>
             ) : null}
-            {draftSaved ? (
-              <p className="alert" role="status">A change draft is saved in this browser. Sign in to continue it.</p>
+            {draftSaved && !sessionExpired ? (
+              <p className="alert" role="status">A draft is saved in this browser. Sign in to continue it. Passwords are not stored with it.</p>
             ) : null}
             {error && (
               <div className="alert alert-error login-page__error" role="alert">

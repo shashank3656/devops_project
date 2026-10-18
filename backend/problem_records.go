@@ -343,6 +343,12 @@ func devopsProblemsHandler(w http.ResponseWriter, r *http.Request) {
 		if _, ok := requireDevopsManager(w, r); !ok {
 			return
 		}
+		capture, finish, handled := beginIdempotentPost(w, r, userID, "problem")
+		if handled {
+			return
+		}
+		defer finish()
+		w = capture
 		var body createProblemRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
