@@ -20,6 +20,7 @@ import {
   DataTable,
   PageFilters,
   PageHeader,
+  formatOperationalTime,
   portalFetch,
   type DataTableColumn,
   type PageFilterChip,
@@ -197,7 +198,21 @@ export default function CloudResourcesPage() {
       {
         id: 'status',
         header: 'Status',
-        cell: (row) => <span className="ig-chip ig-chip--ok">{row.status}</span>,
+        cell: (row) => {
+          const observed = (row.updated_at || '').trim();
+          const raw = (row.status || '').trim();
+          const disconnected = !observed || !raw || /unknown|disconnected|missing|stale/i.test(raw);
+          return (
+            <span className={`ig-chip${disconnected ? '' : ' ig-chip--ok'}`}>
+              {disconnected ? 'Unknown' : raw}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'observed',
+        header: 'Observed',
+        cell: (row) => (row.updated_at ? formatOperationalTime(row.updated_at) : 'Unknown'),
       },
     ],
     [],

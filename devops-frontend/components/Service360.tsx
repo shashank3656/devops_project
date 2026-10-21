@@ -48,7 +48,11 @@ type AccessRow = {
   id?: string;
   accessNumber?: string;
   status?: string;
-  evaluation?: { normalizedScope?: string; roleId?: string };
+  evaluation?: {
+    normalizedScope?: string;
+    roleId?: string;
+    input?: { service?: string; projectId?: number; project_id?: number };
+  };
 };
 
 type ServiceSibling = {
@@ -121,10 +125,10 @@ export default function Service360({
       fetch(`${apiUrl}/api/devops/incidents`, { headers }).then((res) => (res.ok ? res.json() : Promise.reject(new Error('Incidents could not be loaded.')))),
       fetch(`${apiUrl}/api/devops/cloud/resources?${projectQuery}q=${encodeURIComponent(serviceName)}&limit=50`, { headers }).then((res) => (res.ok ? res.json() : Promise.reject(new Error('Resources could not be loaded.')))),
       fetch(`${apiUrl}/api/devops/iam/access-requests?scope=desk`, { headers }).then((res) => (res.ok ? res.json() : { requests: [] })),
-      fetch(`${apiUrl}/api/devops/services?q=${encodeURIComponent(serviceName)}`, { headers }).then((res) => (res.ok ? res.json() : { services: [] })),
+      fetch(`${apiUrl}/api/devops/services?${projectQuery}q=${encodeURIComponent(serviceName)}`, { headers }).then((res) => (res.ok ? res.json() : { services: [] })),
     ]).then(([changeBody, incidentBody, resourceBody, accessBody, serviceBody]) => {
       const changeRows = Array.isArray(changeBody?.changes) ? changeBody.changes : Array.isArray(changeBody?.items) ? changeBody.items : [];
-      setChanges(changeRows.filter((item: ChangeRow) => sameService(item.service, serviceName)));
+      setChanges(changeRows.filter((item: ChangeRow) => sameService(item.service, serviceName) && (!projectId || !item.project_id || item.project_id === projectId)));
       const incidentRows = Array.isArray(incidentBody?.incidents) ? incidentBody.incidents : [];
       setIncidents(incidentRows.filter((item: IncidentRow) => sameService(item.service, serviceName) && (!projectId || !item.project_id || item.project_id === projectId)));
       const resourceRows = Array.isArray(resourceBody?.resources) ? resourceBody.resources : [];
@@ -138,9 +142,21 @@ export default function Service360({
       setResources(resourceRows.filter((item: ResourceRow) => !demoIds.has(String(item.resource_id || ''))));
       const accessRows = Array.isArray(accessBody?.requests) ? accessBody.requests : [];
       const needle = serviceName.trim().toLowerCase();
-      setGrants(accessRows.filter((item: AccessRow) => needle.length > 1 && (item.evaluation?.normalizedScope || '').toLowerCase().includes(needle)));
+      setGrants(accessRows.filter((item: AccessRow) => {
+        const named = (item.evaluation?.input?.service || '').trim().toLowerCase();
+        if (named) {
+          const names = named.split(',').map((value) => value.trim()).filter(Boolean);
+          if (!names.includes(needle)) return false;
+        } else {
+          const scope = (item.evaluation?.normalizedScope || '').toLowerCase();
+          const tokens = scope.split(/[^a-z0-9_-]+/).filter(Boolean);
+          if (!tokens.includes(needle)) return false;
+        }
+        const grantProject = item.evaluation?.input?.projectId || item.evaluation?.input?.project_id;
+        return !projectId || !grantProject || grantProject === projectId;
+      }));
       const serviceRows = Array.isArray(serviceBody?.services) ? serviceBody.services : [];
-      setSiblings(serviceRows.filter((item: ServiceSibling) => sameService(item.service, serviceName)));
+      setSiblings(serviceRows.filter((item: ServiceSibling) => sameService(item.service, serviceName) && (!projectId || !item.project_id || item.project_id === projectId)));
       setLoadedAt(new Date().toISOString());
     }).catch((err) => {
       setError(err instanceof Error ? err.message : 'Service context could not be loaded.');
@@ -166,16 +182,16 @@ export default function Service360({
         approval: 'Unknown',
         revision,
         digest: mask(digest),
-        owner: sibling?.team || 'Unknown',
+        owner: (sibling?.team || '').trim() || (name === (environment || '').toLowerCase() ? (ownerTeam || '').trim() : '') || 'Not assigned',
         repo: sibling?.repo || 'Unknown',
       };
     });
-  }, [changes, siblings]);
+  }, [changes, environment, ownerTeam, siblings]);
 
   const activeIncidents = incidents.filter((item) => !['resolved', 'closed', 'cancelled'].includes((item.status || '').toLowerCase()));
   const latestChange = [...changes].sort((left, right) => (right.updated_at || '').localeCompare(left.updated_at || ''))[0];
   const accessAttention = grants.filter((item) => !['approved', 'completed', 'rejected', 'revoked', 'expired'].includes((item.status || '').toLowerCase()));
-  const ownerLabel = (ownerTeam || '').trim() || 'Unknown';
+  const ownerLabel = (ownerTeam || '').trim() || 'Not assigned';
   const repoLabel = (repo || '').trim() || 'Unknown';
 
   const source = loadedAt
@@ -203,7 +219,7 @@ export default function Service360({
         <>
           <div className="service-360__facts">
             <button type="button" onClick={() => setTab('overview')}>
-              <span>Ownership</span>
+              <span>Service owner team</span>
               <strong>{loading ? 'Unknown' : ownerLabel}</strong>
               <small>{loading ? 'Unknown' : repoLabel}</small>
             </button>
@@ -292,7 +308,7 @@ export default function Service360({
                 <th>Approval readiness</th>
                 <th>Deployed revision</th>
                 <th>Image digest</th>
-                <th>Owner</th>
+                <th>Service owner team</th>
                 <th>Repository</th>
               </tr>
             </thead>

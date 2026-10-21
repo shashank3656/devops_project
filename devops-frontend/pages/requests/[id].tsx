@@ -36,6 +36,14 @@ type RequestRecord = {
     pr_url?: string;
     image_digest?: string;
     promote_state?: string;
+    verification?: {
+      recorded?: boolean;
+      resource_id?: string;
+      check?: string;
+      result?: string;
+      at?: string;
+      href?: string;
+    };
   };
 };
 
@@ -210,6 +218,11 @@ export default function RequestDetailPage() {
     applicationId: request.application_id,
     promoteState: request.delivery?.promote_state,
     rejectReason: request.reject_reason,
+    resourceId: request.delivery?.verification?.resource_id,
+    verificationCheck: request.delivery?.verification?.check,
+    verificationResult: request.delivery?.verification?.result,
+    verificationAt: request.delivery?.verification?.at,
+    verificationHref: request.delivery?.verification?.href,
   }) : null;
 
   return (
@@ -254,11 +267,11 @@ export default function RequestDetailPage() {
                   <div><span>Cloud</span><strong>{request.cloud || '—'}</strong></div>
                   <div><span>Priority</span><strong>{requestPriorityName(request.priority)}</strong></div>
                   <div><span>Approval level</span><strong>{approvalLevel(request.priority)}</strong></div>
-                  <div><span>Needed by</span><strong>{formatCalendarDate(request.due_date)}</strong></div>
+                  <div><span>{request.status === 'completed' ? 'Requested date' : 'Needed by'}</span><strong>{formatCalendarDate(request.due_date)}</strong></div>
                   <div><span>Raised</span><strong>{formatOperationalTime(request.created_at)}</strong></div>
                 </div>
                 {stage?.summary ? <p className="access-hint">{stage.summary}</p> : null}
-                {stage?.next_stage ? <p className="access-hint">Next: {stage.next_stage}</p> : null}
+                {stage?.next_stage && request.status !== 'completed' ? <p className="access-hint">Next: {stage.next_stage}</p> : null}
                 {request.reject_reason ? <p className="access-hint">{/cancel/i.test(request.reject_reason) ? 'Cancelled' : 'Rejected'}: {request.reject_reason}</p> : null}
                 {tracker ? (
                   <div className="request-blocker" role="status">
@@ -275,7 +288,7 @@ export default function RequestDetailPage() {
                     <div><span>Verified at</span><strong>{tracker.verification.recorded ? formatOperationalTime(tracker.verification.at) : tracker.verification.at}</strong></div>
                     <div>
                       <span>Evidence</span>
-                      <strong>{tracker.verification.href ? <a href={tracker.verification.href} target="_blank" rel="noreferrer">Open evidence</a> : 'Verification not recorded'}</strong>
+                      <strong>{tracker.verification.href ? <a href={tracker.verification.href} target="_blank" rel="noreferrer">Open evidence</a> : 'Not recorded'}</strong>
                     </div>
                     {tracker.evidence.map((item) => (
                       <div key={item.label}>
@@ -289,7 +302,7 @@ export default function RequestDetailPage() {
                   {canApprove ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('approve-by-manager')}>Approve as manager</button> : null}
                   {request.status === 'draft' ? <button type="button" className="btn btn-primary" disabled={working} onClick={() => act('submit')}>Submit for approval</button> : null}
                   {request.status === 'rejected' ? <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('resubmit')}>Raise again</button> : null}
-                  {request.status === 'completed' || (request.status === 'in_progress' && !pipelineFailed) ? <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('promote')}>Promote to next environment</button> : null}
+                  {(request.status === 'completed' || (request.status === 'in_progress' && !pipelineFailed)) && tracker?.verification.recorded ? <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('promote')}>Promote to next environment</button> : null}
                   {pipelineFailed && canOpenRetries ? <Link href="/retry-center" className="btn btn-secondary">Open retries</Link> : null}
                   <button type="button" className="btn btn-secondary" disabled={working} onClick={() => act('clone')}>Copy as draft</button>
                   {request.status === 'draft' || request.status === 'pending_user_manager_approval' || request.status === 'pending_devops_approval' || request.status === 'pending_approval' ? (

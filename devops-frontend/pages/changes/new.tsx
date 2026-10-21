@@ -33,6 +33,7 @@ interface ServiceOption {
   service: string;
   repo: string;
   environment: string;
+  team?: string;
   project_id?: number;
   project_name?: string;
   project_code?: string;
@@ -81,6 +82,7 @@ function parseServiceList(raw: unknown): ServiceOption[] {
         service: typeof row.service === 'string' ? row.service : '',
         repo: typeof row.repo === 'string' ? row.repo : '',
         environment: typeof row.environment === 'string' ? row.environment : '',
+        team: typeof row.team === 'string' ? row.team : '',
         project_id: typeof row.project_id === 'number' ? row.project_id : undefined,
         project_name: typeof row.project_name === 'string' ? row.project_name : '',
         project_code: typeof row.project_code === 'string' ? row.project_code : '',
@@ -159,7 +161,13 @@ export default function NewChangeRequestPage() {
     ? services.filter((item) => !item.project_id || String(item.project_id) === projectId)
     : [];
   const selectedProject = projects.find((project) => String(project.id) === projectId) || null;
+  const selectedAssignee = users.find((user) => String(user.id) === assigneeUserId) || null;
   const returnPath = safeReturnPath(router.query.return);
+  const exitHref = returnPath || scopeListHref('/changes', router.query);
+  const exitLabel = returnPath.startsWith('/services/') ? 'Back to service' : 'Back to changes';
+  const projectTeam = (selectedProject?.team || '').trim() || 'Not assigned';
+  const serviceOwnerTeam = (selectedService?.team || '').trim() || 'Not assigned';
+  const assignedPerson = selectedAssignee?.username || 'Not assigned';
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -211,8 +219,11 @@ export default function NewChangeRequestPage() {
       if (typeof draft.summary === 'string') setSummary((current) => current || draft.summary as string);
       if (typeof draft.impact === 'string') setImpact((current) => current || draft.impact as string);
       if (typeof draft.backoutPlan === 'string') setBackoutPlan((current) => current || draft.backoutPlan as string);
-      if (typeof draft.projectId === 'string') setProjectId((current) => current || draft.projectId as string);
-      if (typeof draft.serviceId === 'string') setServiceId((current) => current || draft.serviceId as string);
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get('project_id') && !params.get('service') && !params.get('service_id')) {
+        if (typeof draft.projectId === 'string') setProjectId((current) => current || draft.projectId as string);
+        if (typeof draft.serviceId === 'string') setServiceId((current) => current || draft.serviceId as string);
+      }
     } catch {
       sessionStorage.removeItem(CHANGE_DRAFT_KEY);
     }
@@ -304,8 +315,8 @@ export default function NewChangeRequestPage() {
       return;
     }
     if (!assigneeUserId) {
-      focusField('change-assignee', 'Assigned to is required');
-      setError('Assigned to is required');
+      focusField('change-assignee', 'Assigned person is required');
+      setError('Assigned person is required');
       return;
     }
     if (plannedStart && plannedEnd && plannedEnd < plannedStart) {
@@ -317,8 +328,19 @@ export default function NewChangeRequestPage() {
       setError('Emergency changes must link an incident number');
       return;
     }
-    if (!impact.trim() || !testPlan.trim() || !backoutPlan.trim()) {
-      setError('Impact, test plan, and rollback plan are required.');
+    if (!impact.trim()) {
+      focusField('change-impact', 'Impact is required');
+      setError('Impact is required');
+      return;
+    }
+    if (!testPlan.trim()) {
+      focusField('change-test-plan', 'Test plan is required');
+      setError('Test plan is required');
+      return;
+    }
+    if (!backoutPlan.trim()) {
+      focusField('change-rollback', 'Rollback plan is required');
+      setError('Rollback plan is required');
       return;
     }
     if (submitLock.current) return;
@@ -408,8 +430,8 @@ export default function NewChangeRequestPage() {
               <p className="form-section__copy">Saving a request is not a deployment. Approval is not execution.</p>
             </details>
           </div>
-          <Link href={returnPath || scopeListHref('/changes', router.query)} className="btn btn-secondary">
-            {returnPath.startsWith('/services/') ? 'Back to service' : 'Back to changes'}
+          <Link href={exitHref} className="btn btn-secondary">
+            {exitLabel}
           </Link>
         </div>
 
@@ -493,7 +515,7 @@ export default function NewChangeRequestPage() {
                     </select>
                   </label>
                   <label className="label">
-                    Assigned to<span className="form-req" aria-hidden="true"> *</span>
+                    Assigned person<span className="form-req" aria-hidden="true"> *</span>
                     <select id="change-assignee" className="input" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)} required>
                       <option value="">Select a portal user</option>
                       {users.map((user) => (
@@ -504,9 +526,18 @@ export default function NewChangeRequestPage() {
                     </select>
                   </label>
                 </div>
-                <p className="form-section__meta">
-                  Team {selectedProject?.team || 'Unknown'} · Cloud {selectedProject?.cloud || 'Unknown'} · Environment {selectedService?.environment || selectedProject?.environments?.join(', ') || 'Unknown'}
-                </p>
+                <dl className="ops-service">
+                  <dt>Project team</dt>
+                  <dd>{projectTeam}</dd>
+                  <dt>Service owner team</dt>
+                  <dd>{serviceOwnerTeam}</dd>
+                  <dt>Assigned person</dt>
+                  <dd>{assignedPerson}</dd>
+                  <dt>Cloud</dt>
+                  <dd>{selectedProject?.cloud || 'Unknown'}</dd>
+                  <dt>Environment</dt>
+                  <dd>{selectedService?.environment || selectedProject?.environments?.join(', ') || 'Unknown'}</dd>
+                </dl>
               </fieldset>
               <fieldset className="form-section">
                 <legend className="form-section__title">Change</legend>
@@ -552,15 +583,15 @@ export default function NewChangeRequestPage() {
                 <p className="form-section__copy">Approvers read these before the change runs.</p>
                 <label className="label">
                   Impact<span className="form-req" aria-hidden="true"> *</span>
-                  <textarea className="input" rows={3} value={impact} onChange={(event) => setImpact(event.target.value)} placeholder="Who or what is affected if this change goes wrong." required />
+                  <textarea id="change-impact" className="input" rows={3} value={impact} onChange={(event) => setImpact(event.target.value)} placeholder="Who or what is affected if this change goes wrong." required />
                 </label>
                 <label className="label">
                   Test plan<span className="form-req" aria-hidden="true"> *</span>
-                  <textarea className="input" rows={3} value={testPlan} onChange={(event) => setTestPlan(event.target.value)} placeholder="How this change will be tested before approval." required />
+                  <textarea id="change-test-plan" className="input" rows={3} value={testPlan} onChange={(event) => setTestPlan(event.target.value)} placeholder="How this change will be tested before approval." required />
                 </label>
                 <label className="label">
                   Rollback plan<span className="form-req" aria-hidden="true"> *</span>
-                  <textarea className="input" rows={3} value={backoutPlan} onChange={(event) => setBackoutPlan(event.target.value)} placeholder="How to revert if health or errors move after the change." required />
+                  <textarea id="change-rollback" className="input" rows={3} value={backoutPlan} onChange={(event) => setBackoutPlan(event.target.value)} placeholder="How to revert if health or errors move after the change." required />
                 </label>
                 <label className="label">
                   Summary <span className="onboard-optional">Optional</span>
@@ -611,13 +642,13 @@ export default function NewChangeRequestPage() {
               <div className="portal-form-actions">
                 <BlockedAction
                   blocked={!saving && (!title.trim() || !projectId || !serviceId || !assigneeUserId || !services.length)}
-                  reason={!services.length ? 'Add a service to this project before you can request a change.' : !projectId ? 'Choose a project to continue.' : !serviceId ? 'Choose a service to continue.' : !assigneeUserId ? 'Choose who the change is assigned to.' : !title.trim() ? 'Add a title to continue.' : ''}
+                  reason={!services.length ? 'Add a service to this project before you can request a change.' : !projectId ? 'Choose a project to continue.' : !serviceId ? 'Choose a service to continue.' : !assigneeUserId ? 'Choose an assigned person to continue.' : !title.trim() ? 'Add a title to continue.' : ''}
                 >
                 <button type="submit" className="btn btn-primary" disabled={saving || !title.trim() || !projectId || !serviceId || !assigneeUserId || !services.length} title={!services.length ? 'Add a service to this project before you can request a change.' : !projectId ? 'Choose a project to continue.' : undefined}>
                   {saving ? 'Creating...' : 'Create change request'}
                 </button>
                 </BlockedAction>
-                <Link href={scopeListHref('/changes', router.query)} className="btn btn-secondary">Cancel</Link>
+                <Link href={exitHref} className="btn btn-secondary">Cancel</Link>
               </div>
             </form>
           )}

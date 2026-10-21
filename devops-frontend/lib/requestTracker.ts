@@ -50,7 +50,7 @@ export type ResourceVerification = {
   href?: string;
 };
 
-const NOT_RECORDED = 'Verification not recorded';
+const NOT_RECORDED = 'Not recorded';
 
 function resourceVerification(input: TrackerInput): ResourceVerification {
   const resourceId = clean(input.resourceId);
@@ -64,7 +64,7 @@ function resourceVerification(input: TrackerInput): ResourceVerification {
     resourceId: resourceId || NOT_RECORDED,
     check: check || NOT_RECORDED,
     result: recorded ? result : NOT_RECORDED,
-    at: at || NOT_RECORDED,
+    at: at || 'Unknown',
     href: recorded && href ? href : undefined,
   };
 }
@@ -79,11 +79,31 @@ function clean(value?: string): string {
   return (value || '').trim();
 }
 
+const ACTION_NAMES: Record<string, string> = {
+  request_approve: 'Approved the request',
+  request_reject: 'Rejected the request',
+  request_promote: 'Opened the next-environment request',
+  request_ci_update: 'Recorded a pipeline update',
+  request_completed_by_pipeline: 'Pipeline marked the request complete',
+  request_verification_missing: 'Withheld completion; resource verification is missing',
+  request_incident_close: 'Closed the incident',
+  request_incident_cancel: 'Cancelled the incident',
+  request_incident_update: 'Updated the incident',
+  request_incident_upsert: 'Saved the incident',
+  deployment_gate_approve: 'Approved the promotion gate',
+  deployment_gate_revoke: 'Revoked the promotion gate',
+  access_file_requested: 'Requested the access file',
+  provisioned: 'Recorded the access grant',
+  access_request_closed: 'Closed the access request',
+  rejected: 'Rejected the access request',
+  evaluated: 'Checked the access request',
+};
+
 export function publicDetail(value?: string): string {
   const text = clean(value);
   if (!text) return '';
   if (/password|secret|token|bearer|\beyJ/i.test(text)) return 'Details withheld.';
-  return text.replaceAll('_', ' ');
+  return ACTION_NAMES[text] || text.replaceAll('_', ' ');
 }
 
 export function dedupeActivity<T extends { id?: number; action: string; details?: string; created_at?: string }>(items: T[]): T[] {

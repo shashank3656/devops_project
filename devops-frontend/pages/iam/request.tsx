@@ -6,7 +6,10 @@ import IamFrame from '../../components/IamFrame';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { permissionsForService, serviceLabel, servicesForCloud } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
+import { expireSession } from '../../lib/sessionExpiry';
 import { saveSubmissionResult } from '../../lib/submissionResult';
+import { forgetAttempt, rememberAttempt } from '../../lib/submitAttempt';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
 
 type Team = { id: string; name: string };
@@ -22,6 +25,7 @@ type CatalogProject = { id: number; name: string; code?: string; environments?: 
 type Evaluation = { evaluationId?: string; decision?: string; risk?: string; roleName?: string; reason?: string; warnings?: string[] };
 
 const MAX_MINUTES = 90 * 24 * 60;
+const IAM_ATTEMPT_KEY = 'opstrellis-iam-attempt';
 
 function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
@@ -52,7 +56,7 @@ export default function IamRequestPage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
-  const [idempotencyKey] = useState(() => `iam-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const { allowLeave } = useUnsavedChanges(Boolean(projectId || principalId || services.length || justification.trim() || startsAt || endsAt));
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
@@ -143,7 +147,19 @@ export default function IamRequestPage() {
     const timing = windowError();
     if (!principalId || !environment || !projectId || !accountId || services.length === 0 || permissions.length === 0 || timing || (cloudKey !== 'gcp' && !cloudMember.trim())) {
       const message = timing || `Choose the person, project, environment, ${accountLabel.toLowerCase()}, a service, and a permission.`;
-      const field = !projectId ? 'iam-project' : !environment ? 'iam-env' : !services.length ? 'iam-service-search' : 'iam-start';
+      const field = !principalId
+        ? 'iam-principal'
+        : !projectId
+          ? 'iam-project'
+          : !environment
+            ? 'iam-env'
+            : !accountId
+              ? 'iam-account'
+              : !services.length
+                ? 'iam-service-search'
+                : timing
+                  ? 'iam-end'
+                  : 'iam-start';
       document.getElementById(field)?.focus();
       setError(message);
       return;
@@ -173,12 +189,17 @@ export default function IamRequestPage() {
       justification: justification.trim(),
       cloudMember: cloudKey === 'gcp' ? '' : cloudMember.trim(),
     };
+    const attemptKey = rememberAttempt(IAM_ATTEMPT_KEY, JSON.stringify(payload));
     try {
       const reviewed = await fetch(`${apiUrl}/api/devops/iam/access-requests/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...sessionAuthHeaders() },
         body: JSON.stringify(payload),
       });
+      if (reviewed.status === 401 || reviewed.status === 403) {
+        expireSession();
+        return;
+      }
       const evaluation = await reviewed.json().catch(() => ({})) as Evaluation;
       if (!reviewed.ok || !evaluation.evaluationId) {
         setError(evaluation.reason || 'The request could not be checked.');
@@ -190,15 +211,21 @@ export default function IamRequestPage() {
       }
       const created = await fetch(`${apiUrl}/api/devops/iam/access-requests`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey, ...sessionAuthHeaders() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': attemptKey, ...sessionAuthHeaders() },
         body: JSON.stringify({ evaluationId: evaluation.evaluationId }),
       });
+      if (created.status === 401 || created.status === 403) {
+        expireSession();
+        return;
+      }
       const body = await created.json().catch(() => ({}));
       if (!created.ok) {
         setError(body?.error || 'The access request was not raised.');
         return;
       }
       const requestId = String(body?.id || body?.request_id || evaluation.evaluationId || '');
+      forgetAttempt(IAM_ATTEMPT_KEY);
+      allowLeave();
       saveSubmissionResult({
         kind: 'access request',
         id: requestId,

@@ -406,6 +406,10 @@ export default function EditIncidentPage() {
       clearSessionAndRedirect();
       return;
     }
+    if (action === 'close' && !statusNote.trim()) {
+      setError('Recovery notes are required to close this incident.');
+      return;
+    }
     setFinishing(action);
     setError('');
     setNotice('');
@@ -532,7 +536,7 @@ export default function EditIncidentPage() {
                 </label>
                 <label className="label">
                   Assignee
-                  <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId}>
+                  <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId} aria-describedby="incident-assignee-hint">
                     <option value="">Unassigned</option>
                     {selectedTeamMembers.map((member) => (
                       <option key={member.id} value={member.user_id}>
@@ -540,6 +544,7 @@ export default function EditIncidentPage() {
                       </option>
                     ))}
                   </select>
+                  <small id="incident-assignee-hint">Assignment names an owner. It is not acknowledgement.</small>
                 </label>
                 <label className="label">
                   Caller

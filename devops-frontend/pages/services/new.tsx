@@ -215,7 +215,7 @@ export default function NewServiceMapPage() {
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
             <fieldset className="form-section">
               <legend className="form-section__title">Basics</legend>
-              <p className="form-section__copy">An active service needs a project. Without one, Save draft keeps it incomplete. Owner team stays optional.</p>
+              <p className="form-section__copy">An active service needs a project. Without one, Save draft keeps it incomplete. Service owner team stays optional and is separate from the project team.</p>
               <div className="portal-form-grid">
                 <label className="label">
                   Service<span className="form-req" aria-hidden="true"> *</span>
@@ -242,7 +242,7 @@ export default function NewServiceMapPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Owner team
+                  Service owner team
                   <select className="input" value={team} onChange={(e) => setTeam(e.target.value)} disabled={teams.length === 0}>
                     <option value="">{teams.length ? 'Select an owner team' : 'No teams'}</option>
                     {teams.map((item) => (

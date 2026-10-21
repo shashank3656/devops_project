@@ -343,7 +343,7 @@ export default function ServiceMapPage() {
               <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or repository" />
             </label>
             <label>
-              Owner team
+              Service owner team
               <select className="input" value={ownerTeamId} onChange={(event) => setOwnerTeamId(event.target.value)}>
                 <option value="">{teams.length ? 'All teams' : 'No teams'}</option>
                 {teams.map((team) => (

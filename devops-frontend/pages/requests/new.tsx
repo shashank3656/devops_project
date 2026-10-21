@@ -74,12 +74,15 @@ export default function NewRequestPage() {
     try {
       const saved = JSON.parse(raw) as { projectId?: string; cloud?: string; serviceId?: string; env?: string; priority?: string; dueDate?: string; comment?: string; team?: string };
       if (saved.team) setTeam(saved.team);
-      if (saved.projectId) setProjectId(saved.projectId);
-      if (saved.cloud) setCloud(saved.cloud);
-      if (saved.serviceId) setServiceId(saved.serviceId);
-      if (saved.env) {
-        setEnv(saved.env);
-        envLocked.current = true;
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get('project_id') && !params.get('environment') && !params.get('service') && !params.get('service_id') && !params.get('cloud')) {
+        if (saved.projectId) setProjectId(saved.projectId);
+        if (saved.cloud) setCloud(saved.cloud);
+        if (saved.serviceId) setServiceId(saved.serviceId);
+        if (saved.env) {
+          setEnv(saved.env);
+          envLocked.current = true;
+        }
       }
       if (saved.priority) setPriority(saved.priority);
       if (saved.dueDate) setDueDate(saved.dueDate);
@@ -145,14 +148,21 @@ export default function NewRequestPage() {
 
   const router = useRouter();
   useEffect(() => {
-    if (!router.isReady || restoredDraft.current) return;
+    if (!router.isReady) return;
     const projectQuery = router.query.project_id;
     const environmentQuery = router.query.environment;
-    const nextProject = String(Array.isArray(projectQuery) ? projectQuery[0] : projectQuery || readWorkspaceScope().projectId || '');
-    const nextEnvironment = String(Array.isArray(environmentQuery) ? environmentQuery[0] : environmentQuery || readWorkspaceScope().environment || '');
+    const nextProject = String(Array.isArray(projectQuery) ? projectQuery[0] : projectQuery || '');
+    const nextEnvironment = String(Array.isArray(environmentQuery) ? environmentQuery[0] : environmentQuery || '');
     if (nextProject) setProjectId(nextProject);
     if (nextEnvironment) {
       setEnv(nextEnvironment);
+      envLocked.current = true;
+    }
+    if (nextProject || nextEnvironment || restoredDraft.current) return;
+    const scope = readWorkspaceScope();
+    if (scope.projectId) setProjectId(scope.projectId);
+    if (scope.environment) {
+      setEnv(scope.environment);
       envLocked.current = true;
     }
   }, [router.isReady, router.query.project_id, router.query.environment]);

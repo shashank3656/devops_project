@@ -1293,7 +1293,7 @@ func buildK8sClusterItems(payload *k8sDashboardResponse) []k8sClusterListItem {
 					row.HealthStatus = "Needs attention"
 				}
 			case "healthy", "ready", "available", "running":
-				if row.HealthStatus == "Unknown" {
+				if row.HealthStatus == "Unknown" && row.HasAuthCredential && !row.UpdatedAt.IsZero() {
 					row.HealthStatus = "Healthy"
 				}
 			}

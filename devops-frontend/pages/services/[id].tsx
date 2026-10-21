@@ -32,6 +32,7 @@ interface ProjectOption {
   name: string;
   code: string;
   environments: string[];
+  owner_team?: string;
 }
 
 interface OwnerTeam {
@@ -133,6 +134,29 @@ export default function ServiceDetailPage() {
   }, [apiUrl, resourceId]);
 
   useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    fetch(`${apiUrl}/api/devops/projects`, { headers })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((projectsData: { projects?: unknown }) => {
+        const list = Array.isArray(projectsData?.projects) ? projectsData.projects : [];
+        setProjects(
+          list
+            .map((entry: { id?: number; name?: string; code?: string; environments?: string[]; owner_team?: string }) => ({
+              id: typeof entry.id === 'number' ? entry.id : 0,
+              name: entry.name || '',
+              code: entry.code || '',
+              environments: Array.isArray(entry.environments) ? entry.environments.map((value) => String(value)).filter(Boolean) : [],
+              owner_team: entry.owner_team || '',
+            }))
+            .filter((entry: ProjectOption) => entry.id > 0),
+        );
+      })
+      .catch(() => undefined);
+  }, [apiUrl]);
+
+  useEffect(() => {
     if (!editing) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
@@ -140,22 +164,10 @@ export default function ServiceDetailPage() {
     Promise.all([
       fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
       fetch(`${apiUrl}/api/devops/project-options`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
-      fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
-    ]).then(([mine, options, projectsData]: [{ teams?: unknown; owner_teams?: unknown }, { teams?: unknown; owner_teams?: unknown }, { projects?: unknown }]) => {
+    ]).then(([mine, options]: [{ teams?: unknown; owner_teams?: unknown }, { teams?: unknown; owner_teams?: unknown }]) => {
       const byId = new Map<number, OwnerTeam>();
       [...readTeams(mine), ...readTeams(options)].forEach((entry) => byId.set(entry.id, entry));
       setTeams([...byId.values()].sort((left, right) => left.name.localeCompare(right.name)));
-      const list = Array.isArray(projectsData?.projects) ? projectsData.projects : [];
-      setProjects(
-        list
-          .map((entry: { id?: number; name?: string; code?: string; environments?: string[] }) => ({
-            id: typeof entry.id === 'number' ? entry.id : 0,
-            name: entry.name || '',
-            code: entry.code || '',
-            environments: Array.isArray(entry.environments) ? entry.environments.map((value) => String(value)).filter(Boolean) : [],
-          }))
-          .filter((entry: ProjectOption) => entry.id > 0),
-      );
     }).catch(() => undefined);
   }, [apiUrl, editing]);
 
@@ -268,7 +280,7 @@ export default function ServiceDetailPage() {
         {item && !editing ? (
           <>
             {(!item.repo.trim() || !(item.team || '').trim() || !(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql)) ? (
-              <p className="ops-note"><strong>Setup incomplete</strong><span>Repository, owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
+              <p className="ops-note"><strong>Setup incomplete</strong><span>Repository, service owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
             ) : null}
             <div className="ops-catalogue">
               <section className="ops-service">
@@ -276,7 +288,9 @@ export default function ServiceDetailPage() {
                 <dl>
                   <dt>Project</dt><dd>{known(item.project_name)}</dd>
                   <dt>Environment</dt><dd>{known(item.environment)}</dd>
-                  <dt>Owner team</dt>
+                  <dt>Project team</dt>
+                  <dd>{(projects.find((project) => project.id === item.project_id)?.owner_team || '').trim() || 'Not assigned'}</dd>
+                  <dt>Service owner team</dt>
                   <dd>
                     {(item.team || '').trim() ? item.team : 'Not assigned'}
                     {!(item.team || '').trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('team')}>Assign owner</button> : null}
@@ -348,9 +362,9 @@ export default function ServiceDetailPage() {
                 </select>
               </label>
               <label className="label">
-                Owner team
+                Service owner team
                 <select id="service-team" className="input" value={team} onChange={(event) => setTeam(event.target.value)} disabled={teams.length === 0}>
-                  <option value="">{teams.length ? 'Select an owner team' : 'No teams'}</option>
+                  <option value="">{teams.length ? 'Select a service owner team' : 'No teams'}</option>
                   {teams.map((entry) => (
                     <option key={entry.id} value={entry.name}>{entry.name}</option>
                   ))}

@@ -348,17 +348,28 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 .devops-sidebar-new__sublink {
   display: block;
   margin-bottom: 2px;
-  padding: 10px 0;
-  border-radius: 0;
-  color: #648fbc;
+  padding: 10px 8px;
+  border-radius: 8px;
+  color: #e7e9ef;
   font-size: 13px;
   text-decoration: none;
   transition: color var(--transition), background var(--transition);
 }
-.devops-sidebar-new__sublink:hover,
-.devops-sidebar-new__sublink--active {
-  background: transparent;
-  color: var(--color-primary);
+.devops-sidebar-new__sublink:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f7fc;
+  text-decoration: none;
+}
+.devops-sidebar-new__sublink:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+  color: #f5f7fc;
+}
+.devops-sidebar-new__sublink--active,
+.devops-sidebar-new__sublink--active:hover,
+.devops-sidebar-new__sublink--active:focus-visible {
+  background: #6d4aff;
+  color: #f5f7fc;
   text-decoration: none;
 }
 
@@ -9204,16 +9215,29 @@ body {
 .devops-sidebar-new__sublink {
   display: block;
   margin-bottom: 2px;
-  padding: 8px 0;
-  color: #8fb8df;
+  padding: 8px;
+  color: #e7e9ef;
   font-size: 13px;
 }
 
-.devops-sidebar-new__sublink:hover,
-.devops-sidebar-new__sublink--active {
-  background: transparent;
+.devops-sidebar-new__sublink:hover {
+  background: rgba(255, 255, 255, 0.06);
   border: 0;
-  color: #f8fafc;
+  color: #f5f7fc;
+}
+
+.devops-sidebar-new__sublink:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+  color: #f5f7fc;
+}
+
+.devops-sidebar-new__sublink--active,
+.devops-sidebar-new__sublink--active:hover,
+.devops-sidebar-new__sublink--active:focus-visible {
+  background: #6d4aff;
+  border: 0;
+  color: #f5f7fc;
 }
 
 .devops-sidebar-new__section-toggle,

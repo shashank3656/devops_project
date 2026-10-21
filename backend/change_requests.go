@@ -681,6 +681,12 @@ func prepareManualChange(payload parsedChangeWebhook, author string) (parsedChan
 	if payload.Title == "" {
 		return payload, fmt.Errorf("title is required")
 	}
+	if payload.Impact == "" {
+		return payload, fmt.Errorf("impact is required")
+	}
+	if payload.BackoutPlan == "" {
+		return payload, fmt.Errorf("rollback plan is required")
+	}
 	if payload.Environment == "" || payload.Environment == "unspecified" {
 		if mapped := lookupServiceMap(payload.Service, payload.Repo, ""); mapped != nil && strings.TrimSpace(mapped.Environment) != "" {
 			payload.Environment = mapped.Environment
@@ -828,6 +834,12 @@ func devopsChangesHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		capture, finish, handled := beginIdempotentPost(w, r, userID, "change")
+		if handled {
+			return
+		}
+		defer finish()
+		w = capture
 		var payload parsedChangeWebhook
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)

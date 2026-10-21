@@ -929,6 +929,10 @@ export default function DevOpsTickets() {
   }, [idFilter, team, projectId, environment, cloud, status, search, requester, sortBy, sortOrder, atRisk, mine, offset, limit]);
 
   useEffect(() => {
+    setOffset(0);
+  }, [idFilter, team, projectId, environment, cloud, status, search, requester, atRisk, mine]);
+
+  useEffect(() => {
     if (!router.isReady) return;
     setProjectId(queryString(router.query, 'project_id'));
     setEnvironment(queryString(router.query, 'environment'));

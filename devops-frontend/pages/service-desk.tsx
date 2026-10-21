@@ -8,6 +8,7 @@ import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { incidentCanFinish } from '../lib/itsm';
 import { loadTicketAudience, ticketVisible } from '../lib/ticketAudience';
+import { expireSession } from '../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -165,6 +166,18 @@ function namedEnvironment(value: string): string {
 function environmentMatches(itemEnvironment: string, selected: string): boolean {
   if (!selected.trim()) return true;
   return namedEnvironment(itemEnvironment) === selected.trim().toLowerCase();
+}
+
+function deskReturnPath(): string {
+  if (typeof window === 'undefined') return '/service-desk';
+  const path = `${window.location.pathname}${window.location.search}`;
+  return path.startsWith('/service-desk') ? path : '/service-desk';
+}
+
+function openTicketHref(item: { kind: DeskKind; href: string }): string {
+  if (item.kind !== 'request') return item.href;
+  const path = item.href.split('?')[0];
+  return `${path}?from=${encodeURIComponent(deskReturnPath())}`;
 }
 
 function storedIsAdmin(): boolean {
@@ -458,7 +471,7 @@ export default function ServiceDeskPage() {
             updatedAt: str(row.updated_at),
           });
         };
-        if (historyData.ok) asList(historyData.body?.requests).forEach((row) => pushRequest(row, `/requests/${num(row.id)}?from=${encodeURIComponent('/service-desk')}`));
+        if (historyData.ok) asList(historyData.body?.requests).forEach((row) => pushRequest(row, `/requests/${num(row.id)}`));
         if (queueData.ok) asList(queueData.body?.requests || queueData.body?.tickets).forEach((row) => pushRequest(row, `/tickets?id=${num(row.id)}`));
         requestRows.forEach((item) => next.push(item));
         if (!historyData.ok && !queueData.ok) {
@@ -526,10 +539,11 @@ export default function ServiceDeskPage() {
     const nextScope = `${scopeProject}|${scopeEnvironment}`;
     if (scopeWatch.current === nextScope || loading) return;
     scopeWatch.current = nextScope;
+    setCheckedKeys([]);
     if (!selectedKey || selected || !items.some((item) => item.key === selectedKey)) return;
     const rowId = `sd-row-${selectedKey.replace(/[^A-Za-z0-9_-]/g, '-')}`;
     setSelectedKey(null);
-    setBulkNotice('That ticket is outside the current project or environment, so its details closed.');
+    setBulkNotice('That ticket is outside the current project or environment, so its details closed and the page selection was cleared.');
     window.requestAnimationFrame(() => document.getElementById(rowId)?.focus());
   }, [items, loading, scopeEnvironment, scopeProject, selected, selectedKey]);
 
@@ -566,8 +580,17 @@ export default function ServiceDeskPage() {
   const finishIncident = async (ticket: DeskTicket, action: 'close' | 'cancel') => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
-      void router.replace('/login');
+      expireSession();
       return;
+    }
+    let note = '';
+    if (action === 'close') {
+      const recovery = window.prompt('Recovery notes are required to close this incident. Describe what restored service.');
+      if (!recovery || !recovery.trim()) {
+        setError('Close was not sent. Recovery notes are required.');
+        return;
+      }
+      note = recovery.trim();
     }
     setFinishing(ticket.key);
     setError('');
@@ -575,10 +598,10 @@ export default function ServiceDeskPage() {
       const response = await fetch(`${apiUrl}/api/devops/incidents/${ticket.id}/${action}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify(note ? { note } : {}),
       });
       if (response.status === 401) {
-        void router.replace('/login');
+        expireSession();
         return;
       }
       if (!response.ok) {
@@ -706,6 +729,11 @@ export default function ServiceDeskPage() {
 
   const closeCheckedIncidents = async () => {
     if (!closableIncidents.length || bulkBusy) return;
+    const recovery = window.prompt('Recovery notes are required to close these incidents. Describe what restored service.');
+    if (!recovery || !recovery.trim()) {
+      setBulkNotice('Close was not sent. Recovery notes are required.');
+      return;
+    }
     const ok = await confirm({
       title: `Close ${closableIncidents.length} incident${closableIncidents.length === 1 ? '' : 's'}?`,
       message: 'Closed incidents leave the open queue. Other selected tickets are not changed.',
@@ -721,7 +749,7 @@ export default function ServiceDeskPage() {
     if (!ok) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
-      void router.replace('/login');
+      expireSession();
       return;
     }
     setBulkBusy(true);
@@ -732,8 +760,12 @@ export default function ServiceDeskPage() {
         const response = await fetch(`${apiUrl}/api/devops/incidents/${ticket.id}/close`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: '{}',
+          body: JSON.stringify({ note: recovery.trim() }),
         });
+        if (response.status === 401) {
+          expireSession();
+          return;
+        }
         if (response.ok) closed += 1;
       } catch {
         // Counted as not closed below.
@@ -1066,7 +1098,7 @@ export default function ServiceDeskPage() {
               </div>
               <span className={`sd-badge sd-badge--prio-${priorityTone(selected.priority)}`}>{sentence(selected.priority)}</span>
               <div className="sd-inspector__actions">
-                <Link href={selected.href} className="btn btn-primary sd-inspector__cta">
+                <Link href={openTicketHref(selected)} className="btn btn-primary sd-inspector__cta">
                   Open {kindLabel(selected.kind).toLowerCase()}
                 </Link>
                 {selected.kind === 'incident' && incidentCanFinish(selected.status) ? (
