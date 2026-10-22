@@ -9,7 +9,7 @@ OpsTrellis is the control plane for **infrastructure requests**, **approvals**, 
 
 One portal (`devops-frontend`). One Go API. One Postgres record for a request, a Change Request (`CHG…`), an Incident (`INC…`), a Problem, or a Maintenance window (`MNT…`). IAM access requests (`AR-…`) stay in memory until the API restarts.
 
-The display name is **OpsTrellis**. GitHub check IDs still use `infragate/*`.
+The display name is **OpsTrellis**. GitHub check IDs still use `OpsTrellis/*`.
 
 ---
 
@@ -124,11 +124,11 @@ Requesters, operators, managers, and admins share this shell. Grants hide the se
 | Calendar / release notes / change risk | Planned windows and weekly notes from closed CHGs. |
 | Incidents / problems / workspace | Manual pages plus Grafana. A record page, not a form dump. Known error is a checkbox on an existing problem. The first time an incident is major, today’s on-call roster is paged. SEV1/SEV2 still pages the scorecard team. |
 | Health / SLO / Identity | Watch window, baseline vs latest, rollback hint, DORA. Burned SLO writes a deploy freeze. Identity flags static keys, last cloud-role exchange, and OIDC verifies. |
-| Scorecards / Evidence / Policies | Per-service health score, including live-vs-last-CHG drift. 30-day evidence pack. Lightweight Rego deny on CHG and request.json (`infragate/policy`). |
+| Scorecards / Evidence / Policies | Per-service health score, including live-vs-last-CHG drift. 30-day evidence pack. Lightweight Rego deny on CHG and request.json (`OpsTrellis/policy`). |
 | Promotions / freezes / rollback | Env promotion with gates. Each hop writes a CHG. Freeze blocks risky ships. **NF-05:** shared guarded confirm on promote, rollback prepare, K8s day-2, and cloud disable — see [FEATURES.md](./docs/FEATURES.md). |
 | Environment catalog (NF-03) | `/environments` + ScopeBar env names from `GET /api/devops/environment-catalog`. |
 | Operator audit (NF-04) | `/activity` — `GET /api/devops/operator-activity`; ticket/cloud detail embed recent events. |
-| Deploy intel | Onboard repo → open PRs + change brief + `infragate/deploy-intel` check. |
+| Deploy intel | Onboard repo → open PRs + change brief + `OpsTrellis/deploy-intel` check. |
 | GitOps control | Which repo/path gets `request.json`. |
 | Kubernetes workspace (NF-02) | Cluster catalog → scoped workspace (overview + resource tabs); logs/terminal/rollout as drill-down. **Secure connect:** AWS/Azure/GCP IAM or workload identity, server `secret_ref`, encrypted kubeconfig/token — see [CONFIGURATION.md](./docs/CONFIGURATION.md#kubernetes-cluster-connections-devops). |
 | **Cloud workspace** (NF-01 + BRD-07) | **Accounts:** managers onboard AWS/Azure/GCP (trust on API host). **Inventory:** read-only resources by team/account/env/region; account landing + resource detail. Operators read; User/Admin do not browse inventory. See [FEATURES.md](./docs/FEATURES.md). |

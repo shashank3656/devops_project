@@ -62,7 +62,7 @@ If you want to contribute, start here:
 
 ## Project Status
 
-InfraGate is actively evolving. That means:
+OpsTrellis is actively evolving. That means:
 
 - documentation may improve over time
 - operational workflows may continue to expand

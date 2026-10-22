@@ -6092,6 +6092,16 @@ html[data-theme] .portal-page.desk-landing {
   gap: 16px;
 }
 
+.work-page__back {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 10px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 .work-page__head h1 {
   margin: 0;
   font-size: 28px;
@@ -6964,6 +6974,16 @@ html[data-theme] .devops-layout .work-page__head,
   gap: 16px;
 }
 
+html[data-theme] .devops-layout .work-page__back {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 10px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 html[data-theme] .devops-layout .portal-page__eyebrow,
 .ops-kicker {
   display: block;
@@ -7247,6 +7267,17 @@ html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .devops-navbar .ig-
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
+}
+
+html[data-theme] .devops-layout .ig-scope-bar__kicker,
+html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__kicker {
+  order: -1;
+  color: var(--ig-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__facts,
@@ -9790,6 +9821,12 @@ html[data-theme] .devops-layout .ops-crumb__list {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+html[data-theme] .devops-layout .ops-crumb__context {
+  color: var(--ig-muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 html[data-theme] .devops-layout .ops-crumb__list li + li::before {

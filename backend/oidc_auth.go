@@ -684,7 +684,7 @@ func rsaPublicFromJWKS(key jwksKey) (*rsa.PublicKey, error) {
 }
 
 func listStaticKeyFindings() []map[string]any {
-	names := []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "RAILWAY_API_TOKEN", "GITHUB_TOKEN", "GCP_SA_KEY"}
+	names := []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "RAILWAY_TOKEN", "GITHUB_TOKEN", "GCP_SA_KEY"}
 	out := []map[string]any{}
 	for _, name := range names {
 		if strings.TrimSpace(os.Getenv(name)) == "" {

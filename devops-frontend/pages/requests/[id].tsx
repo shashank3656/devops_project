@@ -234,13 +234,14 @@ export default function RequestDetailPage() {
         <div className="work-page">
           <header className="work-page__head">
             <div>
+              <Link href={backHref} className="btn btn-secondary work-page__back">{backLabel}</Link>
               <p className="ops-kicker">Requests</p>
               <p className="ig-cell-meta">
                 {request ? recordReference('REQ', request.id) : 'Request'}
                 {request ? <CopyButton value={recordReference('REQ', request.id)} label="request number" /> : null}
               </p>
               <h1>{request ? (request.service || 'Request') : 'Request'}</h1>
-              <p>{request ? `${statusLabel(request.status)} · ${request.env || 'Unknown'} · Owner ${request.created_by_username || request.team || 'Unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
+              <p>{request ? `${statusLabel(request.status)} · Record environment ${request.env || 'Unknown'} · Owner ${request.created_by_username || request.team || 'Unassigned'} · ${request.project_name || 'No project'}` : 'Open a request from your list.'}</p>
               {tracker ? (
                 <ol className="request-tracker" aria-label="Request progress">
                   {tracker.stages.map((item) => (
@@ -253,7 +254,6 @@ export default function RequestDetailPage() {
                 </ol>
               ) : null}
             </div>
-            <Link href={backHref} className="btn btn-secondary">{backLabel}</Link>
           </header>
           {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
@@ -263,7 +263,7 @@ export default function RequestDetailPage() {
               <section className="portal-surface request-summary">
                 <div className="request-facts">
                   <div><span>Project</span><strong>{request.project_name || request.team || 'No project'}</strong></div>
-                  <div><span>Environment</span><strong>{request.env || 'Unknown'}</strong></div>
+                  <div><span>Record environment</span><strong>{request.env || 'Unknown'}</strong></div>
                   <div><span>Cloud</span><strong>{request.cloud || '—'}</strong></div>
                   <div><span>Priority</span><strong>{requestPriorityName(request.priority)}</strong></div>
                   <div><span>Approval level</span><strong>{approvalLevel(request.priority)}</strong></div>

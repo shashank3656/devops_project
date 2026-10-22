@@ -2,7 +2,7 @@
 
 ## Our Commitment
 
-We want InfraGate to be a respectful, practical, and welcoming project for everyone who uses or contributes to it.
+We want OpsTrellis to be a respectful, practical, and welcoming project for everyone who uses or contributes to it.
 
 That means we aim to make participation safe for people of all backgrounds, experience levels, identities, and communication styles.
 
@@ -49,4 +49,4 @@ For security-sensitive concerns, follow [SECURITY.md](./SECURITY.md) instead of 
 
 ## Project Standard
 
-This document is intentionally short and practical. The goal is simple: keep InfraGate collaborative, useful, and safe for contributors and users.
+This document is intentionally short and practical. The goal is simple: keep OpsTrellis collaborative, useful, and safe for contributors and users.

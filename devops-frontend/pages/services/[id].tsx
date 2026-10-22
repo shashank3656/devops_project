@@ -6,7 +6,7 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import Service360 from '../../components/Service360';
 import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { serviceTicketHref } from '../../lib/scopeHref';
+import { serviceCatalogueBackHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { rememberService } from '../../lib/recentServices';
 
@@ -272,7 +272,7 @@ export default function ServiceDetailPage() {
             {isManager && item && !editing ? (
               <button type="button" className="btn btn-primary" onClick={() => startEdit()}>Edit</button>
             ) : null}
-            <Link href="/services" className="btn btn-secondary">Back to services</Link>
+            <Link href={serviceCatalogueBackHref(router.query, item || undefined)} className="btn btn-secondary">Back to services</Link>
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}

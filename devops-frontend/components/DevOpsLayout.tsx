@@ -24,6 +24,7 @@ import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { expireSession, readAccessDenied, rememberAccessDenied } from '../lib/sessionExpiry';
+import { isRecordDetailPath } from '../lib/scopeHref';
 import { readSubmissionResult, type SubmissionResult } from '../lib/submissionResult';
 import { buildBreadcrumbs } from '../lib/breadcrumbs';
 import {
@@ -399,18 +400,28 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     if (!router.isReady || scopeHydrated.current) return;
     scopeHydrated.current = true;
     const fromQuery = queryToScope(router.query);
+    const recordDetailPage = isRecordDetailPath(router.pathname);
     if (fromQuery.projectId || fromQuery.environment) {
       updateScope(fromQuery);
+      if (recordDetailPage) {
+        const query = { ...router.query };
+        delete query.project_id;
+        delete query.environment;
+        void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+      }
       return;
     }
     const stored = readWorkspaceScope();
+    if (!(stored.projectId || stored.environment)) return;
+    updateScope(stored);
     const folderPage = router.pathname === '/environments' || router.pathname === '/services' || router.pathname === '/on-call' || router.pathname.startsWith('/on-call/');
-    if (!folderPage && (stored.projectId || stored.environment)) {
+    if (!folderPage && !recordDetailPage) {
       void router.replace({ pathname: router.pathname, query: { ...router.query, ...scopeToQuery(stored) } }, undefined, { shallow: true });
     }
   }, [router.isReady]);
 
   const writeScopeQuery = (next: WorkspaceScope) => {
+    if (isRecordDetailPath(router.pathname)) return;
     const query = { ...router.query };
     if (next.projectId) query.project_id = next.projectId;
     else delete query.project_id;
@@ -1000,7 +1011,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               projects={scopeProjects}
               scope={scope}
               catalogEnvironments={catalogEnvironments}
-              showFacts={/^\/(requests|changes|incidents|problems)\/.+/.test(pathname) && !pathname.endsWith('/new')}
+              showFacts={isRecordDetailPath(pathname)}
               onChange={(partial) => {
                 if (sessionStorage.getItem('opstrellis-form-dirty') === '1' && !window.confirm('This page has unsaved work. Changing the project or environment refreshes dependent fields. Continue?')) return;
                 writeScopeQuery(updateScope(partial));
@@ -1215,7 +1226,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             </ol>
           </nav>
           <span className="ops-crumb__context">
-            {crumbProject ? `${typeof crumbProject.name === 'string' ? crumbProject.name : 'Project'} · ${typeof crumbProject.team === 'string' && crumbProject.team ? crumbProject.team : 'Team unknown'} · ${String(typeof crumbProject.cloud === 'string' && crumbProject.cloud ? crumbProject.cloud : 'cloud unknown').toUpperCase()}` : 'All projects'}
+            Workspace: {crumbProject ? `${typeof crumbProject.name === 'string' ? crumbProject.name : 'Project'} · ${typeof crumbProject.team === 'string' && crumbProject.team ? crumbProject.team : 'Team unknown'} · ${String(typeof crumbProject.cloud === 'string' && crumbProject.cloud ? crumbProject.cloud : 'cloud unknown').toUpperCase()}` : 'All projects'}
             {scope.environment ? ` · ${scope.environment}` : ''}
           </span>
         </div>

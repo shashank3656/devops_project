@@ -42,13 +42,13 @@ export default function ScopeBar({
   const isProduction = /^prod/i.test(environmentName.trim());
 
   return (
-    <div className="ig-scope-bar" role="group" aria-label="Workspace scope">
+    <div className="ig-scope-bar" role="group" aria-label="Workspace filter">
       <label className="ig-scope-bar__field">
-        <span className="ig-scope-bar__label">Project {projectLabel}</span>
+        <span className="ig-scope-bar__label">Workspace project {projectLabel}</span>
         <select
           className="ig-scope-bar__control"
           title={projectLabel}
-          aria-label={`Project ${projectLabel}`}
+          aria-label={`Workspace project ${projectLabel}`}
           value={typeof scope?.projectId === 'string' ? scope.projectId : ''}
           onChange={(event) => {
             const projectId = event.target.value;
@@ -67,9 +67,10 @@ export default function ScopeBar({
         </select>
       </label>
       <label className={`ig-scope-bar__field${isProduction ? ' ig-scope-bar__field--prod' : ''}`} data-env={isProduction ? 'production' : undefined}>
-        <span className="ig-scope-bar__label">Environment</span>
+        <span className="ig-scope-bar__label">Workspace environment</span>
         <select
           className="ig-scope-bar__control"
+          aria-label="Workspace environment"
           value={environmentName}
           onChange={(event) => onChange({ environment: event.target.value })}
         >
@@ -86,6 +87,7 @@ export default function ScopeBar({
           Production
         </span>
       ) : null}
+      <span className="ig-scope-bar__kicker">Workspace filter</span>
       {onClear && hasScope ? (
         <button type="button" className="ig-scope-bar__clear" onClick={onClear}>
           Clear
@@ -93,7 +95,7 @@ export default function ScopeBar({
       ) : null}
       {selected ? (
         <p className={`ig-scope-bar__facts${showFacts ? ' is-visible' : ''}`}>
-          Team {typeof selected.team === 'string' && selected.team ? selected.team : 'Unknown'} · Cloud {typeof selected.cloud === 'string' && selected.cloud ? selected.cloud : 'Unknown'} · Environments {selected.environments?.length ? selected.environments.map((item) => String(item)).join(', ') : 'Unknown'}
+          Workspace filter · Team {typeof selected.team === 'string' && selected.team ? selected.team : 'Unknown'} · Cloud {typeof selected.cloud === 'string' && selected.cloud ? selected.cloud : 'Unknown'} · Configured environments {selected.environments?.length ? selected.environments.map((item) => String(item)).join(', ') : 'Unknown'}
         </p>
       ) : null}
     </div>

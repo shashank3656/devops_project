@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { CopyButton, InspectorDrawer } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { rememberService } from '../../lib/recentServices';
+import { serviceDetailHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -243,20 +244,15 @@ export default function ServiceMapPage() {
     });
   }, [environmentFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
 
-  const environmentOptions = useMemo(() => {
+  const configuredEnvironments = useMemo(() => {
     const names = new Set<string>();
     const source = projectFilter ? projects.filter((project) => String(project.id) === projectFilter) : projects;
     source.forEach((project) => project.environments.forEach((name) => {
       const text = name.trim();
       if (text) names.add(text);
     }));
-    items.forEach((item) => {
-      if (projectFilter && String(item.project_id || 0) !== projectFilter) return;
-      const text = item.environment.trim();
-      if (text) names.add(text);
-    });
     return [...names].sort((left, right) => left.localeCompare(right));
-  }, [items, projectFilter, projects]);
+  }, [projectFilter, projects]);
 
   const catalog = useMemo(() => {
     if (!query.trim() && summary.length) {
@@ -278,7 +274,7 @@ export default function ServiceMapPage() {
   const search = (event: FormEvent) => {
     event.preventDefault();
     const first = matches[0];
-    if (query.trim() && first) void router.push(`/services/${first.id}`);
+    if (query.trim() && first) void router.push(serviceDetailHref(first.id, router.query));
   };
 
   const clearFilters = () => {
@@ -331,9 +327,9 @@ export default function ServiceMapPage() {
             <small>Owner and repository missing</small>
           </article>
           <article className="ops-mini ops-mini--blue">
-            <span>Environments</span>
-            <strong>{loading || error ? 'Unknown' : environmentOptions.length}</strong>
-            <small>{environmentOptions.join(' · ') || 'None listed'}</small>
+            <span>Configured environments</span>
+            <strong>{loading || error ? 'Unknown' : configuredEnvironments.length}</strong>
+            <small>{configuredEnvironments.join(' · ') || 'None listed'}</small>
           </article>
         </section>
         <form className="portal-surface" onSubmit={search}>
@@ -405,11 +401,12 @@ export default function ServiceMapPage() {
             <ul className="svc-tree">
               {visibleProjects.map((project) => {
                 const serviceCount = project.environments.reduce((sum, env) => sum + (env.count || env.services.length), 0);
+                const withServices = project.environments.filter((env) => (env.count || env.services.length) > 0).length;
                 return (
                   <li key={project.key}>
                     <Link className="svc-tree__folder" href={`/services?project_id=${project.id}`}>
                       <span>{project.name}</span>
-                      <small>{project.environments.length} {project.environments.length === 1 ? 'environment' : 'environments'} · {serviceCount} {serviceCount === 1 ? 'service' : 'services'}</small>
+                      <small>{withServices} {withServices === 1 ? 'environment with services' : 'environments with services'} · {serviceCount} {serviceCount === 1 ? 'service' : 'services'}</small>
                     </Link>
                   </li>
                 );
@@ -474,7 +471,7 @@ export default function ServiceMapPage() {
           footer={preview ? (
             <Link
               className="btn btn-primary"
-              href={`/services/${preview.id}`}
+              href={serviceDetailHref(preview.id, router.query)}
               onClick={() => rememberService({ id: preview.id, name: preview.service, project: preview.project_name, environment: preview.environment })}
             >
               Open service

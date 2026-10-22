@@ -277,6 +277,18 @@
   min-width: 0;
 }
 
+.ig-scope-bar__kicker {
+  order: -1;
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--ig-muted, #94a3b8);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .ig-scope-bar__field {
   display: flex;
   flex-direction: column;
