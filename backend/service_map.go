@@ -11,27 +11,36 @@ import (
 )
 
 type serviceMapEntry struct {
-	ID           int    `json:"id"`
-	ProjectID    *int   `json:"project_id,omitempty"`
-	ProjectName  string `json:"project_name,omitempty"`
-	ProjectCode  string `json:"project_code,omitempty"`
-	Service      string `json:"service"`
-	Repo         string `json:"repo"`
-	Environment  string `json:"environment"`
-	GrafanaUID   string `json:"grafana_uid,omitempty"`
-	PromQL       string `json:"promql,omitempty"`
-	DashboardURL string `json:"dashboard_url,omitempty"`
-	MetricsURL   string `json:"metrics_url,omitempty"`
-	Team         string `json:"team,omitempty"`
+	ID              int    `json:"id"`
+	ProjectID       *int   `json:"project_id,omitempty"`
+	ProjectName     string `json:"project_name,omitempty"`
+	ProjectCode     string `json:"project_code,omitempty"`
+	Service         string `json:"service"`
+	Repo            string `json:"repo"`
+	Environment     string `json:"environment"`
+	GrafanaUID      string `json:"grafana_uid,omitempty"`
+	PromQL          string `json:"promql,omitempty"`
+	DashboardURL    string `json:"dashboard_url,omitempty"`
+	MetricsURL      string `json:"metrics_url,omitempty"`
+	Team            string `json:"team,omitempty"`
+	Criticality     string `json:"criticality"`
+	SupportTeam     string `json:"support_team,omitempty"`
+	EscalationRoute string `json:"escalation_route,omitempty"`
+	RunbookURL      string `json:"runbook_url,omitempty"`
+	OpenCritical    int    `json:"open_critical,omitempty"`
+	OpenWarning     int    `json:"open_warning,omitempty"`
 }
+
+const serviceMapSelectCols = `s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
+		       COALESCE(s.environment,''), COALESCE(s.grafana_uid,''), COALESCE(s.promql,''), COALESCE(s.dashboard_url,''), COALESCE(s.metrics_url,''), COALESCE(s.team,''),
+		       COALESCE(NULLIF(s.criticality,''),'unclassified'), COALESCE(s.support_team,''), COALESCE(s.escalation_route,''), COALESCE(s.runbook_url,'')`
 
 func listServiceMap(projectID int, environment, query string) ([]serviceMapEntry, error) {
 	if DB == nil {
 		return []serviceMapEntry{}, nil
 	}
 	sqlQuery := `
-		SELECT s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
-		       COALESCE(s.environment,''), COALESCE(s.grafana_uid,''), COALESCE(s.promql,''), COALESCE(s.dashboard_url,''), COALESCE(s.metrics_url,''), COALESCE(s.team,'')
+		SELECT ` + serviceMapSelectCols + `
 		FROM service_map s
 		LEFT JOIN projects p ON p.id = s.project_id
 	`
@@ -70,7 +79,21 @@ func listServiceMap(projectID int, environment, query string) ([]serviceMapEntry
 		}
 		out = append(out, *item)
 	}
+	attachServiceFindingCounts(out)
 	return out, nil
+}
+
+func attachServiceFindingCounts(items []serviceMapEntry) {
+	ids := make([]int, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	counts := findingCountsForServices(ids)
+	for i := range items {
+		pair := counts[items[i].ID]
+		items[i].OpenCritical = pair[0]
+		items[i].OpenWarning = pair[1]
+	}
 }
 
 func serviceMapConditions(projectID int, environment, query, team string, visible []int, restrict bool) (string, []any) {
@@ -188,8 +211,7 @@ func listServiceMapSummary(projectID int, visible []int, restrict bool) ([]servi
 	}
 	setupWhere, setupArgs := serviceMapConditions(projectID, "", "", "", visible, restrict)
 	setupSQL := `
-		SELECT s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
-		       COALESCE(s.environment,''), COALESCE(s.grafana_uid,''), COALESCE(s.promql,''), COALESCE(s.dashboard_url,''), COALESCE(s.metrics_url,''), COALESCE(s.team,'')
+		SELECT ` + serviceMapSelectCols + `
 		FROM service_map s
 		LEFT JOIN projects p ON p.id = s.project_id` + setupWhere
 	if setupWhere == "" {
@@ -238,8 +260,7 @@ func listServiceMapPage(projectID int, environment, query, team string, visible 
 	pageArgs := append([]any{}, args...)
 	pageArgs = append(pageArgs, limit, offset)
 	rows, cancel, err := queryRowsWithTimeout(`
-		SELECT s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
-		       COALESCE(s.environment,''), COALESCE(s.grafana_uid,''), COALESCE(s.promql,''), COALESCE(s.dashboard_url,''), COALESCE(s.metrics_url,''), COALESCE(s.team,'')
+		SELECT `+serviceMapSelectCols+`
 		FROM service_map s
 		LEFT JOIN projects p ON p.id = s.project_id`+where+fmt.Sprintf(`
 		ORDER BY s.service, s.environment, s.id
@@ -261,6 +282,7 @@ func listServiceMapPage(projectID int, environment, query, team string, visible 
 		}
 		out = append(out, *item)
 	}
+	attachServiceFindingCounts(out)
 	return out, total, nil
 }
 
@@ -269,13 +291,14 @@ func scanServiceMap(scanner interface {
 }) (*serviceMapEntry, error) {
 	var item serviceMapEntry
 	var projectID sql.NullInt64
-	if err := scanner.Scan(&item.ID, &projectID, &item.ProjectName, &item.ProjectCode, &item.Service, &item.Repo, &item.Environment, &item.GrafanaUID, &item.PromQL, &item.DashboardURL, &item.MetricsURL, &item.Team); err != nil {
+	if err := scanner.Scan(&item.ID, &projectID, &item.ProjectName, &item.ProjectCode, &item.Service, &item.Repo, &item.Environment, &item.GrafanaUID, &item.PromQL, &item.DashboardURL, &item.MetricsURL, &item.Team, &item.Criticality, &item.SupportTeam, &item.EscalationRoute, &item.RunbookURL); err != nil {
 		return nil, err
 	}
 	if projectID.Valid {
 		value := int(projectID.Int64)
 		item.ProjectID = &value
 	}
+	item.Criticality = normalizeServiceCriticality(item.Criticality)
 	return &item, nil
 }
 
@@ -332,18 +355,21 @@ func upsertServiceMap(item serviceMapEntry) (*serviceMapEntry, error) {
 	if existingID > 0 {
 		if _, err := execContext(`
 			UPDATE service_map
-			SET repo = $2, grafana_uid = $3, promql = $4, dashboard_url = $5, metrics_url = $6, team = $7, updated_at = CURRENT_TIMESTAMP
+			SET repo = $2, grafana_uid = $3, promql = $4, dashboard_url = $5, metrics_url = $6, team = $7,
+			    criticality = $8, support_team = $9, escalation_route = $10, runbook_url = $11, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
-		`, existingID, item.Repo, item.GrafanaUID, item.PromQL, item.DashboardURL, item.MetricsURL, item.Team); err != nil {
+		`, existingID, item.Repo, item.GrafanaUID, item.PromQL, item.DashboardURL, item.MetricsURL, item.Team,
+			normalizeServiceCriticality(item.Criticality), strings.TrimSpace(item.SupportTeam), strings.TrimSpace(item.EscalationRoute), strings.TrimSpace(item.RunbookURL)); err != nil {
 			return nil, err
 		}
 		return getServiceMapByID(existingID)
 	}
 	err = queryRowContext(`
-		INSERT INTO service_map (project_id, service, repo, environment, grafana_uid, promql, dashboard_url, metrics_url, team)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO service_map (project_id, service, repo, environment, grafana_uid, promql, dashboard_url, metrics_url, team, criticality, support_team, escalation_route, runbook_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id
-	`, projectAny, item.Service, item.Repo, item.Environment, item.GrafanaUID, item.PromQL, item.DashboardURL, item.MetricsURL, item.Team).Scan(&existingID)
+	`, projectAny, item.Service, item.Repo, item.Environment, item.GrafanaUID, item.PromQL, item.DashboardURL, item.MetricsURL, item.Team,
+		normalizeServiceCriticality(item.Criticality), strings.TrimSpace(item.SupportTeam), strings.TrimSpace(item.EscalationRoute), strings.TrimSpace(item.RunbookURL)).Scan(&existingID)
 	if err != nil {
 		return nil, err
 	}
@@ -379,11 +405,25 @@ func updateServiceMapByID(id int, item serviceMapEntry) (*serviceMapEntry, error
 	if item.ProjectID != nil && *item.ProjectID > 0 {
 		projectAny = *item.ProjectID
 	}
+	if item.Criticality == "" {
+		item.Criticality = current.Criticality
+	}
+	if item.SupportTeam == "" {
+		item.SupportTeam = current.SupportTeam
+	}
+	if item.EscalationRoute == "" {
+		item.EscalationRoute = current.EscalationRoute
+	}
+	if item.RunbookURL == "" {
+		item.RunbookURL = current.RunbookURL
+	}
 	if _, err := execContext(`
 		UPDATE service_map
-		SET project_id = $2, service = $3, repo = $4, environment = $5, grafana_uid = $6, promql = $7, dashboard_url = $8, metrics_url = $9, team = $10, updated_at = CURRENT_TIMESTAMP
+		SET project_id = $2, service = $3, repo = $4, environment = $5, grafana_uid = $6, promql = $7, dashboard_url = $8, metrics_url = $9, team = $10,
+		    criticality = $11, support_team = $12, escalation_route = $13, runbook_url = $14, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
-	`, id, projectAny, item.Service, item.Repo, item.Environment, item.GrafanaUID, item.PromQL, item.DashboardURL, item.MetricsURL, item.Team); err != nil {
+	`, id, projectAny, item.Service, item.Repo, item.Environment, item.GrafanaUID, item.PromQL, item.DashboardURL, item.MetricsURL, item.Team,
+		normalizeServiceCriticality(item.Criticality), strings.TrimSpace(item.SupportTeam), strings.TrimSpace(item.EscalationRoute), strings.TrimSpace(item.RunbookURL)); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
 			return nil, fmt.Errorf("a service with that name already exists in this environment")
 		}
@@ -521,9 +561,13 @@ func devopsServiceMapDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, err := strconv.Atoi(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/services/"), "/"))
-	if err != nil || id <= 0 {
+	id, rest, err := parseServiceMonitoringPath(r.URL.Path)
+	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid service id", err)
+		return
+	}
+	if len(rest) > 0 {
+		handleServiceMonitoringRoutes(w, r, userID, id, rest)
 		return
 	}
 	switch r.Method {

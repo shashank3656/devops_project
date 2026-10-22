@@ -4,8 +4,10 @@ import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import Service360 from '../../components/Service360';
+import SreServiceWorkspace, { ServiceClassBadge } from '../../components/SreServiceWorkspace';
 import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { SERVICE_CLASSES } from '../../lib/sreMonitoring';
 import { serviceCatalogueBackHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { rememberService } from '../../lib/recentServices';
@@ -25,6 +27,10 @@ interface ServiceDetail {
   team?: string;
   project_id?: number;
   project_name?: string;
+  criticality?: string;
+  support_team?: string;
+  escalation_route?: string;
+  runbook_url?: string;
 }
 
 interface ProjectOption {
@@ -82,6 +88,10 @@ export default function ServiceDetailPage() {
   const [dashboardURL, setDashboardURL] = useState('');
   const [metricsURL, setMetricsURL] = useState('');
   const [promql, setPromql] = useState('');
+  const [criticality, setCriticality] = useState('unclassified');
+  const [supportTeam, setSupportTeam] = useState('');
+  const [escalationRoute, setEscalationRoute] = useState('');
+  const [runbookURL, setRunbookURL] = useState('');
   const [editFocus, setEditFocus] = useState('');
   useUnsavedChanges(editing && Boolean(item) && (
     service !== (item?.service || '')
@@ -92,6 +102,10 @@ export default function ServiceDetailPage() {
     || dashboardURL !== (item?.dashboard_url || '')
     || metricsURL !== (item?.metrics_url || '')
     || promql !== (item?.promql || '')
+    || criticality !== (item?.criticality || 'unclassified')
+    || supportTeam !== (item?.support_team || '')
+    || escalationRoute !== (item?.escalation_route || '')
+    || runbookURL !== (item?.runbook_url || '')
     || projectId !== (item?.project_id ? String(item.project_id) : '')
   ));
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
@@ -207,6 +221,10 @@ export default function ServiceDetailPage() {
     setDashboardURL(item.dashboard_url || '');
     setMetricsURL(item.metrics_url || '');
     setPromql(item.promql || '');
+    setCriticality(item.criticality || 'unclassified');
+    setSupportTeam(item.support_team || '');
+    setEscalationRoute(item.escalation_route || '');
+    setRunbookURL(item.runbook_url || '');
     setError('');
     setNotice('');
     setEditing(true);
@@ -242,6 +260,10 @@ export default function ServiceDetailPage() {
           dashboard_url: dashboardURL.trim(),
           metrics_url: metricsURL.trim(),
           team: team.trim(),
+          criticality,
+          support_team: supportTeam.trim(),
+          escalation_route: escalationRoute.trim(),
+          runbook_url: runbookURL.trim(),
           project_id: projectId ? Number(projectId) : undefined,
         }),
       });
@@ -267,6 +289,12 @@ export default function ServiceDetailPage() {
           <div>
             <span className="portal-page__eyebrow">Services</span>
             <h1 className="portal-page__title">{editing ? 'Edit service' : known(item?.service)}</h1>
+            {item && !editing ? (
+              <p className="portal-page__subtitle">
+                <ServiceClassBadge value={item.criticality} />
+                <span> · {known(item.team)} · Record environment {known(item.environment)}</span>
+              </p>
+            ) : null}
           </div>
           <div className="portal-page__actions">
             {isManager && item && !editing ? (
@@ -282,53 +310,70 @@ export default function ServiceDetailPage() {
             {(!item.repo.trim() || !(item.team || '').trim() || !(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql)) ? (
               <p className="ops-note"><strong>Setup incomplete</strong><span>Repository, service owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
             ) : null}
-            <div className="ops-catalogue">
-              <section className="ops-service">
-                <h2>Ownership & source</h2>
-                <dl>
-                  <dt>Project</dt><dd>{known(item.project_name)}</dd>
-                  <dt>Environment</dt><dd>{known(item.environment)}</dd>
-                  <dt>Project team</dt>
-                  <dd>{(projects.find((project) => project.id === item.project_id)?.owner_team || '').trim() || 'Not assigned'}</dd>
-                  <dt>Service owner team</dt>
-                  <dd>
-                    {(item.team || '').trim() ? item.team : 'Not assigned'}
-                    {!(item.team || '').trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('team')}>Assign owner</button> : null}
-                  </dd>
-                  <dt>Repository</dt>
-                  <dd>
-                    {item.repo.trim() ? item.repo : 'Not connected'}
-                    {!item.repo.trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('repo')}>Connect repository</button> : null}
-                  </dd>
-                </dl>
-              </section>
-              <section className="ops-service">
-                <h2>Monitoring is not connected</h2>
-                <p>Connect a dashboard or metric source to see health. Missing telemetry is not a healthy result.</p>
-                {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <span>Grafana {known(item.grafana_uid)}</span>}
-                {!(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql) && isManager ? (
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('monitoring')}>Configure monitoring</button>
-                ) : null}
-              </section>
-            </div>
             {sessionToken ? (
-              <Service360
+              <SreServiceWorkspace
                 apiUrl={apiUrl}
                 token={sessionToken}
-                serviceName={item.service}
+                serviceId={item.id}
                 projectId={item.project_id}
                 environment={item.environment}
-                ownerTeam={item.team}
-                repo={item.repo}
+                evidenceUrl={item.dashboard_url || item.metrics_url}
+                isManager={isManager}
                 overview={(
-                  <section className="ops-caught">
-                    <h2>Start work</h2>
-                    <p>Creating a change or incident keeps this project, service, and environment. You can change that scope on the next page.</p>
-                    <div className="portal-page__actions">
-                      <Link href={serviceTicketHref('/changes/new', item)} className="btn btn-primary">Create change</Link>
-                      <Link href={serviceTicketHref('/incidents/new', item)} className="btn btn-secondary">Report incident</Link>
+                  <>
+                    <div className="ops-catalogue">
+                      <section className="ops-service">
+                        <h2>Ownership & source</h2>
+                        <dl>
+                          <dt>Project</dt><dd>{known(item.project_name)}</dd>
+                          <dt>Environment</dt><dd>{known(item.environment)}</dd>
+                          <dt>Project team</dt>
+                          <dd>{(projects.find((project) => project.id === item.project_id)?.owner_team || '').trim() || 'Not assigned'}</dd>
+                          <dt>Criticality</dt>
+                          <dd><ServiceClassBadge value={item.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span></dd>
+                          <dt>Service owner team</dt>
+                          <dd>
+                            {(item.team || '').trim() ? item.team : 'Not assigned'}
+                            {!(item.team || '').trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('team')}>Assign owner</button> : null}
+                          </dd>
+                          <dt>Support team</dt><dd>{(item.support_team || '').trim() || 'Not assigned'}</dd>
+                          <dt>Runbook</dt><dd>{(item.runbook_url || '').trim() || 'Not linked'}</dd>
+                          <dt>Repository</dt>
+                          <dd>
+                            {item.repo.trim() ? item.repo : 'Not connected'}
+                            {!item.repo.trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('repo')}>Connect repository</button> : null}
+                          </dd>
+                        </dl>
+                      </section>
+                      <section className="ops-service">
+                        <h2>Dashboard evidence</h2>
+                        <p>A dashboard URL is evidence, not an executable query. Health stays Unknown until a monitor is evaluated.</p>
+                        {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <span>Grafana {known(item.grafana_uid)}</span>}
+                        {!(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql) && isManager ? (
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('monitoring')}>Link dashboard</button>
+                        ) : null}
+                      </section>
                     </div>
-                  </section>
+                    <Service360
+                    apiUrl={apiUrl}
+                    token={sessionToken}
+                    serviceName={item.service}
+                    projectId={item.project_id}
+                    environment={item.environment}
+                    ownerTeam={item.team}
+                    repo={item.repo}
+                    overview={(
+                      <section className="ops-caught">
+                        <h2>Start work</h2>
+                        <p>Creating a change or incident keeps this project, service, and environment. You can change that scope on the next page.</p>
+                        <div className="portal-page__actions">
+                          <Link href={serviceTicketHref('/changes/new', item)} className="btn btn-primary">Create change</Link>
+                          <Link href={serviceTicketHref('/incidents/new', item)} className="btn btn-secondary">Report incident</Link>
+                        </div>
+                      </section>
+                    )}
+                  />
+                  </>
                 )}
               />
             ) : null}
@@ -361,6 +406,17 @@ export default function ServiceDetailPage() {
                   ))}
                 </select>
               </label>
+              <label className="label">
+                Criticality
+                <select className="input" value={criticality} onChange={(event) => setCriticality(event.target.value)}>
+                  {SERVICE_CLASSES.map((entry) => (
+                    <option key={entry.value} value={entry.value}>{entry.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="label">Support team <span className="onboard-optional">Optional</span><input className="input" value={supportTeam} onChange={(event) => setSupportTeam(event.target.value)} /></label>
+              <label className="label">Escalation route <span className="onboard-optional">Optional</span><input className="input" value={escalationRoute} onChange={(event) => setEscalationRoute(event.target.value)} /></label>
+              <label className="label">Runbook URL <span className="onboard-optional">Optional</span><input className="input" value={runbookURL} onChange={(event) => setRunbookURL(event.target.value)} /></label>
               <label className="label">
                 Service owner team
                 <select id="service-team" className="input" value={team} onChange={(event) => setTeam(event.target.value)} disabled={teams.length === 0}>

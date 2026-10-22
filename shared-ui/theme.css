@@ -10670,3 +10670,298 @@ html[data-theme] .devops-layout :is(input, select, textarea, button, a):focus-vi
     grid-template-columns: 1fr;
   }
 }
+
+.sre-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.sre-workspace__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sre-workspace__mode {
+  margin: 0;
+  color: #58677f;
+  font-size: 13px;
+}
+
+.sre-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid #e7e9f0;
+}
+
+.sre-tabs__tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #17233b;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 8px 12px;
+}
+
+.sre-tabs__tab.is-active {
+  border-bottom-color: #6d4aff;
+  color: #5835db;
+}
+
+.sre-tabs__count {
+  display: inline-flex;
+  margin-left: 8px;
+  min-width: 1.4em;
+  justify-content: center;
+  border-radius: 999px;
+  background: #c4b5fd;
+  color: #17233b;
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.sre-live {
+  margin: 0;
+  color: #58677f;
+}
+
+.sre-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.sre-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #e7e9f0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.sre-card span {
+  color: #58677f;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sre-card strong {
+  color: #17233b;
+  font-size: 22px;
+}
+
+.sre-card small,
+.sre-card p {
+  color: #58677f;
+  margin: 0;
+}
+
+.sre-card.is-healthy { box-shadow: inset 0 0 0 1px #2dd4bf; }
+.sre-card.is-at_risk { box-shadow: inset 0 0 0 1px #c4b5fd; }
+.sre-card.is-breached { box-shadow: inset 0 0 0 1px #6d4aff; }
+.sre-card.is-unknown,
+.sre-card.is-no_traffic,
+.sre-card.is-query_failed,
+.sre-card.is-stale,
+.sre-card.is-disabled { box-shadow: inset 0 0 0 1px #e7e9f0; }
+
+.sre-why {
+  padding: 12px 16px;
+  border: 1px solid #e7e9f0;
+  border-radius: 12px;
+  background: #f5f7fc;
+}
+
+.sre-findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sre-finding {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 1px solid #e7e9f0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.sre-finding.is-critical {
+  background: #fef2f2;
+  border-left: 4px solid #991b1b;
+  color: #991b1b;
+}
+.sre-finding.is-warning {
+  background: #fef9c3;
+  border-left: 4px solid #854d0e;
+  color: #854d0e;
+}
+.sre-finding.is-info {
+  background: #eff6ff;
+  border-left: 4px solid #1e40af;
+  color: #1e40af;
+}
+.sre-finding.is-resolved {
+  background: #ecfdf5;
+  color: #065f46;
+}
+.sre-card.is-healthy { box-shadow: inset 0 0 0 1px #065f46; background: #ecfdf5; }
+.sre-card.is-at_risk { box-shadow: inset 0 0 0 1px #854d0e; background: #fef9c3; }
+.sre-card.is-breached { box-shadow: inset 0 0 0 1px #991b1b; background: #fef2f2; }
+.sre-card.is-query_failed { box-shadow: inset 0 0 0 1px #9a3412; background: #fff7ed; }
+
+.sre-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sre-steps span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f5f7fc;
+  color: #58677f;
+  font-size: 12px;
+  font-weight: 650;
+}
+.sre-steps span.is-active {
+  background: #eee8fb;
+  color: #5835db;
+}
+
+.sre-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+  margin-top: 8px;
+}
+
+.sre-spark i {
+  display: block;
+  width: 8px;
+  border-radius: 2px 2px 0 0;
+  background: #6d4aff;
+}
+
+.sre-class {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f5f7fc;
+  color: #17233b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sre-class--mission_critical { background: #eee8fb; color: #5835db; }
+.sre-class--business_essential { background: #e7f0fb; color: #17233b; }
+.sre-class--business_supporting { background: #e7f6ee; color: #17233b; }
+.sre-class--low_impact { background: #f5f7fc; color: #58677f; }
+
+.sre-monitor-list,
+.sre-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sre-monitor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sre-monitor-form,
+.sre-connector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+html[data-theme='dark'] .sre-workspace__mode,
+html[data-theme='dark'] .sre-live,
+html[data-theme='dark'] .sre-card small,
+html[data-theme='dark'] .sre-card p {
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .sre-tabs {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme='dark'] .sre-tabs__tab,
+html[data-theme='dark'] .sre-card strong,
+html[data-theme='dark'] .sre-class {
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .sre-card,
+html[data-theme='dark'] .sre-finding,
+html[data-theme='dark'] .sre-why {
+  background: #192238;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-theme='dark'] .sre-class {
+  background: #192238;
+}
+
+html[data-theme='dark'] .sre-class--mission_critical {
+  background: #2a2150;
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .sre-finding.is-critical {
+  background: #450a0a;
+  border-left-color: #fecaca;
+  color: #fecaca;
+}
+html[data-theme='dark'] .sre-finding.is-warning {
+  background: #422006;
+  border-left-color: #fef08a;
+  color: #fef08a;
+}
+html[data-theme='dark'] .sre-finding.is-info {
+  background: #172554;
+  border-left-color: #bfdbfe;
+  color: #bfdbfe;
+}
+html[data-theme='dark'] .sre-finding.is-resolved,
+html[data-theme='dark'] .sre-card.is-healthy {
+  background: #022c22;
+  color: #a7f3d0;
+}
+html[data-theme='dark'] .sre-card.is-at_risk {
+  background: #422006;
+  color: #fef08a;
+}
+html[data-theme='dark'] .sre-card.is-breached {
+  background: #450a0a;
+  color: #fecaca;
+}
+
+html[data-theme='dark'] .sre-spark i {
+  background: #c4b5fd;
+}

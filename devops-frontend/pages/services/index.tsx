@@ -5,6 +5,8 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { CopyButton, InspectorDrawer } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { rememberService } from '../../lib/recentServices';
+import { ServiceClassBadge } from '../../components/SreServiceWorkspace';
+import { SERVICE_CLASSES } from '../../lib/sreMonitoring';
 import { serviceDetailHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
@@ -19,6 +21,9 @@ interface ServiceRow {
   grafana_uid?: string;
   team?: string;
   project_name?: string;
+  criticality?: string;
+  open_critical?: number;
+  open_warning?: number;
 }
 
 interface ProjectOption {
@@ -135,6 +140,7 @@ export default function ServiceMapPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [ownerTeamId, setOwnerTeamId] = useState('');
+  const [classFilter, setClassFilter] = useState('');
   const [servicePage, setServicePage] = useState(0);
   const [preview, setPreview] = useState<ServiceRow | null>(null);
   const [filtersReady, setFiltersReady] = useState(false);
@@ -227,7 +233,7 @@ export default function ServiceMapPage() {
       .finally(() => setLoading(false));
   }, [apiUrl, environmentFilter, filtersReady, ownerTeamId, ownerTeamQuery, projectFilter, query, servicePage]);
 
-  const filtering = Boolean(query.trim() || ownerTeamId);
+  const filtering = Boolean(query.trim() || ownerTeamId || classFilter);
   const setupLabel = loading || error || incompleteCount === null
     ? 'Unknown'
     : String(incompleteCount);
@@ -238,11 +244,12 @@ export default function ServiceMapPage() {
       if (projectFilter && String(item.project_id || 0) !== projectFilter) return false;
       if (environmentFilter && label(item.environment).toLowerCase() !== environmentFilter.toLowerCase()) return false;
       if (ownerTeamId && !teamMatches(item.team || '', selectedTeam)) return false;
+      if (classFilter && (item.criticality || 'unclassified') !== classFilter) return false;
       if (!needle) return true;
       const haystack = [item.service, item.repo, item.team, item.project_name, item.environment].join(' ').toLowerCase();
       return haystack.includes(needle);
     });
-  }, [environmentFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
+  }, [classFilter, environmentFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
 
   const configuredEnvironments = useMemo(() => {
     const names = new Set<string>();
@@ -280,6 +287,7 @@ export default function ServiceMapPage() {
   const clearFilters = () => {
     setQuery('');
     setOwnerTeamId('');
+    setClassFilter('');
   };
 
   const currentProject = catalog.find((project) => projectFilter && String(project.id) === projectFilter) || null;
@@ -288,7 +296,7 @@ export default function ServiceMapPage() {
     ? catalog.filter((project) => project.environments.some((env) => env.services.some((service) => teamMatches(service.team || '', selectedTeam))))
     : catalog
   ).filter((project) => project.id > 0);
-  const visibleServices = (currentEnv?.services || []).filter((service) => !ownerTeamId || teamMatches(service.team || '', selectedTeam));
+  const visibleServices = (currentEnv?.services || []).filter((service) => (!ownerTeamId || teamMatches(service.team || '', selectedTeam)) && (!classFilter || (service.criticality || 'unclassified') === classFilter));
   const servicePageSize = 50;
   const serviceTotal = pageTotal || visibleServices.length;
   const servicePageCount = Math.max(1, Math.ceil(serviceTotal / servicePageSize));
@@ -339,6 +347,15 @@ export default function ServiceMapPage() {
               <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or repository" />
             </label>
             <label>
+              Criticality
+              <select className="input" value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
+                <option value="">All classes</option>
+                {SERVICE_CLASSES.map((entry) => (
+                  <option key={entry.value} value={entry.value}>{entry.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
               Service owner team
               <select className="input" value={ownerTeamId} onChange={(event) => setOwnerTeamId(event.target.value)}>
                 <option value="">{teams.length ? 'All teams' : 'No teams'}</option>
@@ -380,7 +397,7 @@ export default function ServiceMapPage() {
                 <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
                   <strong title={item.service}>{item.service || 'Unknown'}</strong>
                   <span>Project: {label(item.project_name || '')} · Environment: {label(item.environment)}</span>
-                  <span>{label(item.team || '')}</span>
+                    <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')} · <ServiceClassBadge value={item.criticality} /></span>
                 </button>
               </li>
             )) : <li className="svc-tree__empty">No services match this search.</li>}
@@ -437,7 +454,7 @@ export default function ServiceMapPage() {
                   <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
                     <strong title={item.service}>{item.service || 'Unknown'}</strong>
                     <span>{item.repo.trim() || 'Repository not connected'}</span>
-                    <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')}</span>
+                    <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')} · <ServiceClassBadge value={item.criticality} />{(item.open_critical || item.open_warning) ? ` · ${item.open_critical || 0} critical / ${item.open_warning || 0} warning` : ''}</span>
                   </button>
                 </li>
               ))}
@@ -469,13 +486,18 @@ export default function ServiceMapPage() {
           subtitle={preview ? [preview.project_name || 'Project unknown', preview.environment || 'Environment unknown'].join(' · ') : undefined}
           headerActions={preview ? <CopyButton value={preview.service} label="service name" /> : null}
           footer={preview ? (
-            <Link
-              className="btn btn-primary"
-              href={serviceDetailHref(preview.id, router.query)}
-              onClick={() => rememberService({ id: preview.id, name: preview.service, project: preview.project_name, environment: preview.environment })}
-            >
-              Open service
-            </Link>
+            <div className="portal-page__actions">
+              {(preview.open_critical || preview.open_warning) ? (
+                <Link className="btn btn-secondary" href={`${serviceDetailHref(preview.id, router.query)}&tab=findings`}>Open findings</Link>
+              ) : null}
+              <Link
+                className="btn btn-primary"
+                href={serviceDetailHref(preview.id, router.query)}
+                onClick={() => rememberService({ id: preview.id, name: preview.service, project: preview.project_name, environment: preview.environment })}
+              >
+                Open service
+              </Link>
+            </div>
           ) : null}
         >
           {preview ? (
@@ -484,6 +506,8 @@ export default function ServiceMapPage() {
               <p>Environment: {preview.environment || 'Unknown'}</p>
               <p>Repository: {preview.repo.trim() || 'Not connected'}</p>
               <p>Owner: {label(preview.team || '') === 'Unknown' ? 'Unassigned' : label(preview.team || '')}</p>
+              <p>Class: <ServiceClassBadge value={preview.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span></p>
+              <p>Open findings: {(preview.open_critical || 0) + (preview.open_warning || 0) ? `${preview.open_critical || 0} critical / ${preview.open_warning || 0} warning` : 'None recorded. That is not proof of health if monitors have not been evaluated.'}</p>
             </div>
           ) : null}
         </InspectorDrawer>

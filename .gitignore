@@ -3,6 +3,7 @@ config/.env
 .env
 .env.local
 .env.*.local
+workers/.env
 
 # Dependencies
 node_modules/

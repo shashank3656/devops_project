@@ -6,6 +6,7 @@ import { saveSubmissionResult } from '../../lib/submissionResult';
 import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { SERVICE_CLASSES } from '../../lib/sreMonitoring';
 import { scopeListHref } from '../../lib/scopeHref';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 
@@ -53,6 +54,7 @@ export default function NewServiceMapPage() {
   const [dashboardURL, setDashboardURL] = useState('');
   const [metricsURL, setMetricsURL] = useState('');
   const [team, setTeam] = useState('');
+  const [criticality, setCriticality] = useState('unclassified');
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
@@ -155,6 +157,7 @@ export default function NewServiceMapPage() {
       dashboard_url: dashboardURL.trim(),
       metrics_url: metricsURL.trim(),
       team: team.trim(),
+      criticality,
       project_id: projectId ? Number(projectId) : undefined,
     };
     try {
@@ -238,6 +241,14 @@ export default function NewServiceMapPage() {
                     <option value="">{projectId ? (projectEnvs.length ? 'Select an environment' : 'No environments on this project') : 'Select a project first'}</option>
                     {projectEnvs.map((name) => (
                       <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="label">
+                  Criticality
+                  <select className="input" value={criticality} onChange={(e) => setCriticality(e.target.value)}>
+                    {SERVICE_CLASSES.map((entry) => (
+                      <option key={entry.value} value={entry.value}>{entry.label}</option>
                     ))}
                   </select>
                 </label>
