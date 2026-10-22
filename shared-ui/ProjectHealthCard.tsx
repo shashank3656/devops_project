@@ -7,7 +7,7 @@ const BAND_LABELS: Record<DoraBand, string> = {
   high: 'High',
   medium: 'Medium',
   low: 'Low',
-  none: 'No data',
+  none: 'Unknown',
 };
 
 const BAND_TONES: Record<DoraBand, string> = {
@@ -147,7 +147,15 @@ export default function ProjectHealthCard({
     );
   }
 
-  const failing = health.scorecard.filter((check) => !check.passed);
+  const checkState = (check: ProjectHealth['scorecard'][number]) => {
+    if (check.state === 'pass' || check.state === 'fail' || check.state === 'unknown') return check.state;
+    return check.passed ? 'pass' : 'fail';
+  };
+  const scoreKnown = health.score_state === 'known';
+  const ordered = [...health.scorecard].sort((left, right) => {
+    const rank = { fail: 0, unknown: 1, pass: 2 };
+    return rank[checkState(left)] - rank[checkState(right)];
+  });
 
   return (
     <section className="ig-health" aria-label="Delivery health">
@@ -174,34 +182,42 @@ export default function ProjectHealthCard({
       <div className="ig-health__scorecard">
         <div className="ig-health__score-head">
           <span className="ig-health__label">Operational scorecard</span>
-          <span className={`ig-health__score ig-health__score--${health.score >= 80 ? 'good' : health.score >= 50 ? 'fair' : 'poor'}`}>
-            {health.score}%
+          <span className={`ig-health__score ig-health__score--${scoreKnown ? (health.score >= 80 ? 'good' : health.score >= 50 ? 'fair' : 'poor') : 'fair'}`}>
+            {scoreKnown ? `${health.score}%` : 'Unknown'}
           </span>
         </div>
-        <div
-          className="ig-health__bar"
-          role="progressbar"
-          aria-label="Scorecard checks passed"
-          aria-valuenow={health.score}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <span style={{ width: `${health.score}%` }} />
-        </div>
+        <p className="ig-health__note">
+          The percentage is known checks only, over the last {health.window_days} days. Missing telemetry stays Unknown and is left out.
+        </p>
+        {scoreKnown ? (
+          <div
+            className="ig-health__bar"
+            role="progressbar"
+            aria-label="Scorecard checks passed"
+            aria-valuenow={health.score}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <span style={{ width: `${health.score}%` }} />
+          </div>
+        ) : null}
         <ul className="ig-health__checks">
-          {[...failing, ...health.scorecard.filter((check) => check.passed)].map((check) => (
-            <li key={check.key} className={`ig-health__check${check.passed ? ' is-passed' : ''}`}>
-              <span className="ig-health__mark" aria-hidden="true">{check.passed ? '✓' : '!'}</span>
-              <div className="ig-health__check-body">
-                <strong>{check.label}</strong>
-                <span>{check.detail}</span>
-              </div>
-              {!check.passed && check.href ? (
-                renderLink ? renderLink(check.href, 'Fix') : <a className="ig-health__fix" href={check.href}>Fix</a>
-              ) : null}
-              <span className="ig-sr-only">{check.passed ? 'Passed' : 'Needs attention'}</span>
-            </li>
-          ))}
+          {ordered.map((check) => {
+            const state = checkState(check);
+            return (
+              <li key={check.key} className={`ig-health__check${state === 'pass' ? ' is-passed' : ''}`}>
+                <span className="ig-health__mark" aria-hidden="true">{state === 'pass' ? '✓' : state === 'unknown' ? '?' : '!'}</span>
+                <div className="ig-health__check-body">
+                  <strong>{check.label}</strong>
+                  <span>{check.detail}</span>
+                </div>
+                {state === 'fail' && check.href ? (
+                  renderLink ? renderLink(check.href, 'Fix') : <a className="ig-health__fix" href={check.href}>Fix</a>
+                ) : null}
+                <span className="ig-sr-only">{state === 'pass' ? 'Passed' : state === 'unknown' ? 'Unknown' : 'Needs attention'}</span>
+              </li>
+            );
+          })}
         </ul>
       </div>
 

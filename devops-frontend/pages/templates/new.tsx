@@ -6,6 +6,7 @@ import Link from 'next/link';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const CLOUDS = ['aws', 'azure', 'gcp'];
@@ -22,6 +23,7 @@ export default function NewDevOpsTemplate() {
   const [config, setConfig] = useState('{}');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { allowLeave } = useUnsavedChanges(Boolean(name.trim() || description.trim() || service.trim() || (config.trim() && config.trim() !== '{}')));
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -72,6 +74,7 @@ export default function NewDevOpsTemplate() {
       }
       const data = asRecord(await res.json().catch(() => ({})));
       if (res.ok && data.template) {
+        allowLeave();
         router.push('/templates?created=1');
         return;
       }
@@ -86,7 +89,7 @@ export default function NewDevOpsTemplate() {
   return (
     <>
       <Head>
-        <title>New template - DevOps</title>
+        <title>New template - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page portal-page--narrow">
@@ -123,10 +126,13 @@ export default function NewDevOpsTemplate() {
             )}
 
             <form onSubmit={handleSubmit} className="portal-stack">
+              <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Basics</legend>
               <div className="portal-field-grid portal-field-grid--two">
                 <div className="form-group">
                   <label className="label" htmlFor="tpl-name">
-                    Name
+                    Name<span className="form-req" aria-hidden="true"> *</span>
                   </label>
                   <input
                     id="tpl-name"
@@ -139,7 +145,7 @@ export default function NewDevOpsTemplate() {
                 </div>
                 <div className="form-group">
                   <label className="label" htmlFor="tpl-service">
-                    Service
+                    Service<span className="form-req" aria-hidden="true"> *</span>
                   </label>
                   <input
                     id="tpl-service"
@@ -154,7 +160,7 @@ export default function NewDevOpsTemplate() {
 
               <div className="form-group">
                 <label className="label" htmlFor="tpl-desc">
-                  Description
+                  Description <span className="onboard-optional">Optional</span>
                 </label>
                 <input
                   id="tpl-desc"
@@ -164,7 +170,10 @@ export default function NewDevOpsTemplate() {
                   placeholder="Short description for users"
                 />
               </div>
+              </fieldset>
 
+              <fieldset className="form-section">
+                <legend className="form-section__title">Defaults</legend>
               <div className="portal-field-grid">
                 <div className="form-group">
                   <label className="label" htmlFor="tpl-cloud">
@@ -201,7 +210,10 @@ export default function NewDevOpsTemplate() {
                   </div>
                 </div>
               </div>
+              </fieldset>
 
+              <details className="onboard-advanced">
+                <summary>Config JSON <span className="onboard-optional">Optional</span></summary>
               <div className="form-group">
                 <label className="label" htmlFor="tpl-config">
                   Config (JSON)
@@ -215,6 +227,7 @@ export default function NewDevOpsTemplate() {
                   placeholder='{"team":"platform","priority":"medium"}'
                 />
               </div>
+              </details>
 
               <div className="portal-form-actions">
                 <button type="submit" className="btn btn-primary" disabled={loading}>

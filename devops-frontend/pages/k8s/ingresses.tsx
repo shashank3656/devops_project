@@ -146,7 +146,7 @@ export default function DevOpsK8sIngressesPage() {
   return (
     <>
       <Head>
-        <title>Ingress - DevOps</title>
+        <title>Ingress - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

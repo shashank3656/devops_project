@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -86,17 +85,21 @@ func ciWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Log the CI event
 	AppendGitHubLog("ci_"+payload.Status, "CI pipeline: "+payload.Status, payload.Details)
 	normalizedStatus := normalizeCIWebhookStatus(payload.Status)
+	recordRequestActivityOnce(req.CreatedBy, req.ID, "request_ci_update", "ci_status="+normalizedStatus)
 	markedCompleted := false
 	if shouldMarkRequestCompletedFromCIStatus(normalizedStatus) && req.Status != "completed" {
-		if err := UpdatePRRequestStatus(req.ID, "completed"); err != nil {
+		if !requestHasVerificationEvidence(req) {
+			recordRequestActivityOnce(req.CreatedBy, req.ID, "request_verification_missing", "completion withheld")
+		} else if err := UpdatePRRequestStatus(req.ID, "completed"); err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to mark request completed", err)
 			return
-		}
-		markedCompleted = true
-		AppendUserActivity(req.CreatedBy, "request_completed_by_pipeline", "pr_request", strconv.Itoa(req.ID), "ci_status="+normalizedStatus)
-		if req.CreatedBy != nil {
-			message := fmt.Sprintf("Request #%d is completed after %s.", req.ID, strings.ReplaceAll(normalizedStatus, "_", " "))
-			_ = InsertUserNotification(*req.CreatedBy, &req.ID, req.ProjectID, "request_completed", message)
+		} else {
+			markedCompleted = true
+			recordRequestActivityOnce(req.CreatedBy, req.ID, "request_completed_by_pipeline", "ci_status="+normalizedStatus)
+			if req.CreatedBy != nil {
+				message := fmt.Sprintf("Request #%d is completed after %s.", req.ID, strings.ReplaceAll(normalizedStatus, "_", " "))
+				_ = InsertUserNotification(*req.CreatedBy, &req.ID, req.ProjectID, "request_completed", message)
+			}
 		}
 	}
 	log.Printf("[CI Webhook] request_id=%d status=%s normalized=%s completed=%t", req.ID, payload.Status, normalizedStatus, markedCompleted)

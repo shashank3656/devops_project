@@ -1,22 +1,24 @@
 import Link from 'next/link';
-import { formatRelativeTime } from './time';
+import RelativeTime from './RelativeTime';
 import type { PipelineStage } from './types';
 
-function stageTone(stage: PipelineStage): 'danger' | 'active' | 'ok' | 'idle' {
+function stageTone(stage: PipelineStage): 'danger' | 'active' | 'ok' | 'idle' | 'unknown' {
   if (stage.blocked) return 'danger';
   if (stage.active) return 'active';
   const status = stage.status.toLowerCase();
-  if (status === 'idle' || status === '') return 'idle';
-  if (status.includes('complete')) return 'ok';
-  if (status.includes('pending') || status.includes('draft')) return 'active';
-  return 'ok';
+  if (status === 'idle') return 'idle';
+  if (status === '' || status === 'unknown') return 'unknown';
+  if (status.includes('complete') || status === 'succeeded' || status === 'success' || status === 'healthy') return 'ok';
+  if (status.includes('pending') || status.includes('draft') || status === 'approved' || status === 'queued') return 'active';
+  return 'unknown';
 }
 
 const TONE_LABELS = {
   danger: 'Blocked',
   active: 'In flight',
-  ok: 'Healthy',
+  ok: 'Succeeded',
   idle: 'Quiet',
+  unknown: 'Unknown',
 };
 
 export default function EnvironmentPipeline({
@@ -56,7 +58,6 @@ export default function EnvironmentPipeline({
     <ol className="ig-home-envs">
       {stages.map((stage) => {
         const tone = stageTone(stage);
-        const when = formatRelativeTime(stage.updated_at);
         const body = (
           <>
             <span className="ig-home-env__head">
@@ -67,7 +68,7 @@ export default function EnvironmentPipeline({
               </span>
             </span>
             <span className="ig-home-env__summary">{stage.summary}</span>
-            <span className="ig-home-env__time">{when ? `updated ${when}` : stage.status}</span>
+            <span className="ig-home-env__time">{stage.updated_at ? <>updated <RelativeTime value={stage.updated_at} /></> : stage.status}</span>
           </>
         );
         return (

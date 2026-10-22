@@ -399,13 +399,21 @@ func devopsProjectRiskPathsHandler(w http.ResponseWriter, r *http.Request, proje
 	}
 	switch r.Method {
 	case http.MethodGet:
-		if _, ok := requireDevopsUser(w, r); !ok {
+		userID, ok := requireDevopsUser(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{"status": "ok", "paths": listProjectRiskPaths(projectID)})
 	case http.MethodPost:
-		if _, ok := requireDevopsManager(w, r); !ok {
+		userID, ok := requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
 		var body struct {
@@ -425,7 +433,11 @@ func devopsProjectRiskPathsHandler(w http.ResponseWriter, r *http.Request, proje
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{"status": "ok", "path": item})
 	case http.MethodDelete:
-		if _, ok := requireDevopsManager(w, r); !ok {
+		userID, ok := requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
 		if err := deleteProjectRiskPath(projectID, pathID); err != nil {

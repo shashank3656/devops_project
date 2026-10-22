@@ -1,6 +1,6 @@
 # Security Policy
 
-Thank you for helping keep InfraGate safe.
+Thank you for helping keep OpsTrellis safe.
 
 ## Reporting a Vulnerability
 
@@ -37,7 +37,7 @@ Important areas to review carefully:
 
 - `backend/` for auth, request handling, secrets, logging, and workflow behavior
 - `.github/workflows/` for CI/CD credentials and deployment flow
-- `helm/infragate/` for secret injection and ingress exposure
+- `helm/OpsTrellis/` for secret injection and ingress exposure
 - frontend portals for unsafe rendering, auth/session handling, and API surface assumptions
 
 ## Supported Security Tooling

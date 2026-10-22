@@ -117,7 +117,7 @@ export default function ViewDevOpsTemplate() {
   return (
     <>
       <Head>
-        <title>View template - DevOps</title>
+        <title>View template - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page portal-page--narrow">

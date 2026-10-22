@@ -38,17 +38,20 @@ type iamAuditEvent struct {
 }
 
 type iamGrant struct {
-	ID             string    `json:"id"`
-	RequestID      string    `json:"requestId"`
-	RequesterID    int       `json:"requesterId"`
-	PrincipalID    string    `json:"principalId"`
-	RoleName       string    `json:"roleName"`
-	RoleID         string    `json:"roleId"`
-	Scope          string    `json:"scope"`
-	Status         string    `json:"status"`
-	AccessNumber   string    `json:"accessNumber,omitempty"`
-	IncidentNumber string    `json:"incidentNumber,omitempty"`
-	GrantedAt      time.Time `json:"grantedAt"`
+	ID                 string    `json:"id"`
+	RequestID          string    `json:"requestId"`
+	RequesterID        int       `json:"requesterId"`
+	PrincipalID        string    `json:"principalId"`
+	RoleName           string    `json:"roleName"`
+	RoleID             string    `json:"roleId"`
+	Scope              string    `json:"scope"`
+	Status             string    `json:"status"`
+	AccessNumber       string    `json:"accessNumber,omitempty"`
+	IncidentNumber     string    `json:"incidentNumber,omitempty"`
+	GrantedAt          time.Time `json:"grantedAt"`
+	ExpiresAt          time.Time `json:"expiresAt,omitempty"`
+	ScheduledStatus    string    `json:"scheduledStatus"`
+	ProviderRevocation string    `json:"providerRevocation"`
 }
 
 type iamStore struct {
@@ -125,13 +128,15 @@ func iamHandler(w http.ResponseWriter, r *http.Request) {
 	case path == "access-grants":
 		cloudAccess.mu.Lock()
 		grants := []iamGrant{}
+		seeAll := r.URL.Query().Get("scope") == "desk" && iamDevopsApprover(userID)
+		now := time.Now().UTC()
 		for _, grant := range cloudAccess.grants {
-			if grant.RequesterID == userID {
-				grants = append(grants, grant)
+			if seeAll || grant.RequesterID == userID {
+				grants = append(grants, classifyIAMGrant(grant, now))
 			}
 		}
 		cloudAccess.mu.Unlock()
-		writeIAM(w, http.StatusOK, map[string]any{"grants": grants})
+		writeIAM(w, http.StatusOK, map[string]any{"grants": grants, "provider_revocation_source": "unknown"})
 	case path == "audit-events":
 		cloudAccess.mu.Lock()
 		events := append([]iamAuditEvent(nil), cloudAccess.audit...)
@@ -388,7 +393,12 @@ func iamDecide(w http.ResponseWriter, r *http.Request, id string, userID int) {
 			ID: newIAMID(), RequestID: item.ID, RequesterID: item.RequesterID,
 			PrincipalID: item.Evaluation.Input.PrincipalID, RoleName: item.Evaluation.RoleName, RoleID: item.Evaluation.RoleID,
 			Scope: item.Evaluation.NormalizedScope, Status: "active", AccessNumber: item.AccessNumber, GrantedAt: item.UpdatedAt,
+			ProviderRevocation: "unknown",
 		}
+		if item.Evaluation.Input.DurationMinutes > 0 {
+			grant.ExpiresAt = item.UpdatedAt.Add(time.Duration(item.Evaluation.Input.DurationMinutes) * time.Minute)
+		}
+		grant = classifyIAMGrant(grant, time.Now().UTC())
 		cloudAccess.grants = append(cloudAccess.grants, grant)
 		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "provisioned", item.ID, item.Evaluation.RoleName))
 		item.Timeline = append(item.Timeline, cloudAccess.addAudit(userID, "access_request_closed", item.ID, item.AccessNumber))
@@ -410,6 +420,23 @@ func closeIAMIncident(id int, status, note string) {
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, id, normalizeIncidentStatus(status), note)
+}
+
+func classifyIAMGrant(grant iamGrant, now time.Time) iamGrant {
+	if grant.ProviderRevocation == "" {
+		grant.ProviderRevocation = "unknown"
+	}
+	switch {
+	case grant.ExpiresAt.IsZero():
+		grant.ScheduledStatus = "review"
+	case !now.Before(grant.ExpiresAt):
+		grant.ScheduledStatus = "expired"
+	case grant.ExpiresAt.Sub(now) <= 24*time.Hour:
+		grant.ScheduledStatus = "expiring"
+	default:
+		grant.ScheduledStatus = "active"
+	}
+	return grant
 }
 
 func iamDevopsApprover(userID int) bool {

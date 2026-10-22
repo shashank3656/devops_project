@@ -1,5 +1,5 @@
-const RETURN_KEY = 'setuops-return';
-const DRAFT_KEY = 'setuops-change-draft';
+const RETURN_KEY = 'opstrellis-return';
+const DRAFT_KEY = 'opstrellis-change-draft';
 
 export function safeReturnPath(value: string): string {
   if (!value.startsWith('/') || value.startsWith('//') || value.startsWith('/login')) return '';

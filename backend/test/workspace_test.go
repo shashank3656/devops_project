@@ -34,7 +34,7 @@ func TestWorkspaceRequestHref(t *testing.T) {
 		{"user", false, "/history?id=7"},
 		{"admin", true, "/approval-center"},
 		{"admin", false, "/requests?id=7"},
-		{"devops", true, "/approval-center"},
+		{"devops", true, "/tickets?status=pending_devops_approval&id=7"},
 		{"devops", false, "/tickets?id=7"},
 	}
 	for _, tc := range cases {
@@ -112,7 +112,7 @@ func TestWorkspaceDeliveryClassification(t *testing.T) {
 }
 
 func TestWorkspaceIncidentHref(t *testing.T) {
-	if got := workspaceIncidentHref(42); got != "/incidents/42" {
+	if got := workspaceIncidentHref(42); got != "/incidents?mine=1" {
 		t.Fatalf("workspaceIncidentHref(42) = %q", got)
 	}
 	if got := workspaceIncidentHref(0); got != "/incidents" {

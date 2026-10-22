@@ -12,6 +12,30 @@ import (
 	"time"
 )
 
+type requestCreateReplay struct {
+	done   bool
+	status int
+	body   []byte
+}
+
+func claimRequestCreate(userID int, key string) (memoKey string, replay requestCreateReplay, claimed bool, unknown bool) {
+	key = strings.TrimSpace(key)
+	if userID <= 0 || !validIdempotencyKey(key) {
+		return "", requestCreateReplay{}, false, false
+	}
+	claim, err := claimDurableIdempotency(userID, "request", key)
+	if err != nil || claim.claimed {
+		if err != nil {
+			return "", requestCreateReplay{}, false, false
+		}
+		return key, requestCreateReplay{}, true, false
+	}
+	if claim.done {
+		return key, requestCreateReplay{done: true, status: claim.status, body: claim.body}, false, false
+	}
+	return key, requestCreateReplay{}, false, claim.unknown
+}
+
 type InfraRequest map[string]interface{}
 
 func corsAllowedOrigins() []string {
@@ -26,6 +50,9 @@ func corsAllowedOrigins() []string {
 			continue
 		}
 		origins = append(origins, part)
+	}
+	if !isProductionRuntime() {
+		origins = append(origins, "http://localhost:3002", "http://127.0.0.1:3002")
 	}
 	return origins
 }
@@ -590,13 +617,38 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedBy:     userIDPtr,
 	}
 	applyRequestBundleEntries(prRequest, serviceBundleEntries)
+	memoKey, replay, claimed, unknown := claimRequestCreate(userID, r.Header.Get("Idempotency-Key"))
+	if memoKey != "" && !claimed {
+		if !replay.done {
+			message := "This attempt is still being saved. Wait, then retry the same submission."
+			if unknown {
+				message = "The first attempt did not confirm a result. It was not submitted again."
+			}
+			writeAPIError(w, r, http.StatusConflict, message, nil)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(replay.status)
+		_, _ = w.Write(replay.body)
+		return
+	}
 	if err := SavePRRequest(prRequest); err != nil {
+		if memoKey != "" {
+			releaseDurableIdempotency(userID, "request", memoKey)
+		}
 		log.Printf("Failed to save request: %v", err)
 		writeAPIError(w, r, http.StatusInternalServerError, "failed to save request", nil)
 		return
 	}
 	applyProjectDefaultLifetimeIfEligible(prRequest.ID, prRequest.ProjectID, prRequest.Env)
 	AppendUserActivity(userIDPtr, "request_create", "pr_request", strconv.Itoa(prRequest.ID), status)
+	if key := catalogueTemplateKey(fmt.Sprint(payload["catalogue_template"])); key != "" {
+		version := strings.TrimSpace(fmt.Sprint(payload["catalogue_version"]))
+		if version == "" || version == "<nil>" {
+			version = "1"
+		}
+		recordRequestActivityOnce(userIDPtr, prRequest.ID, "request_catalogue_template", "template="+key+" version="+version)
+	}
 	if !draft {
 		NotifyRequestRaised(prRequest)
 	}
@@ -610,17 +662,28 @@ func createRequestHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
 	msg := "Request submitted. An admin will approve it and the PR will be created."
 	if draft {
 		msg = "Draft saved. You can edit or submit it from History."
 	}
-	encodeJSON(w, map[string]interface{}{
+	responseBody, err := json.Marshal(map[string]interface{}{
 		"id":      prRequest.ID,
 		"status":  status,
 		"message": msg,
 	})
+	if err != nil {
+		if memoKey != "" {
+			releaseDurableIdempotency(userID, "request", memoKey)
+		}
+		writeAPIError(w, r, http.StatusInternalServerError, "error processing request", nil)
+		return
+	}
+	if memoKey != "" {
+		completeDurableIdempotency(userID, "request", memoKey, http.StatusCreated, responseBody)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(responseBody)
 }
 
 func main() {
@@ -864,6 +927,7 @@ func main() {
 	http.HandleFunc("/api/devops/k8s-terminal-session", devopsK8sTerminalSessionHandler)
 	http.HandleFunc("/api/devops/k8s-terminal-attach", devopsK8sTerminalAttachHandler)
 	http.HandleFunc("/api/devops/k8s-terminal-command", devopsK8sTerminalCommandHandler)
+	http.HandleFunc("/api/devops/runbooks/diagnostic", devopsRunbookDiagnosticHandler)
 	http.HandleFunc("/api/devops/runbooks", devopsRunbooksHandler)
 	http.HandleFunc("/api/devops/runbooks/", devopsRunbookDetailHandler)
 	http.HandleFunc("/api/devops/iam", iamHandler)

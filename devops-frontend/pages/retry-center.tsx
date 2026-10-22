@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
+import { expireSession } from '../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -36,9 +37,7 @@ function normalizeFailures(value: unknown): FailureItem[] {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 export default function DevOpsRetryCenterPage() {
@@ -116,7 +115,7 @@ export default function DevOpsRetryCenterPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Retry Center - DevOps Portal</title>
+        <title>Retry Center - OpsTrellis</title>
       </Head>
       <div className="alert-page">
         <header className="work-page__head">

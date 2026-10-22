@@ -92,7 +92,7 @@ export default function MyTeamsPage() {
   return (
     <>
       <Head>
-        <title>My teams - DevOps</title>
+        <title>My teams - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

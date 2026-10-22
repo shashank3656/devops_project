@@ -3,10 +3,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import ExecutionStage from '../../components/ExecutionStage';
 import {
   buildPortalApiUrl,
   buildChangeDetailActions,
   ChangeDetailPanel,
+  changeScopeIncomplete,
   DeliveryVisibilityCard,
   ResourceContextPanel,
   parsePortalNumericId,
@@ -188,7 +190,7 @@ export default function ChangeDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{item?.change_number || 'Change'} - DevOps</title>
+        <title>{item?.change_number || 'Change'} - OpsTrellis</title>
       </Head>
       <div className="work-page">
         <header className="work-page__head">
@@ -197,9 +199,23 @@ export default function ChangeDetailPage() {
             <h1>{item?.title || (loading ? 'Loading change' : 'Change')}</h1>
             <p>
               {item
-                ? [item.status, item.service, item.environment === 'unspecified' ? '' : item.environment].filter(Boolean).join(' · ')
+                ? [item.status, item.priority || item.risk_level || 'No priority', item.assignee_username ? `Owner ${item.assignee_username}` : 'Owner unassigned', changeScopeIncomplete(item) ? 'Scope incomplete' : (item.project_name || 'No project')].filter(Boolean).join(' · ')
                 : 'Approval, schedule, and implementation for this change.'}
             </p>
+            {item ? (
+              <ExecutionStage
+                status={item.status}
+                recovery={
+                  isManager && item.previous_sha ? (
+                    <button type="button" className="btn btn-secondary" disabled={!!acting} onClick={applyRollback}>
+                      Roll back to {item.previous_sha.slice(0, 7)}
+                    </button>
+                  ) : (
+                    <Link href="/changes/new" className="btn btn-secondary">Start a follow-up change</Link>
+                  )
+                }
+              />
+            ) : null}
           </div>
           <div className="request-actions" style={{ marginTop: 0 }}>
             {item && !finished && isManager && item.previous_sha ? (

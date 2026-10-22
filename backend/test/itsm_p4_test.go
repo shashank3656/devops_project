@@ -115,7 +115,10 @@ func TestPrepareManualChangeRequiresTitle(t *testing.T) {
 	if _, err := prepareManualChange(parsedChangeWebhook{Title: ""}, "ops"); err == nil {
 		t.Fatal("empty title should fail")
 	}
-	got, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover"}, "ops")
+	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Impact: "   ", BackoutPlan: "Revert"}, "ops"); err == nil {
+		t.Fatal("whitespace-only impact should fail")
+	}
+	got, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Impact: "Checkout latency", BackoutPlan: "Revert the tag"}, "ops")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +134,7 @@ func TestPrepareManualChangeEmergencyNeedsIncident(t *testing.T) {
 	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency"}, "ops"); err == nil {
 		t.Fatal("emergency without incident should fail")
 	}
-	got, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency", LinkedIncidentNumber: "INC0000001"}, "ops")
+	got, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency", LinkedIncidentNumber: "INC0000001", Impact: "Payments down", BackoutPlan: "Fail back to previous revision"}, "ops")
 	if err != nil || got.ChangeType != "emergency" {
 		t.Fatalf("linked emergency should pass: %v %#v", err, got)
 	}

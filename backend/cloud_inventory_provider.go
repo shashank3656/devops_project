@@ -9,16 +9,16 @@ import (
 
 // CloudInventoryListFilters are normalized query filters for inventory providers.
 type CloudInventoryListFilters struct {
-	Cloud             string
-	Team              string
-	Account           string
-	Env               string
-	Region            string
-	Search            string
-	Page              int
-	Limit             int
-	ProjectID         int
-	VisibleTeamSlugs  []string
+	Cloud            string
+	Team             string
+	Account          string
+	Env              string
+	Region           string
+	Search           string
+	Page             int
+	Limit            int
+	ProjectID        int
+	VisibleTeamSlugs []string
 }
 
 // CloudInventoryProvider abstracts cloud inventory reads (AWS first; live sync optional).
@@ -123,7 +123,8 @@ func (dbCloudInventoryProvider) List(_ context.Context, filters CloudInventoryLi
 	limitArg := len(args) + 1
 	offsetArg := len(args) + 2
 	listQuery := `
-		SELECT id, team_slug, cloud, account_id, account_name, environment, region, service_type, resource_id, display_name, status, updated_at
+		SELECT id, team_slug, cloud, account_id, account_name, environment, region, service_type, resource_id, display_name, status, updated_at,
+		       COALESCE(purpose, ''), COALESCE(owner_name, ''), expires_at, COALESCE(lifecycle_state, '')
 		FROM cloud_resources WHERE ` + whereSQL + `
 		ORDER BY updated_at DESC, id DESC
 		LIMIT $` + strconv.Itoa(limitArg) + ` OFFSET $` + strconv.Itoa(offsetArg)
@@ -137,12 +138,15 @@ func (dbCloudInventoryProvider) List(_ context.Context, filters CloudInventoryLi
 	items := []cloudResourceRow{}
 	for rows.Next() {
 		var item cloudResourceRow
-		var updated sql.NullTime
-		if err := rows.Scan(&item.ID, &item.TeamSlug, &item.Cloud, &item.AccountID, &item.AccountName, &item.Environment, &item.Region, &item.ServiceType, &item.ResourceID, &item.DisplayName, &item.Status, &updated); err != nil {
+		var updated, expires sql.NullTime
+		if err := rows.Scan(&item.ID, &item.TeamSlug, &item.Cloud, &item.AccountID, &item.AccountName, &item.Environment, &item.Region, &item.ServiceType, &item.ResourceID, &item.DisplayName, &item.Status, &updated, &item.Purpose, &item.OwnerName, &expires, &item.LifecycleState); err != nil {
 			return nil, 0, err
 		}
 		if updated.Valid {
 			item.UpdatedAt = updated.Time.UTC().Format("2006-01-02T15:04:05Z")
+		}
+		if expires.Valid {
+			item.ExpiresAt = expires.Time.UTC().Format("2006-01-02T15:04:05Z")
 		}
 		items = append(items, item)
 	}
@@ -154,16 +158,20 @@ func (dbCloudInventoryProvider) GetByID(_ context.Context, id int) (*cloudResour
 		return nil, sql.ErrConnDone
 	}
 	var item cloudResourceRow
-	var updated sql.NullTime
+	var updated, expires sql.NullTime
 	err := DB.QueryRow(`
-		SELECT id, team_slug, cloud, account_id, account_name, environment, region, service_type, resource_id, display_name, status, updated_at
+		SELECT id, team_slug, cloud, account_id, account_name, environment, region, service_type, resource_id, display_name, status, updated_at,
+		       COALESCE(purpose, ''), COALESCE(owner_name, ''), expires_at, COALESCE(lifecycle_state, '')
 		FROM cloud_resources WHERE id = $1
-	`, id).Scan(&item.ID, &item.TeamSlug, &item.Cloud, &item.AccountID, &item.AccountName, &item.Environment, &item.Region, &item.ServiceType, &item.ResourceID, &item.DisplayName, &item.Status, &updated)
+	`, id).Scan(&item.ID, &item.TeamSlug, &item.Cloud, &item.AccountID, &item.AccountName, &item.Environment, &item.Region, &item.ServiceType, &item.ResourceID, &item.DisplayName, &item.Status, &updated, &item.Purpose, &item.OwnerName, &expires, &item.LifecycleState)
 	if err != nil {
 		return nil, err
 	}
 	if updated.Valid {
 		item.UpdatedAt = updated.Time.UTC().Format("2006-01-02T15:04:05Z")
+	}
+	if expires.Valid {
+		item.ExpiresAt = expires.Time.UTC().Format("2006-01-02T15:04:05Z")
 	}
 	return &item, nil
 }

@@ -6,7 +6,7 @@ export default function ReportsAutomationPage() {
   return (
     <>
       <Head>
-        <title>Reports and automation · SetuOps</title>
+        <title>Reports and automation · OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <ReportDesk />

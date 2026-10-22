@@ -30,14 +30,14 @@ def gql(token: str, query: str, variables: dict) -> dict:
 
 
 def main() -> int:
-    token = os.environ.get("RAILWAY_API_TOKEN", "").strip()
+    token = os.environ.get("RAILWAY_TOKEN", "").strip()
     project_id = os.environ.get("PROJECT_ID", "").strip()
     environment_id = os.environ.get("ENVIRONMENT_ID", "").strip()
     tag = os.environ.get("IMAGE_TAG", "").strip()
     prefixes = json.loads(os.environ.get("IMAGE_PREFIXES", "[]"))
 
     if not token or not project_id or not environment_id or not tag or not prefixes:
-        print("Missing RAILWAY_API_TOKEN, PROJECT_ID, ENVIRONMENT_ID, IMAGE_TAG, or IMAGE_PREFIXES", file=sys.stderr)
+        print("Missing RAILWAY_TOKEN, PROJECT_ID, ENVIRONMENT_ID, IMAGE_TAG, or IMAGE_PREFIXES", file=sys.stderr)
         return 1
 
     services_data = gql(

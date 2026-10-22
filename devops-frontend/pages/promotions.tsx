@@ -2,11 +2,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { useConfirm } from '@infragate/ui';
+import { formatOperationalTime, useConfirm } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { confirmGuardedDay2Action, notifyDay2ActionComplete } from '../lib/guardedDay2Action';
 import { asRecord, getString } from '../lib/payload';
+import { expireSession } from '../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -180,9 +181,7 @@ function normalizePromotions(value: unknown): PromotionItem[] {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
@@ -212,9 +211,7 @@ function gateTone(status?: string): { background: string; color: string } {
 
 function formatDateTime(value?: string | null): string {
   if (!value) return '';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return formatOperationalTime(value, value);
 }
 
 function getPromoteActionLabel(item: PromotionItem, promotingId: number | null): string {
@@ -499,6 +496,33 @@ export default function DevOpsPromotionsPage() {
 
     setPromotingId(item.request_id);
     try {
+      const freshResponse = await fetch(`${apiUrl}/api/devops/promotions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (freshResponse.status === 401 || freshResponse.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      const freshData = asRecord(await freshResponse.json().catch(() => ({})));
+      if (!freshResponse.ok) {
+        throw new Error(getString(freshData.error, 'This promotion could not be rechecked. It was not created.'));
+      }
+      const fresh = normalizePromotions(freshData.promotions).find((candidate) => candidate.request_id === item.request_id);
+      if (!fresh) {
+        setError('This promotion is no longer in the current list. It was not created. Refresh and check the record.');
+        await loadData();
+        return;
+      }
+      if (
+        fresh.status !== item.status ||
+        fresh.environment !== item.environment ||
+        fresh.next_environment !== item.next_environment ||
+        fresh.gate?.status !== item.gate?.status
+      ) {
+        setError(`This promotion changed before it could be applied. It is now ${fresh.status} (${fresh.environment} to ${fresh.next_environment}). The promotion was not created.`);
+        await loadData();
+        return;
+      }
       const response = await fetch(`${apiUrl}/api/devops/promotions/${item.request_id}/promote`, {
         method: 'POST',
         headers: {
@@ -544,7 +568,7 @@ export default function DevOpsPromotionsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Promotion Center - DevOps Portal</title>
+        <title>Promotion Center - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
@@ -580,7 +604,7 @@ export default function DevOpsPromotionsPage() {
           </div>
           {recentMerges.length === 0 ? (
             <p className="portal-surface__subtitle" style={{ margin: 0 }}>
-              No merge analyses recorded yet. Point the GitHub <code>pull_request</code> webhook at your SetuOps API.
+              No merge analyses recorded yet. Point the GitHub <code>pull_request</code> webhook at your OpsTrellis API.
             </p>
           ) : (
             <ul className="ig-policy__findings" style={{ margin: 0 }}>
@@ -758,7 +782,7 @@ export default function DevOpsPromotionsPage() {
                                                 Acknowledge risks: {check.change_brief.headline}
                                               </label>
                                               {ackedHighRisk[item.request_id] ? (
-                                                <textarea
+                                                <textarea aria-label="Exception reasons"
                                                   className="input"
                                                   rows={2}
                                                   style={{ marginTop: 8, width: '100%' }}

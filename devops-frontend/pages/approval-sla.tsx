@@ -107,7 +107,7 @@ export default function DevOpsApprovalSLAPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Approval timing - DevOps Portal</title>
+        <title>Approval timing - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

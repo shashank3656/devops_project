@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import type { ComponentType, ReactNode } from 'react';
+import type { ComponentType, ReactNode, SyntheticEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiUrl } from '../context/ApiUrlContext';
 import {
@@ -23,10 +23,14 @@ import {
 import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
 import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
-import { rememberReturn } from '../lib/returnPath';
+import { expireSession, readAccessDenied, rememberAccessDenied } from '../lib/sessionExpiry';
+import { isRecordDetailPath } from '../lib/scopeHref';
+import { readSubmissionResult, type SubmissionResult } from '../lib/submissionResult';
+import { buildBreadcrumbs } from '../lib/breadcrumbs';
 import {
   CommandPalette,
   MobileTabBar,
+  PortalErrorBoundary,
   SearchTrigger,
   ScopeBar,
   ThemeToggle,
@@ -43,6 +47,7 @@ import {
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
 const SIDEBAR_COLLAPSED_KEY = 'devops-sidebar-collapsed';
+const SIDEBAR_OPEN_KEY = 'opstrellis-sidebar-open';
 const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || '';
 const supportEmailReady = supportEmail.includes('@') && !supportEmail.includes('example');
 
@@ -199,7 +204,7 @@ function formatTime(iso: string): string {
   if (diffMins < 1) return 'Just now';
   if (diffMins < 60) return `${diffMins} min ago`;
   if (diffHours < 24) return `${diffHours} hour(s) ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function DevOpsLayout({ children }: { children: ReactNode }) {
@@ -209,6 +214,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCountKnown, setPendingCountKnown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -224,32 +230,110 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [catalogEnvironments, setCatalogEnvironments] = useState<string[]>([]);
   const { scope, updateScope } = useWorkspaceScope();
   const scopeHydrated = useRef(false);
+  const navStateHydrated = useRef(false);
+  const [navTooltip, setNavTooltip] = useState<{ text: string; top: number; left: number } | null>(null);
   const notifyRef = useRef<HTMLDivElement>(null);
+  const notifyButtonRef = useRef<HTMLButtonElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [keyboardHelp, setKeyboardHelp] = useState('');
+  const [accessNotice, setAccessNotice] = useState('');
+  const [submission, setSubmission] = useState<SubmissionResult | null>(null);
+  const [seenNotifyIds, setSeenNotifyIds] = useState<string[]>([]);
+  const [compactRows, setCompactRows] = useState(false);
   const keyboardHelpTimer = useRef<number | null>(null);
 
   const clearSessionAndRedirect = useCallback(() => {
-    rememberReturn(router.asPath || '');
-    localStorage.removeItem(DEVOPS_TOKEN_KEY);
-    localStorage.removeItem(DEVOPS_USER_KEY);
-    if (typeof window !== 'undefined') {
-      window.location.assign('/login');
-      return;
-    }
-    router.replace('/login');
+    expireSession(router.asPath || '');
   }, [router]);
 
   useEffect(() => {
-    setProfileInitials(getProfileInitials());
+    const stored = window.localStorage.getItem('opstrellis-density');
+    const compact = stored === 'compact';
+    setCompactRows(compact);
+    document.documentElement.dataset.density = compact ? 'compact' : 'comfortable';
   }, []);
+
+  useEffect(() => {
+    const onInvalid = (event: Event) => {
+      const field = event.target;
+      if (!(field instanceof HTMLElement)) return;
+      const form = field.closest('form');
+      if (!form || form.dataset.invalidFocused === '1') return;
+      form.dataset.invalidFocused = '1';
+      field.focus();
+      window.setTimeout(() => {
+        delete form.dataset.invalidFocused;
+      }, 0);
+    };
+    document.addEventListener('invalid', onInvalid, true);
+    return () => document.removeEventListener('invalid', onInvalid, true);
+  }, []);
+
+  useEffect(() => {
+    setProfileInitials(getProfileInitials());
+    setAccessNotice(readAccessDenied());
+    setSubmission(readSubmissionResult());
+    try {
+      const raw = localStorage.getItem('opstrellis-notify-seen');
+      setSeenNotifyIds(raw && /^\d+$/.test(raw) ? [raw] : []);
+    } catch {
+      setSeenNotifyIds([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!notifyOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setNotifyOpen(false);
+      notifyButtonRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [notifyOpen]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    profileMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setProfileOpen(false);
+        profileButtonRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      const items = Array.from(profileMenuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || []);
+      if (!items.length) return;
+      event.preventDefault();
+      const current = items.indexOf(document.activeElement as HTMLElement);
+      const next = event.key === 'ArrowDown' ? (current + 1) % items.length : (current - 1 + items.length) % items.length;
+      items[next].focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [profileOpen]);
 
   useEffect(() => {
     try {
       const c = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
       setSidebarCollapsed(c === 'true');
+      const saved = JSON.parse(sessionStorage.getItem(SIDEBAR_OPEN_KEY) || '{}');
+      if (saved && typeof saved === 'object') {
+        if (saved.groups && typeof saved.groups === 'object') setOpenNavGroups(saved.groups);
+        if (saved.sections && typeof saved.sections === 'object') setOpenSections(saved.sections);
+      }
     } catch (_) {}
+    navStateHydrated.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!navStateHydrated.current) return;
+    try {
+      sessionStorage.setItem(SIDEBAR_OPEN_KEY, JSON.stringify({ groups: openNavGroups, sections: openSections }));
+    } catch (_) {}
+  }, [openNavGroups, openSections]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -316,18 +400,28 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     if (!router.isReady || scopeHydrated.current) return;
     scopeHydrated.current = true;
     const fromQuery = queryToScope(router.query);
+    const recordDetailPage = isRecordDetailPath(router.pathname);
     if (fromQuery.projectId || fromQuery.environment) {
       updateScope(fromQuery);
+      if (recordDetailPage) {
+        const query = { ...router.query };
+        delete query.project_id;
+        delete query.environment;
+        void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+      }
       return;
     }
     const stored = readWorkspaceScope();
+    if (!(stored.projectId || stored.environment)) return;
+    updateScope(stored);
     const folderPage = router.pathname === '/environments' || router.pathname === '/services' || router.pathname === '/on-call' || router.pathname.startsWith('/on-call/');
-    if (!folderPage && (stored.projectId || stored.environment)) {
+    if (!folderPage && !recordDetailPage) {
       void router.replace({ pathname: router.pathname, query: { ...router.query, ...scopeToQuery(stored) } }, undefined, { shallow: true });
     }
   }, [router.isReady]);
 
   const writeScopeQuery = (next: WorkspaceScope) => {
+    if (isRecordDetailPath(router.pathname)) return;
     const query = { ...router.query };
     if (next.projectId) query.project_id = next.projectId;
     else delete query.project_id;
@@ -388,7 +482,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         if (data?.status === 'ok' && typeof data.pending_approval_count === 'number')
           setPendingCount(data.pending_approval_count);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPendingCountKnown(true));
   }, [isManager, apiUrl, clearSessionAndRedirect]);
 
   useEffect(() => {
@@ -425,6 +520,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (notifyOpen) refreshPendingApprovals();
   }, [notifyOpen, refreshPendingApprovals]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem('opstrellis-notify-read') || '';
+    setSeenNotifyIds(stored.split(',').map((id) => id.trim()).filter(Boolean));
+  }, []);
 
   useEffect(() => {
     setNotifyOpen(false);
@@ -523,7 +623,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   const leafIsActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
-    if (href === '/iam' || href === '/service-desk') return pathname === href;
+    if (href === '/iam' || href === '/service-desk' || href === '/portal-access') return pathname === href;
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);
   };
@@ -669,11 +769,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     const next = portalGrants(user);
     if (pathAllowed(pathname, next) || (user.maintenance_approver && (pathname === '/maintenance' || pathname.startsWith('/maintenance/')))) return;
     const dest = homeFor(next);
-    if (pathname !== dest) void router.replace(dest);
+    if (pathname !== dest) {
+      rememberAccessDenied(getPageTitle(pathname));
+      void router.replace(dest);
+    }
   }, [sessionReady, user, pathname, router]);
 
   const pageTitle = getPageTitle(pathname);
   const crumbProject = scopeProjects.find((item) => String(item.id) === scope.projectId);
+  const breadcrumbs = buildBreadcrumbs(pathname, router.isReady ? router.asPath : pathname, PAGE_TITLES);
   const roleLabel = !sessionReady
     ? ''
     : grants.portalAccess
@@ -686,12 +790,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const statusLabel = !sessionReady
     ? 'Checking session'
     : isManager
-    ? pendingCount > 0
+    ? !pendingCountKnown
+      ? 'Checking approvals'
+      : pendingCount > 0
       ? `${pendingCount} pending approvals`
       : 'No pending approvals'
     : 'Active session';
   const getSidebarBadge = (href: string): string | null => {
-    if ((href === '/service-desk' || href === '/tickets') && isManager && pendingCount > 0) {
+    if ((href === '/service-desk' || href === '/tickets') && isManager && pendingCountKnown && pendingCount > 0) {
       return pendingCount > 99 ? '99+' : String(pendingCount);
     }
     return null;
@@ -703,12 +809,25 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     return href === '/k8s' ? k8sNavActive : leafIsActive(href);
   };
 
+  const showNavTooltip = (event: SyntheticEvent<HTMLElement>) => {
+    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-tooltip]');
+    const text = target?.dataset.tooltip;
+    if (!target || !text) {
+      setNavTooltip(null);
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    setNavTooltip({ text, top: rect.top + rect.height / 2, left: rect.right + 10 });
+  };
+
+  const hideNavTooltip = () => setNavTooltip(null);
+
   const renderNavItem = (item: NavItem) => {
     const { href, label, Icon, children } = item;
     const groupActive = itemIsActive(item);
     const badge = getSidebarBadge(href);
     const hasChildren = Boolean(children?.length) && !sidebarCollapsed;
-    const groupOpen = Boolean(openNavGroups[href]);
+    const groupOpen = openNavGroups[href] === undefined ? groupActive : Boolean(openNavGroups[href]);
 
     return (
       <div key={href} className="devops-sidebar-new__expandable">
@@ -722,7 +841,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             }}
             aria-current={leafIsActive(href) ? 'page' : undefined}
             aria-label={sidebarCollapsed ? label : undefined}
-            title={sidebarCollapsed ? label : undefined}
+            data-tooltip={sidebarCollapsed ? label : undefined}
           >
             <Icon className="devops-sidebar-new__icon" />
             {!sidebarCollapsed && <span className="devops-sidebar-new__label">{label}</span>}
@@ -734,7 +853,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               className={`devops-sidebar-new__chevron ${groupOpen ? 'devops-sidebar-new__chevron--open' : ''}`}
               aria-label={groupOpen ? `Collapse ${label}` : `Expand ${label}`}
               aria-expanded={groupOpen}
-              onClick={() => setOpenNavGroups((current) => ({ ...current, [href]: !current[href] }))}
+              onClick={() => setOpenNavGroups((current) => ({ ...current, [href]: !groupOpen }))}
             >
               <IconChevronDown />
             </button>
@@ -772,20 +891,26 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       </a>
       <aside
         className={`devops-sidebar-new ${sidebarCollapsed ? 'devops-sidebar-new--collapsed' : ''} ${mobileMenuOpen ? 'devops-sidebar-new--mobile-open' : ''}`}
+        onMouseOver={sidebarCollapsed ? showNavTooltip : undefined}
+        onFocus={sidebarCollapsed ? showNavTooltip : undefined}
+        onMouseLeave={hideNavTooltip}
+        onBlur={hideNavTooltip}
       >
         <div className="devops-sidebar-new__header">
           <button
             type="button"
             className="devops-sidebar-new__hamburger"
             onClick={toggleSidebar}
-            aria-label="Toggle sidebar"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+            data-tooltip={sidebarCollapsed ? 'Expand sidebar' : undefined}
           >
             <IconMenu />
           </button>
           {!sidebarCollapsed && (
             <Link href="/dashboard" className="devops-sidebar-new__brand">
-              <span className="devops-sidebar-new__brand-mark" aria-hidden>S</span>
-              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">SetuOps</span>
+              <img className="devops-sidebar-new__brand-mark" src="/brand/opstrellis-mark-dark.svg" alt="" aria-hidden width={28} height={28} />
+              <span className="devops-sidebar-new__brand-word devops-sidebar-new__brand-word--primary">OpsTrellis</span>
             </Link>
           )}
         </div>
@@ -815,7 +940,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               : null}
           </nav>
           <div className="devops-sidebar-new__footer">
-            <Link href="/profile" className="devops-sidebar-new__link" onClick={() => setMobileMenuOpen(false)}>
+            <Link
+              href="/profile"
+              className={`devops-sidebar-new__link ${leafIsActive('/profile') ? 'devops-sidebar-new__link--active' : ''}`}
+              onClick={() => setMobileMenuOpen(false)}
+              aria-current={leafIsActive('/profile') ? 'page' : undefined}
+              aria-label={sidebarCollapsed ? 'Settings' : undefined}
+              data-tooltip={sidebarCollapsed ? 'Settings' : undefined}
+            >
               <IconUser className="devops-sidebar-new__icon" />
               {!sidebarCollapsed && <span className="devops-sidebar-new__label">Settings</span>}
             </Link>
@@ -829,18 +961,31 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 setSupportOpen(true);
                 setMobileMenuOpen(false);
               }}
-              title="Help"
+              aria-label={sidebarCollapsed ? 'Help & guides' : undefined}
+              data-tooltip={sidebarCollapsed ? 'Help & guides' : undefined}
             >
               <IconHelpCircle className="devops-sidebar-new__icon" />
               {!sidebarCollapsed && <span className="devops-sidebar-new__label">Help & guides</span>}
             </button>
-            <button type="button" className="devops-sidebar-new__link" onClick={handleLogout}>
+            <button
+              type="button"
+              className="devops-sidebar-new__link"
+              onClick={handleLogout}
+              aria-label={sidebarCollapsed ? 'Log out' : undefined}
+              data-tooltip={sidebarCollapsed ? 'Log out' : undefined}
+            >
               <IconLogout className="devops-sidebar-new__icon" />
-              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Logout</span>}
+              {!sidebarCollapsed && <span className="devops-sidebar-new__label">Log out</span>}
             </button>
           </div>
         </div>
       </aside>
+
+      {sidebarCollapsed && navTooltip ? (
+        <div className="ot-nav-tooltip" role="tooltip" style={{ top: navTooltip.top, left: navTooltip.left }}>
+          {navTooltip.text}
+        </div>
+      ) : null}
 
       {mobileMenuOpen && (
         <div className="devops-sidebar-new-overlay" onClick={() => setMobileMenuOpen(false)} aria-hidden />
@@ -853,28 +998,51 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               type="button"
               className="devops-navbar__menu-btn"
               onClick={() => setMobileMenuOpen((o) => !o)}
-              aria-label="Toggle menu"
+              aria-label={mobileMenuOpen ? 'Close navigation' : 'Open navigation'}
+              aria-expanded={mobileMenuOpen}
             >
               <IconMenu />
             </button>
             <div className="devops-navbar__title-wrap">
-              <span className="devops-navbar__kicker">SetuOps</span>
+              <span className="devops-navbar__kicker">OpsTrellis</span>
               <h1 className="devops-navbar__title">{pageTitle}</h1>
             </div>
             <ScopeBar
               projects={scopeProjects}
               scope={scope}
               catalogEnvironments={catalogEnvironments}
-              onChange={(partial) => writeScopeQuery(updateScope(partial))}
-              onClear={() => writeScopeQuery(updateScope({ projectId: '', environment: '' }))}
+              showFacts={isRecordDetailPath(pathname)}
+              onChange={(partial) => {
+                if (sessionStorage.getItem('opstrellis-form-dirty') === '1' && !window.confirm('This page has unsaved work. Changing the project or environment refreshes dependent fields. Continue?')) return;
+                writeScopeQuery(updateScope(partial));
+              }}
+              onClear={() => {
+                if (sessionStorage.getItem('opstrellis-form-dirty') === '1' && !window.confirm('This page has unsaved work. Clearing the project or environment refreshes dependent fields. Continue?')) return;
+                writeScopeQuery(updateScope({ projectId: '', environment: '' }));
+              }}
             />
-            <span className={`devops-navbar__status-chip ${isManager && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
+            <span className={`devops-navbar__status-chip ${isManager && pendingCountKnown && pendingCount > 0 ? 'devops-navbar__status-chip--alert' : ''}`}>
               {statusLabel}
             </span>
           </div>
           <div className="devops-navbar__right">
             <SearchTrigger placeholder="Search tickets, services, infrastructure, people…" />
             <div className="devops-navbar__actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                aria-pressed={compactRows}
+                title={compactRows ? 'Comfortable rows' : 'Compact rows'}
+                onClick={() => {
+                  const next = !compactRows;
+                  setCompactRows(next);
+                  const value = next ? 'compact' : 'comfortable';
+                  document.documentElement.dataset.density = value;
+                  window.localStorage.setItem('opstrellis-density', value);
+                }}
+              >
+                {compactRows ? 'Compact' : 'Comfortable'}
+              </button>
               <ThemeToggle />
               {isManager && (
                 <div className="devops-navbar__notify-wrap" ref={notifyRef}>
@@ -886,26 +1054,31 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                       setProfileOpen(false);
                       setSupportOpen(false);
                     }}
-                    title={pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
+                    ref={notifyButtonRef}
+                    title={!pendingCountKnown ? 'Checking approvals' : pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
+                    aria-label={!pendingCountKnown ? 'Notifications, checking approvals' : pendingCount > seenNotifyIds.length ? `Notifications, ${Math.max(pendingCount - seenNotifyIds.length, 0)} unread` : pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
                     aria-expanded={notifyOpen}
-                    aria-haspopup="true"
+                    aria-haspopup="dialog"
+                    aria-controls="devops-notify-panel"
                   >
                     <IconBell />
-                    {pendingCount > 0 && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
+                    {pendingCountKnown && pendingCount > seenNotifyIds.length && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
                   </button>
 
                   {notifyOpen && (
-                    <div className="devops-navbar__notify-panel">
+                    <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Pending approvals">
                       <div className="devops-navbar__notify-header">
-                        <h3 className="devops-navbar__notify-title">Pending Approvals</h3>
+                        <h3 className="devops-navbar__notify-title">Action required</h3>
                         <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
                           Close
                         </button>
                       </div>
                       <div className="devops-navbar__notify-summary">
-                        <strong>{pendingCount > 99 ? '99+' : pendingCount}</strong>
+                        <strong>{!pendingCountKnown || pendingApprovalsLoading ? '…' : pendingCount > 99 ? '99+' : pendingCount}</strong>
                         <span>
-                          {pendingCount > 0
+                          {!pendingCountKnown || pendingApprovalsLoading
+                            ? 'Checking approval tickets.'
+                            : pendingCount > 0
                             ? 'Approval work is waiting across projects and release flows.'
                             : 'No approval tickets are waiting right now.'}
                         </span>
@@ -914,10 +1087,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                         <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                           Open tickets
                         </Link>
+                        <Link href="/notification-settings" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                          Notification settings
+                        </Link>
                       </div>
                       <div className="devops-navbar__notify-list">
                         {pendingApprovalsLoading ? (
-                          <p className="devops-navbar__notify-empty">Loading...</p>
+                          <p className="devops-navbar__notify-empty" role="status">Loading approvals…</p>
                         ) : pendingApprovals.length === 0 ? (
                           <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
                         ) : (
@@ -925,10 +1101,18 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                             <Link
                               key={request.id}
                               href={`/tickets?id=${request.id}`}
-                              className="devops-navbar__notify-ticket"
-                              onClick={() => setNotifyOpen(false)}
+                              className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
+                              onClick={() => {
+                                setSeenNotifyIds((current) => {
+                                  if (current.includes(String(request.id))) return current;
+                                  const next = [...current, String(request.id)];
+                                  window.localStorage.setItem('opstrellis-notify-read', next.join(','));
+                                  return next;
+                                });
+                                setNotifyOpen(false);
+                              }}
                             >
-                              <strong>Ticket #{request.id}</strong>
+                              <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
                               {request.project_name ? (
                                 <span>
                                   {request.project_name}
@@ -936,28 +1120,115 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                                 </span>
                               ) : null}
                               <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
-                              <small>{formatTime(request.created_at)}</small>
+                              <small>Waiting for approval · {formatTime(request.created_at)} · Open the ticket to approve or reject it.</small>
                             </Link>
                           ))
                         )}
                       </div>
+                      <p className="devops-navbar__notify-empty">Updates such as status changes stay on the record timeline. This list is only work waiting on you.</p>
                     </div>
                   )}
                 </div>
               )}
             </div>
-            <Link href="/profile" className="devops-navbar__profile-btn" title="Profile settings">
-              <span className="devops-navbar__avatar">{profileInitials}</span>
-              <span className="devops-navbar__profile-copy">
-                <span className="devops-navbar__profile-label">{sessionReady ? user?.username || 'DevOps' : '…'}</span>
-                {roleLabel ? <span className="devops-navbar__role">{roleLabel}</span> : null}
-              </span>
-            </Link>
+            <div className="devops-navbar__profile-wrap" ref={profileRef}>
+              <button
+                type="button"
+                ref={profileButtonRef}
+                className="devops-navbar__profile-btn"
+                onClick={() => {
+                  setProfileOpen((open) => !open);
+                  setNotifyOpen(false);
+                  setSupportOpen(false);
+                }}
+                aria-haspopup="menu"
+                aria-expanded={profileOpen}
+                aria-controls="devops-profile-menu"
+                aria-busy={!sessionReady || undefined}
+                aria-label={sessionReady ? `Account menu for ${user?.username || 'your account'}` : 'Account menu, checking session'}
+              >
+                <span className="devops-navbar__avatar" aria-hidden="true">{sessionReady ? profileInitials : ''}</span>
+                <span className="devops-navbar__profile-copy">
+                  <span className="devops-navbar__profile-label">
+                    {sessionReady ? user?.username || 'Signed in' : <span className="ot-skeleton ot-skeleton--text" />}
+                  </span>
+                  {roleLabel ? <span className="devops-navbar__role">{roleLabel}</span> : null}
+                </span>
+                <svg className="devops-navbar__profile-caret" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              {profileOpen ? (
+                <div className="devops-navbar__profile-menu" id="devops-profile-menu" role="menu" aria-label="Account" ref={profileMenuRef}>
+                  <div className="devops-navbar__profile-head" role="presentation">
+                    <strong>{sessionReady ? user?.username || 'Signed in' : 'Checking session…'}</strong>
+                    <span>{roleLabel || 'Role loading'}</span>
+                  </div>
+                  <Link href="/profile" role="menuitem" className="devops-navbar__profile-item" onClick={() => setProfileOpen(false)}>
+                    Profile settings
+                  </Link>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="devops-navbar__profile-item"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      setSupportOpen(true);
+                    }}
+                  >
+                    Help and support
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="devops-navbar__profile-item devops-navbar__profile-item--danger"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      handleLogout();
+                    }}
+                  >
+                    Log out
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
+        {(accessNotice || submission) ? (
+          <div className="ops-banner-stack">
+            {accessNotice ? (
+              <div className="alert sd-alert" role="status">
+                <span>{accessNotice} is not available for your role. You were returned here. Ask an administrator if you need that page.</span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAccessNotice('')}>Dismiss</button>
+              </div>
+            ) : null}
+            {submission ? (
+              <div className="alert alert-success sd-alert" role="status">
+                <span>{submission.kind} {submission.id} is {submission.status}. {submission.next}</span>
+                {submission.href ? <Link href={submission.href}>Open {submission.kind} {submission.id}</Link> : null}
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSubmission(null)}>Dismiss</button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="ops-crumb">
-          <span>{crumbProject?.name || 'SetuOps'} / {pageTitle}</span>
-          <span>{crumbProject?.team || 'Team'} / {(crumbProject?.cloud || 'cloud').toUpperCase()}</span>
+          <nav aria-label="Breadcrumb">
+            <ol className="ops-crumb__list">
+              {breadcrumbs.map((crumb, index) => (
+                <li key={`${crumb.label}-${index}`}>
+                  {crumb.href ? (
+                    <Link href={crumb.href}>{crumb.label}</Link>
+                  ) : (
+                    <span aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>{crumb.label}</span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </nav>
+          <span className="ops-crumb__context">
+            Workspace: {crumbProject ? `${typeof crumbProject.name === 'string' ? crumbProject.name : 'Project'} · ${typeof crumbProject.team === 'string' && crumbProject.team ? crumbProject.team : 'Team unknown'} · ${String(typeof crumbProject.cloud === 'string' && crumbProject.cloud ? crumbProject.cloud : 'cloud unknown').toUpperCase()}` : 'All projects'}
+            {scope.environment ? ` · ${scope.environment}` : ''}
+          </span>
         </div>
         <main id="main-content" tabIndex={-1} className="devops-main-new ig-page">
           {sessionReady ? null : <p className="v3-muted">Checking session…</p>}
@@ -969,7 +1240,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               </button>
             </div>
           ) : null}
-          {sessionReady ? children : null}
+          {sessionReady ? <PortalErrorBoundary>{children}</PortalErrorBoundary> : null}
         </main>
       </div>
       <MobileTabBar
@@ -1012,7 +1283,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         open={supportOpen}
         initialTab={supportTab}
         onClose={() => setSupportOpen(false)}
-        portalName="DevOps Portal"
+        portalName="OpsTrellis"
         currentPath={pathname}
         currentTitle={pageTitle}
         articles={supportArticles}
@@ -1025,7 +1296,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           ...(supportEmailReady
             ? [{
                 label: 'Email platform support',
-                externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`SetuOps support: ${pageTitle}`)}`,
+                externalHref: `mailto:${supportEmail}?subject=${encodeURIComponent(`OpsTrellis support: ${pageTitle}`)}`,
               }]
             : []),
           { label: 'Open incidents', href: '/incidents' },

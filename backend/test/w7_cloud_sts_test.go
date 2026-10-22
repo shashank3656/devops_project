@@ -20,7 +20,7 @@ func TestWorkloadSubjectFromClaims(t *testing.T) {
 
 func TestWorkloadSessionName(t *testing.T) {
 	name := workloadSessionName("repo:acme/api")
-	if !strings.HasPrefix(name, "setuops-") || strings.Contains(name, "/") {
+	if !strings.HasPrefix(name, "opstrellis-") || strings.Contains(name, "/") {
 		t.Fatalf("session %s", name)
 	}
 }

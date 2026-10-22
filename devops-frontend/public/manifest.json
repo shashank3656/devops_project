@@ -1,10 +1,10 @@
 {
-  "name": "SetuOps DevOps",
-  "short_name": "DevOps",
-  "description": "DevOps portal for SetuOps infrastructure requests",
+  "name": "OpsTrellis",
+  "short_name": "OpsTrellis",
+  "description": "OpsTrellis engineering operations portal",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0d9488",
+  "background_color": "#090E1D",
+  "theme_color": "#121A31",
   "icons": [{"src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}]
 }

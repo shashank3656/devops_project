@@ -14,7 +14,7 @@ export default function NewGitOpsProjectRedirect() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>New GitOps Project - DevOps Portal</title>
+        <title>New GitOps Project - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

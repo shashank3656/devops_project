@@ -1,11 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
-function isEditable(target: EventTarget | null) {
-  const el = target as HTMLElement | null;
-  if (!el) return false;
-  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
-}
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export default function InspectorDrawer({
   open,
@@ -18,6 +14,7 @@ export default function InspectorDrawer({
   children,
   label,
   resetKey,
+  returnFocusId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -30,18 +27,55 @@ export default function InspectorDrawer({
   label?: string;
   /** The body scrolls back to the top only when this changes (e.g. the record ID), not on every re-render. */
   resetKey?: string | number | null;
+  /** Element to focus after close, usually the row that opened the drawer. */
+  returnFocusId?: string;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const returnFocusRef = useRef(returnFocusId);
+  returnFocusRef.current = returnFocusId;
+
+  useEffect(() => {
+    if (!open) {
+      const returnTo = returnFocusRef.current ? document.getElementById(returnFocusRef.current) : null;
+      (returnTo || openerRef.current)?.focus();
+      openerRef.current = null;
+      return;
+    }
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const timer = window.setTimeout(() => {
+      panelRef.current?.querySelector<HTMLElement>('.ig-drawer__close')?.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      const returnTo = returnFocusRef.current ? document.getElementById(returnFocusRef.current) : null;
+      (returnTo || openerRef.current)?.focus();
+      openerRef.current = null;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
-      if (isEditable(event.target)) {
-        (event.target as HTMLElement).blur();
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        onClose();
         return;
       }
-      onClose();
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((node) => node.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panelRef.current.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !panelRef.current.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -56,7 +90,7 @@ export default function InspectorDrawer({
   return (
     <>
       <div className="ig-drawer__scrim" onClick={onClose} aria-hidden />
-      <aside className="ig-drawer" role="complementary" aria-label={label || 'Details'}>
+      <aside className="ig-drawer" ref={panelRef} role="dialog" aria-modal="true" aria-label={label || 'Details'}>
         <header className="ig-drawer__header">
           <div className="ig-drawer__titles">
             {eyebrow ? <span className="ig-eyebrow">{eyebrow}</span> : null}

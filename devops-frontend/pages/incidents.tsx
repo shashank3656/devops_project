@@ -1,12 +1,41 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { DataTable, type DataTableColumn } from '@infragate/ui';
+import { CopyButton, DataTable, InspectorDrawer, SavedViews, type DataTableColumn, type SavedView } from '@infragate/ui';
+import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
 import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentCanFinish, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel } from '../lib/itsm';
 import { asRecord, getString } from '../lib/payload';
+import { expireSession } from '../lib/sessionExpiry';
+import BlockedAction from '../components/BlockedAction';
+
+type IncidentView = { severity: string; status: string; environment: string; mine: string };
+
+const INCIDENT_VIEW_PRESETS: SavedView<IncidentView>[] = [
+  { name: 'Assigned to me', filters: { severity: '', status: '', environment: '', mine: '1' } },
+  { name: 'Open incidents', filters: { severity: '', status: 'new', environment: '', mine: '' } },
+  { name: 'My production incidents', filters: { severity: '', status: '', environment: 'prod', mine: '1' } },
+];
+
+function incidentStateBadge(status: string): string {
+  const value = status.toLowerCase();
+  if (value.includes('cancel') || value.includes('fail')) return 'ig-badge ig-badge--danger';
+  if (value.includes('resolv') || value.includes('close')) return 'ig-badge ig-badge--ok';
+  if (value.includes('progress') || value.includes('watch')) return 'ig-badge ig-badge--medium';
+  return 'ig-badge ig-badge--info';
+}
+
+function currentUsername(): string {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const user = raw ? JSON.parse(raw) as { username?: string } : null;
+    return typeof user?.username === 'string' ? user.username : '';
+  } catch {
+    return '';
+  }
+}
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -139,9 +168,7 @@ function storedIsAdmin(): boolean {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
@@ -256,11 +283,14 @@ export default function DevOpsIncidentsPage() {
   const activeSeverityFilter = useMemo(() => normalizeQueryValue(router.query.severity), [router.query.severity]);
   const activeStatusFilter = useMemo(() => normalizeQueryValue(router.query.status), [router.query.status]);
   const activeEnvironmentFilter = useMemo(() => normalizeQueryValue(router.query.environment), [router.query.environment]);
+  const activeMine = router.query.mine === '1';
+  const [preview, setPreview] = useState<Incident | null>(null);
   const activeFilterCount = [
     activeRequestID ? String(activeRequestID) : '',
     activeSeverityFilter,
     activeStatusFilter,
     activeEnvironmentFilter,
+    activeMine ? 'mine' : '',
   ].filter(Boolean).length;
 
   const environmentOptions = useMemo(() => {
@@ -278,13 +308,21 @@ export default function DevOpsIncidentsPage() {
       if (activeRequestID && incident.request_id !== activeRequestID) return false;
       if (activeSeverityFilter && severityToPriority(incident.severity) !== activeSeverityFilter) return false;
       if (activeStatusFilter && incidentStateValue(incident.status) !== incidentStateValue(activeStatusFilter)) return false;
-      if (activeEnvironmentFilter && incident.request_env?.trim().toLowerCase() !== activeEnvironmentFilter) return false;
+      if (activeEnvironmentFilter) {
+        const env = incident.request_env?.trim().toLowerCase() || '';
+        const matches = activeEnvironmentFilter === 'prod' ? env.startsWith('prod') : env === activeEnvironmentFilter;
+        if (!matches) return false;
+      }
+      if (activeMine) {
+        const owner = (incident.owner_username || '').trim().toLowerCase();
+        if (!owner || owner !== currentUsername().toLowerCase()) return false;
+      }
       return true;
     });
-  }, [activeEnvironmentFilter, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
+  }, [activeEnvironmentFilter, activeMine, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
 
   const hasActiveFilters = Boolean(
-    activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter,
+    activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter || activeMine,
   );
   const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
 
@@ -337,60 +375,47 @@ export default function DevOpsIncidentsPage() {
     () => [
       {
         id: 'reference',
-        header: 'Incident reference',
-        cell: (incident) => (
-          <div>
-            <strong>{getIncidentReference(incident)}</strong>
-            <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
-              {[incident.request_service ? `Target: ${incident.request_service}` : '', incident.request_env || '', incident.request_cloud || '']
-                .filter(Boolean)
-                .join(' · ')}
+        header: 'Incident',
+        width: '46%',
+        className: 'ig-col-title',
+        cell: (incident) => {
+          const context = [incident.request_service, incident.project_name, incident.request_env, incident.owner_username || incident.team_name].filter(Boolean).join(' · ');
+          return (
+            <div className="ig-cell-stack">
+              <span className="ig-cell-title">{incident.summary || getIncidentReference(incident)}</span>
+              <span className="ig-cell-meta">
+                {getIncidentReference(incident)}
+                <CopyButton value={getIncidentReference(incident)} label="incident number" />
+                {context ? ` · ${context}` : ''}
+              </span>
             </div>
-          </div>
-        ),
-      },
-      {
-        id: 'source',
-        header: 'Source',
-        cell: (incident) => (
-          <>
-            {incident.source === 'alert' ? incident.alert_source || 'alert' : incident.source || 'ticket'}
-            {incident.fingerprint ? (
-              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{incident.fingerprint}</div>
-            ) : null}
-            {incident.suspected_change_number ? (
-              <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Caused by {incident.suspected_change_number}</div>
-            ) : null}
-          </>
-        ),
-      },
-      {
-        id: 'project',
-        header: 'Project',
-        cell: (incident) => (incident.project_name ? `${incident.project_name} (${incident.project_code})` : 'No project'),
+          );
+        },
       },
       { id: 'priority', header: 'Priority', cell: (incident) => priorityLabel(incident.severity) },
-      { id: 'state', header: 'State', cell: (incident) => incidentStateLabel(incident.status) },
-      { id: 'group', header: 'Assignment group', cell: (incident) => incident.team_name || incident.request_team || 'No group' },
+      { id: 'state', header: 'State', cell: (incident) => <span className={incidentStateBadge(incident.status)}>{incidentStateLabel(incident.status)}</span> },
       {
         id: 'response_sla',
-        header: 'Response SLA',
+        header: 'Response',
+        align: 'right',
+        className: 'ig-col-num',
         cell: (incident) => (
-          <span style={{ color: incident.sla?.response_breached ? 'var(--color-danger, #b42318)' : undefined }}>
+          <span className={incident.sla?.response_breached ? 'ig-badge ig-badge--danger' : undefined}>
             {slaClockLabel(incident.sla, 'response')}
           </span>
         ),
       },
       {
         id: 'resolve_sla',
-        header: 'Resolve SLA',
+        header: 'Resolve',
+        align: 'right',
+        className: 'ig-col-num',
         cell: (incident) => (
-          <span style={{ color: incident.sla?.resolve_breached ? 'var(--color-danger, #b42318)' : undefined }}>
+          <span className={incident.sla?.resolve_breached ? 'ig-badge ig-badge--danger' : undefined}>
             {slaClockLabel(incident.sla, 'resolve')}
           </span>
         ),
       },
-      { id: 'assignee', header: 'Assignee', cell: (incident) => incident.owner_username || 'Unassigned' },
       {
         id: 'action',
         header: 'Action',
@@ -547,16 +572,18 @@ export default function DevOpsIncidentsPage() {
     void loadPreviewIncidentNumber();
   };
 
-  const updateQueueFilters = (next: Partial<Record<'severity' | 'status' | 'environment', string>>) => {
+  const updateQueueFilters = (next: Partial<IncidentView>) => {
     const query: Record<string, string> = {};
     if (activeProjectID) query.project_id = String(activeProjectID);
     if (activeRequestID) query.request_id = String(activeRequestID);
     const nextSeverity = next.severity ?? activeSeverityFilter;
     const nextStatus = next.status ?? activeStatusFilter;
     const nextEnvironment = next.environment ?? activeEnvironmentFilter;
+    const nextMine = next.mine ?? (activeMine ? '1' : '');
     if (nextSeverity) query.severity = nextSeverity;
     if (nextStatus) query.status = nextStatus;
     if (nextEnvironment) query.environment = nextEnvironment;
+    if (nextMine === '1') query.mine = '1';
     void router.push({ pathname: '/incidents', query }, undefined, { shallow: true });
   };
 
@@ -653,21 +680,19 @@ export default function DevOpsIncidentsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Incidents - DevOps Portal</title>
+        <title>Incidents - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Operations Control</span>
             <h1 className="portal-page__title">Incidents</h1>
-            <p className="portal-page__subtitle">
-              Link requests to incidents, set severity, assign an owner, and track who is handling the response.
-            </p>
           </div>
           <div className="portal-page__actions">
-            <button type="button" className="btn btn-secondary" onClick={exportIncidents} disabled={filteredIncidents.length === 0}>
-              Export CSV
-            </button>
+            <BlockedAction blocked={filteredIncidents.length === 0} reason="No incidents match this view, so there is nothing to export.">
+              <button type="button" className="btn btn-secondary" onClick={exportIncidents} disabled={filteredIncidents.length === 0} title={filteredIncidents.length === 0 ? 'No incidents match this view, so there is nothing to export.' : 'Export the visible incidents'}>
+                Export CSV
+              </button>
+            </BlockedAction>
             <button
               type="button"
               className="btn btn-primary"
@@ -698,6 +723,14 @@ export default function DevOpsIncidentsPage() {
             <strong className="devops-incident-pill__value">{visibleIncidentSummary.assigned}</strong>
           </div>
         </section>
+
+        <SavedViews<IncidentView>
+          storageKey="opstrellis.incidents.views"
+          current={{ severity: activeSeverityFilter, status: activeStatusFilter, environment: activeEnvironmentFilter, mine: activeMine ? '1' : '' }}
+          onApply={updateQueueFilters}
+          presets={INCIDENT_VIEW_PRESETS}
+          canSave={activeFilterCount > 0}
+        />
 
         <section className="devops-incident-filter-surface">
           <div className="devops-incident-filter-row">
@@ -774,9 +807,29 @@ export default function DevOpsIncidentsPage() {
                 {hasActiveFilters ? 'No incidents match the current filters.' : 'No incidents recorded yet.'}
               </div>
             }
-            onRowOpen={(incident) => void router.push(`/incidents/${incident.id}/edit`)}
+            onRowOpen={(incident) => setPreview(incident)}
           />
         </section>
+        <InspectorDrawer
+          open={Boolean(preview)}
+          onClose={() => setPreview(null)}
+          resetKey={preview?.id}
+          label="Incident preview"
+          eyebrow="Incident"
+          title={preview ? getIncidentReference(preview) : 'Incident'}
+          subtitle={preview ? [preview.project_name || 'Project unknown', preview.request_env || 'Environment unknown', preview.request_service || 'Service unknown'].join(' · ') : undefined}
+          headerActions={preview ? <CopyButton value={getIncidentReference(preview)} label="incident reference" /> : null}
+          footer={preview ? <Link className="btn btn-primary" href={`/incidents/${preview.id}/edit`}>Open incident</Link> : null}
+        >
+          {preview ? (
+            <div className="portal-stack">
+              <p>{preview.summary || 'No summary was saved.'}</p>
+              <p>State: {incidentStateLabel(preview.status)} · Priority: {priorityLabel(preview.severity)}</p>
+              <p>Owner: {preview.owner_username || 'Unassigned'}</p>
+              {preview.request_id ? <p>Request #{preview.request_id} <CopyButton value={String(preview.request_id)} label="request reference" /></p> : null}
+            </div>
+          ) : null}
+        </InspectorDrawer>
       </div>
     </DevOpsLayout>
   );

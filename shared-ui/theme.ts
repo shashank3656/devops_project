@@ -1,8 +1,8 @@
 export type ThemeMode = 'dark' | 'light';
 
-export const THEME_STORAGE_KEY = 'setuops-theme';
-export const THEME_CHANGE_EVENT = 'setuops:theme-change';
-export const OPEN_PALETTE_EVENT = 'setuops:open-palette';
+export const THEME_STORAGE_KEY = 'opstrellis-theme';
+export const THEME_CHANGE_EVENT = 'opstrellis:theme-change';
+export const OPEN_PALETTE_EVENT = 'opstrellis:open-palette';
 
 export function getTheme(): ThemeMode {
   if (typeof window === 'undefined') return 'light';

@@ -114,7 +114,7 @@ export default function DevOpsK8sConfigMapsPage() {
   return (
     <>
       <Head>
-        <title>ConfigMaps - DevOps</title>
+        <title>ConfigMaps - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

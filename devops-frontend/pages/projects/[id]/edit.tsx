@@ -6,6 +6,8 @@ import CloudServiceSelect from '../../../components/CloudServiceSelect';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { asRecord, getString } from '../../../lib/payload';
+import { useUnsavedChanges } from '../../../lib/useUnsavedChanges';
+import { expireSession } from '../../../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -105,9 +107,7 @@ function normalizeCode(value: string): string {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parseProjectId(value: string | string[] | undefined): number | null {
@@ -126,9 +126,14 @@ export default function EditProjectPage() {
   const [form, setForm] = useState<ProjectFormState>(createEmptyForm());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty);
   const [error, setError] = useState('');
   const [teamOptionsError, setTeamOptionsError] = useState('');
   const [notice, setNotice] = useState('');
+  const [teamQuery, setTeamQuery] = useState('');
 
   const projectId = useMemo(() => parseProjectId(router.query.id), [router.query.id]);
 
@@ -321,6 +326,37 @@ export default function EditProjectPage() {
   };
 
   const selectedOwnerTeamName = ownerTeams.find((team) => String(team.id) === form.owner_team_id)?.name || 'Not set';
+  const teamNeedle = teamQuery.trim().toLowerCase();
+  const visibleTeams = portalTeams.filter((team) => team.name.toLowerCase().includes(teamNeedle));
+
+  const deleteProject = async () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !projectId) {
+      clearSessionAndRedirect();
+      return;
+    }
+    setDeleting(true);
+    setError('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = asRecord(await response.json().catch(() => ({})));
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect();
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(getString(data.error, 'The project was not deleted.'));
+      }
+      setDirty(false);
+      await router.push('/projects');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The project was not deleted.');
+      setDeleting(false);
+    }
+  };
 
   const submitForm = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -361,6 +397,7 @@ export default function EditProjectPage() {
         throw new Error(getString(data.error, 'Failed to save project'));
       }
       setNotice('Project updated.');
+      setDirty(false);
       void loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save project');
@@ -372,7 +409,7 @@ export default function EditProjectPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Edit Project - DevOps Portal</title>
+        <title>Edit Project - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
@@ -380,7 +417,7 @@ export default function EditProjectPage() {
             <span className="portal-page__eyebrow">Project Onboarding</span>
             <h1 className="portal-page__title">Edit project</h1>
             <p className="portal-page__subtitle">
-              Update the project on its own page so the project catalog stays easier to browse.
+              Change the name, where it runs, which services it can request, and who can raise work against it.
             </p>
           </div>
           <div className="portal-page__actions">
@@ -393,30 +430,22 @@ export default function EditProjectPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
-        <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Project details</span>
-              <h2 className="portal-surface__title">Update project catalog</h2>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="empty-state">Loading project...</div>
-          ) : (
-            <form className="catalog-editor__form" onSubmit={submitForm}>
-              <div className="catalog-editor__field-grid">
-                <div className="form-group">
-                  <label className="label">Project name</label>
-                  <input className="input" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} required />
-                </div>
-                <div className="form-group">
-                  <label className="label">Project code</label>
-                  <input className="input" value={form.code} onChange={(e) => updateForm({ code: normalizeCode(e.target.value) })} placeholder="payments-core" required />
-                </div>
-                <div className="form-group">
-                  <label className="label">Owner team</label>
-                  <select className="select" value={form.owner_team_id} onChange={(e) => updateForm({ owner_team_id: e.target.value })}>
+        {loading ? (
+          <div className="empty-state">Loading project...</div>
+        ) : (
+          <form className="project-edit" onSubmit={submitForm} onChange={() => setDirty(true)}>
+            <fieldset className="form-section">
+              <legend className="form-section__title">Project</legend>
+              <p className="form-section__copy">The name can be changed after the project is created. Save to keep it.</p>
+              <div className="portal-form-grid">
+                <label className="label" htmlFor="project-edit-project-name">Project name<span className="form-req" aria-hidden="true"> *</span>
+                  <input id="project-edit-project-name" className="input" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} required />
+                </label>
+                <label className="label" htmlFor="project-edit-project-code">Project code<span className="form-req" aria-hidden="true"> *</span>
+                  <input id="project-edit-project-code" className="input" value={form.code} onChange={(e) => updateForm({ code: normalizeCode(e.target.value) })} placeholder="payments-core" required />
+                </label>
+                <label className="label" htmlFor="project-edit-owner-team">Owner team
+                  <select id="project-edit-owner-team" className="input" value={form.owner_team_id} onChange={(e) => updateForm({ owner_team_id: e.target.value })}>
                     <option value="">Select owner team</option>
                     {ownerTeams.map((team) => (
                       <option key={team.id} value={team.id}>
@@ -425,162 +454,172 @@ export default function EditProjectPage() {
                       </option>
                     ))}
                   </select>
-                  <small className="catalog-editor__field-help">
-                    {ownerTeams.length > 0
-                      ? `Showing ${ownerTeams.length} team${ownerTeams.length === 1 ? '' : 's'} from the admin team catalog for project ownership.`
-                      : teamOptionsError || 'No teams were returned from the backend team catalog yet.'}
-                  </small>
-                </div>
-                <div className="form-group">
-                  <label className="label">Status</label>
-                  <select className="select" value={form.status} onChange={(e) => updateForm({ status: e.target.value as ProjectStatus })}>
+                </label>
+                <label className="label" htmlFor="project-edit-status">Status
+                  <select id="project-edit-status" className="input" value={form.status} onChange={(e) => updateForm({ status: e.target.value as ProjectStatus })}>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                     <option value="archived">Archived</option>
                   </select>
-                </div>
+                </label>
+                <label className="label portal-form-grid__span-2" htmlFor="project-edit-description">Description
+                  <textarea id="project-edit-description" className="textarea" rows={3} value={form.description} onChange={(e) => updateForm({ description: e.target.value })} />
+                </label>
               </div>
+              <p className="form-section__copy">
+                {ownerTeams.length > 0
+                  ? `Owner team: ${selectedOwnerTeamName}. ${ownerTeams.length} team${ownerTeams.length === 1 ? '' : 's'} can own a project.`
+                  : teamOptionsError || 'No owner teams were returned yet.'}
+              </p>
+            </fieldset>
 
-              <div className="form-group catalog-editor__field-block">
-                <label className="label">Description</label>
-                <textarea className="textarea" rows={3} value={form.description} onChange={(e) => updateForm({ description: e.target.value })} />
-              </div>
-
-              <div className="catalog-editor__section">
-                <strong>Environments</strong>
-                <div className="catalog-editor__choice-row">
+            <fieldset className="form-section">
+              <legend className="form-section__title">Where it runs</legend>
+              <p className="form-section__copy">Pick the environments and clouds this project is allowed to use.</p>
+              <div>
+                <p className="project-edit__label">Environments</p>
+                <div className="project-edit__chips">
                   {DEFAULT_ENVIRONMENTS.map((environment) => (
-                    <label key={environment} className="catalog-editor__toggle-label">
+                    <label key={environment} className={`project-edit__chip${form.environments.includes(environment) ? ' is-selected' : ''}`}>
                       <input type="checkbox" checked={form.environments.includes(environment)} onChange={() => toggleEnvironment(environment)} />
                       <span>{environment.toUpperCase()}</span>
                     </label>
                   ))}
                 </div>
               </div>
-
-              <div className="catalog-editor__section">
-                <strong>Clouds</strong>
-                <div className="catalog-editor__choice-row">
+              <div>
+                <p className="project-edit__label">Clouds</p>
+                <div className="project-edit__chips">
                   {CLOUD_OPTIONS.map((cloud) => (
-                    <label key={cloud.value} className="catalog-editor__toggle-label">
+                    <label key={cloud.value} className={`project-edit__chip${form.clouds.includes(cloud.value) ? ' is-selected' : ''}`}>
                       <input type="checkbox" checked={form.clouds.includes(cloud.value)} onChange={() => toggleCloud(cloud.value)} />
                       <span>{cloud.label}</span>
                     </label>
                   ))}
                 </div>
-                {form.clouds.length === 0 ? <p className="catalog-editor__section-copy">Select a cloud, then choose its services from the dropdown.</p> : null}
-                {form.clouds.map((cloud) => (
-                  <CloudServiceSelect
-                    key={cloud}
-                    cloud={cloud}
-                    selected={form.services.filter((entry) => entry.cloud === cloud).map((entry) => entry.service)}
-                    onToggle={toggleService}
-                  />
-                ))}
               </div>
+            </fieldset>
 
-              <div className="catalog-editor__section catalog-editor__section--lg">
-                <strong>Approval rules</strong>
-                <p className="catalog-editor__section-copy">
-                  Choose which approval stages apply per environment before a PR is created.
-                </p>
-                <div className="catalog-editor__table-wrap">
-                  <table className="templates-table">
-                    <thead>
-                      <tr>
-                        <th>Environment</th>
-                        <th>Require manager approval</th>
-                        <th>Require DevOps approval</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {form.environments.map((environment) => {
-                        const rule = form.approval_rules.find((entry) => entry.environment === environment) || {
-                          environment,
-                          require_manager_approval: environment !== 'dev',
-                          require_devops_approval: true,
-                        };
-                        return (
-                          <tr key={`approval-${environment}`}>
-                            <td>{environment.toUpperCase()}</td>
-                            <td>
+            <fieldset className="form-section">
+              <legend className="form-section__title">Services</legend>
+              <p className="form-section__copy">Search and tick the services each selected cloud can request. Selected services stay listed above the search.</p>
+              {form.clouds.map((cloud) => (
+                <CloudServiceSelect
+                  key={cloud}
+                  cloud={cloud}
+                  selected={form.services.filter((entry) => entry.cloud === cloud).map((entry) => entry.service)}
+                  onToggle={toggleService}
+                />
+              ))}
+            </fieldset>
+
+            <fieldset className="form-section">
+              <legend className="form-section__title">Approvals</legend>
+              <p className="form-section__copy">Choose who must approve a request in each environment before any change is opened.</p>
+              <div className="project-edit__rules">
+                {form.environments.map((environment) => {
+                  const rule = form.approval_rules.find((entry) => entry.environment === environment) || {
+                    environment,
+                    require_manager_approval: environment !== 'dev',
+                    require_devops_approval: true,
+                  };
+                  return (
+                    <div key={`approval-${environment}`} className="project-edit__rule">
+                      <strong>{environment.toUpperCase()}</strong>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={rule.require_manager_approval}
+                          onChange={(e) => updateApprovalRule(environment, 'require_manager_approval', e.target.checked)}
+                        />
+                        <span>Manager approval</span>
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={rule.require_devops_approval}
+                          onChange={(e) => updateApprovalRule(environment, 'require_devops_approval', e.target.checked)}
+                        />
+                        <span>DevOps approval</span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <fieldset className="form-section">
+              <legend className="form-section__title">Who can request</legend>
+              <p className="form-section__copy">Turn a team on, then choose the environments that team can request in.</p>
+              <label className="label" htmlFor="project-edit-team-search">Find a team
+                <input id="project-edit-team-search" className="input" type="search" value={teamQuery} placeholder="Search teams" onChange={(event) => setTeamQuery(event.target.value)} />
+              </label>
+              <div className="project-edit__teams">
+                {portalTeams.length === 0 ? (
+                  <p className="form-section__copy">{teamOptionsError || 'No portal teams were returned yet.'}</p>
+                ) : visibleTeams.length === 0 ? (
+                  <p className="form-section__copy">No teams match that search.</p>
+                ) : visibleTeams.map((team) => {
+                  const access = form.team_access.find((entry) => entry.team_id === team.id);
+                  return (
+                    <div key={team.id} className={`project-edit__team${access ? ' is-selected' : ''}`}>
+                      <label className="project-edit__team-name">
+                        <input type="checkbox" checked={!!access} onChange={() => toggleTeamAccess(team.id)} />
+                        <span>{team.name}</span>
+                      </label>
+                      {access ? (
+                        <div className="project-edit__chips">
+                          {form.environments.map((environment) => (
+                            <label key={`${team.id}-${environment}`} className={`project-edit__chip${access.environments.includes(environment) ? ' is-selected' : ''}`}>
                               <input
                                 type="checkbox"
-                                checked={rule.require_manager_approval}
-                                onChange={(e) => updateApprovalRule(environment, 'require_manager_approval', e.target.checked)}
+                                checked={access.environments.includes(environment)}
+                                onChange={() => toggleTeamEnvironment(team.id, environment)}
                               />
-                            </td>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={rule.require_devops_approval}
-                                onChange={(e) => updateApprovalRule(environment, 'require_devops_approval', e.target.checked)}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              <span>{environment.toUpperCase()}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="project-edit__muted">No access</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+            </fieldset>
 
-              <div className="catalog-editor__section catalog-editor__section--lg">
-                <strong>Team access</strong>
-                <p className="catalog-editor__section-copy">Choose which portal teams can see the project, then scope the environments they can request.</p>
-                <div className="catalog-editor__table-wrap">
-                  <table className="templates-table">
-                    <thead>
-                      <tr>
-                        <th>Enabled</th>
-                        <th>Team</th>
-                        <th>Allowed environments</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {portalTeams.map((team) => {
-                        const access = form.team_access.find((entry) => entry.team_id === team.id);
-                        return (
-                          <tr key={team.id}>
-                            <td>
-                              <input type="checkbox" checked={!!access} onChange={() => toggleTeamAccess(team.id)} />
-                            </td>
-                            <td>{team.name}</td>
-                            <td>
-                              {access ? (
-                                <div className="catalog-editor__choice-row catalog-editor__choice-row--tight">
-                                  {form.environments.map((environment) => (
-                                    <label key={`${team.id}-${environment}`} className="catalog-editor__toggle-label catalog-editor__toggle-label--tight">
-                                      <input
-                                        type="checkbox"
-                                        checked={access.environments.includes(environment)}
-                                        onChange={() => toggleTeamEnvironment(team.id, environment)}
-                                      />
-                                      <span>{environment}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="catalog-editor__field-help">No access</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+            <div className="portal-form-actions">
+              <button type="submit" className="btn btn-primary" disabled={saving || deleting}>
+                {saving ? 'Saving...' : 'Save changes'}
+              </button>
+              <Link href={projectId ? `/projects/${projectId}` : '/projects'} className="btn btn-secondary">
+                Cancel
+              </Link>
+            </div>
+
+            <section className="project-edit__danger" aria-label="Delete project">
+              <div>
+                <h2>Delete project</h2>
+                <p>Services and access rules for this project are removed. Requests already raised stay, without this project.</p>
               </div>
-
-              <div className="catalog-editor__footer">
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving...' : 'Save changes'}
+              {confirmDelete ? (
+                <div className="project-edit__danger-actions">
+                  <button type="button" className="btn btn-primary" disabled={deleting} onClick={() => void deleteProject()}>
+                    {deleting ? 'Deleting...' : 'Delete project'}
+                  </button>
+                  <button type="button" className="btn btn-secondary" disabled={deleting} onClick={() => setConfirmDelete(false)}>
+                    Keep project
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="btn btn-secondary" disabled={saving || deleting} onClick={() => setConfirmDelete(true)}>
+                  Delete project
                 </button>
-                <span className="catalog-editor__owner-note">Owner team: {selectedOwnerTeamName}</span>
-              </div>
-            </form>
-          )}
-        </section>
+              )}
+            </section>
+          </form>
+        )}
       </div>
     </DevOpsLayout>
   );

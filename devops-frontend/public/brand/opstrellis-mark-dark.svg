@@ -1,0 +1,24 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="OpsTrellis / OT trellis / dark">
+<path id="Vector" d="M90 16.875L151.875 52.0312V126.562L90 163.125L28.125 126.562V52.0312L90 16.875Z" stroke-width="16.875" stroke-linejoin="round" stroke="url(#paint0_linear_0_20)"/>
+<g id="Vector_2">
+<path d="M59.0625 64.6875H120.938Z" fill="black"/>
+<path d="M59.0625 64.6875H120.938" stroke-width="16.875" stroke-linecap="square" stroke="#F5F7FF"/>
+</g>
+<g id="Vector_3">
+<path d="M90 64.6875V125.156Z" fill="black"/>
+<path d="M90 64.6875V125.156" stroke-width="16.875" stroke="#45E6CF"/>
+</g>
+<g id="Vector_4">
+<path d="M90 143.438V163.125Z" fill="black"/>
+<path d="M90 143.438V163.125" stroke-width="16.875" stroke="#45E6CF"/>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_20" x1="33.75" y1="22.5" x2="151.875" y2="157.5" gradientUnits="userSpaceOnUse">
+<stop stop-color="#AE70FF"/>
+<stop offset="0.48" stop-color="#7258FF"/>
+<stop offset="1" stop-color="#24DCD0"/>
+</linearGradient>
+</defs>
+</svg>

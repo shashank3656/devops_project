@@ -15,6 +15,20 @@ type AccessRequest = {
   evaluation?: { roleName?: string; normalizedScope?: string; input?: { service?: string; environment?: string } };
 };
 
+type AccessGrant = {
+  id: string;
+  roleName?: string;
+  scope?: string;
+  status?: string;
+  accessNumber?: string;
+  grantedAt?: string;
+  expiresAt?: string;
+  scheduledStatus?: string;
+  providerRevocation?: string;
+};
+
+type GrantView = 'active' | 'expiring' | 'review';
+
 const STATUS_OPTIONS = ['New', 'In progress', 'Provisioning', 'Provision failed', 'Active', 'Rejected', 'Cancelled'];
 
 function statusLabel(status: string): string {
@@ -45,6 +59,9 @@ export default function IamHomePage() {
   const [status, setStatus] = useState('');
   const [environment, setEnvironment] = useState('');
   const [person, setPerson] = useState('');
+  const [grantView, setGrantView] = useState<GrantView | ''>('');
+  const [grants, setGrants] = useState<AccessGrant[] | null>(null);
+  const [grantError, setGrantError] = useState('');
 
   useEffect(() => {
     let cancel = false;
@@ -66,6 +83,31 @@ export default function IamHomePage() {
       cancel = true;
     };
   }, [apiUrl]);
+
+  useEffect(() => {
+    let cancel = false;
+    fetch(`${apiUrl}/api/devops/iam/access-grants?scope=desk`, { headers: sessionAuthHeaders() })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error || 'Grants could not be loaded.');
+        if (!cancel) setGrants(Array.isArray(body?.grants) ? body.grants : []);
+      })
+      .catch((err: Error) => {
+        if (!cancel) setGrantError(err.message);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [apiUrl]);
+
+  const visibleGrants = useMemo(() => {
+    return (grants || []).filter((item) => {
+      if (grantView === 'active') return item.scheduledStatus === 'active';
+      if (grantView === 'expiring') return item.scheduledStatus === 'expiring';
+      if (grantView === 'review') return item.scheduledStatus === 'expired' || item.scheduledStatus === 'review';
+      return false;
+    });
+  }, [grantView, grants]);
 
   const environments = useMemo(() => {
     const names = new Set((requests || []).map(environmentOf).filter(Boolean));
@@ -100,6 +142,42 @@ export default function IamHomePage() {
       <Head><title>IAM</title></Head>
       <IamFrame title="IAM" lede="A request stays New until review, then In progress. Approval moves it to Provisioning until the access file is applied, then Active. Rejected and Cancelled stop the grant.">
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
+        {grantError ? <div className="alert alert-error" role="alert">{grantError}</div> : null}
+        <div className="service-360__tabs" role="tablist" aria-label="Access review">
+          <button type="button" className={grantView === '' ? 'is-selected' : ''} onClick={() => setGrantView('')}>Requests</button>
+          <button type="button" className={grantView === 'active' ? 'is-selected' : ''} onClick={() => setGrantView('active')}>Active grants</button>
+          <button type="button" className={grantView === 'expiring' ? 'is-selected' : ''} onClick={() => setGrantView('expiring')}>Expiring soon</button>
+          <button type="button" className={grantView === 'review' ? 'is-selected' : ''} onClick={() => setGrantView('review')}>Review required</button>
+        </div>
+        {grantView ? (
+          <div className="portal-surface table-wrap">
+            <p className="access-hint">Scheduled expiry is the time on the grant. Provider revocation stays Unknown until the provider reports it.</p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Grant</th>
+                  <th>Scope</th>
+                  <th>Scheduled expiry</th>
+                  <th>Provider revocation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grants === null ? <tr><td colSpan={4}>Loading grants…</td></tr> : visibleGrants.length === 0 ? (
+                  <tr><td colSpan={4}>No grants in this view.</td></tr>
+                ) : visibleGrants.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.accessNumber || item.roleName || 'Grant'}</td>
+                    <td>{item.scope || 'Unknown'}</td>
+                    <td>{item.scheduledStatus === 'review' ? 'No expiry recorded' : item.expiresAt ? new Date(item.expiresAt).toLocaleString() : 'Unknown'} · {item.scheduledStatus || 'Unknown'}</td>
+                    <td>{item.providerRevocation || 'Unknown'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {grantView ? null : (
+        <>
         <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
           <label>
             Search
@@ -167,6 +245,8 @@ export default function IamHomePage() {
             </tbody>
           </table>
         </div>
+        </>
+        )}
       </IamFrame>
     </DevOpsLayout>
   );

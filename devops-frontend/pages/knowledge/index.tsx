@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
@@ -40,7 +41,7 @@ export default function KnowledgeIndexPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Knowledge - DevOps</title>
+        <title>Knowledge - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
@@ -66,7 +67,7 @@ export default function KnowledgeIndexPage() {
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/knowledge/${item.id}`)}>
-                    <td><strong>{item.article_number}</strong></td>
+                    <td><strong><Link href={`/knowledge/${item.id}`} onClick={(event) => event.stopPropagation()}>{item.article_number}</Link></strong></td>
                     <td>{item.title}</td>
                     <td>{item.problem_number || '—'}</td>
                   </tr>

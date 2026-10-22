@@ -668,7 +668,7 @@ export default function DevOpsProjectsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Projects - DevOps Portal</title>
+        <title>Projects - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
@@ -751,8 +751,8 @@ export default function DevOpsProjectsPage() {
             </div>
           </div>
           <div className="form-group">
-            <label className="label">Bulk project JSON</label>
-            <textarea
+            <label className="label" htmlFor="projects-bulk-project-json">Bulk project JSON</label>
+            <textarea id="projects-bulk-project-json"
               className="textarea"
               rows={10}
               value={bulkInput}
@@ -852,7 +852,7 @@ export default function DevOpsProjectsPage() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-              <select className="select" value={bulkAction} onChange={(e) => setBulkAction(e.target.value as 'grant' | 'replace' | 'revoke')}>
+              <select aria-label="Bulk action" className="select" value={bulkAction} onChange={(e) => setBulkAction(e.target.value as 'grant' | 'replace' | 'revoke')}>
                 <option value="grant">Grant environments</option>
                 <option value="replace">Replace environments</option>
                 <option value="revoke">Revoke team access</option>

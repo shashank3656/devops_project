@@ -24,7 +24,8 @@ Phase 1 uses existing roles only (no new role product).
 | Change (CHG) | List / detail (User) | Visible projects only | `filterChangesForUser` |
 | Incident (INC) | List / detail (User) | Team + project visibility | `portal_ops.go` |
 | Promotion / gate | Approve / revoke | DevOps manager + audit | `devops_control_center.go` |
-| K8s / day-2 | Mutating actions | DevOps user + manager where applicable | DevOps handlers |
+| K8s cluster | List, workloads, pods, logs | Read on that project: minimum of the group Kubernetes level and the project link, then the maximum across the person’s groups. Admin sees all. | `k8s_access.go` |
+| K8s / day-2 | Restart, scale, resume, terminal, onboard | Write on that project at both the group and the project link. A DevOps manager flag does not grant this. Freeze still returns 409. | `k8s_access.go`, `devops_k8s_dashboard.go` |
 | Template write | Admin / DevOps catalog | Admin or DevOps role checks | Admin/DevOps template routes |
 | Admin API | Any | Bearer admin JWT **or** break-glass (no browser Origin) | `requireAdmin` |
 | Team membership | Add / remove | Admin | `admin_teams.go` |

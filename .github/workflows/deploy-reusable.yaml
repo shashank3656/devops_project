@@ -64,7 +64,7 @@ on:
         type: string
         default: ""
       railway_image_updater_url:
-        description: Optional railway-image-updater service URL (PUT /update). If empty, uses RAILWAY_API_TOKEN.
+        description: Optional railway-image-updater service URL (PUT /update). If empty, uses RAILWAY_TOKEN.
         required: false
         type: string
         default: ""
@@ -75,7 +75,7 @@ on:
         required: false
       CI_WEBHOOK_SECRET:
         required: false
-      RAILWAY_API_TOKEN:
+      RAILWAY_TOKEN:
         required: false
 
 permissions:
@@ -455,7 +455,7 @@ jobs:
         shell: bash
         env:
           UPDATER_URL: ${{ inputs.railway_image_updater_url != '' && inputs.railway_image_updater_url || vars.RAILWAY_IMAGE_UPDATER_URL }}
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           PROJECT_ID: ${{ inputs.railway_project_id }}
           ENVIRONMENT_ID: ${{ inputs.railway_environment_id }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
@@ -485,13 +485,13 @@ jobs:
               -d "${payload}"
             exit 0
           fi
-          if [ -n "${RAILWAY_API_TOKEN}" ]; then
+          if [ -n "${RAILWAY_TOKEN}" ]; then
             echo "Syncing via Railway GraphQL API for tag ${IMAGE_TAG}"
             python3 .github/scripts/railway_sync_ghcr_images.py
             exit 0
           fi
           echo "::error::Sync Railway service images was enabled but not configured."
-          echo "Set GitHub Actions secret RAILWAY_API_TOKEN (recommended), or repository variable RAILWAY_IMAGE_UPDATER_URL."
+          echo "Set GitHub Actions secret RAILWAY_TOKEN (recommended), or repository variable RAILWAY_IMAGE_UPDATER_URL."
           echo "Deploy Dev already passes project/environment IDs; PR workflows skip this job by design."
           exit 1
 

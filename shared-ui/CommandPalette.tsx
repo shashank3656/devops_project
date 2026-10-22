@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { buildPortalApiUrl, portalFetch } from './apiRuntime';
 import { OPEN_PALETTE_EVENT } from './theme';
@@ -16,6 +16,8 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [active, setActive] = useState(0);
+  const [searchState, setSearchState] = useState<'idle' | 'loading' | 'error' | 'done'>('idle');
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -41,32 +43,54 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
   }, [open]);
 
   useEffect(() => {
-    if (!open) {
-      setQuery('');
-      setHits([]);
-      setActive(0);
+    if (open) {
+      returnFocusRef.current = document.activeElement as HTMLElement | null;
+      return;
     }
+    setQuery('');
+    setHits([]);
+    setActive(0);
+    setSearchState('idle');
+    returnFocusRef.current?.focus?.();
+    returnFocusRef.current = null;
   }, [open]);
 
   useEffect(() => {
     if (!open || !token || query.trim().length < 2) {
       setHits([]);
+      setSearchState('idle');
       return;
     }
+    let cancelled = false;
+    setSearchState('loading');
     const handle = window.setTimeout(() => {
       portalFetch(buildPortalApiUrl(apiUrl, `/api/search?q=${encodeURIComponent(query.trim())}`), {
         token,
       })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => setHits(Array.isArray(data?.hits) ? data.hits : []))
-        .catch(() => setHits([]));
+        .then((res) => {
+          if (!res.ok) throw new Error('search failed');
+          return res.json();
+        })
+        .then((data) => {
+          if (cancelled) return;
+          setHits(Array.isArray(data?.hits) ? data.hits : []);
+          setSearchState('done');
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setHits([]);
+          setSearchState('error');
+        });
     }, 160);
-    return () => window.clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
   }, [apiUrl, open, query, token]);
 
   const results = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const commandHits = commands
+    const commandHits: SearchHit[] = commands
       .filter((command) => !needle || command.label.toLowerCase().includes(needle) || (command.hint || '').toLowerCase().includes(needle))
       .map((command) => ({
         id: `cmd-${command.id}`,
@@ -75,8 +99,28 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
         subtitle: command.hint || '',
         href: command.href,
       }));
-    return [...commandHits, ...hits].slice(0, 20);
+    return [...commandHits, ...hits].slice(0, 24);
   }, [commands, hits, query]);
+
+  const grouped = useMemo(() => {
+    const order = ['Tickets', 'Services', 'Projects', 'People', 'Pages', 'Other'] as const;
+    const bucket = (kind: string) => {
+      if (kind === 'request' || kind === 'incident' || kind === 'change' || kind === 'problem' || kind === 'pr') return 'Tickets';
+      if (kind === 'service') return 'Services';
+      if (kind === 'project') return 'Projects';
+      if (kind === 'person' || kind === 'user') return 'People';
+      if (kind === 'page') return 'Pages';
+      return 'Other';
+    };
+    const groups = new Map<string, Array<SearchHit & { index: number }>>();
+    results.forEach((item, index) => {
+      const name = bucket(item.kind);
+      const list = groups.get(name) || [];
+      list.push({ ...item, index });
+      groups.set(name, list);
+    });
+    return order.filter((name) => groups.has(name)).map((name) => ({ name, items: groups.get(name) || [] }));
+  }, [results]);
 
   useEffect(() => {
     setActive(0);
@@ -89,17 +133,33 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
     void router.push(href);
   };
 
+  const trimmed = query.trim();
+  const activeId = results[active] ? `ig-palette-option-${active}` : undefined;
+  let statusText = '';
+  if (!token && trimmed.length >= 2) statusText = 'Sign in again to search records. Page shortcuts still work.';
+  else if (searchState === 'loading') statusText = 'Searching records…';
+  else if (searchState === 'error') statusText = 'Record search is unavailable right now. Page shortcuts still work.';
+  else if (trimmed.length === 1) statusText = 'Type at least 2 characters to search records.';
+
   return (
-    <div className="ig-palette" role="dialog" aria-label="Command palette" onClick={() => setOpen(false)}>
+    <div className="ig-palette" role="dialog" aria-modal="true" aria-label="Search" onClick={() => setOpen(false)}>
       <div className="ig-palette__panel" onClick={(event) => event.stopPropagation()}>
         <input
           autoFocus
           className="ig-palette__input"
           value={query}
+          role="combobox"
+          aria-expanded={results.length > 0}
+          aria-controls="ig-palette-results"
+          aria-activedescendant={activeId}
+          aria-autocomplete="list"
+          aria-label="Search records or jump to a page"
           placeholder="Search requests, PRs, projects, or jump to a page"
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'ArrowDown') {
+            if (event.key === 'Tab') {
+              event.preventDefault();
+            } else if (event.key === 'ArrowDown') {
               event.preventDefault();
               setActive((value) => Math.min(value + 1, Math.max(results.length - 1, 0)));
             } else if (event.key === 'ArrowUp') {
@@ -111,24 +171,42 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
             }
           }}
         />
-        <div className="ig-palette__results">
+        <p className={`ig-palette__status${searchState === 'error' ? ' is-error' : ''}`} role="status" aria-live="polite">
+          {statusText}
+        </p>
+        <div className="ig-palette__results" id="ig-palette-results" role="listbox" aria-label="Results">
           {results.length === 0 ? (
-            <div className="ig-empty" style={{ padding: '18px 20px' }}>Type to search. Cmd/Ctrl+K closes this.</div>
+            <div className="ig-empty ig-palette__empty">
+              {trimmed.length < 2
+                ? 'Type to search records, or a page name to jump there. Esc closes.'
+                : searchState === 'loading'
+                ? 'Searching…'
+                : `No matches for "${trimmed}". Try a ticket number, service name, or repo.`}
+            </div>
           ) : (
-            results.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`ig-palette__item ${index === active ? 'is-active' : ''}`}
-                onMouseEnter={() => setActive(index)}
-                onClick={() => go(item.href)}
-              >
-                <span>
-                  <strong>{item.title}</strong>
-                  {item.subtitle ? <div className="ig-muted">{item.subtitle}</div> : null}
-                </span>
-                <span className="ig-muted">{item.kind === 'page' ? item.href : item.kind}</span>
-              </button>
+            grouped.map((group) => (
+              <div key={group.name} className="ig-palette__group">
+                <p className="ig-palette__group-label">{group.name}</p>
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    id={`ig-palette-option-${item.index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={item.index === active}
+                    tabIndex={-1}
+                    className={`ig-palette__item ${item.index === active ? 'is-active' : ''}`}
+                    onMouseEnter={() => setActive(item.index)}
+                    onClick={() => go(item.href)}
+                  >
+                    <span>
+                      <strong>{item.title}</strong>
+                      {item.subtitle ? <div className="ig-muted">{item.subtitle}</div> : null}
+                    </span>
+                    <span className="ig-muted">{item.kind === 'page' ? item.href : item.kind}</span>
+                  </button>
+                ))}
+              </div>
             ))
           )}
         </div>

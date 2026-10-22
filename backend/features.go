@@ -12,6 +12,34 @@ import (
 )
 
 // AppendUserActivity logs a user action (create, submit, comment, etc.)
+func requestActivityExists(requestID int, action, details string) bool {
+	if DB == nil || requestID <= 0 {
+		return false
+	}
+	var count int
+	err := DB.QueryRow(`
+		SELECT COUNT(1) FROM user_activity
+		WHERE resource_type = 'pr_request' AND resource_id = $1 AND action = $2 AND COALESCE(details, '') = $3
+	`, strconv.Itoa(requestID), action, details).Scan(&count)
+	return err == nil && count > 0
+}
+
+func catalogueTemplateKey(value string) string {
+	switch strings.TrimSpace(value) {
+	case "storage-bucket", "application-onboarding", "database":
+		return strings.TrimSpace(value)
+	default:
+		return ""
+	}
+}
+
+func recordRequestActivityOnce(userID *int, requestID int, action, details string) {
+	if requestActivityExists(requestID, action, details) {
+		return
+	}
+	AppendUserActivity(userID, action, "pr_request", strconv.Itoa(requestID), details)
+}
+
 func AppendUserActivity(userID *int, action, resourceType, resourceID, details string) {
 	if DB == nil {
 		return

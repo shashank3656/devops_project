@@ -193,7 +193,7 @@ func parseConftestReport(raw json.RawMessage) (policyToolResult, error) {
 	return result, nil
 }
 
-// parseGenericPolicyReport accepts the SetuOps shape for tools without a native parser.
+// parseGenericPolicyReport accepts the OpsTrellis shape for tools without a native parser.
 func parseGenericPolicyReport(tool string, raw json.RawMessage) (policyToolResult, error) {
 	var report struct {
 		Passed   int             `json:"passed"`

@@ -20,6 +20,13 @@ interface BranchFinding {
   message: string;
 }
 
+interface KnownReport {
+  id: number;
+  repository: string;
+  commit_sha: string;
+  scanner: string;
+}
+
 export default function CodeScanPage() {
   const apiUrl = useApiUrl();
   const { scope } = useWorkspaceScope();
@@ -30,6 +37,7 @@ export default function CodeScanPage() {
   const [cloud, setCloud] = useState('');
   const [environment, setEnvironment] = useState('');
   const [reportId, setReportId] = useState('');
+  const [knownReports, setKnownReports] = useState<KnownReport[]>([]);
   const [digest, setDigest] = useState('');
   const [branchLabel, setBranchLabel] = useState(reportResultLabel(0, 0));
   const [branchFindings, setBranchFindings] = useState<BranchFinding[]>([]);
@@ -59,6 +67,30 @@ export default function CodeScanPage() {
   useEffect(() => {
     if (!projectId && scope.projectId) setProjectId(scope.projectId);
   }, [projectId, scope.projectId]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setKnownReports([]);
+      return;
+    }
+    void deskCall(apiUrl, `/api/security/reports?project_id=${encodeURIComponent(projectId)}`, 'GET').then((result) => {
+      if (result.status !== 200) {
+        setKnownReports([]);
+        return;
+      }
+      const body = asRecord(result.body);
+      const rows = Array.isArray(body.reports) ? body.reports : [];
+      setKnownReports(rows.map((row) => {
+        const item = asRecord(row);
+        return {
+          id: Number(item.id) || 0,
+          repository: textField(item, 'repository') || 'Unknown',
+          commit_sha: textField(item, 'commit_sha') || '',
+          scanner: textField(item, 'scanner') || 'Unknown',
+        };
+      }).filter((item) => item.id > 0));
+    }).catch(() => setKnownReports([]));
+  }, [apiUrl, projectId]);
 
   const revisionReady = /^[0-9a-f]{40}$/.test(revision.trim().toLowerCase());
   const scopeReady = Boolean(projectId && repository.trim() && revisionReady);
@@ -139,9 +171,25 @@ export default function CodeScanPage() {
             </label>
             <label className="label">Exact revision
               <input ref={revisionRef} className="input" value={revision} onChange={(event) => setRevision(event.target.value)} placeholder="40-character commit SHA" required />
+              <p className="access-hint">Example: a1b2c3d4e5f6789012345678901234567890abcd. Copy it from the commit page of the repository you are allowed to scan.</p>
             </label>
-            <label className="label">Report id
-              <input className="input" value={reportId} onChange={(event) => setReportId(event.target.value.replace(/\D/g, ''))} inputMode="numeric" />
+            <label className="label">Report id <span className="onboard-optional">Optional</span>
+              {knownReports.length ? (
+                <select
+                  className="input"
+                  value={knownReports.some((item) => String(item.id) === reportId) ? reportId : ''}
+                  onChange={(event) => setReportId(event.target.value)}
+                >
+                  <option value="">No report</option>
+                  {knownReports.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.id} · {item.repository} · {item.commit_sha.slice(0, 7) || 'Unknown'} · {item.scanner}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <input className="input" value={reportId} onChange={(event) => setReportId(event.target.value.replace(/\D/g, ''))} inputMode="numeric" placeholder="Digits only" />
+              <p className="access-hint">Optional. A report id is the number stored when a scanner report is ingested for this project. Use digits only, or choose a known report above. Leave it blank when no report has been ingested.</p>
             </label>
             <label className="label">Cloud, optional
               <input className="input" value={cloud} onChange={(event) => setCloud(event.target.value)} />

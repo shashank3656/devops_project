@@ -163,7 +163,7 @@ export default function DevOpsTemplateCloudPage() {
   return (
     <>
       <Head>
-        <title>{titleCloud} Templates - DevOps</title>
+        <title>{titleCloud} Templates - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

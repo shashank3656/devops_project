@@ -59,6 +59,8 @@ export default function DataTable<T>({
   rowVersion?: (row: T) => string;
 }) {
   const [focusIndex, setFocusIndex] = useState(0);
+  const [page, setPage] = useState(0);
+  const pageSize = 50;
   const [changedKeys, setChangedKeys] = useState<Set<RowKey>>(new Set());
   const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
   const headerCheckbox = useRef<HTMLInputElement>(null);
@@ -66,6 +68,20 @@ export default function DataTable<T>({
   const changedTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(changedTimer.current), []);
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = rows.length > pageSize;
+  const visibleRows = paged ? rows.slice(safePage * pageSize, safePage * pageSize + pageSize) : rows;
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  useEffect(() => {
+    setPage(0);
+    setFocusIndex(0);
+  }, [label]);
 
   useEffect(() => {
     if (!rowVersion || loading) return;
@@ -124,11 +140,11 @@ export default function DataTable<T>({
   };
 
   const moveFocus = (index: number, open = false) => {
-    if (rows.length === 0) return;
-    const clamped = Math.min(rows.length - 1, Math.max(0, index));
+    if (visibleRows.length === 0) return;
+    const clamped = Math.min(visibleRows.length - 1, Math.max(0, index));
     setFocusIndex(clamped);
     rowRefs.current[clamped]?.focus();
-    if (open && onRowOpen) onRowOpen(rows[clamped]);
+    if (open && onRowOpen) onRowOpen(visibleRows[clamped]);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTableSectionElement>) => {
@@ -152,20 +168,20 @@ export default function DataTable<T>({
         break;
       case 'End':
         event.preventDefault();
-        moveFocus(rows.length - 1, followActive);
+        moveFocus(visibleRows.length - 1, followActive);
         break;
       case 'Enter':
       case 'o':
         if ((event.target as HTMLElement).closest('a, button')) return;
         event.preventDefault();
-        if (rows[focusIndex] && onRowOpen) onRowOpen(rows[focusIndex]);
+        if (visibleRows[focusIndex] && onRowOpen) onRowOpen(visibleRows[focusIndex]);
         break;
       case 'x':
       case ' ':
         if (!selectable) return;
         if ((event.target as HTMLElement).closest('a, button')) return;
         event.preventDefault();
-        if (rows[focusIndex]) toggleRow(rows[focusIndex]);
+        if (visibleRows[focusIndex]) toggleRow(visibleRows[focusIndex]);
         break;
       default:
         break;
@@ -255,7 +271,7 @@ export default function DataTable<T>({
               </td>
             </tr>
           ) : null}
-          {rows.map((row, index) => {
+          {visibleRows.map((row, index) => {
             const key = rowKey(row);
             const isSelected = selected.has(key);
             const isActive = activeKey !== undefined && activeKey !== null && activeKey === key;
@@ -264,6 +280,7 @@ export default function DataTable<T>({
             return (
               <tr
                 key={key}
+                id={`ig-row-${String(key).replace(/[^A-Za-z0-9_-]/g, '-')}`}
                 ref={(el) => {
                   rowRefs.current[index] = el;
                 }}
@@ -302,6 +319,21 @@ export default function DataTable<T>({
           })}
         </tbody>
       </table>
+      {paged ? (
+        <div className="ig-table-pager">
+          <span>
+            Showing {safePage * pageSize + 1}–{Math.min(rows.length, safePage * pageSize + visibleRows.length)} of {rows.length}
+          </span>
+          <div className="ig-table-pager__actions">
+            <button type="button" className="btn btn-secondary btn-sm" disabled={safePage === 0} title={safePage === 0 ? 'You are on the first page' : 'Previous page'} onClick={() => { setPage(safePage - 1); setFocusIndex(0); }}>
+              Previous
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={safePage >= pageCount - 1} title={safePage >= pageCount - 1 ? 'You are on the last page' : 'Next page'} onClick={() => { setPage(safePage + 1); setFocusIndex(0); }}>
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

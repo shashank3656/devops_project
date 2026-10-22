@@ -624,7 +624,7 @@ export default function DevOpsK8sPodTerminalPage() {
   return (
     <>
       <Head>
-        <title>Terminal Access - DevOps</title>
+        <title>Terminal Access - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell
@@ -771,6 +771,7 @@ export default function DevOpsK8sPodTerminalPage() {
                   We attach this reason to the audit log, along with the pod, container, shell, and launch timestamp.
                 </p>
                 <div className="k8s-terminal-panel__actions">
+                  {detail?.k8s_access === 'write' ? (
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -779,6 +780,9 @@ export default function DevOpsK8sPodTerminalPage() {
                   >
                     {launching ? 'Launching...' : 'Launch audited session'}
                   </button>
+                  ) : (
+                    <p className="k8s-detail-card__meta">Write access is not granted for this project.</p>
+                  )}
                   <button type="button" className="btn btn-secondary" onClick={handleCopy}>
                     {copyState === 'copied' ? 'Copied' : 'Copy command'}
                   </button>
@@ -854,7 +858,7 @@ export default function DevOpsK8sPodTerminalPage() {
                       ))}
                     </div>
                     <div className="k8s-terminal-command-form">
-                      <input
+                      <input aria-label="Command"
                         className="input k8s-terminal-command-input"
                         value={commandInput}
                         onChange={(event) => setCommandInput(event.target.value)}
@@ -930,7 +934,7 @@ export default function DevOpsK8sPodTerminalPage() {
                   </div>
                 </div>
                 <div className="k8s-terminal-snippet-form">
-                  <input
+                  <input aria-label="Snippet label"
                     className="input"
                     value={snippetLabel}
                     onChange={(event) => setSnippetLabel(event.target.value)}

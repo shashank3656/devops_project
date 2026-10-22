@@ -128,7 +128,7 @@ export default function DevOpsK8sStoragePage() {
   return (
     <>
       <Head>
-        <title>Storage - DevOps</title>
+        <title>Storage - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

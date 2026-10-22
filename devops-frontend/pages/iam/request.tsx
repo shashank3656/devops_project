@@ -1,11 +1,16 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import IamFrame from '../../components/IamFrame';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { permissionsForService, serviceLabel, servicesForCloud } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
+import { expireSession } from '../../lib/sessionExpiry';
+import { saveSubmissionResult } from '../../lib/submissionResult';
+import { forgetAttempt, rememberAttempt } from '../../lib/submitAttempt';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
 
 type Team = { id: string; name: string };
 type Principal = { id: string; name: string; teamId: string; verified: boolean };
@@ -20,6 +25,7 @@ type CatalogProject = { id: number; name: string; code?: string; environments?: 
 type Evaluation = { evaluationId?: string; decision?: string; risk?: string; roleName?: string; reason?: string; warnings?: string[] };
 
 const MAX_MINUTES = 90 * 24 * 60;
+const IAM_ATTEMPT_KEY = 'opstrellis-iam-attempt';
 
 function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
@@ -28,6 +34,7 @@ function toggle(list: string[], id: string): string[] {
 export default function IamRequestPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const zoneLabel = useBrowserTimeZoneLabel();
   const [teams, setTeams] = useState<Team[]>([]);
   const [principals, setPrincipals] = useState<Principal[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -40,6 +47,7 @@ export default function IamRequestPage() {
   const [accountId, setAccountId] = useState('');
   const [cloudMember, setCloudMember] = useState('');
   const [services, setServices] = useState<string[]>([]);
+  const [serviceQuery, setServiceQuery] = useState('');
   const [permissions, setPermissions] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
@@ -47,7 +55,8 @@ export default function IamRequestPage() {
   const [justification, setJustification] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [idempotencyKey] = useState(() => `iam-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const submitLock = useRef(false);
+  const { allowLeave } = useUnsavedChanges(Boolean(projectId || principalId || services.length || justification.trim() || startsAt || endsAt));
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
@@ -106,9 +115,8 @@ export default function IamRequestPage() {
           : 'No account for this environment';
 
   const permissionOptions = useMemo(() => {
-    const rows = services.length
-      ? services.flatMap((id) => permissionsForService(cloudKey, id))
-      : permissionsForService(cloudKey, '');
+    if (!services.length) return [];
+    const rows = services.flatMap((id) => permissionsForService(cloudKey, id));
     const seen = new Set<string>();
     return rows.filter((item) => {
       if (seen.has(item.id)) return false;
@@ -138,9 +146,26 @@ export default function IamRequestPage() {
     event.preventDefault();
     const timing = windowError();
     if (!principalId || !environment || !projectId || !accountId || services.length === 0 || permissions.length === 0 || timing || (cloudKey !== 'gcp' && !cloudMember.trim())) {
-      setError(timing || `Choose the person, project, environment, ${accountLabel.toLowerCase()}, a service, and a permission.`);
+      const message = timing || `Choose the person, project, environment, ${accountLabel.toLowerCase()}, a service, and a permission.`;
+      const field = !principalId
+        ? 'iam-principal'
+        : !projectId
+          ? 'iam-project'
+          : !environment
+            ? 'iam-env'
+            : !accountId
+              ? 'iam-account'
+              : !services.length
+                ? 'iam-service-search'
+                : timing
+                  ? 'iam-end'
+                  : 'iam-start';
+      document.getElementById(field)?.focus();
+      setError(message);
       return;
     }
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSaving(true);
     setError('');
     const serviceNames = services.map((id) => serviceLabel(cloudKey, id));
@@ -164,12 +189,17 @@ export default function IamRequestPage() {
       justification: justification.trim(),
       cloudMember: cloudKey === 'gcp' ? '' : cloudMember.trim(),
     };
+    const attemptKey = rememberAttempt(IAM_ATTEMPT_KEY, JSON.stringify(payload));
     try {
       const reviewed = await fetch(`${apiUrl}/api/devops/iam/access-requests/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...sessionAuthHeaders() },
         body: JSON.stringify(payload),
       });
+      if (reviewed.status === 401 || reviewed.status === 403) {
+        expireSession();
+        return;
+      }
       const evaluation = await reviewed.json().catch(() => ({})) as Evaluation;
       if (!reviewed.ok || !evaluation.evaluationId) {
         setError(evaluation.reason || 'The request could not be checked.');
@@ -181,18 +211,33 @@ export default function IamRequestPage() {
       }
       const created = await fetch(`${apiUrl}/api/devops/iam/access-requests`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey, ...sessionAuthHeaders() },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': attemptKey, ...sessionAuthHeaders() },
         body: JSON.stringify({ evaluationId: evaluation.evaluationId }),
       });
+      if (created.status === 401 || created.status === 403) {
+        expireSession();
+        return;
+      }
       const body = await created.json().catch(() => ({}));
       if (!created.ok) {
         setError(body?.error || 'The access request was not raised.');
         return;
       }
+      const requestId = String(body?.id || body?.request_id || evaluation.evaluationId || '');
+      forgetAttempt(IAM_ATTEMPT_KEY);
+      allowLeave();
+      saveSubmissionResult({
+        kind: 'access request',
+        id: requestId,
+        status: 'raised',
+        next: 'It is waiting for DevOps approval.',
+        href: '/service-desk',
+      });
       await router.push('/service-desk');
     } catch {
       setError('The access request was not raised.');
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   }
@@ -251,8 +296,10 @@ export default function IamRequestPage() {
             <section>
               <h2>Services</h2>
               <p className="access-hint">Select every service this access covers.</p>
+              <label className="label" htmlFor="iam-service-search">Find a service</label>
+              <input id="iam-service-search" className="input" type="search" value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Search services" />
               <div className="iam-choices" role="group" aria-label={`${activeProvider} services`} key={cloudKey}>
-                {serviceOptions.map((item) => (
+                {serviceOptions.filter((item) => item.label.toLowerCase().includes(serviceQuery.trim().toLowerCase())).map((item) => (
                   <label key={item.id} className={services.includes(item.id) ? 'is-current' : undefined}>
                     <input type="checkbox" checked={services.includes(item.id)} onChange={() => setServices((current) => toggle(current, item.id))} />
                     <span>{item.label}</span>
@@ -263,6 +310,7 @@ export default function IamRequestPage() {
             <section>
               <h2>Permissions</h2>
               <p className="access-hint">{services.length ? 'Select every role these services need.' : 'Choose a service to see its roles.'}</p>
+              {services.length ? (
               <div className="iam-choices" role="group" aria-label="Permissions">
                 {permissionOptions.map((item) => (
                   <label key={item.id} className={permissions.includes(item.id) ? 'is-current' : undefined}>
@@ -271,10 +319,12 @@ export default function IamRequestPage() {
                   </label>
                 ))}
               </div>
+              ) : null}
             </section>
           </div>
           <section>
             <h2>When</h2>
+            <p className="access-hint">Times use {zoneLabel || 'this browser’s timezone'}.</p>
             <div className="iam-split">
               <div>
                 <label className="label" htmlFor="iam-start">Start time</label>
@@ -295,6 +345,12 @@ export default function IamRequestPage() {
             <p className="access-hint">Do not paste a secret, password, or connection string. Submitting raises an access request on the Service Desk.</p>
           </section>
           <div className="access-create__end">
+            <p className="access-hint">
+              Scope: {selectedProject ? selectedProject.name : 'not chosen'}{environment ? ` · ${environment}` : ''}.
+              Services: {services.length ? services.join(', ') : 'none'}.
+              Permissions: {permissions.length ? permissions.join(', ') : 'none until a service is selected'}.
+              The window uses {zoneLabel || 'this browser’s timezone'}.
+            </p>
             <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Raising…' : 'Raise access request'}</button>
           </div>
         </form>

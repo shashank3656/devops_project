@@ -1,6 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
-  <rect width="40" height="40" rx="10" fill="#0d9488"/>
-  <rect x="11" y="18" width="4" height="16" rx="1" fill="white" fill-opacity="0.95"/>
-  <rect x="25" y="18" width="4" height="16" rx="1" fill="white" fill-opacity="0.95"/>
-  <path d="M11 18h18v4c0 2.2-1.8 4-4 4H15c-2.2 0-4-1.8-4-4v-4z" fill="white" fill-opacity="0.95"/>
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+<title>OpsTrellis</title>
+<rect width="96" height="96" rx="22" fill="#121A31"/>
+<g transform="translate(8 8)">
+<path d="M40 7.5L67.5 23.125V56.25L40 72.5L12.5 56.25V23.125L40 7.5Z" stroke-width="7.5" stroke-linejoin="round" stroke="url(#ot_logo_grad)"/>
+<path d="M26.25 28.75H53.75" stroke-width="7.5" stroke-linecap="square" stroke="#F5F7FF"/>
+<path d="M40 28.75V55.625" stroke-width="7.5" stroke="#45E6CF"/>
+<path d="M40 63.75V72.5" stroke-width="7.5" stroke="#45E6CF"/>
+</g>
+<defs>
+<linearGradient id="ot_logo_grad" x1="15" y1="10" x2="67.5" y2="70" gradientUnits="userSpaceOnUse">
+<stop stop-color="#AE70FF"/>
+<stop offset="0.48" stop-color="#7258FF"/>
+<stop offset="1" stop-color="#24DCD0"/>
+</linearGradient>
+</defs>
 </svg>

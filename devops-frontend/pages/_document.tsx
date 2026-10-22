@@ -1,23 +1,28 @@
-import { Head, Html, Main, NextScript } from 'next/document';
+import Document, { Head, Html, Main, NextScript, type DocumentContext, type DocumentInitialProps } from 'next/document';
 
-const THEME_BOOTSTRAP = `try{var t=localStorage.getItem('setuops-theme')==='dark'?'dark':'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){}`;
+type DocumentProps = DocumentInitialProps & { nonce?: string };
 
-export default function Document() {
+export default function AppDocument({ nonce }: DocumentProps) {
   return (
     <Html lang="en" data-theme="light">
-      <Head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
-          rel="stylesheet"
-        />
+      <Head nonce={nonce}>
+        <script src="/theme-boot.js" nonce={nonce} />
+        <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/logo.svg" />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#121A31" />
       </Head>
       <body>
         <Main />
-        <NextScript />
+        <NextScript nonce={nonce} />
       </body>
     </Html>
   );
 }
+
+AppDocument.getInitialProps = async (ctx: DocumentContext): Promise<DocumentProps> => {
+  const initialProps = await Document.getInitialProps(ctx);
+  const header = ctx.req?.headers['x-nonce'];
+  const nonce = Array.isArray(header) ? header[0] : header;
+  return { ...initialProps, nonce };
+};

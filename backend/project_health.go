@@ -34,6 +34,7 @@ type scorecardCheck struct {
 	Key    string `json:"key"`
 	Label  string `json:"label"`
 	Passed bool   `json:"passed"`
+	State  string `json:"state,omitempty"` // pass, fail, or unknown
 	Detail string `json:"detail"`
 	Href   string `json:"href,omitempty"`
 }
@@ -43,8 +44,31 @@ type projectHealth struct {
 	Metrics    []doraMetric         `json:"metrics"`
 	Scorecard  []scorecardCheck     `json:"scorecard"`
 	Score      int                  `json:"score"`
+	ScoreState string               `json:"score_state"` // known or unknown
 	Cost       projectCostSummary   `json:"cost"`
 	Settings   projectInfraSettings `json:"settings"`
+}
+
+// countKnownChecks ignores checks whose telemetry is missing.
+// A missing sample is unknown and is left out of the percentage.
+func countKnownChecks(checks []scorecardCheck) (known, passed int) {
+	for _, check := range checks {
+		switch check.State {
+		case "unknown":
+			continue
+		case "pass":
+			known++
+			passed++
+		case "fail":
+			known++
+		default:
+			known++
+			if check.Passed {
+				passed++
+			}
+		}
+	}
+	return known, passed
 }
 
 type doraWindow struct {
@@ -319,13 +343,17 @@ func buildProjectScorecard(project ProjectCatalog) []scorecardCheck {
 			channels = append(channels, "webhook")
 		}
 		alerts.Passed = len(channels) > 0
+		alerts.State = "fail"
 		if alerts.Passed {
+			alerts.State = "pass"
 			alerts.Detail = "Alerts go to " + strings.Join(channels, ", ")
 		} else {
 			alerts.Detail = "Only in-app and email alerts. Connect Slack, Teams or a webhook."
 		}
 	} else {
-		alerts.Detail = "Could not read notification settings."
+		alerts.State = "unknown"
+		alerts.Passed = false
+		alerts.Detail = "Notification settings could not be read. Unknown, not healthy."
 	}
 	checks = append(checks, alerts)
 
@@ -339,20 +367,27 @@ func buildProjectScorecard(project ProjectCatalog) []scorecardCheck {
 	expiry := scorecardCheck{Key: "expiry", Label: "Secrets and certificates", Href: "/credential-audit" + projectQuery}
 	if preview, err := buildProjectExpiryPreview(project); err == nil && preview != nil {
 		summary := preview.Summary
-		expiry.Passed = summary.ExpiredCount == 0
 		switch {
+		case summary.TotalItems == 0:
+			expiry.State = "unknown"
+			expiry.Detail = "No credential telemetry. Unknown, not healthy."
 		case summary.ExpiredCount > 0:
+			expiry.Passed = false
+			expiry.State = "fail"
 			expiry.Detail = fmt.Sprintf("%d expired", summary.ExpiredCount)
 		case summary.ExpiringWithin30Days > 0:
+			expiry.Passed = true
+			expiry.State = "pass"
 			expiry.Detail = fmt.Sprintf("Nothing expired; %d expire within 30 days", summary.ExpiringWithin30Days)
-		case summary.TotalItems == 0:
-			expiry.Detail = "No tracked credentials"
 		default:
-			expiry.Detail = fmt.Sprintf("All %d tracked items healthy", summary.TotalItems)
+			expiry.Passed = true
+			expiry.State = "pass"
+			expiry.Detail = fmt.Sprintf("All %d tracked items are inside their expiry window", summary.TotalItems)
 		}
 	} else {
-		expiry.Passed = true
-		expiry.Detail = "No tracked credentials"
+		expiry.State = "unknown"
+		expiry.Passed = false
+		expiry.Detail = "Credential telemetry could not be read. Unknown, not healthy."
 	}
 	checks = append(checks, expiry)
 
@@ -387,21 +422,19 @@ func buildProjectHealth(project ProjectCatalog, now time.Time) (*projectHealth, 
 		return nil, err
 	}
 	scorecard := buildProjectScorecard(project)
-	passed := 0
-	for _, check := range scorecard {
-		if check.Passed {
-			passed++
-		}
-	}
+	known, passed := countKnownChecks(scorecard)
 	score := 0
-	if len(scorecard) > 0 {
-		score = int(math.Round(float64(passed) / float64(len(scorecard)) * 100))
+	scoreState := "unknown"
+	if known > 0 {
+		scoreState = "known"
+		score = int(math.Round(float64(passed) / float64(known) * 100))
 	}
 	return &projectHealth{
 		WindowDays: projectHealthWindowDays,
 		Metrics:    buildDoraMetrics(current, previous, projectHealthWindowDays),
 		Scorecard:  scorecard,
 		Score:      score,
+		ScoreState: scoreState,
 		Cost:       buildProjectCostSummary(project.ID, now),
 		Settings:   loadProjectInfraSettings(project.ID),
 	}, nil
@@ -437,7 +470,11 @@ func exportProjectHealthCSV(w http.ResponseWriter, r *http.Request, projectID in
 			strconv.FormatBool(check.Passed), "", "", "", "", check.Detail,
 		})
 	}
-	_ = writer.Write([]string{"summary", "score", "Operational scorecard", strconv.Itoa(health.Score), "", "percent", "", "", ""})
+	scoreValue := "Unknown"
+	if health.ScoreState == "known" {
+		scoreValue = strconv.Itoa(health.Score)
+	}
+	_ = writer.Write([]string{"summary", "score", "Operational scorecard", scoreValue, "", "percent", health.ScoreState, "", "Known checks only. Missing telemetry is Unknown and is left out of the percentage."})
 	_ = writer.Write([]string{
 		"cost", "budget", "Monthly budget",
 		strconv.Itoa(health.Cost.BudgetMonthly), "", "USD", health.Cost.AlertLevel, strconv.Itoa(health.Cost.TrackedRequests), "",

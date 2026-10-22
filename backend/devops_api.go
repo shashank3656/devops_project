@@ -293,7 +293,7 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	_, ok := requireDevopsManager(w, r)
+	userID, ok := requireDevopsManager(w, r)
 	if !ok {
 		return
 	}
@@ -311,6 +311,9 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 		if n, err := strconv.Atoi(projectStr); err == nil && n > 0 {
 			projectID = n
 		}
+	}
+	if projectID > 0 && !ensureProjectVisible(w, r, userID, projectID) {
+		return
 	}
 	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
 	search := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -351,14 +354,18 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	requests, err := GetPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "")
+	assignedTo := 0
+	if r.URL.Query().Get("mine") == "1" {
+		assignedTo = userID
+	}
+	requests, err := listPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "", assignedTo)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	totalCount, _ := GetTotalCount(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "")
+	totalCount, _ := countPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "", assignedTo)
 	userIDs := make([]int, 0)
 	for _, req := range requests {
 		if req.CreatedBy != nil && *req.CreatedBy > 0 {
@@ -366,8 +373,22 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	usernames, _ := GetUsernamesByUserIDs(userIDs)
+	seeAll := callerSeesEveryProject(userID)
+	var visibleProjects map[int]bool
+	if !seeAll {
+		visibleProjects, err = getVisibleProjectIDSetForUser(userID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			encodeDevopsJSON(w, map[string]interface{}{"error": "request failed", "status": "error"})
+			return
+		}
+	}
 	out := make([]map[string]interface{}, 0, len(requests))
 	for _, req := range requests {
+		if !seeAll && (req.ProjectID == nil || !visibleProjects[*req.ProjectID]) {
+			continue
+		}
 		obj := map[string]interface{}{
 			"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
 			"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
@@ -829,6 +850,10 @@ func devopsBulkActionHandler(w http.ResponseWriter, r *http.Request, managerID i
 			errs = append(errs, fmt.Sprintf("#%d: not found", id))
 			continue
 		}
+		if visible, visErr := projectPointerVisible(managerID, req.ProjectID); visErr != nil || !visible {
+			errs = append(errs, fmt.Sprintf("#%d: not found", id))
+			continue
+		}
 		if req.Status != "pending_devops_approval" {
 			errs = append(errs, fmt.Sprintf("#%d: not pending_devops_approval", id))
 			continue
@@ -892,6 +917,16 @@ func devopsRequestDetailHandler(w http.ResponseWriter, id, viewerID int) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
+		return
+	}
+	if visible, visErr := projectPointerVisible(viewerID, req.ProjectID); visErr != nil || !visible {
+		status := http.StatusNotFound
+		if visErr != nil {
+			status = http.StatusInternalServerError
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
 		encodeDevopsJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}
@@ -1063,6 +1098,16 @@ func devopsRequestActionHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || req == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
+		encodeDevopsJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
+		return
+	}
+	if visible, visErr := projectPointerVisible(managerID, req.ProjectID); visErr != nil || !visible {
+		status := http.StatusNotFound
+		if visErr != nil {
+			status = http.StatusInternalServerError
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
 		encodeDevopsJSON(w, map[string]interface{}{"error": "request not found", "status": "error"})
 		return
 	}

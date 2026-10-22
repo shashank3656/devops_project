@@ -15,7 +15,7 @@ export default function ChangeRiskPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Change Intelligence - DevOps Portal</title>
+        <title>Change Intelligence - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <section className="portal-surface">
@@ -24,7 +24,7 @@ export default function ChangeRiskPage() {
               <span className="portal-surface__eyebrow">Portal cleanup</span>
               <h1 className="portal-surface__title">This view has been retired</h1>
               <p className="portal-surface__subtitle">
-                Change Risk has been removed from the DevOps portal to keep the experience simpler.
+                Change Risk has been removed from OpsTrellis to keep the experience simpler.
                 Redirecting you to Changes.
               </p>
             </div>

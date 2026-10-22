@@ -14,7 +14,7 @@ import (
 const (
 	awsSTSEndpoint        = "https://sts.amazonaws.com/"
 	identityExchangeKind  = "oidc_exchange"
-	workloadSessionPrefix = "setuops-"
+	workloadSessionPrefix = "opstrellis-"
 )
 
 type workloadRoleExchange struct {
@@ -139,7 +139,7 @@ func exchangeWorkloadCloudRole(provider, token string, claims map[string]any) wo
 	case gcpSA != "":
 		out.Cloud = "gcp"
 		out.Role = gcpSA
-		out.Reason = "GCP Workload Identity is recorded. SetuOps does not mint or store a GCP key; configure the cloud trust to this repo subject."
+		out.Reason = "GCP Workload Identity is recorded. OpsTrellis does not mint or store a GCP key; configure the cloud trust to this repo subject."
 		persistWorkloadRoleExchange(out)
 		return out
 	default:

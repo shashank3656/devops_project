@@ -12,6 +12,23 @@ interface Person {
   name: string;
 }
 
+interface ScheduleDay {
+  day: string;
+  name: string;
+  user_id: number;
+}
+
+interface SchedulePreview {
+  id: number;
+  timezone: string;
+  days: ScheduleDay[];
+}
+
+function dayLabel(day: string): string {
+  const text = day.trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Day';
+}
+
 function known(value: string | undefined): string {
   const text = (value || '').trim();
   return text || 'Unknown';
@@ -54,6 +71,7 @@ export default function OnCallTeamUsersPage() {
   const [note, setNote] = useState('');
   const [query, setQuery] = useState('');
   const [personFilter, setPersonFilter] = useState('');
+  const [schedule, setSchedule] = useState<SchedulePreview | null>(null);
 
   useEffect(() => {
     if (!router.isReady || !projectId || !teamId) return;
@@ -89,6 +107,31 @@ export default function OnCallTeamUsersPage() {
         setPeople(members);
         const memberIds = new Set(members.map((person) => person.userId));
         setSelected(roster.map((person) => person.userId).filter((id) => memberIds.has(id)));
+        try {
+          const scheduleRes = await fetch(`${apiUrl}/api/oncall/schedules`, { headers });
+          const scheduleBody = await readJson(scheduleRes);
+          const rows = Array.isArray(scheduleBody.schedules) ? scheduleBody.schedules : [];
+          const found = rows.map((item) => asRecord(item)).find((item) => Number(item.team_id) === teamId && Number(item.project_id) === projectId);
+          if (!found) {
+            setSchedule(null);
+            return;
+          }
+          const days = Array.isArray(found.days) ? found.days : [];
+          setSchedule({
+            id: Number(found.id) || 0,
+            timezone: typeof found.timezone === 'string' && found.timezone ? found.timezone : 'Unknown',
+            days: days.map((item) => {
+              const day = asRecord(item);
+              return {
+                day: typeof day.day === 'string' ? day.day : '',
+                name: typeof day.name === 'string' ? day.name : '',
+                user_id: Number(day.user_id) || 0,
+              };
+            }),
+          });
+        } catch {
+          setSchedule(null);
+        }
       })
       .catch(() => setError('People for this team could not be loaded.'))
       .finally(() => setLoading(false));
@@ -130,18 +173,38 @@ export default function OnCallTeamUsersPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>{known(teamName)} on-call people</title></Head>
+      <Head><title>{loading ? 'Loading team…' : `${known(teamName)} on-call people`}</title></Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">{known(projectName)}</span>
-            <h1 className="portal-page__title">{known(teamName)}</h1>
-            <p className="portal-page__subtitle">Check every person who should rotate on this team. More than one can be selected.</p>
+            <span className="portal-page__eyebrow">{loading ? 'Loading project…' : known(projectName)}</span>
+            <h1 className="portal-page__title">{loading ? 'Loading team…' : known(teamName)}</h1>
+            <p className="portal-page__subtitle">Choose who rotates. Shift timing, handover, and rotation order are in the weekly schedule on this page.</p>
           </div>
           <Link href={`/on-call/project/${projectId}`} className="btn btn-secondary">Back to teams</Link>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
+        <section className="portal-surface" aria-label="Weekly schedule">
+          <h2 className="portal-surface__title">Shift timing and rotation order</h2>
+          <p className="portal-page__subtitle">Monday through Sunday is the order. The timezone is when each day starts. Handover for one day is requested on the On-call roster.</p>
+          {schedule ? (
+            <>
+              <p className="access-hint">Timezone: {schedule.timezone}</p>
+              <ul>
+                {schedule.days.map((day) => (
+                  <li key={day.day}>{dayLabel(day.day)}: {day.user_id ? known(day.name) : 'Uncovered'}</li>
+                ))}
+              </ul>
+              <Link href={schedule.id ? `/on-call/${schedule.id}` : `/on-call/new?project_id=${projectId}&team_id=${teamId}`} className="btn btn-secondary">Edit schedule</Link>
+            </>
+          ) : (
+            <>
+              <p className="access-hint">No weekly schedule yet.</p>
+              <Link href={`/on-call/new?project_id=${projectId}&team_id=${teamId}`} className="btn btn-secondary">Set shift timing and rotation order</Link>
+            </>
+          )}
+        </section>
         <section className="portal-surface">
           <div className="svc-filters">
             <label>

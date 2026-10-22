@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { formatOperationalTime } from './time';
 import { useEffect, useMemo, useState } from 'react';
 import { buildPortalApiUrl, portalFetch } from './apiRuntime';
 import type { GuardedIncidentBrief } from './guardedActions';
@@ -280,7 +281,7 @@ export default function ResourceContextPanel({
               ) : null}
               <p className="resource-context-panel__freeze">
                 Active{freeze.reason ? `: ${freeze.reason}` : ''}
-                {freeze.ends_at ? ` (until ${new Date(freeze.ends_at).toLocaleString()})` : ''}
+                {freeze.ends_at ? ` (until ${formatOperationalTime(freeze.ends_at)})` : ''}
               </p>
             </div>
           ) : null}
@@ -335,7 +336,7 @@ export default function ResourceContextPanel({
                       {row.result ? ` (${row.result})` : ''}
                       {row.summary ? ` — ${row.summary}` : ''}
                       <br />
-                      <small>{new Date(row.created_at).toLocaleString()}</small>
+                      <small>{formatOperationalTime(row.created_at)}</small>
                     </li>
                   ))}
                 </ul>

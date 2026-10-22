@@ -6,6 +6,7 @@ import DevOpsLayout from '../../../components/DevOpsLayout';
 import K8sClusterSetupGuide from '../../../components/K8sClusterSetupGuide';
 import K8sWorkspaceShell from '../../../components/K8sWorkspaceShell';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import { useUnsavedChanges } from '../../../lib/useUnsavedChanges';
 import { CLOUD_PROVIDER_SEGMENT, normalizeCloudProvider } from '../../../lib/cloudProviders';
 import {
   buildK8sTrustCredentialJson,
@@ -66,6 +67,7 @@ export default function DevOpsK8sOnboardFormPage() {
   const [testing, setTesting] = useState(false);
   const [testOk, setTestOk] = useState('');
   const [error, setError] = useState('');
+  const { allowLeave } = useUnsavedChanges(Boolean(form.cluster_name.trim() || form.cluster_endpoint.trim() || form.auth_credential.trim() || form.project_id));
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -92,12 +94,17 @@ export default function DevOpsK8sOnboardFormPage() {
     };
   }, [apiUrl, router.isReady]);
 
+  const writableProjects = useMemo(
+    () => data.projects.filter((project) => project.k8s_access === 'write'),
+    [data.projects],
+  );
+
   useEffect(() => {
-    if (!data.projects.length) return;
+    if (!writableProjects.length) return;
     const requestedProjectId = readQueryString(router.query.project_id);
     const requestedEnvironment = readQueryString(router.query.environment);
     const selectedProject =
-      data.projects.find((project) => String(project.id) === requestedProjectId) || data.projects[0];
+      writableProjects.find((project) => String(project.id) === requestedProjectId) || writableProjects[0];
     const cloud = normalizeCloudProvider(selectedProject?.clouds[0] || 'aws');
     const modes = k8sAuthModesForCloud(cloud, data.auth_modes_by_cloud);
 
@@ -114,7 +121,7 @@ export default function DevOpsK8sOnboardFormPage() {
         auth_mode: modes[0] || 'secret_ref',
       };
     });
-  }, [data.auth_modes_by_cloud, data.projects, router.query.environment, router.query.project_id]);
+  }, [data.auth_modes_by_cloud, router.query.environment, router.query.project_id, writableProjects]);
 
   const selectedProject = useMemo(
     () => data.projects.find((project) => project.id === form.project_id) || null,
@@ -184,6 +191,7 @@ export default function DevOpsK8sOnboardFormPage() {
     setError('');
     try {
       await saveK8sConnection(apiUrl, payloadFromForm(form, trust));
+      allowLeave();
       await router.push(catalogHref);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save cluster onboarding');
@@ -200,7 +208,7 @@ export default function DevOpsK8sOnboardFormPage() {
   return (
     <>
       <Head>
-        <title>Onboard K8s cluster - DevOps</title>
+        <title>Onboard K8s cluster - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell
@@ -219,6 +227,11 @@ export default function DevOpsK8sOnboardFormPage() {
           {error ? (
             <div className="alert alert-error" role="alert">
               {error}
+            </div>
+          ) : null}
+          {!loading && writableProjects.length === 0 ? (
+            <div className="alert alert-error" role="alert">
+              Write access is not granted for a project, so this cluster cannot be onboarded.
             </div>
           ) : null}
           {testOk ? (
@@ -251,7 +264,14 @@ export default function DevOpsK8sOnboardFormPage() {
                 <p>Loading projects...</p>
               </div>
             ) : (
-              <form className="portal-form-grid" onSubmit={(e) => void handleSubmit(e)}>
+              <form className="portal-stack" onSubmit={(e) => void handleSubmit(e)}>
+                <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+                {writableProjects.length === 0 ? (
+                  <p className="onboard-unavailable">No project you can write to is available. Ask an administrator for project access before registering a cluster.</p>
+                ) : null}
+                <fieldset className="form-section">
+                  <legend className="form-section__title">Cluster</legend>
+                  <div className="portal-form-grid">
                 <div className="label portal-form-grid__span-2">
                   <span>Cloud</span>
                   <SegmentedControl
@@ -266,7 +286,7 @@ export default function DevOpsK8sOnboardFormPage() {
                 </div>
 
                 <label className="label">
-                  Project
+                  Project<span className="form-req" aria-hidden="true"> *</span>
                   <select
                     className="input"
                     value={form.project_id ? String(form.project_id) : ''}
@@ -276,7 +296,7 @@ export default function DevOpsK8sOnboardFormPage() {
                     required
                   >
                     <option value="">Select project</option>
-                    {data.projects.map((project) => (
+                    {writableProjects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name} ({project.code})
                       </option>
@@ -285,7 +305,7 @@ export default function DevOpsK8sOnboardFormPage() {
                 </label>
 
                 <label className="label">
-                  Environment
+                  Environment<span className="form-req" aria-hidden="true"> *</span>
                   <select
                     className="input"
                     value={form.environment}
@@ -298,10 +318,13 @@ export default function DevOpsK8sOnboardFormPage() {
                       </option>
                     ))}
                   </select>
+                  {selectedProject && (selectedProject.environments || []).length === 0 ? (
+                    <span className="ig-muted">This project has no environments yet. Add them on the project before registering a cluster.</span>
+                  ) : null}
                 </label>
 
                 <label className="label portal-form-grid__span-2">
-                  K8s cluster name
+                  K8s cluster name<span className="form-req" aria-hidden="true"> *</span>
                   <input
                     className="input"
                     value={form.cluster_name}
@@ -312,7 +335,7 @@ export default function DevOpsK8sOnboardFormPage() {
                 </label>
 
                 <label className="label portal-form-grid__span-2">
-                  Cluster endpoint (HTTPS)
+                  Cluster endpoint (HTTPS)<span className="form-req" aria-hidden="true"> *</span>
                   <input
                     className="input"
                     type="url"
@@ -322,9 +345,15 @@ export default function DevOpsK8sOnboardFormPage() {
                     required
                   />
                 </label>
+                  </div>
+                </fieldset>
 
+                <fieldset className="form-section">
+                  <legend className="form-section__title">Connection</legend>
+                  <p className="form-section__copy">The fields below change with the connection type. Test reachability before saving.</p>
+                  <div className="portal-form-grid">
                 <label className="label portal-form-grid__span-2">
-                  Connection type
+                  Connection type<span className="form-req" aria-hidden="true"> *</span>
                   <select
                     className="input"
                     value={form.auth_mode}
@@ -367,7 +396,7 @@ export default function DevOpsK8sOnboardFormPage() {
                         className="input"
                         value={trust.role_arn}
                         onChange={(event) => setTrust((t) => ({ ...t, role_arn: event.target.value }))}
-                        placeholder="arn:aws:iam::111122223333:role/SetuOpsEKSAccess"
+                        placeholder="arn:aws:iam::111122223333:role/OpsTrellisEKSAccess"
                         required
                       />
                     </label>
@@ -494,18 +523,20 @@ export default function DevOpsK8sOnboardFormPage() {
 
                 {form.auth_mode === 'in_cluster' ? (
                   <div className="portal-note portal-form-grid__span-2">
-                    In-cluster mode expects the SetuOps API to run with a service account inside this cluster. No credential is stored.
+                    In-cluster mode expects the OpsTrellis API to run with a service account inside this cluster. No credential is stored.
                   </div>
                 ) : null}
+                  </div>
+                </fieldset>
 
-                <div className="portal-form-actions portal-form-grid__span-2">
+                <div className="portal-form-actions">
                   <Link href={catalogHref} className="btn btn-secondary">
                     Cancel
                   </Link>
                   <button type="button" className="btn btn-secondary" disabled={testing || saving} onClick={() => void runTest()}>
                     {testing ? 'Testing…' : 'Test connection'}
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={saving || testing}>
+                  <button type="submit" className="btn btn-primary" disabled={saving || testing || writableProjects.length === 0}>
                     {saving ? 'Saving...' : 'Save cluster'}
                   </button>
                 </div>

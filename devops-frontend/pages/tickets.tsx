@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import Link from 'next/link';
 import {
   BulkBar,
   CostCheckCard,
@@ -15,7 +16,10 @@ import {
   SavedViews,
   UndoToaster,
   useSavedFilterViews,
-  formatRelativeTime,
+  CopyButton,
+  RelativeTime,
+  formatCalendarDate,
+  formatOperationalTime,
   queryString,
   useUndoQueue,
   type DataTableColumn,
@@ -32,6 +36,9 @@ import { RequestPRImpact, useConfirm } from '@infragate/ui';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { getRecentRequestIds, addRecentRequestId } from '../lib/recentRequests';
 import { asRecord, getString } from '../lib/payload';
+import { expireSession } from '../lib/sessionExpiry';
+import { recordReference, requestIdFromQuery } from '../lib/recordRef';
+import { approvalLevel, priorityTone, requestPriorityName } from '../lib/requestPriority';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -57,16 +64,17 @@ interface TicketFilters {
   sortBy: string;
   sortOrder: string;
   atRisk: boolean;
+  mine: boolean;
 }
 
 const DEFAULT_TICKET_FILTERS: TicketFilters = {
-  idFilter: '', team: '', projectId: '', cloud: '', status: '', search: '', requester: '', sortBy: 'created_at', sortOrder: 'desc', atRisk: false,
+  idFilter: '', team: '', projectId: '', cloud: '', status: '', search: '', requester: '', sortBy: 'created_at', sortOrder: 'desc', atRisk: false, mine: false,
 };
 
 const TICKET_VIEW_PRESETS: SavedView<TicketFilters>[] = [
-  { name: 'Needs DevOps review', filters: { ...DEFAULT_TICKET_FILTERS, status: 'pending_devops_approval' } },
-  { name: 'Overdue or due soon', filters: { ...DEFAULT_TICKET_FILTERS, atRisk: true, sortBy: 'due_date', sortOrder: 'asc' } },
-  { name: 'In progress', filters: { ...DEFAULT_TICKET_FILTERS, status: 'in_progress', sortBy: 'updated_at' } },
+  { name: 'Assigned to me', filters: { ...DEFAULT_TICKET_FILTERS, mine: true } },
+  { name: 'Awaiting approval', filters: { ...DEFAULT_TICKET_FILTERS, status: 'pending_devops_approval' } },
+  { name: 'Breaching SLA', filters: { ...DEFAULT_TICKET_FILTERS, atRisk: true, sortBy: 'due_date', sortOrder: 'asc' } },
 ];
 
 function getStatusBadgeClass(status: string): string {
@@ -83,6 +91,7 @@ function getStatusBadgeClass(status: string): string {
 }
 
 function formatStatus(status: string): string {
+  const value = typeof status === 'string' ? status : '';
   const map: Record<string, string> = {
     pending_approval: 'Pending approval',
     pending_user_manager_approval: 'Pending user manager',
@@ -91,31 +100,15 @@ function formatStatus(status: string): string {
     completed: 'Completed',
     rejected: 'Rejected',
   };
-  return map[status] || status;
+  return map[value] || value || 'Unknown';
 }
 
 function formatDateTime(value?: string | null): string {
-  if (!value) return 'Not available';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not available';
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date);
+  return value ? formatOperationalTime(value, 'Not available') : 'Not available';
 }
 
 function formatDateOnly(value?: string | null): string {
-  if (!value) return 'Not set';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not set';
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(date);
+  return value ? formatCalendarDate(value, 'Not set') : 'Not set';
 }
 
 interface TicketRow {
@@ -362,7 +355,10 @@ export default function DevOpsTickets() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [atRisk, setAtRisk] = useState(false);
+  const [mine, setMine] = useState(false);
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
   const [offset, setOffset] = useState(0);
+  const [shareReady, setShareReady] = useState(false);
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [recentIds, setRecentIds] = useState<number[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -398,7 +394,7 @@ export default function DevOpsTickets() {
     portal: 'devops',
   });
 
-  const hasActiveFilters = Boolean(idFilter || team || cloud || status || search || requester || atRisk);
+  const hasActiveFilters = Boolean(idFilter || team || cloud || status || search || requester || atRisk || mine);
   const activeFilterCount = [
     idFilter.trim(),
     team.trim(),
@@ -407,17 +403,28 @@ export default function DevOpsTickets() {
     search.trim(),
     requester.trim(),
     atRisk ? 'at-risk' : '',
+    mine ? 'mine' : '',
     sortBy !== 'created_at' ? sortBy : '',
     sortOrder !== 'desc' ? sortOrder : '',
   ].filter(Boolean).length;
-  const canActOnDetail = detailRequest?.status === 'pending_devops_approval';
+  const detailOutsideScope = Boolean(
+    detailRequest && (
+      (projectId && String(detailRequest.project_id || '') !== projectId) ||
+      (environment && detailRequest.env.toLowerCase() !== environment.toLowerCase()) ||
+      (status && detailRequest.status !== status) ||
+      (cloud && detailRequest.cloud !== cloud) ||
+      (team && detailRequest.team !== team) ||
+      (search.trim() && !`${detailRequest.service} ${detailRequest.team} ${detailRequest.project_name || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+    ),
+  );
+  const canActOnDetail = detailRequest?.status === 'pending_devops_approval' && !detailOutsideScope;
 
   const fetchTickets = () => {
     if (!token) return;
     setLoading(true);
     setListError('');
     const params = new URLSearchParams();
-    if (idFilter.trim()) params.set('id', idFilter.trim());
+    if (idFilter.trim()) params.set('id', requestIdFromQuery(idFilter));
     if (team) params.set('team', team);
     if (projectId) params.set('project_id', projectId);
     if (environment) params.set('env', environment);
@@ -428,16 +435,33 @@ export default function DevOpsTickets() {
     params.set('sort_by', sortBy);
     params.set('sort_order', sortOrder);
     if (atRisk) params.set('at_risk', 'true');
+    if (mine) params.set('mine', '1');
     params.set('limit', String(limit));
     params.set('offset', String(offset));
     fetch(`${apiUrl}/api/devops/requests?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        if (res.status === 401 || res.status === 403) router.replace('/login');
-        return asRecord(await res.json().catch(() => ({})));
+        if (res.status === 401) {
+          expireSession();
+          return null;
+        }
+        if (res.status === 403) {
+          setRequests([]);
+          setTotal(0);
+          setListError('You do not have access to this request queue. Your own requests are on My requests.');
+          return null;
+        }
+        const data = asRecord(await res.json().catch(() => ({})));
+        if (!res.ok || !Array.isArray(data.requests)) {
+          setRequests([]);
+          setTotal(0);
+          setListError('The request queue could not be loaded.');
+          return null;
+        }
+        return data;
       })
       .then((data) => {
-        if (Array.isArray(data.requests)) setRequests(data.requests as TicketRow[]);
-        else setRequests([]);
+        if (!data) return;
+        setRequests(data.requests as TicketRow[]);
         if (typeof data.total_count === 'number') setTotal(data.total_count);
       })
       .catch(() => {
@@ -482,6 +506,8 @@ export default function DevOpsTickets() {
       const commentsData = commentsRes.ok ? asRecord(await commentsRes.json().catch(() => ({}))) : {};
       const timelineData = timelineRes.ok ? asRecord(await timelineRes.json().catch(() => ({}))) : {};
       if (isStale()) return;
+      const loadedId = Number(asRecord(detailData.request).id);
+      if (loadedId && loadedId !== id) return;
 
       const detailRequestData = asRecord(detailData.request);
       setDetailRequest((detailData.request as TicketDetail | null) || null);
@@ -519,7 +545,9 @@ export default function DevOpsTickets() {
       setRecentIds(getRecentRequestIds());
 
       if (syncUrl) {
-        router.replace(`/tickets?id=${id}`, undefined, { shallow: true });
+        sessionStorage.setItem('opstrellis-tickets-scroll', String(window.scrollY));
+        const next = { ...(router.query as Record<string, string | string[]>), id: String(id) };
+        void router.push({ pathname: '/tickets', query: next }, undefined, { shallow: true });
       }
     } catch (error) {
       if (isStale()) return;
@@ -535,6 +563,12 @@ export default function DevOpsTickets() {
 
   const closeDetail = () => {
     detailSeq.current += 1;
+    if (router.query.id) {
+      const next = { ...(router.query as Record<string, string | string[]>) };
+      delete next.id;
+      void router.replace({ pathname: '/tickets', query: next }, undefined, { shallow: true });
+      return;
+    }
     setDetailLoading(false);
     setDetailId(null);
     setDetailRequest(null);
@@ -544,7 +578,8 @@ export default function DevOpsTickets() {
     setDetailNotice('');
     setCommentBody('');
     setRejectReason('');
-    router.replace('/tickets', undefined, { shallow: true });
+    const savedScroll = Number(sessionStorage.getItem('opstrellis-tickets-scroll') || '');
+    if (Number.isFinite(savedScroll)) window.requestAnimationFrame(() => window.scrollTo(0, savedScroll));
   };
 
   const refreshDetail = async () => {
@@ -675,9 +710,18 @@ export default function DevOpsTickets() {
     scheduleDecision(
       [id],
       action === 'approve' ? 'Approving' : 'Rejecting',
-      `${action === 'approve' ? 'Approved' : 'Rejected'} request #${id}`,
+      `${action === 'approve' ? 'Approved' : 'Rejected'} ${recordReference('REQ', id)}`,
       async () => {
         try {
+          const freshRes = await fetch(`${apiUrl}/api/devops/requests/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+          const freshData = asRecord(await freshRes.json().catch(() => ({})));
+          if (!freshRes.ok) {
+            throw new Error(getString(freshData.error, 'This request could not be rechecked. The decision was not applied.'));
+          }
+          const freshStatus = getString(asRecord(freshData.request).status);
+          if (freshStatus !== 'pending_devops_approval') {
+            throw new Error(`This request is now ${freshStatus.replace(/_/g, ' ') || 'in a different state'}. The decision was not applied. Refresh the queue before trying again.`);
+          }
           await sendDevopsAction(
             `/api/devops/requests/${id}/${action}`,
             action === 'reject'
@@ -746,10 +790,17 @@ export default function DevOpsTickets() {
         const outcomes: string[] = [];
         for (const id of ids) {
           try {
+            const freshRes = await fetch(`${apiUrl}/api/devops/requests/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+            const freshData = asRecord(await freshRes.json().catch(() => ({})));
+            const freshStatus = getString(asRecord(freshData.request).status);
+            if (!freshRes.ok || freshStatus !== 'pending_devops_approval') {
+              outcomes.push(`${recordReference('REQ', id)} is now ${freshStatus.replace(/_/g, ' ') || 'unavailable'}. It was left unchanged.`);
+              continue;
+            }
             await sendDevopsAction(`/api/devops/requests/${id}/${action}`, action === 'reject' ? { reason } : undefined);
-            outcomes.push(`#${id} recorded`);
+            outcomes.push(`${recordReference('REQ', id)} recorded`);
           } catch {
-            outcomes.push(`#${id} not recorded`);
+            outcomes.push(`${recordReference('REQ', id)} not recorded`);
           }
         }
         const failed = outcomes.filter((line) => line.endsWith('not recorded'));
@@ -775,48 +826,33 @@ export default function DevOpsTickets() {
     {
       id: 'request',
       header: 'Request',
+      width: '46%',
+      className: 'ig-col-title',
       cell: (req) => {
         const bundleCount = getRequestBundleCount(req);
+        const context = [req.project_name, req.env, req.team || req.created_by_username].filter(Boolean).join(' · ');
         return (
           <div className="ig-cell-stack">
             <span className="ig-cell-title">{req.service || 'Request'}</span>
             <span className="ig-cell-meta">
-              <span className="ig-mono">#{req.id}</span>
-              {bundleCount > 1 ? ` · ${bundleCount} services` : ''}
+              <span className="ig-mono">{recordReference('REQ', req.id)}</span>
+              <CopyButton value={recordReference('REQ', req.id)} label="request reference" />
+              {context ? ` · ${context}` : ''}
+              {bundleCount > 1 ? ` · ${bundleCount}` : ''}
               {isAccessRequest(req) ? ' · Access' : ''}
-              {req.created_by_username ? ` · ${req.created_by_username}` : ''}
             </span>
           </div>
         );
       },
     },
     {
-      id: 'project',
-      header: 'Project',
-      cell: (req) => (
-        <div className="ig-cell-stack">
-          <span>{req.project_name || 'Not set'}</span>
-          <span className="ig-cell-meta">{req.team}</span>
-        </div>
-      ),
-    },
-    {
-      id: 'target',
-      header: 'Target',
-      cell: (req) => (
-        <span className="ig-cell-chips">
-          <span className="ig-chip">{req.env || '—'}</span>
-          <span className="ig-chip ig-chip--muted">{(req.cloud || '—').toUpperCase()}</span>
-        </span>
-      ),
-    },
-    {
       id: 'priority',
       header: 'Priority',
       sortable: true,
-      cell: (req) => (
-        <span className={`ig-priority ig-priority--${(req.priority || 'medium').toLowerCase()}`}>{req.priority || 'medium'}</span>
-      ),
+      cell: (req) => {
+        const priority = typeof req.priority === 'string' && req.priority.trim() ? req.priority.trim().toLowerCase() : 'medium';
+        return <span className={`ig-priority ig-priority--${priorityTone(priority)}`}>{requestPriorityName(priority)}</span>;
+      },
     },
     {
       id: 'due_date',
@@ -845,8 +881,8 @@ export default function DevOpsTickets() {
       header: 'Updated',
       sortable: true,
       cell: (req) => (
-        <span className="ig-cell-meta" title={formatDateTime(req.updated_at)}>
-          {formatRelativeTime(req.updated_at) || formatDateTime(req.updated_at)}
+        <span className="ig-cell-meta">
+          <RelativeTime value={req.updated_at} />
         </span>
       ),
     },
@@ -864,19 +900,66 @@ export default function DevOpsTickets() {
   ];
 
   useEffect(() => {
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
+    if (!token) router.replace('/login');
+  }, [token, router]);
+
+  useEffect(() => {
+    const saveScroll = () => {
+      if (!window.location.pathname.startsWith('/tickets')) return;
+      sessionStorage.setItem('opstrellis-tickets-scroll', String(window.scrollY));
+    };
+    router.events.on('routeChangeStart', saveScroll);
+    return () => router.events.off('routeChangeStart', saveScroll);
+  }, [router]);
+
+  useEffect(() => {
+    if (!router.isReady || router.query.id) return;
+    const savedScroll = Number(sessionStorage.getItem('opstrellis-tickets-scroll') || '');
+    if (!Number.isFinite(savedScroll) || savedScroll <= 0) return;
+    window.requestAnimationFrame(() => window.scrollTo(0, savedScroll));
+  }, [router.isReady, router.query.id]);
+
+  useEffect(() => {
+    if (!token) return;
     fetchTickets();
+  }, [token, apiUrl, idFilter, team, projectId, environment, cloud, status, search, requester, sortBy, sortOrder, atRisk, mine, offset, limit]);
+
+  useEffect(() => {
     setSelectedIds(new Set());
-  }, [token, router, apiUrl, idFilter, team, projectId, environment, cloud, status, search, requester, sortBy, sortOrder, atRisk, offset, limit]);
+  }, [idFilter, team, projectId, environment, cloud, status, search, requester, sortBy, sortOrder, atRisk, mine, offset, limit]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [idFilter, team, projectId, environment, cloud, status, search, requester, atRisk, mine]);
 
   useEffect(() => {
     if (!router.isReady) return;
     setProjectId(queryString(router.query, 'project_id'));
     setEnvironment(queryString(router.query, 'environment'));
-  }, [router.isReady, router.query.project_id, router.query.environment]);
+    setStatus(queryString(router.query, 'status'));
+    setSearch(queryString(router.query, 'q'));
+    setMine(queryString(router.query, 'mine') === '1');
+    setAtRisk(queryString(router.query, 'at_risk') === 'true');
+    setShareReady(true);
+  }, [router.isReady, router.query.project_id, router.query.environment, router.query.status, router.query.q, router.query.mine, router.query.at_risk]);
+
+  useEffect(() => {
+    if (!router.isReady || !shareReady) return;
+    const next: Record<string, string | string[]> = { ...router.query as Record<string, string | string[]> };
+    const assign = (key: string, value: string) => {
+      if (value) next[key] = value;
+      else delete next[key];
+    };
+    assign('status', status);
+    assign('q', search);
+    assign('project_id', projectId);
+    assign('environment', environment);
+    assign('mine', mine ? '1' : '');
+    assign('at_risk', atRisk ? 'true' : '');
+    const same = ['status', 'q', 'project_id', 'environment', 'mine', 'at_risk'].every((key) => String(next[key] || '') === queryString(router.query, key));
+    if (same) return;
+    void router.replace({ pathname: '/tickets', query: next }, undefined, { shallow: true });
+  }, [atRisk, environment, mine, projectId, router.isReady, router.query, search, shareReady, status]);
 
   useEffect(() => {
     fetchProjects();
@@ -890,6 +973,8 @@ export default function DevOpsTickets() {
 
   useEffect(() => {
     setRecentIds(getRecentRequestIds());
+    const stored = window.localStorage.getItem('opstrellis-ticket-columns');
+    if (stored) setHiddenColumns(stored.split(',').map((id) => id.trim()).filter(Boolean));
   }, []);
 
   useEffect(() => {
@@ -908,6 +993,21 @@ export default function DevOpsTickets() {
     const parsed = typeof idParam === 'string' ? parseInt(idParam, 10) : NaN;
     if (!Number.isNaN(parsed) && parsed > 0 && parsed !== detailId) {
       loadDetail(parsed, false);
+      return;
+    }
+    if ((typeof idParam !== 'string' || Number.isNaN(parsed) || parsed <= 0) && detailId) {
+      detailSeq.current += 1;
+      setDetailLoading(false);
+      setDetailId(null);
+      setDetailRequest(null);
+      setDetailComments([]);
+      setDetailTimeline([]);
+      setDetailError('');
+      setDetailNotice('');
+      setCommentBody('');
+      setRejectReason('');
+      const savedScroll = Number(sessionStorage.getItem('opstrellis-tickets-scroll') || '');
+      if (Number.isFinite(savedScroll)) window.requestAnimationFrame(() => window.scrollTo(0, savedScroll));
     }
   }, [router.isReady, router.query.id, token, detailId]);
 
@@ -919,6 +1019,7 @@ export default function DevOpsTickets() {
     setSearch('');
     setRequester('');
     setAtRisk(false);
+    setMine(false);
     setOffset(0);
     loadDetail(id);
   };
@@ -934,18 +1035,19 @@ export default function DevOpsTickets() {
     setSortBy(next.sortBy);
     setSortOrder(next.sortOrder);
     setAtRisk(next.atRisk);
+    setMine(Boolean(next.mine));
     setOffset(0);
     setFilterExpanded(Boolean(next.team || next.cloud || next.requester || next.atRisk || next.sortBy !== 'created_at' || next.sortOrder !== 'desc'));
   };
 
   const clearFilters = () => applyFilterSet(DEFAULT_TICKET_FILTERS);
 
-  const currentFilters: TicketFilters = { idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk };
+  const currentFilters: TicketFilters = { idFilter, team, projectId, cloud, status, search, requester, sortBy, sortOrder, atRisk, mine };
 
   return (
     <>
       <Head>
-        <title>Requests - SetuOps DevOps</title>
+        <title>Requests - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="devops-tickets-page">
@@ -962,16 +1064,13 @@ export default function DevOpsTickets() {
                       className="btn btn-secondary"
                       style={{ padding: '6px 12px', fontSize: 13 }}
                       onClick={() => goToRecent(id)}
-                      title={`Open request #${id}`}
+                      title={`Open ${recordReference('REQ', id)}`}
                     >
-                      #{id}
+                      {recordReference('REQ', id)}
                     </button>
                   ))}
                 </div>
               )}
-              <p className="devops-tickets-subtitle">
-                Search by request number, team, cloud, status, or requester. Click a row to open the review workspace, check the context, comment, and decide.
-              </p>
             </div>
           </div>
 
@@ -1004,7 +1103,7 @@ export default function DevOpsTickets() {
                 <span className="devops-filter-ribbon__key">Request #</span>
                 <input
                   type="text"
-                  placeholder="Any request"
+                  placeholder="REQ0000013"
                   value={idFilter}
                   onChange={(e) => setIdFilter(e.target.value)}
                   className="devops-filter-ribbon__control"
@@ -1098,9 +1197,17 @@ export default function DevOpsTickets() {
                   </label>
                   <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
                     <label className="devops-tickets-filter-checkbox">
-                      <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
-                      <span>Only requests that need attention now</span>
+                      <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
+                      <span>Assigned to me</span>
                     </label>
+                    <p className="access-hint">Includes requests assigned to you and requests you raised.</p>
+                  </div>
+                  <div className="devops-tickets-filter-group devops-tickets-filter-group--checkbox">
+                    <label className="devops-tickets-filter-checkbox">
+                      <input type="checkbox" checked={atRisk} onChange={(e) => setAtRisk(e.target.checked)} />
+                      <span>Breaching SLA</span>
+                    </label>
+                    <p className="access-hint">Requests that are overdue or due soon.</p>
                   </div>
                 </div>
               </div>
@@ -1122,6 +1229,7 @@ export default function DevOpsTickets() {
                 <button type="button" className="btn btn-secondary" onClick={fetchTickets}>
                   Try again
                 </button>
+                <Link href="/my-requests" className="btn btn-secondary">My requests</Link>
               </div>
             </div>
           ) : (
@@ -1129,11 +1237,41 @@ export default function DevOpsTickets() {
               <div className="devops-tickets-summary">
                 <span>Showing {requests.length} of {total} requests</span>
                 <span>Open a row to work the request without leaving this page.</span>
+                <span>
+                  <label className="devops-tickets-filter-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenColumns.includes('updated_at')}
+                      onChange={() => {
+                        setHiddenColumns((current) => {
+                          const next = current.includes('updated_at') ? current.filter((id) => id !== 'updated_at') : [...current, 'updated_at'];
+                          window.localStorage.setItem('opstrellis-ticket-columns', next.join(','));
+                          return next;
+                        });
+                      }}
+                    />
+                    <span>Updated</span>
+                  </label>
+                  <label className="devops-tickets-filter-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenColumns.includes('pr')}
+                      onChange={() => {
+                        setHiddenColumns((current) => {
+                          const next = current.includes('pr') ? current.filter((id) => id !== 'pr') : [...current, 'pr'];
+                          window.localStorage.setItem('opstrellis-ticket-columns', next.join(','));
+                          return next;
+                        });
+                      }}
+                    />
+                    <span>Pull request</span>
+                  </label>
+                </span>
               </div>
               <div className="devops-tickets-table-card card ig-table-card">
                 <DataTable<TicketRow>
                   label="DevOps request queue"
-                  columns={ticketColumns}
+                  columns={ticketColumns.filter((column) => !hiddenColumns.includes(column.id))}
                   rows={requests}
                   rowKey={(req) => req.id}
                   loading={loading}
@@ -1215,13 +1353,14 @@ export default function DevOpsTickets() {
             <InspectorDrawer
               open
               onClose={closeDetail}
-              resetKey={detailRequest?.id ?? null}
+              resetKey={detailId}
+              returnFocusId={detailId ? `ig-row-${detailId}` : undefined}
               label="Request details"
               eyebrow={detailRequestIsAccess ? 'Access request' : 'Request'}
               title={
                 detailRequest ? (
                   <>
-                    <span className="ig-mono">#{detailRequest.id}</span> {detailRequest.service}
+                    <span className="ig-mono">{recordReference('REQ', detailRequest.id)}</span> <CopyButton value={recordReference('REQ', detailRequest.id)} label="request reference" /> {detailRequest.service}
                   </>
                 ) : (
                   'Loading request'
@@ -1240,6 +1379,11 @@ export default function DevOpsTickets() {
               }
             >
               <div className="devops-approval-workspace">
+              {detailOutsideScope ? (
+                <div className="alert" role="status">
+                  This request is outside the current project, environment, or filters. Approvals stay off until it is back in the list.
+                </div>
+              ) : null}
               {detailId ? (
                 <ResourceContextPanel
                   apiUrl={apiUrl}
@@ -1265,6 +1409,25 @@ export default function DevOpsTickets() {
                       <CostCheckCard check={detailRequest.cost_check} />
                     </>
                   ) : null}
+
+                  {detailRequest && (
+                    <section className="portal-surface portal-surface--tight" aria-label="Decision summary">
+                      <div className="portal-surface__header">
+                        <div>
+                          <span className="portal-surface__eyebrow">Before you decide</span>
+                          <h3 className="portal-surface__title">Decision summary</h3>
+                        </div>
+                      </div>
+                      <div className="devops-approval-workspace__meta-grid">
+                        <div className="devops-approval-workspace__meta-item"><span>Requested change</span><strong>{detailRequest.service || 'Unknown'}</strong></div>
+                        <div className="devops-approval-workspace__meta-item"><span>Scope</span><strong>{[detailRequest.project_name, detailRequest.team, detailRequest.env].filter(Boolean).join(' · ') || 'Unknown'}</strong></div>
+                        <div className="devops-approval-workspace__meta-item"><span>Priority</span><strong>{requestPriorityName(detailRequest.priority)}</strong></div>
+                        <div className="devops-approval-workspace__meta-item"><span>Approval level</span><strong>{approvalLevel(detailRequest.priority)}</strong></div>
+                        <div className="devops-approval-workspace__meta-item"><span>Duration</span><strong>{detailRequest.due_date ? `Due ${formatDateOnly(detailRequest.due_date)}` : 'No duration recorded'}</strong></div>
+                        <div className="devops-approval-workspace__meta-item"><span>Evidence</span><strong>{detailRequest.pr_url ? 'Pull request linked in this request' : 'No supporting link yet'}</strong></div>
+                      </div>
+                    </section>
+                  )}
 
                   {detailRequest && (
                     <div className="devops-approval-workspace__grid">
@@ -1306,7 +1469,11 @@ export default function DevOpsTickets() {
                           </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Priority</span>
-                            <strong>{detailRequest.priority || 'medium'}</strong>
+                            <strong>{requestPriorityName(detailRequest.priority)}</strong>
+                          </div>
+                          <div className="devops-approval-workspace__meta-item">
+                            <span className="devops-approval-workspace__meta-label">Approval level</span>
+                            <strong>{approvalLevel(detailRequest.priority)}</strong>
                           </div>
                           <div className="devops-approval-workspace__meta-item">
                             <span className="devops-approval-workspace__meta-label">Due date</span>
@@ -1345,14 +1512,14 @@ export default function DevOpsTickets() {
                           <div className="devops-approval-workspace__dependency-card">
                             <span className="devops-approval-workspace__meta-label">Depends on</span>
                             <strong>{detailRequest.depends_on?.length || 0}</strong>
-                            <p>{detailRequest.depends_on?.length ? detailRequest.depends_on.map((entry) => `#${entry}`).join(', ') : 'No upstream dependencies'}</p>
+                            <p>{detailRequest.depends_on?.length ? detailRequest.depends_on.map((entry) => recordReference('REQ', entry)).join(', ') : 'No upstream dependencies'}</p>
                           </div>
                           <div className="devops-approval-workspace__dependency-card">
                             <span className="devops-approval-workspace__meta-label">Blocking</span>
                             <strong>{detailRequest.blocked_by_with_status?.length || 0}</strong>
                             <p>
                               {detailRequest.blocked_by_with_status?.length
-                                ? detailRequest.blocked_by_with_status.map((entry) => `#${entry.id} (${formatStatus(entry.status)})`).join(', ')
+                                ? detailRequest.blocked_by_with_status.map((entry) => `${recordReference('REQ', entry.id)} (${formatStatus(entry.status)})`).join(', ')
                                 : 'No downstream dependencies'}
                             </p>
                           </div>
@@ -1591,7 +1758,7 @@ export default function DevOpsTickets() {
                                   />
                                   <span>Acknowledge risks in this change brief</span>
                                 </label>
-                                <textarea
+                                <textarea aria-label="Exception reasons"
                                   className="input devops-approval-workspace__textarea"
                                   rows={3}
                                   value={ackReasons}
@@ -1692,15 +1859,21 @@ export default function DevOpsTickets() {
                           <div className="devops-approval-workspace__empty">No activity recorded yet.</div>
                         ) : (
                           <div className="devops-approval-workspace__timeline">
-                            {detailTimeline.map((event) => (
-                              <article key={`${event.kind}-${event.id}`} className="devops-approval-workspace__timeline-item">
+                            {detailTimeline.map((event) => {
+                              const kind = (event.kind || event.action || 'update').toLowerCase();
+                              const label = kind.includes('comment') ? 'Comment' : kind.includes('approv') ? 'Approval' : kind.includes('status') ? 'Status' : kind.includes('operator') || kind.includes('audit') ? 'Automated' : 'Update';
+                              return (
+                              <article key={`${event.kind}-${event.id}`} className={`devops-approval-workspace__timeline-item is-${label.toLowerCase()}`}>
                                 <div className="devops-approval-workspace__timeline-meta">
+                                  <span className="ig-badge ig-badge--info">{label}</span>
                                   <strong>{event.username || 'System'}</strong>
                                   <span>{formatDateTime(event.created_at)}</span>
+                                  {kind.includes('internal') ? <span className="ig-badge ig-badge--medium">Internal note</span> : null}
                                 </div>
                                 <p>{event.body || event.details || event.action}</p>
                               </article>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </section>

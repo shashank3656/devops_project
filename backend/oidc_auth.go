@@ -93,7 +93,7 @@ func oidcStateSecret() []byte {
 		secret = oidcClientSecret()
 	}
 	if secret == "" {
-		secret = "setuops-oidc-state"
+		secret = "opstrellis-oidc-state"
 	}
 	return []byte(secret)
 }
@@ -445,11 +445,16 @@ func stringSliceFromAny(value any) []string {
 	}
 }
 
+const (
+	workloadOIDCAudienceDefault = "opstrellis"
+	workloadOIDCAudienceLegacy  = "setuops"
+)
+
 func githubOIDCAudience() string {
 	if trimmed := strings.TrimSpace(os.Getenv("GITHUB_OIDC_AUDIENCE")); trimmed != "" {
 		return trimmed
 	}
-	return "setuops"
+	return workloadOIDCAudienceDefault
 }
 
 func readWorkloadOIDCToken(r *http.Request) string {
@@ -541,7 +546,7 @@ func gitlabOIDCAudience() string {
 	if trimmed := strings.TrimSpace(os.Getenv("GITLAB_OIDC_AUDIENCE")); trimmed != "" {
 		return trimmed
 	}
-	return "setuops"
+	return workloadOIDCAudienceDefault
 }
 
 func verifyGitHubOIDC(token string) (map[string]interface{}, error) {
@@ -605,7 +610,8 @@ func verifyWorkloadOIDC(token, issuer, jwksURL, audience, label string) (map[str
 	if stringFromAny(claims["iss"]) != issuer {
 		return nil, fmt.Errorf("unexpected %s oidc issuer", label)
 	}
-	if !audienceContains(claims["aud"], audience) {
+	if !audienceContains(claims["aud"], audience) &&
+		!(audience == workloadOIDCAudienceDefault && audienceContains(claims["aud"], workloadOIDCAudienceLegacy)) {
 		return nil, fmt.Errorf("%s oidc audience mismatch", label)
 	}
 	if exp := intFromAny(claims["exp"]); exp > 0 && int64(exp) < time.Now().Unix() {
@@ -678,7 +684,7 @@ func rsaPublicFromJWKS(key jwksKey) (*rsa.PublicKey, error) {
 }
 
 func listStaticKeyFindings() []map[string]any {
-	names := []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "RAILWAY_API_TOKEN", "GITHUB_TOKEN", "GCP_SA_KEY"}
+	names := []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "RAILWAY_TOKEN", "GITHUB_TOKEN", "GCP_SA_KEY"}
 	out := []map[string]any{}
 	for _, name := range names {
 		if strings.TrimSpace(os.Getenv(name)) == "" {

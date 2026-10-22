@@ -8,7 +8,7 @@ import (
 
 func TestCloudAccountSecretIsSealedAndOmitted(t *testing.T) {
 	t.Setenv("SESSION_SECRET", "test-secret")
-	const plain = "arn:aws:iam::111122223333:role/SetuOpsTrust"
+	const plain = "arn:aws:iam::111122223333:role/OpsTrellisTrust"
 	sealed, err := sealCloudSecret(plain)
 	if err != nil {
 		t.Fatal(err)

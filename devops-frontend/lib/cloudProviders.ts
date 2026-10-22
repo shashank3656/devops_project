@@ -79,7 +79,7 @@ export function providerFormCopy(provider: CloudProviderId): ProviderFormCopy {
         assumeAuthLabel: 'Assume IAM role (recommended)',
         staticAuthLabel: 'Server secret reference (last resort)',
         roleLabel: 'Role ARN',
-        rolePlaceholder: 'arn:aws:iam::111122223333:role/SetuOpsInventory',
+        rolePlaceholder: 'arn:aws:iam::111122223333:role/OpsTrellisInventory',
         externalIdLabel: 'External ID',
         externalIdPlaceholder: 'Trust external ID (recommended)',
         onboardBlurb:
@@ -129,11 +129,11 @@ export function providerTrustSetupSteps(provider: CloudProviderId): TrustSetupSt
       return [
         {
           title: 'Create or pick a subscription',
-          detail: 'Use the subscription GUID as the account ID in SetuOps. Inventory and tests scope to that subscription.',
+          detail: 'Use the subscription GUID as the account ID in OpsTrellis. Inventory and tests scope to that subscription.',
         },
         {
           title: 'Federate the API host',
-          detail: 'Grant the SetuOps API identity (managed identity or app registration) permission to read resources in the subscription.',
+          detail: 'Grant the OpsTrellis API identity (managed identity or app registration) permission to read resources in the subscription.',
         },
         {
           title: 'Record role or scope ID',
@@ -156,7 +156,7 @@ export function providerTrustSetupSteps(provider: CloudProviderId): TrustSetupSt
         },
         {
           title: 'Allow impersonation from the API host',
-          detail: 'Grant roles/iam.serviceAccountTokenCreator on that SA to the SetuOps API runtime service account (or workload identity pool).',
+          detail: 'Grant roles/iam.serviceAccountTokenCreator on that SA to the OpsTrellis API runtime service account (or workload identity pool).',
         },
         {
           title: 'Test from the account page',
@@ -167,10 +167,10 @@ export function providerTrustSetupSteps(provider: CloudProviderId): TrustSetupSt
       return [
         {
           title: 'Create a cross-account IAM role',
-          detail: 'In the member account, create a role (e.g. SetuOpsInventory) with read-only policies for the services you inventory.',
+          detail: 'In the member account, create a role (e.g. OpsTrellisInventory) with read-only policies for the services you inventory.',
         },
         {
-          title: 'Trust the SetuOps API account',
+          title: 'Trust the OpsTrellis API account',
           detail: 'Role trust policy must allow sts:AssumeRole from the API host account or role. Use a unique external ID in the trust condition.',
         },
         {

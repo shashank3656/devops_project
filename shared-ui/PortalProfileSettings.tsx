@@ -316,8 +316,8 @@ export default function PortalProfileSettings({
         <form onSubmit={handleChangePassword}>
           <div className="portal-field-grid portal-field-grid--two">
             <div>
-              <label className="label">Current password</label>
-              <input
+              <label className="label" htmlFor="profile-current-password">Current password</label>
+              <input id="profile-current-password"
                 type="password"
                 className="input"
                 value={currentPassword}
@@ -327,8 +327,8 @@ export default function PortalProfileSettings({
               />
             </div>
             <div>
-              <label className="label">New password</label>
-              <input
+              <label className="label" htmlFor="profile-new-password">New password</label>
+              <input id="profile-new-password"
                 type="password"
                 className="input"
                 value={newPassword}
@@ -339,8 +339,8 @@ export default function PortalProfileSettings({
               />
             </div>
             <div>
-              <label className="label">Confirm new password</label>
-              <input
+              <label className="label" htmlFor="profile-confirm-new-password">Confirm new password</label>
+              <input id="profile-confirm-new-password"
                 type="password"
                 className="input"
                 value={confirmPassword}
@@ -362,7 +362,12 @@ export default function PortalProfileSettings({
       {show('notifications') && !notifPrefs ? (
         <section className="portal-surface" id="profile-notifications">
           <div className="empty-state profile-page__api-state">
-            {notifLoaded ? 'Notification preferences are not available yet.' : 'Loading notification preferences...'}
+            {notifLoaded ? (
+              <>
+                Notification preferences are not available for this account.{' '}
+                <a href="/notification-settings">Open notification settings</a>
+              </>
+            ) : 'Loading notification preferences...'}
           </div>
         </section>
       ) : null}
@@ -459,8 +464,8 @@ export default function PortalProfileSettings({
         <form onSubmit={handleCreateAPIKey}>
           <div className="portal-field-grid portal-field-grid--two">
             <div>
-              <label className="label">Key name</label>
-              <input
+              <label className="label" htmlFor="profile-key-name">Key name</label>
+              <input id="profile-key-name"
                 type="text"
                 className="input"
                 value={newKeyName}
@@ -469,8 +474,8 @@ export default function PortalProfileSettings({
               />
             </div>
             <div>
-              <label className="label">Scopes</label>
-              <input
+              <label className="label" htmlFor="profile-scopes">Scopes</label>
+              <input id="profile-scopes"
                 type="text"
                 className="input"
                 value={newKeyScopes}

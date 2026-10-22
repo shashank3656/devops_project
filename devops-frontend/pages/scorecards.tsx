@@ -62,13 +62,13 @@ export default function ScorecardsPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Scorecards - SetuOps</title></Head>
+      <Head><title>Scorecards - OpsTrellis</title></Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Services</span>
             <h1 className="portal-page__title">Scorecards</h1>
-            <p className="portal-page__subtitle">Owner, SLO, incidents, runbook, last CHG, live-vs-CHG drift, and DORA for each catalog service.</p>
+            <p className="portal-page__subtitle">Readiness is the share of known checks: owner, SLO, open incidents, runbook, last change, live drift, and 30-day change-failure rate. A missing sample is Unknown and is left out of the percentage. It is never counted as healthy.</p>
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}

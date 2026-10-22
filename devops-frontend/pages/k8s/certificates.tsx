@@ -119,6 +119,7 @@ export default function DevOpsK8sCertificatesPage() {
     () => ({
       certificates: visibleRows.length,
       healthy: visibleRows.filter((item) => item.status.toLowerCase() === 'healthy').length,
+      unknown: visibleRows.filter((item) => !['healthy', 'warning', 'expiring'].includes(item.status.toLowerCase())).length,
       warning: visibleRows.filter((item) => item.status.toLowerCase() === 'warning').length,
       expiring: visibleRows.filter((item) => item.status.toLowerCase() === 'expiring').length,
     }),
@@ -128,7 +129,7 @@ export default function DevOpsK8sCertificatesPage() {
   return (
     <>
       <Head>
-        <title>TLS & Certificates - DevOps</title>
+        <title>TLS & Certificates - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell
@@ -166,6 +167,10 @@ export default function DevOpsK8sCertificatesPage() {
               <div className="k8s-summary-card">
                 <span className="k8s-summary-card__label">Healthy</span>
                 <strong className="k8s-summary-card__value">{summary.healthy}</strong>
+              </div>
+              <div className="k8s-summary-card">
+                <span className="k8s-summary-card__label">Unknown</span>
+                <strong className="k8s-summary-card__value">{summary.unknown}</strong>
               </div>
               <div className="k8s-summary-card">
                 <span className="k8s-summary-card__label">Warning</span>

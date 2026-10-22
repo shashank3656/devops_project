@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { sessionRole } from '../components/deskClient';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -33,8 +34,7 @@ function statusLabel(status: string): string {
 }
 
 function when(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
+  return formatOperationalTime(value, 'Unknown');
 }
 
 export default function MaintenancePage() {
@@ -121,7 +121,7 @@ export default function MaintenancePage() {
                 {visible.map((item) => (
                   <tr key={item.id} style={{ cursor: 'pointer' }} onClick={() => void router.push(`/maintenance/${item.id}`)}>
                     <td>
-                      <strong>{item.number}</strong>
+                      <strong><Link href={`/maintenance/${item.id}`} onClick={(event) => event.stopPropagation()}>{item.number}</Link></strong>
                       <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{item.project_name || 'Unknown'}</div>
                     </td>
                     <td>{item.service}{item.environment ? ` · ${item.environment}` : ''}</td>

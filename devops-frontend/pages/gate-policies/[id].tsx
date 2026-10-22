@@ -174,7 +174,7 @@ export default function GatePolicyEditorPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{project ? `Promotion rules · ${project.name}` : 'Edit promotion rules'} - DevOps Portal</title>
+        <title>{project ? `Promotion rules · ${project.name}` : 'Edit promotion rules'} - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

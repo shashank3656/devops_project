@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
@@ -42,8 +43,7 @@ function statusLabel(status: string): string {
 }
 
 function when(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
+  return formatOperationalTime(value, 'Unknown');
 }
 
 function stepLabel(status: string, step: string): string {
@@ -116,7 +116,7 @@ export default function MaintenanceDetailPage() {
             <h1 className="portal-page__title">{item?.service || 'Maintenance'}</h1>
             <p className="portal-page__subtitle">{item ? statusLabel(item.status) : 'Loading'}</p>
           </div>
-          <Link href="/maintenance" className="btn btn-secondary">Back</Link>
+          <Link href="/maintenance" className="btn btn-secondary">Back to maintenance</Link>
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {item ? (

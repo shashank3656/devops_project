@@ -29,6 +29,20 @@ export default function EditPersonPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [activation, setActivation] = useState('');
+  const [savedDraft, setSavedDraft] = useState('');
+
+  const draftKey = JSON.stringify({
+    username: username.trim(),
+    email: email.trim(),
+    userType,
+    role,
+    isManager,
+    managerId,
+    position: position.trim(),
+    onboardDate,
+    level,
+  });
 
   useEffect(() => {
     if (!router.isReady || !Number.isFinite(personId) || personId <= 0) return;
@@ -45,6 +59,7 @@ export default function EditPersonPage() {
         return;
       }
       const profile = account.devops_profile && typeof account.devops_profile === 'object' ? account.devops_profile : {};
+      setActivation(account.activation === 'pending' ? 'pending' : 'active');
       setUsername(account.username);
       setEmail(typeof account.email === 'string' ? account.email : '');
       setUserType(account.user_type === 'devops_user' ? 'devops_user' : 'portal_user');
@@ -60,6 +75,17 @@ export default function EditPersonPage() {
       setPeople(rows
         .filter((item: Person) => item.id !== personId)
         .map((item: Person) => ({ id: item.id, username: item.username })));
+      setSavedDraft(JSON.stringify({
+        username: account.username.trim(),
+        email: typeof account.email === 'string' ? account.email.trim() : '',
+        userType: account.user_type === 'devops_user' ? 'devops_user' : 'portal_user',
+        role: account.role === 'contributor' ? 'contributor' : 'viewer',
+        isManager: Boolean(account.user_type === 'devops_user' ? profile.is_manager : account.is_portal_manager),
+        managerId: account.manager_id ? String(account.manager_id) : '',
+        position: typeof profile.position === 'string' ? profile.position.trim() : '',
+        onboardDate: typeof profile.onboard_date === 'string' ? profile.onboard_date.slice(0, 10) : '',
+        level: typeof profile.level === 'string' && profile.level ? profile.level : 'L1',
+      }));
     }).catch(() => {
       if (!cancel) setError('This person could not be loaded.');
     }).finally(() => {
@@ -98,6 +124,7 @@ export default function EditPersonPage() {
         return;
       }
       setNotice('Saved. Approval level is used the next time a request is assigned.');
+      setSavedDraft(draftKey);
     } catch {
       setError('Changes could not be saved.');
     } finally {
@@ -108,7 +135,7 @@ export default function EditPersonPage() {
   return (
     <>
       <Head>
-        <title>{username ? `${username} - DevOps` : 'Person - DevOps'}</title>
+        <title>{username ? `${username} - OpsTrellis` : 'Person - OpsTrellis'}</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">
@@ -125,6 +152,8 @@ export default function EditPersonPage() {
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
           {loading ? <p className="work-empty">Loading person…</p> : null}
           {!loading && username ? (
+            <>
+            {activation === 'pending' ? <p className="access-hint">Waiting to set a password. They can sign in after they open the set-password email.</p> : <p className="access-hint">Can sign in.</p>}
             <form className="portal-surface access-form" onSubmit={save}>
               <label className="label" htmlFor="edit-username">Username</label>
               <input id="edit-username" className="input" value={username} onChange={(event) => setUsername(event.target.value)} required />
@@ -165,9 +194,10 @@ export default function EditPersonPage() {
                   <p className="access-hint">Low requests go to L1, medium to L2, high to L3, and critical to L4.</p>
                 </>
               )}
+              <p className="access-hint">Job title and membership role are set on the group. Manager for approvals is only this account flag.</p>
               <label className="access-chip">
                 <input type="checkbox" checked={isManager} onChange={(event) => setIsManager(event.target.checked)} />
-                Manager
+                Manager for approvals
               </label>
               {groups.length > 0 ? (
                 <p className="access-hint">
@@ -180,8 +210,9 @@ export default function EditPersonPage() {
                   ))}
                 </p>
               ) : <p className="access-hint">This person is not in a group yet.</p>}
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <button type="submit" className="btn btn-primary" disabled={!savedDraft || draftKey === savedDraft || saving} title={draftKey === savedDraft ? 'No changes to save' : 'Save'}>{saving ? 'Saving…' : 'Save'}</button>
             </form>
+            </>
           ) : null}
         </div>
       </DevOpsLayout>

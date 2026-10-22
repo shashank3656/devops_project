@@ -104,7 +104,7 @@ export default function DevOpsServiceHeatmapPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Service Heatmap - DevOps Portal</title>
+        <title>Service Heatmap - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

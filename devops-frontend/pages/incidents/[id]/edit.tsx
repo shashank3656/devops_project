@@ -8,6 +8,9 @@ import ITSMClock from '../../../components/ITSMClock';
 import ITSMJournal from '../../../components/ITSMJournal';
 import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentCanFinish, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
 import { asRecord, getString } from '../../../lib/payload';
+import { expireSession } from '../../../lib/sessionExpiry';
+import { CopyButton, formatOperationalTime } from '@infragate/ui';
+import { recordReference } from '../../../lib/recordRef';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -149,9 +152,7 @@ function normalizeMembersByTeam(value: unknown): Record<number, TeamMemberOption
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function getIncidentReference(incident: Pick<Incident, 'id' | 'incident_number'>): string {
@@ -405,6 +406,10 @@ export default function EditIncidentPage() {
       clearSessionAndRedirect();
       return;
     }
+    if (action === 'close' && !statusNote.trim()) {
+      setError('Recovery notes are required to close this incident.');
+      return;
+    }
     setFinishing(action);
     setError('');
     setNotice('');
@@ -435,14 +440,17 @@ export default function EditIncidentPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Edit Incident - DevOps Portal</title>
+        <title>Edit Incident - OpsTrellis</title>
       </Head>
       <div className="work-page">
         <header className="work-page__head">
           <div>
-            <p className="ops-kicker">{currentIncidentNumber || 'Incident'}</p>
+            <p className="ops-kicker">
+              {currentIncidentNumber || 'Incident'}
+              {currentIncidentNumber ? <CopyButton value={currentIncidentNumber} label="incident number" /> : null}
+            </p>
             <h1>{summary.trim() || 'Incident'}</h1>
-            <p>{loading ? 'Loading this incident.' : 'Update state, assignment, and notes. The queue stays on the list.'}</p>
+            <p>{loading ? 'Loading this incident.' : `${status || 'Unknown status'} · ${severity || 'No priority'} · ${ownerUserId ? `Owner #${ownerUserId}` : 'Owner unassigned'}`}</p>
           </div>
           <div className="request-actions" style={{ marginTop: 0 }}>
             {problemId > 0 ? (
@@ -470,7 +478,7 @@ export default function EditIncidentPage() {
           <section className="work-board">
             <div className="request-facts">
               <div><span>Reference</span><strong>{currentIncidentNumber || '—'}</strong></div>
-              <div><span>Linked request</span><strong>{requestId ? `#${requestId}` : 'Not linked'}</strong></div>
+              <div><span>Linked request</span><strong>{requestId ? recordReference('REQ', Number(requestId)) : 'Not linked'}</strong></div>
               <div>
                 <span>Source</span>
                 <strong>{source === 'alert' ? `${alertSource || 'alert'}${fingerprint ? ` · ${fingerprint}` : ''}` : source || 'Unknown'}</strong>
@@ -528,7 +536,7 @@ export default function EditIncidentPage() {
                 </label>
                 <label className="label">
                   Assignee
-                  <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId}>
+                  <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId} aria-describedby="incident-assignee-hint">
                     <option value="">Unassigned</option>
                     {selectedTeamMembers.map((member) => (
                       <option key={member.id} value={member.user_id}>
@@ -536,6 +544,7 @@ export default function EditIncidentPage() {
                       </option>
                     ))}
                   </select>
+                  <small id="incident-assignee-hint">Assignment names an owner. It is not acknowledgement.</small>
                 </label>
                 <label className="label">
                   Caller
@@ -598,7 +607,7 @@ export default function EditIncidentPage() {
                 </p>
               ) : null}
               {silencedUntil ? (
-                <p className="portal-surface__subtitle">Silenced until {new Date(silencedUntil).toLocaleString()}</p>
+                <p className="portal-surface__subtitle">Silenced until {formatOperationalTime(silencedUntil)}</p>
               ) : null}
               {childIncidents.length ? (
                 <p className="portal-surface__subtitle">

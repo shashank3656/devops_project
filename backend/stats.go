@@ -99,6 +99,12 @@ func historyDetailHandler(w http.ResponseWriter, r *http.Request) {
 			userID = id
 		}
 	}
+	if userID <= 0 || !callerCanReadRequest(userID, req) {
+		writeAPIError(w, r, http.StatusNotFound, "request not found", nil)
+		return
+	}
+	req.Config = ""
+	req.TerraformPlanOutput = ""
 	canApproveByManager := CanApproveByManager(req, userID)
 	dependsOn, _ := GetRequestDependencies(id)
 	blockedBy, _ := GetRequestsThatDependOn(id)

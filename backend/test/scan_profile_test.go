@@ -57,7 +57,7 @@ func scanViewer() authzSubject {
 func readyProfile() scanProfile {
 	return scanProfile{
 		ProjectID: 10, AccountID: "123456789012", Region: "us-east-1",
-		RoleARN: "arn:aws:iam::123456789012:role/SetuOpsScan",
+		RoleARN: "arn:aws:iam::123456789012:role/OpsTrellisScan",
 		Actions: []string{"ec2:DescribeInstances", "sts:GetCallerIdentity"},
 	}
 }
@@ -67,7 +67,7 @@ func TestAccountIdentityMismatchAborts(t *testing.T) {
 	restore := mem.install()
 	defer restore()
 	mismatched := readyProfile()
-	mismatched.RoleARN = "arn:aws:iam::210987654321:role/SetuOpsScan"
+	mismatched.RoleARN = "arn:aws:iam::210987654321:role/OpsTrellisScan"
 	if _, err := prepareScanProfile(scanOperator(), mismatched); err != errScanIdentity || len(mem.items) != 0 {
 		t.Fatalf("arn mismatch err %v rows %d", err, len(mem.items))
 	}

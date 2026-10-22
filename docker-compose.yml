@@ -1,6 +1,6 @@
 version: '3.8'
 
-# SetuOps local stack
+# OpsTrellis local stack
 #
 # Development:
 #   make compose-dev

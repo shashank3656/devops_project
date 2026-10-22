@@ -163,7 +163,7 @@ export default function DevOpsProjectOperationsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Project Operations - DevOps Portal</title>
+        <title>Project Operations - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

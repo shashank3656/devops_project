@@ -22,13 +22,22 @@ Companion to [RBAC_MATRIX.md](./RBAC_MATRIX.md). Lists high-risk routes and the 
 | POST | `/api/devops/cloud/accounts` | Cloud account onboard (manager **and** member of target devops team) |
 | PATCH | `/api/devops/cloud/accounts/:id` | Disable, metadata, or trust rotation (same team manager) |
 | POST | `/api/devops/cloud/accounts/:id/test` | Connection test (same team manager) |
-| POST | `/api/devops/k8s-connections` | Register or update cluster connection (encrypted credentials / secret refs) |
-| POST | `/api/devops/k8s-connections/test` | Validate K8s trust config and endpoint before save |
-| POST | `/api/devops/k8s-workload-actions` | K8s restart / scale / resume (manager; project access; env freeze → **409** + operator audit) |
 | POST | `/api/devops/promotions/:id/promote` | Environment promote (manager; freeze + gates enforced server-side) |
 | POST | `/api/devops/rollback-console` | Prepare rollback draft (manager) |
 
-Additional manager gates exist on K8s mutating routes, deployment gate approvals, project lifecycle writes, and deploy-intelligence branch protection — see `requireDevopsManager` in the backend tree.
+Additional manager gates exist on deployment gate approvals, project lifecycle writes, and deploy-intelligence branch protection — see `requireDevopsManager` in the backend tree.
+
+## Kubernetes project access
+
+Group and project levels are saved by an admin at `GET/PUT /api/admin/teams/:id/k8s-access`. Effective access is the lower of the two, then the higher result across the person’s groups. Admin can read and write every project.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/devops/k8s-clusters` and the other Kubernetes reads | Read on that project. A list with no project returns only readable projects. |
+| POST | `/api/devops/k8s-connections` | Write on that project. |
+| POST | `/api/devops/k8s-connections/test` | Write on that project. |
+| POST | `/api/devops/k8s-workload-actions` | Write on that project. Env freeze → **409**. |
+| POST/GET | `/api/devops/k8s-terminal-launch`, `k8s-terminal-session`, `k8s-terminal-attach`, `k8s-terminal-command` | Write on that project. |
 
 ## DevOps user (`requireDevopsUser` → 401/403)
 

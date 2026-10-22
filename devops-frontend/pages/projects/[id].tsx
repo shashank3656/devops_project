@@ -2,10 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { ProjectHealthCard, useConfirm, type ProjectHealth } from '@infragate/ui';
+import { ProjectHealthCard, formatOperationalTime, useConfirm, type ProjectHealth } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { asRecord, getString } from '../../lib/payload';
+import { recordReference } from '../../lib/recordRef';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -117,6 +118,8 @@ interface ProjectReleaseActivityItem {
   status: string;
   priority: string;
   client_name: string;
+  requested_by?: string;
+  created_at?: string;
   updated_at: string;
   due_date?: string;
   pr_url?: string;
@@ -358,9 +361,7 @@ function releaseHealthTone(health?: string): { background: string; color: string
 }
 
 function formatDateTime(value?: string): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  return formatOperationalTime(value);
 }
 
 function buildPortalHref(path: string, query: Record<string, string | number | undefined | null>): string {
@@ -594,6 +595,8 @@ function normalizeReleaseDashboard(rawValue: unknown): ProjectReleaseDashboard |
             status: getString(row.status),
             priority: getString(row.priority),
             client_name: getString(row.client_name),
+            requested_by: getString(row.requested_by),
+            created_at: getString(row.created_at),
             updated_at: getString(row.updated_at),
             due_date: getString(row.due_date) || undefined,
             pr_url: getString(row.pr_url) || undefined,
@@ -962,7 +965,7 @@ export default function DevOpsProjectDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{project ? `${project.name} - Projects` : 'Project Details - DevOps Portal'}</title>
+        <title>{project ? `${project.name} - Projects` : 'Project Details - OpsTrellis'}</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
@@ -1720,7 +1723,7 @@ export default function DevOpsProjectDetailPage() {
                                   {item.health}
                                 </span>
                               </td>
-                              <td>{item.latest_request_id ? `#${item.latest_request_id}` : '—'}</td>
+                              <td>{item.latest_request_id ? recordReference('REQ', item.latest_request_id) : '—'}</td>
                               <td>{item.latest_service ? `${item.latest_service} (${item.latest_cloud || 'n/a'})` : '—'}</td>
                               <td>{item.pending_count}</td>
                               <td>{item.completed_count}</td>
@@ -1755,7 +1758,10 @@ export default function DevOpsProjectDetailPage() {
                               {item.environment.toUpperCase()} · {item.cloud} · {item.team || item.client_name || 'Unassigned'}
                             </p>
                             <p className="project-detail__activity-meta project-detail__activity-meta--minor">
-                              Updated {formatDateTime(item.updated_at)}
+                              Requested by {item.requested_by || 'Unknown'}
+                              {item.created_at ? ` · ${formatDateTime(item.created_at)}` : ''}
+                              {' · '}Updated {formatDateTime(item.updated_at)}
+                              {' · '}Status {item.status || 'Unknown'}
                             </p>
                             <Link
                               href={buildPortalHref('/promotions', { project_id: project.id, request_id: item.request_id })}
@@ -1837,18 +1843,34 @@ export default function DevOpsProjectDetailPage() {
 
                   <div className="project-detail__trend">
                     <span className="portal-surface__eyebrow">Release trend</span>
-                    <div className="project-detail__trend-chart">
-                      {releaseDashboard.release_trend.map((point) => (
-                        <div key={point.label} className="project-detail__trend-point">
-                          <span className="project-detail__trend-value">{point.count}</span>
-                          <span
-                            className="project-detail__trend-bar"
-                            style={{ height: `${Math.max(12, point.count * 18)}px` }}
-                          />
-                          <span className="project-detail__trend-label">{point.label}</span>
-                        </div>
-                      ))}
-                    </div>
+                    {releaseDashboard.release_trend.length === 0 ? (
+                      <div className="empty-state">No releases recorded for this project yet.</div>
+                    ) : (() => {
+                      const trendMax = Math.max(...releaseDashboard.release_trend.map((point) => point.count), 1);
+                      return (
+                        <figure className="ops-chart-figure">
+                          <figcaption className="ops-chart-figure__caption">
+                            Releases per period · scale 0–{trendMax}
+                          </figcaption>
+                          <div
+                            className="project-detail__trend-chart"
+                            role="img"
+                            aria-label={`Releases per period: ${releaseDashboard.release_trend.map((point) => `${point.label} ${point.count}`).join(', ')}`}
+                          >
+                            {releaseDashboard.release_trend.map((point) => (
+                              <div key={point.label} className="project-detail__trend-point" aria-hidden="true">
+                                <span className="project-detail__trend-value">{point.count}</span>
+                                <span
+                                  className={`project-detail__trend-bar${point.count === 0 ? ' is-zero' : ''}`}
+                                  style={{ height: point.count === 0 ? '2px' : `${Math.max(6, (point.count / trendMax) * 96)}px` }}
+                                />
+                                <span className="project-detail__trend-label">{point.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </figure>
+                      );
+                    })()}
                   </div>
                 </section>
               </>

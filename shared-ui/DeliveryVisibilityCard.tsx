@@ -33,9 +33,14 @@ export default function DeliveryVisibilityCard({
         {delivery.environment ? (
           <>
             <dt>Environment</dt>
-            <dd>{delivery.environment}</dd>
+            <dd>{['unspecified', 'unknown', '—', '-'].includes(delivery.environment.trim().toLowerCase()) ? 'Scope incomplete' : delivery.environment}</dd>
           </>
-        ) : null}
+        ) : (
+          <>
+            <dt>Environment</dt>
+            <dd>Scope incomplete</dd>
+          </>
+        )}
         {delivery.last_sha ? (
           <>
             <dt>Last SHA</dt>

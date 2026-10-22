@@ -51,7 +51,7 @@ export default function ChangeCalendarPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Change calendar - DevOps</title>
+        <title>Change calendar - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

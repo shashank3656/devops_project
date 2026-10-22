@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -24,6 +25,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<ConfirmOptions | null>(null);
   const resolverRef = useRef<(value: boolean) => void>();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const confirm = useCallback((opts: ConfirmOptions) => {
     setOptions(opts);
@@ -40,12 +43,47 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     resolverRef.current = undefined;
   };
 
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const root = dialogRef.current;
+    const focusables = () => Array.from(root?.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || []).filter((node) => !node.hasAttribute('disabled'));
+    window.requestAnimationFrame(() => focusables()[0]?.focus());
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const list = focusables();
+      if (list.length === 0) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      previousFocusRef.current?.focus();
+    };
+  }, [open]);
+
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
       {open && options ? (
         <div className="ig-confirm-overlay" role="presentation" onClick={() => close(false)}>
           <div
+            ref={dialogRef}
             className="ig-confirm"
             role="alertdialog"
             aria-modal="true"

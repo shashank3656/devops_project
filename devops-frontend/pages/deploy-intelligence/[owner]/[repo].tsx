@@ -235,7 +235,7 @@ export default function DeployIntelligenceRepoPage() {
     const branch = insights?.branch_protection.base_branch || repoMeta?.base_branch || 'main';
     const ok = await confirm({
       title: 'Apply branch protection',
-      message: `Apply recommended SetuOps checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
+      message: `Apply recommended OpsTrellis checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
       confirmLabel: 'Apply',
     });
     if (!ok) return;
@@ -648,31 +648,44 @@ export default function DeployIntelligenceRepoPage() {
               {insights.deploy_frequency.length === 0 ? (
                 <p className="portal-surface__subtitle">No merge history yet for charting.</p>
               ) : (
-                <div className="deploy-intel-chart" role="img" aria-label="Weekly merge counts">
-                  {(() => {
-                    const max = Math.max(...insights.deploy_frequency.map((b) => b.merge_count), 1);
-                    return insights.deploy_frequency.map((bucket) => (
-                      <div key={bucket.period_label} className="deploy-intel-chart__row">
-                        <span className="deploy-intel-chart__label">{bucket.period_label}</span>
-                        <div className="deploy-intel-chart__bar-track">
-                          <div
-                            className="deploy-intel-chart__bar deploy-intel-chart__bar--merge"
-                            style={{ width: `${Math.max(8, (bucket.merge_count / max) * 100)}%` }}
-                            title={`${bucket.merge_count} merge(s)`}
-                          />
-                          {bucket.high_risk_merges > 0 ? (
+                <figure className="ops-chart-figure">
+                  <figcaption className="ops-chart-figure__caption">
+                    Merges per week · scale 0–{Math.max(...insights.deploy_frequency.map((b) => b.merge_count), 1)}
+                    <span className="ops-chart-figure__legend">
+                      <span><i className="ops-swatch ops-swatch--merge" aria-hidden="true" />Merges</span>
+                      <span><i className="ops-swatch ops-swatch--risk" aria-hidden="true" />High risk</span>
+                    </span>
+                  </figcaption>
+                  <div
+                    className="deploy-intel-chart"
+                    role="img"
+                    aria-label={`Weekly merges: ${insights.deploy_frequency.map((b) => `${b.period_label} ${b.merge_count} merges, ${b.high_risk_merges} high risk`).join('; ')}`}
+                  >
+                    {(() => {
+                      const max = Math.max(...insights.deploy_frequency.map((b) => b.merge_count), 1);
+                      return insights.deploy_frequency.map((bucket) => (
+                        <div key={bucket.period_label} className="deploy-intel-chart__row" aria-hidden="true">
+                          <span className="deploy-intel-chart__label">{bucket.period_label}</span>
+                          <div className="deploy-intel-chart__bar-track">
                             <div
-                              className="deploy-intel-chart__bar deploy-intel-chart__bar--risk"
-                              style={{ width: `${Math.max(4, (bucket.high_risk_merges / max) * 100)}%` }}
-                              title={`${bucket.high_risk_merges} high risk`}
+                              className="deploy-intel-chart__bar deploy-intel-chart__bar--merge"
+                              style={{ width: bucket.merge_count === 0 ? '0%' : `${Math.max(3, (bucket.merge_count / max) * 100)}%` }}
+                              title={`${bucket.merge_count} merge(s)`}
                             />
-                          ) : null}
+                            {bucket.high_risk_merges > 0 ? (
+                              <div
+                                className="deploy-intel-chart__bar deploy-intel-chart__bar--risk"
+                                style={{ width: `${Math.max(3, (bucket.high_risk_merges / max) * 100)}%` }}
+                                title={`${bucket.high_risk_merges} high risk`}
+                              />
+                            ) : null}
+                          </div>
+                          <span className="deploy-intel-chart__value">{bucket.merge_count}</span>
                         </div>
-                        <span className="deploy-intel-chart__value">{bucket.merge_count}</span>
-                      </div>
-                    ));
-                  })()}
-                </div>
+                      ));
+                    })()}
+                  </div>
+                </figure>
               )}
             </section>
           </div>
@@ -924,7 +937,7 @@ export default function DeployIntelligenceRepoPage() {
                   disabled={suggestingTicket}
                   onClick={() => void suggestTicket(selected.pr_number, ackReasons.trim().length > 0)}
                 >
-                  {suggestingTicket ? 'Creating ticket…' : 'Create SetuOps ticket'}
+                  {suggestingTicket ? 'Creating ticket…' : 'Create OpsTrellis ticket'}
                 </button>
               </div>
             ) : null}

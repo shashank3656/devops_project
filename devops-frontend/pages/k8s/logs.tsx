@@ -218,7 +218,7 @@ export default function DevOpsK8sLogsPage() {
   return (
     <>
       <Head>
-        <title>Logs - DevOps</title>
+        <title>Logs - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

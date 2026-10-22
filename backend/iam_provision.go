@@ -321,7 +321,7 @@ func iamAccessWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	expected := iamAccessCallbackSecret()
 	provided := strings.TrimSpace(r.Header.Get("X-CI-Secret"))
 	if provided == "" {
-		provided = strings.TrimSpace(r.Header.Get("X-SetuOps-Secret"))
+		provided = strings.TrimSpace(r.Header.Get("X-OpsTrellis-Secret"))
 	}
 	if expected == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 		writeAPIError(w, r, http.StatusUnauthorized, "webhook secret was rejected", nil)

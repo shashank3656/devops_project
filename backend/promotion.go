@@ -49,6 +49,10 @@ func handleRequestPromote(w http.ResponseWriter, r *http.Request, id int, req *P
 		writeAPIError(w, r, http.StatusBadRequest, "only completed or in_progress requests can be promoted", nil)
 		return
 	}
+	if !requestHasVerificationEvidence(req) {
+		writeAPIError(w, r, http.StatusBadRequest, "resource verification is required before promotion. A pull request or approval is not enough", nil)
+		return
+	}
 	nextEnvironment := nextEnv(req.Env)
 	if nextEnvironment == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "already at production; no next environment", nil)

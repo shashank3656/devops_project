@@ -739,6 +739,25 @@ func updateProjectCatalog(projectID int, input ProjectCatalogInput, updatedBy *i
 	return project, nil
 }
 
+func deleteProjectCatalog(projectID int, updatedBy *int) error {
+	project, err := getProjectCatalogByID(projectID)
+	if err != nil {
+		return err
+	}
+	if project == nil {
+		return fmt.Errorf("project not found")
+	}
+	if _, err := DB.Exec(`DELETE FROM projects WHERE id = $1`, projectID); err != nil {
+		if strings.Contains(err.Error(), "foreign key") || strings.Contains(err.Error(), "23503") {
+			return fmt.Errorf("this project still has work attached, so it was not deleted")
+		}
+		return fmt.Errorf("the project was not deleted")
+	}
+	invalidateCacheNamespaces(cacheNamespaceAdmin, cacheNamespaceTeam, cacheNamespaceOnboard)
+	AppendAuditLog(updatedBy, "project_delete", "project", strconv.Itoa(projectID), fmt.Sprintf("%s (%s)", project.Name, project.Code))
+	return nil
+}
+
 func performProjectLifecycleAction(projectID int, action string, updatedBy *int) (*ProjectCatalog, error) {
 	project, err := getProjectCatalogByID(projectID)
 	if err != nil {
@@ -1637,6 +1656,46 @@ func getVisibleProjectsForUser(userID int) ([]ProjectCatalog, error) {
 	return projects, nil
 }
 
+func callerSeesEveryProject(userID int) bool {
+	user, err := GetUserByID(userID)
+	return err == nil && user != nil && strings.EqualFold(strings.TrimSpace(user.Role), "admin")
+}
+
+func projectPointerVisible(userID int, projectID *int) (bool, error) {
+	if callerSeesEveryProject(userID) {
+		return true, nil
+	}
+	if projectID == nil || *projectID <= 0 {
+		return false, nil
+	}
+	visible, err := getVisibleProjectIDSetForUser(userID)
+	if err != nil {
+		return false, err
+	}
+	return visible[*projectID], nil
+}
+
+// ensureProjectVisible hides a project the caller is not on. Missing and forbidden both answer 404.
+func ensureProjectVisible(w http.ResponseWriter, r *http.Request, userID, projectID int) bool {
+	if projectID <= 0 {
+		writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
+		return false
+	}
+	if callerSeesEveryProject(userID) {
+		return true
+	}
+	visible, err := getVisibleProjectIDSetForUser(userID)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
+		return false
+	}
+	if !visible[projectID] {
+		writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
+		return false
+	}
+	return true
+}
+
 func getVisibleProjectIDSetForUser(userID int) (map[int]bool, error) {
 	projects, err := getVisibleProjectsForUser(userID)
 	if err != nil {
@@ -2008,10 +2067,17 @@ func devopsProjectAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, r)
 		return
 	}
-	if _, ok := requireDevopsManager(w, r); !ok {
+	userID, ok := requireDevopsManager(w, r)
+	if !ok {
 		return
 	}
-	projects, err := listProjectCatalogs()
+	var projects []ProjectCatalog
+	var err error
+	if callerSeesEveryProject(userID) {
+		projects, err = listProjectCatalogs()
+	} else {
+		projects, err = getVisibleProjectsForUser(userID)
+	}
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 		return
@@ -2094,7 +2160,13 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusForbidden, "DevOps manager access required", nil)
 			return
 		}
-		projects, err := listProjectCatalogs()
+		var projects []ProjectCatalog
+		var err error
+		if account != nil && strings.EqualFold(account.Role, "admin") {
+			projects, err = listProjectCatalogs()
+		} else {
+			projects, err = getVisibleProjectsForUser(userID)
+		}
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
 			return
@@ -2134,6 +2206,12 @@ func devopsProjectsHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		capture, finish, handled := beginIdempotentPost(w, r, userID, "project")
+		if handled {
+			return
+		}
+		defer finish()
+		w = capture
 		var input ProjectCatalogInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
@@ -2214,7 +2292,11 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 			writeMethodNotAllowed(w, r)
 			return
 		}
-		if _, ok := requireDevopsUser(w, r); !ok {
+		userID, ok := requireDevopsUser(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
 		if len(pathParts) > 2 && pathParts[2] == "export" {
@@ -2245,6 +2327,9 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
+			return
+		}
 		var payload struct {
 			Action string `json:"action"`
 		}
@@ -2262,7 +2347,11 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" {
-		if _, ok := requireDevopsUser(w, r); !ok {
+		userID, ok := requireDevopsUser(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
 		project, err := getProjectCatalogByID(projectID)
@@ -2288,6 +2377,9 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
+			return
+		}
 		var input ProjectCatalogInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
@@ -2306,6 +2398,26 @@ func devopsProjectDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{"status": "ok", "project": project})
+		return
+	}
+	if r.Method == "DELETE" {
+		userID, ok := requireDevopsManager(w, r)
+		if !ok {
+			return
+		}
+		if !ensureProjectVisible(w, r, userID, projectID) {
+			return
+		}
+		if err := deleteProjectCatalog(projectID, &userID); err != nil {
+			status := http.StatusBadRequest
+			if err.Error() == "project not found" {
+				status = http.StatusNotFound
+			}
+			writeAPIError(w, r, status, err.Error(), nil)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		encodeJSON(w, map[string]interface{}{"status": "ok"})
 		return
 	}
 	writeMethodNotAllowed(w, r)

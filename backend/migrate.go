@@ -774,6 +774,7 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_provider VARCHAR(80)")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sso_external_id VARCHAR(255)")
 	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sso_sync_at TIMESTAMP")
+	_, _ = DB.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_set_password BOOLEAN NOT NULL DEFAULT FALSE")
 	_, _ = DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sso_provider_external_id ON users (sso_provider, sso_external_id) WHERE sso_provider IS NOT NULL AND sso_provider != '' AND sso_external_id IS NOT NULL AND sso_external_id != ''")
 
 	// Migration 38: SSO policy expansion (modes, mappings, scheduler, claims, deprovision)
@@ -1483,6 +1484,10 @@ func MigrateDatabase() error {
 	`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_resources_scope ON cloud_resources(team_slug, cloud, account_id, environment, region)`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cloud_resources_name ON cloud_resources(display_name, resource_id)`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE cloud_resources ADD COLUMN IF NOT EXISTS lifecycle_state TEXT NOT NULL DEFAULT ''`)
 	seedCloudResourceInventoryDemo()
 
 	// NF-01: cloud account onboarding (credentials stay on API host)
@@ -1547,7 +1552,9 @@ func MigrateDatabase() error {
 	migrateOncallDutySchema()
 	migrateMaintenanceNoticeSchema()
 	migrateMaintenanceWindowSchema()
+	migrateAPIIdempotencySchema()
 	migrateSectionGrantsSchema()
+	migrateK8sAccessSchema()
 
 	log.Println("Database schema is up to date")
 	return nil

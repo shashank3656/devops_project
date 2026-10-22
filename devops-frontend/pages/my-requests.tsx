@@ -5,6 +5,9 @@ import AccessFilters from '../components/AccessFilters';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { sessionAuthHeaders } from '../lib/portalAccess';
+import { CopyButton, formatCalendarDate, formatOperationalTime } from '@infragate/ui';
+import { recordReference } from '../lib/recordRef';
+import { requestPriorityName } from '../lib/requestPriority';
 
 type HistoryRequest = {
   id: number;
@@ -40,9 +43,12 @@ export default function MyRequestsPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [priority, setPriority] = useState('all');
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancel = false;
+    setLoading(true);
+    setFailed(false);
     fetch(`${apiUrl}/api/history?limit=100`, { headers: sessionAuthHeaders() })
       .then(async (response) => {
         if (!response.ok) throw new Error('unavailable');
@@ -61,20 +67,20 @@ export default function MyRequestsPage() {
     return () => {
       cancel = true;
     };
-  }, [apiUrl]);
+  }, [apiUrl, reloadTick]);
 
   const needle = query.trim().toLowerCase();
   const visible = items.filter((item) => {
     if (status !== 'all' && item.status !== status) return false;
     if (priority !== 'all' && (item.priority || 'medium') !== priority) return false;
     if (!needle) return true;
-    return `${item.service || ''} ${item.project_name || ''} ${item.team || ''} ${item.env || ''} ${item.id}`.toLowerCase().includes(needle);
+    return `${item.service || ''} ${item.project_name || ''} ${item.team || ''} ${item.env || ''} ${item.id} ${recordReference('REQ', item.id)}`.toLowerCase().includes(needle);
   });
 
   return (
     <>
       <Head>
-        <title>My requests - DevOps</title>
+        <title>My requests - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">
@@ -108,14 +114,19 @@ export default function MyRequestsPage() {
             extraLabel="Priority"
             extraOptions={[
               { value: 'all', label: 'Any priority' },
-              { value: 'low', label: 'Low · L1' },
-              { value: 'medium', label: 'Medium · L2' },
-              { value: 'high', label: 'High · L3' },
-              { value: 'critical', label: 'Critical · L4' },
+              { value: 'low', label: 'Low' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'high', label: 'High' },
+              { value: 'critical', label: 'Critical' },
             ]}
           />
           {loading ? <p className="work-empty">Loading your requests…</p> : null}
-          {!loading && failed ? <p className="work-empty">Your requests could not be loaded.</p> : null}
+          {!loading && failed ? (
+            <div className="alert alert-error" role="alert">
+              <span>Failed to load your requests.</span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReloadTick((current) => current + 1)}>Retry</button>
+            </div>
+          ) : null}
           {!loading && !failed && items.length === 0 ? (
             <section className="ops-caught">
               <h2>No requests yet.</h2>
@@ -141,15 +152,20 @@ export default function MyRequestsPage() {
                   {visible.map((item) => (
                     <tr key={item.id}>
                       <td>
-                        <Link href={`/requests/${item.id}`}>{item.service || 'Request'} #{item.id}</Link>
-                        {item.cloud ? ` · ${item.cloud}` : ''}
+                        <Link href={`/requests/${item.id}`}>{item.service || 'Request'}</Link>
+                        <span className="ig-cell-meta">
+                          {' '}
+                          {recordReference('REQ', item.id)}
+                          <CopyButton value={recordReference('REQ', item.id)} label="request number" />
+                          {item.cloud ? ` · ${item.cloud}` : ''}
+                        </span>
                       </td>
                       <td>{item.env || '—'}</td>
                       <td>{item.project_name || item.team || '—'}</td>
-                      <td>{item.priority || 'medium'}</td>
-                      <td>{item.due_date ? String(item.due_date).slice(0, 10) : '—'}</td>
+                      <td>{requestPriorityName(item.priority)}</td>
+                      <td>{formatCalendarDate(item.due_date)}</td>
                       <td>{statusLabel(item.status)}</td>
-                      <td>{item.created_at ? new Date(item.created_at).toLocaleString() : '—'}</td>
+                      <td>{formatOperationalTime(item.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>

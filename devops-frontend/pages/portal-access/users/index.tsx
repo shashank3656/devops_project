@@ -14,6 +14,7 @@ type Account = {
   role?: string;
   user_type?: string;
   verified?: boolean;
+  must_set_password?: boolean;
   level?: string;
 };
 
@@ -44,6 +45,7 @@ export default function PortalUsersPage() {
           role: account.role,
           user_type: account.user_type,
           verified: account.verified,
+          must_set_password: account.must_set_password,
           level: account.user_type === 'devops_user' ? (account.devops_profile?.level || 'L1') : '',
         })));
       })
@@ -71,7 +73,7 @@ export default function PortalUsersPage() {
   return (
     <>
       <Head>
-        <title>People - DevOps</title>
+        <title>People - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">
@@ -107,9 +109,11 @@ export default function PortalUsersPage() {
           />
           {router.query.added === '1' ? (
             <div className="alert alert-success" role="status">
-              {router.query.mailed === '1'
-                ? 'Account created. A sign-in email was sent with their username and the sign-in link.'
-                : 'Account created. The sign-in email was not sent. Mail is not configured, or the mail server refused it.'}
+              {router.query.activation === 'pending'
+                ? 'Account created. Waiting to set a password. They can sign in after they open the set-password email.'
+                : router.query.mailed === '1'
+                  ? 'Account created and active. They can sign in with the password you set. A sign-in email was sent with their username and the sign-in link.'
+                  : 'Account created and active. They can sign in with the password you set. The sign-in email was not sent. Mail is not configured, or the mail server refused it.'}
             </div>
           ) : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
@@ -135,7 +139,7 @@ export default function PortalUsersPage() {
                       <td>{account.user_type === 'devops_user' ? 'DevOps' : 'Requester'}</td>
                       <td>{account.level || '—'}</td>
                       <td>{account.role === 'contributor' ? 'Yes' : 'View only'}</td>
-                      <td>{account.verified ? 'Yes' : 'Not yet'}</td>
+                      <td>{account.must_set_password ? 'Waiting to set a password' : account.verified ? 'Can sign in' : 'Not yet'}</td>
                     </tr>
                   ))}
                 </tbody>

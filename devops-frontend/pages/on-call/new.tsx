@@ -1,10 +1,5 @@
-import { useEffect } from 'react';
-import { useRouter } from 'next/router';
+import OnCallScheduleForm from '../../components/OnCallScheduleForm';
 
 export default function NewOnCallPage() {
-  const router = useRouter();
-  useEffect(() => {
-    void router.replace('/on-call');
-  }, [router]);
-  return null;
+  return <OnCallScheduleForm scheduleId={0} />;
 }

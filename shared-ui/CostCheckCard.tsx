@@ -9,9 +9,9 @@ export function formatMoney(value: number, currency = 'USD') {
 }
 
 const VARIANCE_COPY: Record<RequestCostCheck['variance'], string> = {
-  within: 'Within the SetuOps estimate',
-  above: 'Higher than the SetuOps estimate',
-  below: 'Lower than the SetuOps estimate',
+  within: 'Within the OpsTrellis estimate',
+  above: 'Higher than the OpsTrellis estimate',
+  below: 'Lower than the OpsTrellis estimate',
   unknown: '',
 };
 
@@ -46,13 +46,13 @@ export default function CostCheckCard({ check }: { check: RequestCostCheck | nul
             <dd>{formatMoney(check.monthly_cost, check.currency)}</dd>
           </div>
           <div>
-            <dt>SetuOps estimate</dt>
+            <dt>OpsTrellis estimate</dt>
             <dd>{range}</dd>
           </div>
         </dl>
       ) : (
         <p className="ig-plan__empty">
-          SetuOps estimate {range} per month ({check.estimate_basis}). Infracost figures appear here once CI posts them.
+          OpsTrellis estimate {range} per month ({check.estimate_basis}). Infracost figures appear here once CI posts them.
         </p>
       )}
       {check.has_infracost && VARIANCE_COPY[check.variance] ? <p className="ig-cost__note">{VARIANCE_COPY[check.variance]}.</p> : null}

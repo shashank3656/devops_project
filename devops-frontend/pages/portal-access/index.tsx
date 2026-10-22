@@ -1,7 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import AccessFilters from '../../components/AccessFilters';
 import AccessNav from '../../components/AccessNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -11,9 +10,6 @@ export default function PortalAccessPage() {
   const apiUrl = useApiUrl();
   const [people, setPeople] = useState<number | null>(null);
   const [groups, setGroups] = useState<number | null>(null);
-  const [query, setQuery] = useState('');
-  const [step, setStep] = useState('all');
-  const [focus, setFocus] = useState('all');
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
@@ -28,24 +24,16 @@ export default function PortalAccessPage() {
   }, [apiUrl]);
 
   const count = (value: number | null, noun: string) => (value === null ? noun : `${value} ${noun}`);
-  const needle = query.trim().toLowerCase();
   const areas = [
-    { id: 'people', href: '/portal-access/users', title: '1. People', tone: 'ops-jump ops-jump--mint', copy: `${count(people, 'accounts')} can sign in. Start here when someone is new.`, topic: 'accounts' },
-    { id: 'groups', href: '/portal-access/teams', title: '2. Groups', tone: 'ops-jump ops-jump--lilac', copy: `${count(groups, 'groups')} decide the sections. A person sees the sections on their groups.`, topic: 'sections' },
-    { id: 'signin', href: '/portal-access/sso', title: '3. Sign-in', tone: 'ops-jump ops-jump--blue', copy: 'Password, directory, or both. Directory secrets stay on the API host.', topic: 'directory' },
-  ].filter((area) => {
-    if (step !== 'all' && area.id !== step) return false;
-    if (focus === 'accounts' && area.id !== 'people') return false;
-    if (focus === 'sections' && area.id !== 'groups') return false;
-    if (focus === 'directory' && area.id !== 'signin') return false;
-    if (!needle) return true;
-    return `${area.title} ${area.copy}`.toLowerCase().includes(needle);
-  });
+    { id: 'people', href: '/portal-access/users', title: '1. People', tone: 'ops-jump ops-jump--mint', copy: `${count(people, 'accounts')} can sign in. Start here when someone is new.` },
+    { id: 'groups', href: '/portal-access/teams', title: '2. Groups', tone: 'ops-jump ops-jump--lilac', copy: `${count(groups, 'groups')} decide the sections. A person sees the sections on their groups.` },
+    { id: 'signin', href: '/portal-access/sso', title: '3. Sign-in', tone: 'ops-jump ops-jump--blue', copy: 'Password, directory, or both. Directory secrets stay on the API host.' },
+  ];
 
   return (
     <>
       <Head>
-        <title>Portal Access - DevOps</title>
+        <title>Portal Access - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">
@@ -57,31 +45,7 @@ export default function PortalAccessPage() {
             </div>
           </header>
           <AccessNav />
-          <AccessFilters
-            query={query}
-            onQuery={setQuery}
-            placeholder="Search people, groups, or sign-in"
-            kind={step}
-            onKind={setStep}
-            kindLabel="Step"
-            kindOptions={[
-              { value: 'all', label: 'All steps' },
-              { value: 'people', label: 'People' },
-              { value: 'groups', label: 'Groups' },
-              { value: 'signin', label: 'Sign-in' },
-            ]}
-            extra={focus}
-            onExtra={setFocus}
-            extraLabel="About"
-            extraOptions={[
-              { value: 'all', label: 'Anything' },
-              { value: 'accounts', label: 'Accounts' },
-              { value: 'sections', label: 'Sections' },
-              { value: 'directory', label: 'Directory' },
-            ]}
-          />
-          {areas.length === 0 ? <p className="work-empty">Nothing matches this search.</p> : (
-            <section className="ops-actions-3" aria-label="Access steps">
+          <section className="ops-actions-3" aria-label="Access steps">
               {areas.map((area) => (
                 <Link key={area.id} href={area.href} className={area.tone}>
                   <strong>{area.title}</strong>
@@ -89,7 +53,6 @@ export default function PortalAccessPage() {
                 </Link>
               ))}
             </section>
-          )}
         </div>
       </DevOpsLayout>
     </>

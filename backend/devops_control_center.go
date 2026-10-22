@@ -1206,6 +1206,17 @@ func evaluatePromotionGateForRequest(req *PRRequest) (*promotionGateDecision, er
 	if req == nil {
 		return buildPromotionGateDecision("", nil, nil, "The source request could not be loaded for gate evaluation.", true), nil
 	}
+	if !requestHasVerificationEvidence(req) {
+		decision := buildPromotionGateDecision(
+			nextEnv(req.Env),
+			nil,
+			nil,
+			"Resource verification is required before promotion. A pull request or approval is not enough.",
+			true,
+		)
+		decision.ReviewMessage = decision.Summary
+		return decision, nil
+	}
 
 	targetEnvironment := nextEnv(req.Env)
 	if strings.TrimSpace(targetEnvironment) == "" {
@@ -1362,6 +1373,9 @@ func promoteRequestAsDevops(requestID int, userID int) (*PRRequest, *promotionGa
 	}
 	if req.Status != "completed" && req.Status != "in_progress" {
 		return nil, nil, nil, fmt.Errorf("only completed or in-progress requests can be promoted")
+	}
+	if !requestHasVerificationEvidence(req) {
+		return nil, nil, nil, fmt.Errorf("resource verification is required before promotion. A pull request or approval is not enough")
 	}
 	nextEnvironment := nextEnv(req.Env)
 	if nextEnvironment == "" {
@@ -1697,6 +1711,12 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			"status":               "ok",
 		})
 	case "POST":
+		capture, finish, handled := beginIdempotentPost(w, r, managerID, "incident")
+		if handled {
+			return
+		}
+		defer finish()
+		w = capture
 		var body struct {
 			RequestID        int    `json:"request_id"`
 			TeamID           *int   `json:"team_id"`
@@ -1735,6 +1755,13 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
 			writeAPIError(w, r, http.StatusBadRequest, "short description is required before submitting an incident", nil)
+			return
+		}
+		if (normalizedStatus == "resolved" || normalizedStatus == "closed") && strings.TrimSpace(body.Notes) == "" {
+			writeAPIError(w, r, http.StatusBadRequest, "recovery notes are required to resolve or close this incident", nil)
+			return
+		}
+		if body.ProjectID > 0 && !ensureProjectVisible(w, r, managerID, body.ProjectID) {
 			return
 		}
 		var item *requestIncident
@@ -1815,6 +1842,10 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			if strings.TrimSpace(body.Note) != "" {
 				note = strings.TrimSpace(body.Note)
+			}
+			if nextStatus == "closed" && (strings.TrimSpace(body.Note) == "" || strings.EqualFold(strings.TrimSpace(body.Note), "Closed.")) {
+				writeAPIError(w, r, http.StatusBadRequest, "recovery notes are required to close this incident", nil)
+				return
 			}
 			if _, err := execContext(`
 				UPDATE request_incidents
@@ -1901,6 +1932,16 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 	normalizedStatus := normalizeIncidentStatus(body.Status)
 	if normalizedStatus != "draft" && strings.TrimSpace(body.Summary) == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "short description is required before submitting an incident", nil)
+		return
+	}
+	if previous != nil {
+		prevStatus := normalizeIncidentStatus(previous.Status)
+		if (prevStatus == "closed" || prevStatus == "resolved") && normalizedStatus != "closed" && normalizedStatus != "resolved" && normalizedStatus != "cancelled" && strings.TrimSpace(body.Notes) == "" {
+			body.Notes = previous.Notes
+		}
+	}
+	if (normalizedStatus == "resolved" || normalizedStatus == "closed") && strings.TrimSpace(body.Notes) == "" && strings.TrimSpace(body.StatusNote) == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "recovery notes are required to resolve or close this incident", nil)
 		return
 	}
 	var item *requestIncident

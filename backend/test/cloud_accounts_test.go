@@ -18,7 +18,7 @@ func TestCloudAccountJSONOmitsSecrets(t *testing.T) {
 		DisplayName:   "Prod",
 		TeamSlug:      "platform-team",
 		AuthMode:      "assume_role",
-		RoleARN:       "arn:aws:iam::111122223333:role/ReadOnly",
+		RoleARNSet:    true,
 		ExternalIDSet: true,
 		Status:        "connected",
 	}
@@ -41,7 +41,7 @@ func TestPublicCloudTestErrorTruncates(t *testing.T) {
 }
 
 func TestAWSAccountIDFromRoleARN(t *testing.T) {
-	got := awsAccountIDFromRoleARN("arn:aws:iam::123456789012:role/SetuOpsRead")
+	got := awsAccountIDFromRoleARN("arn:aws:iam::123456789012:role/OpsTrellisRead")
 	if got != "123456789012" {
 		t.Fatalf("unexpected account id %q", got)
 	}

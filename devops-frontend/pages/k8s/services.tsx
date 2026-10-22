@@ -523,7 +523,7 @@ export default function DevOpsK8sServicesPage() {
   return (
     <>
       <Head>
-        <title>Services - DevOps</title>
+        <title>Services - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

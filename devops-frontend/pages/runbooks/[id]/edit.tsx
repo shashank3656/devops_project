@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { asRecord, getString } from '../../../lib/payload';
+import { expireSession } from '../../../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -69,9 +70,7 @@ function normalizeRunbooks(value: unknown): Runbook[] {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem(DEVOPS_TOKEN_KEY);
-  localStorage.removeItem(DEVOPS_USER_KEY);
-  window.location.assign('/login');
+  expireSession();
 }
 
 function parseRunbookId(value: string | string[] | undefined): number | null {
@@ -225,7 +224,7 @@ export default function EditRunbookPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Edit Runbook - DevOps Portal</title>
+        <title>Edit Runbook - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">

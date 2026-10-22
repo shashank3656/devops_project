@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -192,8 +193,8 @@ func listEnabledInboundCredentials(kind string) []inboundCredential {
 }
 
 func inboundSecretMatches(secret string, headers http.Header, body []byte) bool {
-	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-SetuOps-Secret", "X-Webhook-Secret")
-	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-SetuOps-Signature")
+	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-OpsTrellis-Secret", "X-Webhook-Secret")
+	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-OpsTrellis-Signature")
 	if provided != "" && secretEqual(provided, secret) {
 		return true
 	}
@@ -218,8 +219,8 @@ func inboundWebhookAuthorized(kind inboundWebhookKind, headers http.Header, body
 	if len(secrets) == 0 {
 		return false
 	}
-	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-SetuOps-Secret", "X-Webhook-Secret")
-	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-SetuOps-Signature")
+	provided := firstNonEmptyHeader(headers, "X-CI-Secret", "X-OpsTrellis-Secret", "X-Webhook-Secret")
+	signature := firstNonEmptyHeader(headers, "X-Hub-Signature-256", "X-OpsTrellis-Signature")
 	for _, secret := range secrets {
 		if provided != "" && secretEqual(provided, secret) {
 			return true
@@ -416,6 +417,14 @@ func parseChangeWebhookJSON(body []byte) (parsedChangeWebhook, error) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return parsedChangeWebhook{}, err
 	}
+	var extras map[string]any
+	_ = json.Unmarshal(body, &extras)
+	if strings.TrimSpace(payload.Environment) == "" {
+		payload.Environment = firstNonEmpty(stringFromAny(extras["env"]), stringFromAny(extras["target_environment"]))
+	}
+	if payload.ProjectID == 0 {
+		payload.ProjectID = positiveWebhookInt(extras["project"])
+	}
 	envOmitted := strings.TrimSpace(payload.Environment) == ""
 	payload.Repo = strings.TrimSpace(payload.Repo)
 	payload.SHA = strings.TrimSpace(payload.SHA)
@@ -594,6 +603,21 @@ func extractAlertExternalRef(labels map[string]string, raw map[string]interface{
 		return "opsgenie", id
 	}
 	return "", ""
+}
+
+func positiveWebhookInt(value any) int {
+	if id := intFromAny(value); id > 0 {
+		return id
+	}
+	text := strings.TrimSpace(stringFromAny(value))
+	if text == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(text)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
 }
 
 func firstNonEmpty(values ...string) string {

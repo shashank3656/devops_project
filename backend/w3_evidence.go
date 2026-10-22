@@ -18,15 +18,15 @@ type evidenceProtection struct {
 }
 
 type evidencePack struct {
-	From              time.Time             `json:"from"`
-	To                time.Time             `json:"to"`
-	ProjectID         int                   `json:"project_id,omitempty"`
-	Changes           []changeRequestRecord `json:"changes"`
-	Incidents         []requestIncident     `json:"incidents"`
-	Approvals         []map[string]any      `json:"approvals"`
-	Previews          []previewEnvironment  `json:"previews"`
-	BranchProtection  []evidenceProtection  `json:"branch_protection"`
-	Summary           string                `json:"summary"`
+	From             time.Time             `json:"from"`
+	To               time.Time             `json:"to"`
+	ProjectID        int                   `json:"project_id,omitempty"`
+	Changes          []changeRequestRecord `json:"changes"`
+	Incidents        []requestIncident     `json:"incidents"`
+	Approvals        []map[string]any      `json:"approvals"`
+	Previews         []previewEnvironment  `json:"previews"`
+	BranchProtection []evidenceProtection  `json:"branch_protection"`
+	Summary          string                `json:"summary"`
 }
 
 func buildEvidencePack(projectID int, from, to time.Time) (*evidencePack, error) {
@@ -145,7 +145,7 @@ func listEvidenceBranchProtection(changes []changeRequestRecord) []evidenceProte
 
 func evidenceMarkdown(pack evidencePack) string {
 	var b strings.Builder
-	b.WriteString("# SetuOps evidence pack\n\n")
+	b.WriteString("# OpsTrellis evidence pack\n\n")
 	b.WriteString(pack.Summary + "\n\n")
 	b.WriteString("## Changes\n")
 	for _, item := range pack.Changes {
@@ -195,7 +195,7 @@ func devopsEvidenceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.EqualFold(r.URL.Query().Get("format"), "md") {
 		w.Header().Set("Content-Type", "text/markdown")
-		w.Header().Set("Content-Disposition", "attachment; filename=setuops-evidence.md")
+		w.Header().Set("Content-Disposition", "attachment; filename=opstrellis-evidence.md")
 		_, _ = w.Write([]byte(evidenceMarkdown(*pack)))
 		return
 	}
@@ -224,7 +224,7 @@ func adminEvidenceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.EqualFold(r.URL.Query().Get("format"), "md") {
 		w.Header().Set("Content-Type", "text/markdown")
-		w.Header().Set("Content-Disposition", "attachment; filename=setuops-evidence.md")
+		w.Header().Set("Content-Disposition", "attachment; filename=opstrellis-evidence.md")
 		_, _ = w.Write([]byte(evidenceMarkdown(*pack)))
 		return
 	}

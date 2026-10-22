@@ -45,7 +45,7 @@ export default function MyProjectsPage() {
   return (
     <>
       <Head>
-        <title>My projects - DevOps</title>
+        <title>My projects - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">

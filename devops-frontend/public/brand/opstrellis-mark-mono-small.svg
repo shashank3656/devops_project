@@ -1,0 +1,17 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="OpsTrellis / OT trellis / mono">
+<path id="Vector" d="M12 2.25L20.25 6.9375V16.875L12 21.75L3.75 16.875V6.9375L12 2.25Z" stroke-width="2.25" stroke-linejoin="round" stroke="white"/>
+<g id="Vector_2">
+<path d="M7.875 8.625H16.125Z" fill="black"/>
+<path d="M7.875 8.625H16.125" stroke-width="2.25" stroke-linecap="square" stroke="white"/>
+</g>
+<g id="Vector_3">
+<path d="M12 8.625V16.6875Z" fill="black"/>
+<path d="M12 8.625V16.6875" stroke-width="2.25" stroke="white"/>
+</g>
+<g id="Vector_4">
+<path d="M12 19.125V21.75Z" fill="black"/>
+<path d="M12 19.125V21.75" stroke-width="2.25" stroke="white"/>
+</g>
+</g>
+</svg>

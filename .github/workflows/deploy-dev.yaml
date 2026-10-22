@@ -1,7 +1,7 @@
 # After GHCR push, optional Railway Image Updater sync (deploy the template once per project):
 # https://railway.com/deploy/railway-image-updater
 # Railway sync (after GHCR push): set ONE of —
-#   Secret RAILWAY_API_TOKEN (recommended; uses GraphQL in the workflow), OR
+#   Secret RAILWAY_TOKEN (recommended; uses GraphQL in the workflow), OR
 #   Variable RAILWAY_IMAGE_UPDATER_URL (https://railway.com/deploy/railway-image-updater)
 # Optional GitHub vars override defaults: RAILWAY_ENVIRONMENT_ID_DEV, RAILWAY_ENVIRONMENT_ID, RAILWAY_PROJECT_ID
 # Defaults (dev): project 5332b847-9bab-40fc-83b5-7fbf3a1d2ab0 · environment 916b3e46-9336-4c69-ac06-e44d406ce737

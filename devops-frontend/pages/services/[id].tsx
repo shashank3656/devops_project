@@ -3,8 +3,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import Service360 from '../../components/Service360';
 import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { serviceCatalogueBackHref, serviceTicketHref } from '../../lib/scopeHref';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { rememberService } from '../../lib/recentServices';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -28,6 +32,7 @@ interface ProjectOption {
   name: string;
   code: string;
   environments: string[];
+  owner_team?: string;
 }
 
 interface OwnerTeam {
@@ -59,6 +64,7 @@ export default function ServiceDetailPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [item, setItem] = useState<ServiceDetail | null>(null);
+  const [sessionToken, setSessionToken] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
@@ -76,14 +82,26 @@ export default function ServiceDetailPage() {
   const [dashboardURL, setDashboardURL] = useState('');
   const [metricsURL, setMetricsURL] = useState('');
   const [promql, setPromql] = useState('');
+  const [editFocus, setEditFocus] = useState('');
+  useUnsavedChanges(editing && Boolean(item) && (
+    service !== (item?.service || '')
+    || repo !== (item?.repo || '')
+    || environment !== (item?.environment || '')
+    || team !== (item?.team || '')
+    || grafanaUID !== (item?.grafana_uid || '')
+    || dashboardURL !== (item?.dashboard_url || '')
+    || metricsURL !== (item?.metrics_url || '')
+    || promql !== (item?.promql || '')
+    || projectId !== (item?.project_id ? String(item.project_id) : '')
+  ));
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
   const resourceId = parsePortalNumericId(id);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DEVOPS_USER_KEY);
-      const parsed = raw ? (JSON.parse(raw) as { devops_profile?: { is_manager?: boolean } }) : null;
-      setIsManager(Boolean(parsed?.devops_profile?.is_manager));
+      const parsed = raw ? (JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } }) : null;
+      setIsManager(Boolean(parsed?.devops_profile?.is_manager) || parsed?.role === 'admin');
     } catch {
       setIsManager(false);
     }
@@ -93,6 +111,7 @@ export default function ServiceDetailPage() {
     if (!resourceId) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
+    setSessionToken(token);
     portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${resourceId}`), { token })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -100,10 +119,42 @@ export default function ServiceDetailPage() {
           setError(data?.error || 'Failed to load service');
           return;
         }
-        setItem(data.service || null);
+        const service = data.service || null;
+        setItem(service);
+        if (service && typeof service.id === 'number') {
+          rememberService({
+            id: service.id,
+            name: String(service.service || service.name || 'Service'),
+            project: String(service.project_name || ''),
+            environment: String(service.environment || ''),
+          });
+        }
       })
       .catch(() => setError('Failed to load service'));
   }, [apiUrl, resourceId]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    fetch(`${apiUrl}/api/devops/projects`, { headers })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((projectsData: { projects?: unknown }) => {
+        const list = Array.isArray(projectsData?.projects) ? projectsData.projects : [];
+        setProjects(
+          list
+            .map((entry: { id?: number; name?: string; code?: string; environments?: string[]; owner_team?: string }) => ({
+              id: typeof entry.id === 'number' ? entry.id : 0,
+              name: entry.name || '',
+              code: entry.code || '',
+              environments: Array.isArray(entry.environments) ? entry.environments.map((value) => String(value)).filter(Boolean) : [],
+              owner_team: entry.owner_team || '',
+            }))
+            .filter((entry: ProjectOption) => entry.id > 0),
+        );
+      })
+      .catch(() => undefined);
+  }, [apiUrl]);
 
   useEffect(() => {
     if (!editing) return;
@@ -113,22 +164,10 @@ export default function ServiceDetailPage() {
     Promise.all([
       fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
       fetch(`${apiUrl}/api/devops/project-options`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
-      fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
-    ]).then(([mine, options, projectsData]: [{ teams?: unknown; owner_teams?: unknown }, { teams?: unknown; owner_teams?: unknown }, { projects?: unknown }]) => {
+    ]).then(([mine, options]: [{ teams?: unknown; owner_teams?: unknown }, { teams?: unknown; owner_teams?: unknown }]) => {
       const byId = new Map<number, OwnerTeam>();
       [...readTeams(mine), ...readTeams(options)].forEach((entry) => byId.set(entry.id, entry));
       setTeams([...byId.values()].sort((left, right) => left.name.localeCompare(right.name)));
-      const list = Array.isArray(projectsData?.projects) ? projectsData.projects : [];
-      setProjects(
-        list
-          .map((entry: { id?: number; name?: string; code?: string; environments?: string[] }) => ({
-            id: typeof entry.id === 'number' ? entry.id : 0,
-            name: entry.name || '',
-            code: entry.code || '',
-            environments: Array.isArray(entry.environments) ? entry.environments.map((value) => String(value)).filter(Boolean) : [],
-          }))
-          .filter((entry: ProjectOption) => entry.id > 0),
-      );
     }).catch(() => undefined);
   }, [apiUrl, editing]);
 
@@ -156,8 +195,9 @@ export default function ServiceDetailPage() {
       .catch(() => setProjectEnvs(fromProject));
   }, [apiUrl, editing, projectId, projects]);
 
-  const startEdit = () => {
+  const startEdit = (focus = '') => {
     if (!item) return;
+    setEditFocus(focus);
     setService(item.service || '');
     setRepo(item.repo || '');
     setProjectId(item.project_id ? String(item.project_id) : '');
@@ -171,6 +211,13 @@ export default function ServiceDetailPage() {
     setNotice('');
     setEditing(true);
   };
+
+  useEffect(() => {
+    if (!editing || !editFocus) return;
+    const fieldId = editFocus === 'monitoring' ? 'service-dashboard' : editFocus === 'repo' ? 'service-repo' : 'service-team';
+    const field = document.getElementById(fieldId);
+    field?.focus();
+  }, [editFocus, editing]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -213,7 +260,7 @@ export default function ServiceDetailPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>{item?.service || 'Service'} - DevOps</title>
+        <title>{item?.service || 'Service'} - OpsTrellis</title>
       </Head>
       <div className="portal-page">
         <div className="portal-page__header">
@@ -223,17 +270,17 @@ export default function ServiceDetailPage() {
           </div>
           <div className="portal-page__actions">
             {isManager && item && !editing ? (
-              <button type="button" className="btn btn-primary" onClick={startEdit}>Edit</button>
+              <button type="button" className="btn btn-primary" onClick={() => startEdit()}>Edit</button>
             ) : null}
-            <Link href="/services" className="btn btn-secondary">Back to services</Link>
+            <Link href={serviceCatalogueBackHref(router.query, item || undefined)} className="btn btn-secondary">Back to services</Link>
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert">{notice}</div> : null}
         {item && !editing ? (
           <>
-            {(!item.repo.trim() || !(item.team || '').trim()) ? (
-              <p className="ops-note"><strong>Setup incomplete</strong><span>Repository and owner team are not configured. Monitoring status is unknown.</span></p>
+            {(!item.repo.trim() || !(item.team || '').trim() || !(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql)) ? (
+              <p className="ops-note"><strong>Setup incomplete</strong><span>Repository, service owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
             ) : null}
             <div className="ops-catalogue">
               <section className="ops-service">
@@ -241,31 +288,61 @@ export default function ServiceDetailPage() {
                 <dl>
                   <dt>Project</dt><dd>{known(item.project_name)}</dd>
                   <dt>Environment</dt><dd>{known(item.environment)}</dd>
-                  <dt>Owner team</dt><dd>{(item.team || '').trim() ? item.team : 'Not assigned'}</dd>
-                  <dt>Repository</dt><dd>{item.repo.trim() ? item.repo : 'Not connected'}</dd>
+                  <dt>Project team</dt>
+                  <dd>{(projects.find((project) => project.id === item.project_id)?.owner_team || '').trim() || 'Not assigned'}</dd>
+                  <dt>Service owner team</dt>
+                  <dd>
+                    {(item.team || '').trim() ? item.team : 'Not assigned'}
+                    {!(item.team || '').trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('team')}>Assign owner</button> : null}
+                  </dd>
+                  <dt>Repository</dt>
+                  <dd>
+                    {item.repo.trim() ? item.repo : 'Not connected'}
+                    {!item.repo.trim() && isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('repo')}>Connect repository</button> : null}
+                  </dd>
                 </dl>
               </section>
               <section className="ops-service">
                 <h2>Monitoring is not connected</h2>
                 <p>Connect a dashboard or metric source to see health. Missing telemetry is not a healthy result.</p>
                 {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <span>Grafana {known(item.grafana_uid)}</span>}
+                {!(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql) && isManager ? (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('monitoring')}>Configure monitoring</button>
+                ) : null}
               </section>
             </div>
-            <section className="ops-caught">
-              <h2>No related work yet</h2>
-              <p>Changes and incidents for this service will appear here.</p>
-              <div className="portal-page__actions">
-                <Link href="/changes/new" className="btn btn-primary">Create change</Link>
-                <Link href="/incidents/new" className="btn btn-secondary">Report incident</Link>
-              </div>
-            </section>
+            {sessionToken ? (
+              <Service360
+                apiUrl={apiUrl}
+                token={sessionToken}
+                serviceName={item.service}
+                projectId={item.project_id}
+                environment={item.environment}
+                ownerTeam={item.team}
+                repo={item.repo}
+                overview={(
+                  <section className="ops-caught">
+                    <h2>Start work</h2>
+                    <p>Creating a change or incident keeps this project, service, and environment. You can change that scope on the next page.</p>
+                    <div className="portal-page__actions">
+                      <Link href={serviceTicketHref('/changes/new', item)} className="btn btn-primary">Create change</Link>
+                      <Link href={serviceTicketHref('/incidents/new', item)} className="btn btn-secondary">Report incident</Link>
+                    </div>
+                  </section>
+                )}
+              />
+            ) : null}
           </>
         ) : null}
         {editing ? (
           <section className="portal-surface">
-            <form className="portal-form-grid" onSubmit={(event) => void save(event)}>
-              <label className="label">Service<input className="input" value={service} onChange={(event) => setService(event.target.value)} required /></label>
-              <label className="label">Repo<input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
+            <form onSubmit={(event) => void save(event)}>
+              <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+              <fieldset className="form-section">
+                <legend className="form-section__title">Basics</legend>
+                <div className="portal-form-grid">
+              <label className="label">Service<span className="form-req" aria-hidden="true"> *</span><input className="input" value={service} onChange={(event) => setService(event.target.value)} required /></label>
+              <label className="label">Repo <span className="onboard-optional">Optional</span><input id="service-repo" className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
               <label className="label">
                 Project
                 <select className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setEnvironment(''); }}>
@@ -285,18 +362,26 @@ export default function ServiceDetailPage() {
                 </select>
               </label>
               <label className="label">
-                Owner team
-                <select className="input" value={team} onChange={(event) => setTeam(event.target.value)} disabled={teams.length === 0}>
-                  <option value="">{teams.length ? 'Select an owner team' : 'No teams'}</option>
+                Service owner team
+                <select id="service-team" className="input" value={team} onChange={(event) => setTeam(event.target.value)} disabled={teams.length === 0}>
+                  <option value="">{teams.length ? 'Select a service owner team' : 'No teams'}</option>
                   {teams.map((entry) => (
                     <option key={entry.id} value={entry.name}>{entry.name}</option>
                   ))}
                 </select>
               </label>
+                </div>
+              </fieldset>
+              <details className="onboard-advanced" open={editFocus === 'monitoring' || Boolean(grafanaUID || dashboardURL || metricsURL || promql) || undefined}>
+                <summary>Monitoring <span className="onboard-optional">Optional</span></summary>
+                <p className="form-section__copy">Without these links, health on this service stays Unknown.</p>
+                <div className="portal-form-grid">
               <label className="label">Grafana UID<input className="input" value={grafanaUID} onChange={(event) => setGrafanaUID(event.target.value)} /></label>
-              <label className="label">Dashboard URL<input className="input" value={dashboardURL} onChange={(event) => setDashboardURL(event.target.value)} /></label>
+              <label className="label">Dashboard URL<input id="service-dashboard" className="input" value={dashboardURL} onChange={(event) => setDashboardURL(event.target.value)} /></label>
               <label className="label">Metrics JSON URL<input className="input" value={metricsURL} onChange={(event) => setMetricsURL(event.target.value)} /></label>
               <label className="label">PromQL<textarea className="input" rows={3} value={promql} onChange={(event) => setPromql(event.target.value)} /></label>
+                </div>
+              </details>
               <div className="portal-form-actions">
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</button>
                 <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setEditing(false)}>Cancel</button>

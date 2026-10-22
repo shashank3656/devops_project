@@ -43,7 +43,7 @@ func buildIncidentReview(incident requestIncident) incidentReviewDraft {
 		draft.CausedByChange = firstNonEmpty(change.ChangeNumber, fmt.Sprintf("CHG%07d", change.ID))
 		draft.PreviousSHA = strings.TrimSpace(change.PreviousSHA)
 		draft.WatchResult = firstNonEmpty(change.WatchResult, changeWatchResult(*change))
-		draft.RootCause = fmt.Sprintf("Linked change %s (%s @ %s) watch_result=%s.", draft.CausedByChange, firstNonEmpty(change.Repo, change.Service), change.SHA, draft.WatchResult)
+		draft.RootCause = fmt.Sprintf("Suspected, not confirmed. Linked change %s (%s @ %s) watch_result=%s.", draft.CausedByChange, firstNonEmpty(change.Repo, change.Service), change.SHA, draft.WatchResult)
 		if draft.PreviousSHA != "" {
 			draft.RootCause += " Previous SHA " + draft.PreviousSHA + "."
 		}

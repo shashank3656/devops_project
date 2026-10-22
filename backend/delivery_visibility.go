@@ -10,17 +10,124 @@ import (
 
 // DeliveryVisibility surfaces CI / deploy state for tickets and CHGs (BRD-08).
 type DeliveryVisibility struct {
-	Environment     string `json:"environment,omitempty"`
-	PipelineStatus  string `json:"pipeline_status"`
-	PipelineLabel   string `json:"pipeline_label"`
-	CIResult        string `json:"ci_result,omitempty"`
-	LastSHA         string `json:"last_sha,omitempty"`
-	PromoteState    string `json:"promote_state,omitempty"`
-	PipelineURL     string `json:"pipeline_url,omitempty"`
-	PRURL           string `json:"pr_url,omitempty"`
-	DeployIntelHref string `json:"deploy_intel_href,omitempty"`
-	Repo            string `json:"repo,omitempty"`
-	UpdatedAt       string `json:"updated_at,omitempty"`
+	Environment     string                   `json:"environment,omitempty"`
+	PipelineStatus  string                   `json:"pipeline_status"`
+	PipelineLabel   string                   `json:"pipeline_label"`
+	CIResult        string                   `json:"ci_result,omitempty"`
+	LastSHA         string                   `json:"last_sha,omitempty"`
+	PromoteState    string                   `json:"promote_state,omitempty"`
+	PipelineURL     string                   `json:"pipeline_url,omitempty"`
+	PRURL           string                   `json:"pr_url,omitempty"`
+	ImageDigest     string                   `json:"image_digest,omitempty"`
+	DeployIntelHref string                   `json:"deploy_intel_href,omitempty"`
+	Repo            string                   `json:"repo,omitempty"`
+	UpdatedAt       string                   `json:"updated_at,omitempty"`
+	Verification    ResourceVerificationView `json:"verification"`
+}
+
+// ResourceVerificationView is inspectable proof that a resource exists.
+// A pull request URL, pipeline link, or application ID is not verification.
+type ResourceVerificationView struct {
+	Recorded   bool   `json:"recorded"`
+	ResourceID string `json:"resource_id,omitempty"`
+	Check      string `json:"check,omitempty"`
+	Result     string `json:"result,omitempty"`
+	At         string `json:"at,omitempty"`
+	Href       string `json:"href,omitempty"`
+}
+
+func requestHasVerificationEvidence(req *PRRequest) bool {
+	return buildRequestResourceVerification(req).Recorded
+}
+
+func buildRequestResourceVerification(req *PRRequest) ResourceVerificationView {
+	if req == nil {
+		return ResourceVerificationView{}
+	}
+	if view := observedDeploymentVerification(req); view.Recorded {
+		return view
+	}
+	if view := observedCloudResourceVerification(req); view.Recorded {
+		return view
+	}
+	return ResourceVerificationView{}
+}
+
+func observedDeploymentVerification(req *PRRequest) ResourceVerificationView {
+	if req == nil || req.ProjectID == nil || *req.ProjectID <= 0 || strings.TrimSpace(req.Env) == "" {
+		return ResourceVerificationView{}
+	}
+	attempts, err := listDeploymentAttempts(*req.ProjectID, strings.ToLower(strings.TrimSpace(req.Env)))
+	if err != nil {
+		return ResourceVerificationView{}
+	}
+	for i := len(attempts) - 1; i >= 0; i-- {
+		item := attempts[i]
+		digest := strings.TrimSpace(item.ImageDigest)
+		sha := strings.TrimSpace(item.CommitSHA)
+		observed := strings.TrimSpace(item.ObservedAt)
+		if !strings.EqualFold(strings.TrimSpace(item.State), "success") || observed == "" || digest == "" || sha == "" || sha == digest {
+			continue
+		}
+		return ResourceVerificationView{
+			Recorded:   true,
+			ResourceID: digest,
+			Check:      "deployment observation",
+			Result:     "succeeded",
+			At:         observed,
+		}
+	}
+	return ResourceVerificationView{}
+}
+
+func observedCloudResourceVerification(req *PRRequest) ResourceVerificationView {
+	if req == nil || DB == nil {
+		return ResourceVerificationView{}
+	}
+	service := strings.TrimSpace(req.Service)
+	if service == "" {
+		return ResourceVerificationView{}
+	}
+	rows, err := DB.Query(`
+		SELECT COALESCE(resource_id, ''), COALESCE(status, ''), updated_at
+		FROM cloud_resources
+		WHERE btrim(COALESCE(resource_id, '')) <> ''
+		  AND ($1 = '' OR lower(environment) = lower($1))
+		  AND (
+			lower(display_name) = lower($2)
+			OR lower(service_type) = lower($2)
+			OR ($3 <> '' AND resource_id = $3)
+		  )
+		ORDER BY updated_at DESC NULLS LAST
+		LIMIT 8
+	`, strings.TrimSpace(req.Env), service, strings.TrimSpace(req.ApplicationID))
+	if err != nil {
+		return ResourceVerificationView{}
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var resourceID, status string
+		var updated time.Time
+		if err := rows.Scan(&resourceID, &status, &updated); err != nil {
+			continue
+		}
+		resourceID = strings.TrimSpace(resourceID)
+		status = strings.ToLower(strings.TrimSpace(status))
+		if resourceID == "" || demoCloudResourceIDs[resourceID] || updated.IsZero() {
+			continue
+		}
+		if status == "" || status == "unknown" || status == "disconnected" || status == "missing" || status == "stale" {
+			continue
+		}
+		return ResourceVerificationView{
+			Recorded:   true,
+			ResourceID: resourceID,
+			Check:      "cloud inventory",
+			Result:     status,
+			At:         updated.UTC().Format(time.RFC3339),
+		}
+	}
+	return ResourceVerificationView{}
 }
 
 func buildRequestDeliveryVisibility(req *PRRequest) DeliveryVisibility {
@@ -46,19 +153,21 @@ func buildRequestDeliveryVisibility(req *PRRequest) DeliveryVisibility {
 			out.PRURL = strings.TrimSpace(merge.PRURL)
 		}
 	}
-	if out.LastSHA == "" {
-		if chg, _ := latestChangeForRequest(req.ID); chg != nil {
+	if chg, _ := latestChangeForRequest(req.ID); chg != nil {
+		if out.LastSHA == "" {
 			out.LastSHA = strings.TrimSpace(chg.SHA)
-			if out.PipelineURL == "" {
-				out.PipelineURL = strings.TrimSpace(chg.PipelineURL)
-			}
-			if out.Repo == "" {
-				out.Repo = strings.TrimSpace(chg.Repo)
-			}
 		}
+		if out.PipelineURL == "" {
+			out.PipelineURL = strings.TrimSpace(chg.PipelineURL)
+		}
+		if out.Repo == "" {
+			out.Repo = strings.TrimSpace(chg.Repo)
+		}
+		out.ImageDigest = strings.TrimSpace(chg.ImageDigest)
 	}
 	out.PromoteState = promotionStateForRequest(req.ID)
 	out.DeployIntelHref = deployIntelHrefForRepo(out.Repo, out.PRURL)
+	out.Verification = buildRequestResourceVerification(req)
 	return out
 }
 

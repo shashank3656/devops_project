@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { DataTable, formatRelativeTime, type DataTableColumn } from '@infragate/ui';
+import { DataTable, RelativeTime, exactTimeTitle, type DataTableColumn } from '@infragate/ui';
+import { recordReference } from '../lib/recordRef';
 import ApprovalsSectionNav from '../components/ApprovalsSectionNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -47,7 +48,7 @@ const reviewColumns: DataTableColumn<ApprovalRequest>[] = [
     cell: (request) => (
       <div className="ig-cell-stack">
         <span className="ig-cell-title">
-          <span className="ig-mono">#{request.id}</span> {request.service}
+          <span className="ig-mono">{recordReference('REQ', request.id)}</span> {request.service}
         </span>
         <span className="ig-cell-meta">{request.created_by_username || 'Unknown requester'}</span>
       </div>
@@ -85,8 +86,8 @@ const reviewColumns: DataTableColumn<ApprovalRequest>[] = [
     id: 'created_at',
     header: 'Created',
     cell: (request) => (
-      <span className="ig-cell-meta" title={new Date(request.created_at).toLocaleString()}>
-        {formatRelativeTime(request.created_at)}
+      <span className="ig-cell-meta" title={exactTimeTitle(request.created_at)}>
+        <RelativeTime value={request.created_at} />
       </span>
     ),
   },
@@ -167,7 +168,7 @@ export default function DevOpsApprovalCenter() {
   return (
     <>
       <Head>
-        <title>Approval queue - SetuOps DevOps</title>
+        <title>Approval queue - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">

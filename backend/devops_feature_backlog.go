@@ -44,6 +44,8 @@ type projectReleaseActivityItem struct {
 	Status      string     `json:"status"`
 	Priority    string     `json:"priority"`
 	ClientName  string     `json:"client_name"`
+	RequestedBy string     `json:"requested_by,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	DueDate     *time.Time `json:"due_date,omitempty"`
 	PRURL       string     `json:"pr_url,omitempty"`
@@ -211,6 +213,22 @@ func buildProjectReleaseDashboard(project ProjectCatalog) (*projectReleaseDashbo
 	requests, err := GetPRRequests("", "", "", project.ID, "", "", "", 0, 0, nil, 150, 0, "updated_at", "desc", false, "", "")
 	if err != nil {
 		return nil, err
+	}
+	creatorIDs := make([]int, 0, len(requests))
+	for i := range requests {
+		if requests[i].CreatedBy != nil {
+			creatorIDs = append(creatorIDs, *requests[i].CreatedBy)
+		}
+	}
+	if len(creatorIDs) > 0 {
+		usernames, _ := GetUsernamesByUserIDs(creatorIDs)
+		for i := range requests {
+			if requests[i].CreatedBy != nil && usernames != nil {
+				if name := usernames[*requests[i].CreatedBy]; name != "" {
+					requests[i].CreatedByUsername = name
+				}
+			}
+		}
 	}
 
 	promotionItems, err := listPromotionCenterItems()
@@ -389,6 +407,8 @@ func buildProjectReleaseDashboard(project ProjectCatalog) (*projectReleaseDashbo
 				Status:      req.Status,
 				Priority:    req.Priority,
 				ClientName:  req.ClientName,
+				RequestedBy: req.CreatedByUsername,
+				CreatedAt:   req.CreatedAt,
 				UpdatedAt:   req.UpdatedAt,
 				DueDate:     req.DueDate,
 				PRURL:       req.PRURL,

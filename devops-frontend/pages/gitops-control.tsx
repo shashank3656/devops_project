@@ -6,6 +6,7 @@ import { useRouter } from 'next/router';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
+import { useUnsavedChanges } from '../lib/useUnsavedChanges';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -275,6 +276,16 @@ export default function GitOpsControlPage() {
   const [createComponents, setCreateComponents] = useState('networking, eks, rds');
   const [createGithubOwner, setCreateGithubOwner] = useState('');
   const [createGithubRepo, setCreateGithubRepo] = useState('');
+  useUnsavedChanges(
+    editingProjectId === null && Boolean(
+      createName.trim()
+      || createSlug.trim()
+      || createGithubOwner.trim()
+      || createGithubRepo.trim()
+      || createEnvironments !== 'dev, qa, prod'
+      || createComponents !== 'networking, eks, rds',
+    ),
+  );
   const [jsonProjectId, setJsonProjectId] = useState<number | null>(null);
   const [newJsonComponent, setNewJsonComponent] = useState('');
   const [accessProjectId, setAccessProjectId] = useState('');
@@ -790,7 +801,7 @@ export default function GitOpsControlPage() {
   return (
     <>
       <Head>
-        <title>Project-Infra - DevOps Portal</title>
+        <title>Project-Infra - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className={`portal-page gitops-page${useIde ? ' gitops-page--ide' : ''}`}>
@@ -909,8 +920,8 @@ export default function GitOpsControlPage() {
                             </select>
                           </div>
                           <div className="form-group">
-                            <label className="label" htmlFor="gitops-name">Project Name</label>
-                            <input id="gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" />
+                            <label className="label" htmlFor="gitops-name">Project Name<span className="form-req" aria-hidden="true"> *</span></label>
+                            <input id="gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" required />
                           </div>
                           <div className="form-group">
                             <label className="label" htmlFor="gitops-slug">Project Slug</label>
@@ -1193,13 +1204,15 @@ export default function GitOpsControlPage() {
                                 )}
                               </div>
                               <div className="form-group">
-                                <label className="label" htmlFor="sidebar-gitops-name">Project Name</label>
-                                <input id="sidebar-gitops-name" className="input" value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
+                                <label className="label" htmlFor="sidebar-gitops-name">Project Name<span className="form-req" aria-hidden="true"> *</span></label>
+                                <input id="sidebar-gitops-name" className="input" required value={createName} onChange={(event) => setCreateName(event.target.value)} placeholder="payments-platform" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
                               </div>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-slug">Project Slug</label>
                                 <input id="sidebar-gitops-slug" className="input" value={createSlug} onChange={(event) => setCreateSlug(event.target.value)} placeholder="payments-platform" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
                               </div>
+                              <details className="onboard-advanced" open={Boolean(createGithubOwner || createGithubRepo) || undefined}>
+                                <summary>GitHub repository <span className="onboard-optional">Optional</span></summary>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-github-owner">GitHub owner</label>
                                 <input id="sidebar-gitops-github-owner" className="input" value={createGithubOwner} onChange={(event) => setCreateGithubOwner(event.target.value)} placeholder="org-or-user" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
@@ -1207,8 +1220,9 @@ export default function GitOpsControlPage() {
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-github-repo">GitHub repository</label>
                                 <input id="sidebar-gitops-github-repo" className="input" value={createGithubRepo} onChange={(event) => setCreateGithubRepo(event.target.value)} placeholder="infra-live" disabled={!selectedPanelProject?.can_manage && editingProjectId !== null} />
-                                <p className="form-help">Optional. Deploy intelligence and webhooks use this repo instead of the global GITHUB_OWNER/GITHUB_REPO.</p>
+                                <p className="form-help">Deploy intelligence and webhooks use this repo instead of the global GITHUB_OWNER/GITHUB_REPO.</p>
                               </div>
+                              </details>
                               <div className="form-group">
                                 <label className="label" htmlFor="sidebar-gitops-cloud">Default Cloud</label>
                                 <select id="sidebar-gitops-cloud" className="input" value={createCloud} onChange={(event) => setCreateCloud(event.target.value)} disabled={!selectedPanelProject?.can_manage && editingProjectId !== null}>
@@ -1355,7 +1369,7 @@ export default function GitOpsControlPage() {
                                     <p>Loading file...</p>
                                   </div>
                                 ) : openDocument ? (
-                                  <textarea
+                                  <textarea aria-label="Document contents"
                                     className="gitops-editor-code__textarea"
                                     value={editorValue}
                                     onChange={(event) => setEditorValue(event.target.value)}
@@ -1372,7 +1386,7 @@ export default function GitOpsControlPage() {
 
                             {jsonProjectId === selectedPanelProject.id && selectedPanelProject.can_write && (
                               <div className="gitops-inline-form">
-                                <input
+                                <input aria-label="New component name"
                                   className="input"
                                   value={newJsonComponent}
                                   onChange={(event) => setNewJsonComponent(event.target.value)}

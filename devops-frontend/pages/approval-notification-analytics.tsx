@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { asRecord, getString } from '../lib/payload';
@@ -81,10 +82,7 @@ const EMPTY_SUMMARY: OpsAnalyticsSummary = {
 };
 
 function formatDateTime(value?: string): string {
-  if (!value) return '—';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return formatOperationalTime(value);
 }
 
 function toTitleCase(value: string): string {
@@ -189,7 +187,7 @@ export default function ApprovalNotificationAnalyticsPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Approval & Notification Analytics - DevOps Portal</title>
+        <title>Approval & Notification Analytics - OpsTrellis</title>
       </Head>
       <div className="alert-page">
         <header className="work-page__head">

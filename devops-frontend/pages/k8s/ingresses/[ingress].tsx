@@ -260,7 +260,7 @@ export default function DevOpsK8sIngressDetailPage() {
   return (
     <>
       <Head>
-        <title>Ingress Detail - DevOps</title>
+        <title>Ingress Detail - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

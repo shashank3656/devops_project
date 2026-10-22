@@ -13,6 +13,7 @@ import {
   RequestTemplate,
   type CloudGroup,
 } from '../../lib/requestTemplates';
+import { CATALOGUE_TEMPLATES } from '../../lib/catalogueTemplates';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -108,7 +109,7 @@ export default function DevOpsTemplatesList() {
   return (
     <>
       <Head>
-        <title>Templates - DevOps</title>
+        <title>Templates - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page">
@@ -124,6 +125,20 @@ export default function DevOpsTemplatesList() {
               New template
             </Link>
           </div>
+
+          <section className="portal-surface">
+            <h2 className="portal-surface__title">Approved catalogue</h2>
+            <p className="portal-surface__subtitle">Three versioned templates start a request. They do not create the resource.</p>
+            <ul className="request-timeline">
+              {CATALOGUE_TEMPLATES.map((item) => (
+                <li key={item.key}>
+                  <strong><Link href={`/requests/new?template=${item.key}`}>{item.name}</Link></strong>
+                  <span>Version {item.version} · Owner {item.owner}</span>
+                  <small>{item.approval}</small>
+                </li>
+              ))}
+            </ul>
+          </section>
 
           {error ? (
             <div className="alert alert-error" role="alert">

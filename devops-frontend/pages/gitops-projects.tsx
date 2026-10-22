@@ -128,12 +128,12 @@ function formatRelativeTime(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'No recent changes';
   const diffMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
-  if (diffMinutes < 1) return 'Just now';
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  if (diffMinutes < 1) return 'just now';
+  if (diffMinutes < 60) return diffMinutes === 1 ? '1 minute ago' : `${diffMinutes} minutes ago`;
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffHours < 24) return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
   const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+  return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
 }
 
 function pickProjectDefaults(project?: GitOpsProjectSummary): { env: string; component: string } {
@@ -285,7 +285,7 @@ export default function GitOpsProjectsPage() {
   return (
     <>
       <Head>
-        <title>GitOps Projects - DevOps Portal</title>
+        <title>GitOps Projects - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="portal-page gitops-page">
@@ -340,7 +340,7 @@ export default function GitOpsProjectsPage() {
                 <article className="portal-stat-card">
                   <span className="portal-stat-card__label">Projects</span>
                   <strong className="portal-stat-card__value">{formatCount(data.overview.project_count)}</strong>
-                  <p className="portal-stat-card__copy">Team-scoped GitOps roots currently visible in the DevOps portal.</p>
+                  <p className="portal-stat-card__copy">Team-scoped GitOps roots currently visible in OpsTrellis.</p>
                 </article>
                 <article className="portal-stat-card">
                   <span className="portal-stat-card__label">Requests</span>
@@ -547,7 +547,7 @@ export default function GitOpsProjectsPage() {
                               </div>
                               <div className="gitops-change-list__meta">
                                 <span className={`portal-badge portal-badge--${getStatusTone(change.status)}`}>{change.status.replace(/_/g, ' ')}</span>
-                                <small>{formatRelativeTime(change.updated_at)}</small>
+                                <small title={change.updated_at ? `${new Date(change.updated_at).toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone})` : undefined}>{formatRelativeTime(change.updated_at)}</small>
                               </div>
                             </div>
                           ))}

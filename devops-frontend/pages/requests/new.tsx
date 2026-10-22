@@ -1,11 +1,22 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { serviceLabel } from '../../lib/cloudServices';
+import { serviceLabel, servicesForCloud } from '../../lib/cloudServices';
 import { sessionAuthHeaders } from '../../lib/portalAccess';
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
+import { focusField } from '../../lib/focusField';
+import { recordReference } from '../../lib/recordRef';
+import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
+import { saveSubmissionResult } from '../../lib/submissionResult';
+import BlockedAction from '../../components/BlockedAction';
+import { readWorkspaceScope, WORKSPACE_SCOPE_EVENT, type WorkspaceScope } from '@infragate/ui';
+import { catalogueNote, catalogueTemplate, CATALOGUE_TEMPLATES } from '../../lib/catalogueTemplates';
+
+const REQUEST_DRAFT_KEY = 'opstrellis-request-draft';
+const REQUEST_ATTEMPT_KEY = 'opstrellis-request-attempt';
 
 type TeamChoice = { id: number; name: string; slug: string; default_env?: string };
 type ProjectService = { cloud: string; service: string };
@@ -19,13 +30,20 @@ export default function NewRequestPage() {
   const [team, setTeam] = useState('');
   const [projectId, setProjectId] = useState('');
   const [cloud, setCloud] = useState('');
-  const [env, setEnv] = useState('dev');
+  const [env, setEnv] = useState('');
+  const [envNote, setEnvNote] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
   const [comment, setComment] = useState('');
+  const [catalogueKey, setCatalogueKey] = useState('');
+  const [catalogueValues, setCatalogueValues] = useState<Record<string, string>>({});
+  const [serviceQuery, setServiceQuery] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const submitLock = useRef(false);
+  const restoredDraft = useRef(false);
+  const envLocked = useRef(false);
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
@@ -34,55 +52,231 @@ export default function NewRequestPage() {
       .then((body) => {
         const list = Array.isArray(body?.teams) ? body.teams : [];
         setTeams(list);
-        if (list[0]?.slug) {
+        if (list[0]?.slug && !restoredDraft.current) {
           setTeam(list[0].slug);
-          if (list[0].default_env) setEnv(list[0].default_env);
         }
       })
       .catch(() => setTeams([]));
-    fetch(`${apiUrl}/api/me/projects`, { headers })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body) => setProjects(Array.isArray(body?.projects) ? body.projects : []))
-      .catch(() => setProjects([]));
+    Promise.all([
+      fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => (res.ok ? res.json() : { projects: [] })),
+      fetch(`${apiUrl}/api/me/projects`, { headers }).then((res) => (res.ok ? res.json() : { projects: [] })),
+    ]).then(([managedBody, mineBody]) => {
+      const managed = Array.isArray(managedBody?.projects) ? managedBody.projects : [];
+      const mine = Array.isArray(mineBody?.projects) ? mineBody.projects : [];
+      setProjects(managed.length ? managed : mine);
+    }).catch(() => setProjects([]));
   }, [apiUrl]);
 
+  useEffect(() => {
+    const raw = sessionStorage.getItem(REQUEST_DRAFT_KEY);
+    if (!raw) return;
+    restoredDraft.current = true;
+    try {
+      const saved = JSON.parse(raw) as { projectId?: string; cloud?: string; serviceId?: string; env?: string; priority?: string; dueDate?: string; comment?: string; team?: string };
+      if (saved.team) setTeam(saved.team);
+      const params = new URLSearchParams(window.location.search);
+      if (!params.get('project_id') && !params.get('environment') && !params.get('service') && !params.get('service_id') && !params.get('cloud')) {
+        if (saved.projectId) setProjectId(saved.projectId);
+        if (saved.cloud) setCloud(saved.cloud);
+        if (saved.serviceId) setServiceId(saved.serviceId);
+        if (saved.env) {
+          setEnv(saved.env);
+          envLocked.current = true;
+        }
+      }
+      if (saved.priority) setPriority(saved.priority);
+      if (saved.dueDate) setDueDate(saved.dueDate);
+      if (saved.comment) setComment(saved.comment);
+    } catch {
+      sessionStorage.removeItem(REQUEST_DRAFT_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!(projectId || cloud || serviceId || comment.trim() || dueDate)) {
+      sessionStorage.removeItem(REQUEST_DRAFT_KEY);
+      return;
+    }
+    sessionStorage.setItem(REQUEST_DRAFT_KEY, JSON.stringify({ team, projectId, cloud, serviceId, env, priority, dueDate, comment }));
+  }, [team, projectId, cloud, serviceId, env, priority, dueDate, comment]);
+
+  useEffect(() => {
+    const onScope = (event: Event) => {
+      const next = (event as CustomEvent<WorkspaceScope>).detail || readWorkspaceScope();
+      if (!next) return;
+      if (next.projectId && next.projectId !== projectId) {
+        setProjectId(next.projectId);
+        setCloud('');
+        setServiceId('');
+        envLocked.current = false;
+      }
+    };
+    window.addEventListener(WORKSPACE_SCOPE_EVENT, onScope);
+    return () => window.removeEventListener(WORKSPACE_SCOPE_EVENT, onScope);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (restoredDraft.current && envLocked.current) return;
+    if (!projectId) {
+      setEnv('');
+      setEnvNote('');
+      return;
+    }
+    const project = projects.find((item) => String(item.id) === projectId);
+    const allowed = (project?.environments || []).filter(Boolean);
+    if (!allowed.length) {
+      setEnv('');
+      setEnvNote(project ? 'This project has no environment yet.' : '');
+      return;
+    }
+    const preferred = readWorkspaceScope().environment;
+    const teamDefault = teams.find((item) => item.slug === team)?.default_env || '';
+    if (envLocked.current && allowed.includes(env)) return;
+    if (preferred && allowed.includes(preferred)) {
+      setEnv(preferred);
+      setEnvNote('');
+      return;
+    }
+    if (teamDefault && allowed.includes(teamDefault)) {
+      setEnv(teamDefault);
+      setEnvNote(preferred ? `${preferred} is not on this project, so the environment is ${teamDefault}.` : '');
+      return;
+    }
+    setEnv(allowed[0]);
+    setEnvNote(preferred ? `${preferred} is not on this project, so the environment is ${allowed[0]}.` : '');
+  }, [env, projectId, projects, team]);
+
   const router = useRouter();
+  useEffect(() => {
+    if (!router.isReady) return;
+    const projectQuery = router.query.project_id;
+    const environmentQuery = router.query.environment;
+    const nextProject = String(Array.isArray(projectQuery) ? projectQuery[0] : projectQuery || '');
+    const nextEnvironment = String(Array.isArray(environmentQuery) ? environmentQuery[0] : environmentQuery || '');
+    if (nextProject) setProjectId(nextProject);
+    if (nextEnvironment) {
+      setEnv(nextEnvironment);
+      envLocked.current = true;
+    }
+    if (nextProject || nextEnvironment || restoredDraft.current) return;
+    const scope = readWorkspaceScope();
+    if (scope.projectId) setProjectId(scope.projectId);
+    if (scope.environment) {
+      setEnv(scope.environment);
+      envLocked.current = true;
+    }
+  }, [router.isReady, router.query.project_id, router.query.environment]);
+  useEffect(() => {
+    if (!router.isReady) return;
+    const raw = router.query.template;
+    const key = Array.isArray(raw) ? raw[0] : raw;
+    if (catalogueTemplate(key || '')) setCatalogueKey(key || '');
+  }, [router.isReady, router.query.template]);
+  useEffect(() => {
+    const project = projects.find((item) => String(item.id) === projectId);
+    if (!project) return;
+    const clouds = project.clouds?.length ? project.clouds : ['aws', 'azure', 'gcp'];
+    if (!clouds.some((name) => name.toLowerCase() === cloud.toLowerCase())) {
+      setCloud(clouds[0]);
+      setServiceId('');
+    }
+  }, [projects, projectId, cloud]);
+  const selectedCatalogue = catalogueTemplate(catalogueKey);
+  const { allowLeave } = useUnsavedChanges(Boolean(projectId || cloud || serviceId || comment.trim() || dueDate));
   const selectedProject = projects.find((item) => String(item.id) === projectId);
-  const cloudOptions = selectedProject?.clouds || [];
-  const environmentOptions = selectedProject?.environments?.length ? selectedProject.environments : ['dev', 'uat', 'prod'];
-  const serviceOptions = (selectedProject?.services || []).filter((item) => item.cloud.toLowerCase() === cloud.toLowerCase());
-  const chosenService = serviceOptions.find((item) => item.service === serviceId);
+  const cloudOptions = selectedProject?.clouds?.length ? selectedProject.clouds : ['aws', 'azure', 'gcp'];
+  const environmentOptions = (selectedProject?.environments || []).filter(Boolean);
+  const cloudKey = cloud.toLowerCase();
+  const catalog = servicesForCloud(cloudKey);
+  const catalogIds = new Set(catalog.map((item) => item.id));
+  const projectServices = (selectedProject?.services || [])
+    .filter((item) => String(item.cloud || '').toLowerCase() === cloudKey && catalogIds.has(item.service))
+    .map((item) => ({ id: item.service, label: serviceLabel(cloudKey, item.service) }));
+  const serviceOptions = projectServices.length ? projectServices : catalog;
+  const visibleServices = serviceOptions.filter((item) => item.label.toLowerCase().includes(serviceQuery.trim().toLowerCase()));
+  const chosenService = serviceOptions.find((item) => item.id === serviceId);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!chosenService || !cloud) {
-      setError('Choose a cloud and a service from this project.');
+    if (!projectId) {
+      focusField('request-project', 'Choose a project.');
+      setError('Choose a project.');
       return;
     }
+    if (!env) {
+      focusField('request-env', 'Choose an environment from this project.');
+      setError('Choose an environment from this project.');
+      return;
+    }
+    if (!cloud) {
+      focusField('request-cloud', 'Choose a cloud from this project.');
+      setError('Choose a cloud from this project.');
+      return;
+    }
+    if (!chosenService) {
+      focusField('request-service', 'Choose a service from this project.');
+      setError('Choose a service from this project.');
+      return;
+    }
+    if (selectedCatalogue) {
+      const missing = selectedCatalogue.inputs.find((input) => !(catalogueValues[input.id] || '').trim());
+      if (missing) {
+        focusField(`catalogue-${missing.id}`, `${missing.label} is required for ${selectedCatalogue.name}.`);
+        setError(`${missing.label} is required for ${selectedCatalogue.name}.`);
+        return;
+      }
+      const secretLike = Object.values(catalogueValues).some((value) => /password\s*[:=]|bearer\s+|eyJ|AKIA/i.test(value));
+      if (secretLike) {
+        setError('Leave secret values out of this request.');
+        return;
+      }
+    }
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSaving(true);
     setError('');
     setNotice('');
+    const payload = {
+      team,
+      env,
+      cloud,
+      service: chosenService.id,
+      project_id: projectId ? Number(projectId) : undefined,
+      priority,
+      due_date: dueDate || undefined,
+      initial_comment: [selectedCatalogue ? catalogueNote(selectedCatalogue, catalogueValues) : '', comment.trim()].filter(Boolean).join('\n\n') || undefined,
+      catalogue_template: selectedCatalogue?.key,
+      catalogue_version: selectedCatalogue?.version,
+    };
+    const attemptKey = rememberAttempt(REQUEST_ATTEMPT_KEY, JSON.stringify(payload));
     try {
       const response = await fetch(`${apiUrl}/api/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...sessionAuthHeaders() },
-        body: JSON.stringify({
-          team,
-          env,
-          cloud,
-          service: chosenService.service,
-          project_id: projectId ? Number(projectId) : undefined,
-          priority,
-          due_date: dueDate || undefined,
-          initial_comment: comment.trim() || undefined,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...sessionAuthHeaders(),
+          'Idempotency-Key': attemptKey,
+        },
+        body: JSON.stringify(payload),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(typeof body?.error === 'string' ? body.error : 'The request was not accepted.');
+        const outcome = outcomeForFailedSubmit(response.status, typeof body?.error === 'string' ? body.error : '');
+        if (!outcome.keepAttempt) forgetAttempt(REQUEST_ATTEMPT_KEY);
+        setError(outcome.message);
         return;
       }
       if (body?.id) {
+        sessionStorage.removeItem(REQUEST_DRAFT_KEY);
+        forgetAttempt(REQUEST_ATTEMPT_KEY);
+        allowLeave();
+        saveSubmissionResult({
+          kind: 'Request',
+          id: recordReference('REQ', Number(body.id)),
+          status: 'waiting for review',
+          next: 'It has not been applied. A reviewer approves it before any cloud change runs.',
+          href: `/requests/${body.id}`,
+        });
         await router.push(`/requests/${body.id}`);
         return;
       }
@@ -90,8 +284,9 @@ export default function NewRequestPage() {
       setServiceId('');
       setCloud('');
     } catch {
-      setError('The request could not be sent.');
+      setError('No response came back, so this attempt may or may not have been saved. Your entries are unchanged. Retry uses the same attempt and will not create a second request if the first one landed.');
     } finally {
+      submitLock.current = false;
       setSaving(false);
     }
   }
@@ -99,7 +294,7 @@ export default function NewRequestPage() {
   return (
     <>
       <Head>
-        <title>New request - DevOps</title>
+        <title>New request - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <div className="work-page">
@@ -113,8 +308,49 @@ export default function NewRequestPage() {
           </header>
           {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
           {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-          <form className="portal-surface access-form" onSubmit={submit}>
-            <label className="label" htmlFor="request-team">Team</label>
+          <form className="portal-surface request-form" onSubmit={submit}>
+            <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+            <fieldset className="form-section">
+              <legend className="form-section__title">Approved catalogue</legend>
+              <p className="form-section__copy">Start from a versioned template, or leave this unset and choose a service below. Raising the request still does not create the resource.</p>
+              <div className="service-360__tabs" role="list">
+                <button type="button" className={catalogueKey === '' ? 'is-selected' : ''} onClick={() => setCatalogueKey('')}>No template</button>
+                {CATALOGUE_TEMPLATES.map((item) => (
+                  <button key={item.key} type="button" className={catalogueKey === item.key ? 'is-selected' : ''} onClick={() => setCatalogueKey(item.key)}>
+                    {item.name} v{item.version}
+                  </button>
+                ))}
+              </div>
+              {selectedCatalogue ? (
+                <>
+                  <p className="form-section__copy">Owner {selectedCatalogue.owner}. Version {selectedCatalogue.version}. {selectedCatalogue.approval}</p>
+                  <div className="portal-form-grid">
+                    {selectedCatalogue.inputs.map((input) => (
+                      <label key={input.id} className="label" htmlFor={`catalogue-${input.id}`}>{input.label}<span className="form-req" aria-hidden="true"> *</span>
+                        <input
+                          id={`catalogue-${input.id}`}
+                          className="input"
+                          value={catalogueValues[input.id] || ''}
+                          onChange={(event) => setCatalogueValues((current) => ({ ...current, [input.id]: event.target.value }))}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </fieldset>
+            {teams.length === 0 ? (
+              <p className="onboard-unavailable">
+                You need a team before you can raise a request.{' '}
+                <Link href="/portal-access/teams">Manage team membership</Link>
+                {' '}or <Link href="/portal-access/users">contact an administrator</Link>.
+              </p>
+            ) : null}
+            <fieldset className="form-section">
+              <legend className="form-section__title">Scope</legend>
+              <p className="form-section__copy">Project and environment come from the page address when they are present. Services are the same catalogue used on the access request.</p>
+            <div className="portal-form-grid">
+            <label className="label" htmlFor="request-team">Team<span className="form-req" aria-hidden="true"> *</span>
             <select
               id="request-team"
               className="input"
@@ -122,8 +358,7 @@ export default function NewRequestPage() {
               onChange={(event) => {
                 const slug = event.target.value;
                 setTeam(slug);
-                const chosen = teams.find((item) => item.slug === slug);
-                if (chosen?.default_env) setEnv(chosen.default_env);
+                envLocked.current = false;
               }}
               required
             >
@@ -132,15 +367,18 @@ export default function NewRequestPage() {
                 <option key={item.id} value={item.slug}>{item.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="request-project">Project</label>
+            </label>
+            <label className="label" htmlFor="request-project">Project<span className="form-req" aria-hidden="true"> *</span>
             <select
               id="request-project"
               className="input"
               value={projectId}
               onChange={(event) => {
-                setProjectId(event.target.value);
+                const nextId = event.target.value;
+                setProjectId(nextId);
                 setCloud('');
                 setServiceId('');
+                envLocked.current = false;
               }}
               required
             >
@@ -149,44 +387,79 @@ export default function NewRequestPage() {
                 <option key={item.id} value={item.id}>{item.code ? `${item.name} (${item.code})` : item.name}</option>
               ))}
             </select>
-            <label className="label" htmlFor="request-env">Environment</label>
-            <select id="request-env" className="input" value={env} onChange={(event) => setEnv(event.target.value)}>
+            </label>
+            <label className="label" htmlFor="request-env">Environment<span className="form-req" aria-hidden="true"> *</span>
+            <select
+              id="request-env"
+              className="input"
+              value={projectId ? env : ''}
+              onChange={(event) => {
+                envLocked.current = true;
+                setEnv(event.target.value);
+                setEnvNote('');
+              }}
+              required={Boolean(projectId)}
+              disabled={!projectId}
+            >
+              <option value="">{projectId ? 'Choose an environment' : 'Choose a project first'}</option>
               {environmentOptions.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
-            <label className="label" htmlFor="request-cloud">Cloud</label>
+            </label>
+            {!projectId ? <p className="access-hint portal-form-grid__span-2">Environment stays unset until a project is chosen. It then uses the selected scope when that environment belongs to the project.</p> : null}
+            {envNote ? <p className="access-hint portal-form-grid__span-2">{envNote}</p> : null}
+            <label className="label" htmlFor="request-cloud">Cloud<span className="form-req" aria-hidden="true"> *</span>
             <select
               id="request-cloud"
               className="input"
               value={cloud}
-              onChange={(event) => { setCloud(event.target.value); setServiceId(''); }}
+              onChange={(event) => { setCloud(event.target.value); setServiceId(''); setServiceQuery(''); }}
               required
               disabled={!projectId}
             >
               <option value="">{projectId ? 'Select a cloud' : 'Choose a project first'}</option>
               {cloudOptions.map((name) => <option key={name} value={name}>{name.toUpperCase()}</option>)}
             </select>
-            <label className="label" htmlFor="request-service">Service</label>
-            <select id="request-service" className="input" value={serviceId} onChange={(event) => setServiceId(event.target.value)} required disabled={!cloud || serviceOptions.length === 0}>
-              <option value="">{!cloud ? 'Select a cloud first' : serviceOptions.length ? 'Select a service' : 'No services were saved for this cloud on the project'}</option>
-              {serviceOptions.map((item) => (
-                <option key={`${item.cloud}-${item.service}`} value={item.service}>{serviceLabel(item.cloud, item.service)}</option>
-              ))}
+            </label>
+            <label className="label" htmlFor="request-priority">Priority
+            <select id="request-priority" className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
             </select>
+            </label>
+            </div>
+            <label className="label" htmlFor="request-service-search">Service<span className="form-req" aria-hidden="true"> *</span></label>
+            <input id="request-service-search" className="input" type="search" value={serviceQuery} onChange={(event) => setServiceQuery(event.target.value)} placeholder="Search services" disabled={!cloud} />
+            <div className="iam-choices" role="radiogroup" aria-label="Services">
+              {!cloud ? <p className="access-hint">Choose a cloud to see its services.</p> : visibleServices.length === 0 ? <p className="access-hint">No services match that search.</p> : visibleServices.map((item) => (
+                <label key={item.id} className={serviceId === item.id ? 'is-current' : undefined}>
+                  <input type="radio" name="request-service" value={item.id} checked={serviceId === item.id} onChange={() => setServiceId(item.id)} />
+                  <span>{item.label}</span>
+                </label>
+              ))}
+            </div>
+            </fieldset>
+            <details className="onboard-advanced">
+              <summary>Timing and note <span className="onboard-optional">Optional</span></summary>
             <label className="label" htmlFor="request-due">Needed by</label>
             <input id="request-due" className="input" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
             <label className="label" htmlFor="request-note">Note for the reviewer</label>
             <input id="request-note" className="input" value={comment} onChange={(event) => setComment(event.target.value)} placeholder="What should the reviewer know?" />
-            <label className="label" htmlFor="request-priority">Priority</label>
-            <select id="request-priority" className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>
-              <option value="low">Low — L1</option>
-              <option value="medium">Medium — L2</option>
-              <option value="high">High — L3</option>
-              <option value="critical">Critical — L4</option>
-            </select>
-            <button type="submit" className="btn btn-primary" disabled={saving || teams.length === 0}>
-              {saving ? 'Raising…' : 'Raise request'}
-            </button>
-            {teams.length === 0 ? <p className="work-empty">You need a team before you can raise a request.</p> : null}
+            </details>
+            <section className="portal-surface portal-surface--tight" aria-label="Review before raising">
+              <h2>Review before raising</h2>
+              <p>{chosenService?.label || 'Choose a service'} · {selectedProject?.name || 'No project'} · {env || 'No environment'} · {priority}</p>
+              <p className="access-hint">If something is wrong, change it in the section above. This raises the request for the selected project.</p>
+            </section>
+            <div className="portal-form-actions">
+              <BlockedAction blocked={teams.length === 0} reason="You need a team before you can raise a request.">
+              <button type="submit" className="btn btn-primary" disabled={saving || teams.length === 0} title={teams.length === 0 ? 'You need a team before you can raise a request.' : 'Raise request'}>
+                {saving ? 'Raising…' : 'Raise request'}
+              </button>
+              </BlockedAction>
+              <Link href="/my-requests" className="btn btn-secondary">Cancel</Link>
+            </div>
           </form>
         </div>
       </DevOpsLayout>

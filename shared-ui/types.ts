@@ -59,6 +59,7 @@ export interface ScorecardCheck {
   key: string;
   label: string;
   passed: boolean;
+  state?: 'pass' | 'fail' | 'unknown' | string;
   detail: string;
   href?: string;
 }
@@ -108,6 +109,7 @@ export interface ProjectHealth {
   metrics: DoraMetric[];
   scorecard: ScorecardCheck[];
   score: number;
+  score_state?: 'known' | 'unknown' | string;
   cost?: ProjectCostSummary;
   settings?: ProjectInfraSettings;
 }

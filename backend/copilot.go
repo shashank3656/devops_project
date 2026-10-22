@@ -112,7 +112,7 @@ func callCopilotModel(body copilotRequest) (string, bool) {
 	payload := map[string]interface{}{
 		"model": model,
 		"messages": []copilotMessage{
-			{Role: "system", Content: "You are the SetuOps ops copilot. Answer only from the provided Change, Incident, and runbook citations. Name those IDs. Suggest a previous SHA when present. Never apply Terraform, Helm, or cluster changes."},
+			{Role: "system", Content: "You are the OpsTrellis ops copilot. Answer only from the provided Change, Incident, and runbook citations. Name those IDs. Suggest a previous SHA when present. Never apply Terraform, Helm, or cluster changes."},
 			{Role: "user", Content: fmt.Sprintf("Portal: %s\nPage: %s %s\nQuestion: %s\nContext: %s", body.Portal, body.Title, body.Path, body.Query, string(contextJSON))},
 		},
 		"temperature": 0.2,

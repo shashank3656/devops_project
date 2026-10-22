@@ -120,7 +120,7 @@ export default function DevOpsK8sEventsPage() {
   return (
     <>
       <Head>
-        <title>Events - DevOps</title>
+        <title>Events - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell

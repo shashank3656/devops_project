@@ -140,7 +140,7 @@ func publishChangePolicyStatus(item changeRequestRecord, denied []string) {
 	if strings.HasPrefix(item.SHA, "manual-") || strings.HasPrefix(item.SHA, "preview-") || strings.HasPrefix(item.SHA, "flag-") {
 		return
 	}
-	reason := "SetuOps policy passed"
+	reason := "OpsTrellis policy passed"
 	state := "success"
 	if len(denied) > 0 {
 		state = "failure"
@@ -352,7 +352,7 @@ func evaluateAndPublishRequestPolicy(req *PRRequest) {
 	}
 	denied := evaluatePolicyRules("request", input)
 	if len(denied) == 0 {
-		publishRequestCommitStatus(req, policyStatusContext, "success", "SetuOps policy passed")
+		publishRequestCommitStatus(req, policyStatusContext, "success", "OpsTrellis policy passed")
 		return
 	}
 	publishRequestCommitStatus(req, policyStatusContext, "failure", denied[0])

@@ -219,17 +219,19 @@ export default function DevOpsK8sPodDetailPage() {
       label: 'Live logs',
       detail: 'Stay in the same pod scope and confirm whether warning signals are still active in the stream.',
     },
-    {
-      href: buildScopedHref(
-        `/k8s/pods/${encodeURIComponent(podName)}/terminal`,
-        scopeProjectId,
-        scopeCluster,
-        scopeNamespace,
-        environment,
-      ),
-      label: 'Terminal workspace',
-      detail: 'Open the operator terminal flow for this pod with the current cluster and namespace context preserved.',
-    },
+    ...(detail?.k8s_access === 'write'
+      ? [{
+          href: buildScopedHref(
+            `/k8s/pods/${encodeURIComponent(podName)}/terminal`,
+            scopeProjectId,
+            scopeCluster,
+            scopeNamespace,
+            environment,
+          ),
+          label: 'Terminal workspace',
+          detail: 'Open the operator terminal flow for this pod with the current cluster and namespace context preserved.',
+        }]
+      : []),
     {
       href: deployment
         ? buildScopedHref(
@@ -258,7 +260,7 @@ export default function DevOpsK8sPodDetailPage() {
   return (
     <>
       <Head>
-        <title>Pod Detail - DevOps</title>
+        <title>Pod Detail - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
         <K8sWorkspaceShell
@@ -387,6 +389,7 @@ export default function DevOpsK8sPodDetailPage() {
                   <Link className="btn btn-secondary btn-sm" href={buildScopedHref('/k8s/logs', scopeProjectId, scopeCluster, scopeNamespace, environment)}>
                     Open logs
                   </Link>
+                  {detail?.k8s_access === 'write' ? (
                   <Link
                     className="btn btn-secondary btn-sm"
                     href={buildK8sHref(`/k8s/pods/${encodeURIComponent(pod?.name || podName)}/terminal`, {
@@ -399,6 +402,7 @@ export default function DevOpsK8sPodDetailPage() {
                   >
                     Terminal
                   </Link>
+                  ) : null}
                   <Link className="btn btn-secondary btn-sm" href={buildScopedHref('/k8s/events', scopeProjectId, scopeCluster, scopeNamespace, environment)}>
                     Open events
                   </Link>

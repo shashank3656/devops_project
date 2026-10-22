@@ -55,14 +55,14 @@ export default function EvidencePage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'setuops-evidence.md';
+    link.download = 'opstrellis-evidence.md';
     link.click();
     URL.revokeObjectURL(url);
   };
 
   return (
     <DevOpsLayout>
-      <Head><title>Evidence - SetuOps</title></Head>
+      <Head><title>Evidence - OpsTrellis</title></Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>

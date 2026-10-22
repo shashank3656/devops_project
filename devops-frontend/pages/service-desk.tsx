@@ -1,11 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CopyButton, formatCalendarDate, formatOperationalTime, queryString, useConfirm, useWorkspaceScope } from '@infragate/ui';
+import { productionDetailLines } from '../lib/productionConfirm';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { incidentCanFinish } from '../lib/itsm';
 import { loadTicketAudience, ticketVisible } from '../lib/ticketAudience';
+import { expireSession } from '../lib/sessionExpiry';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -22,8 +25,11 @@ interface DeskTicket {
   status: string;
   priority: string;
   owner: string;
+  author?: string;
   requester?: string;
   service: string;
+  serviceId?: number;
+  projectId?: string;
   environment: string;
   source: string;
   href: string;
@@ -39,15 +45,6 @@ function IconDoc() {
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <path d="M7 3.5h7l4 4V20a1.5 1.5 0 0 1-1.5 1.5h-9.5A1.5 1.5 0 0 1 5.5 20V5A1.5 1.5 0 0 1 7 3.5z" />
       <path d="M14 3.5V8h4.5M8 12h8M8 16h6" />
-    </svg>
-  );
-}
-
-function IconAlert() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-      <path d="M12 4.5 20 19H4L12 4.5z" />
-      <path d="M12 10v4.5M12 17.2h.01" />
     </svg>
   );
 }
@@ -133,11 +130,11 @@ function kindLabel(kind: DeskKind): string {
   }
 }
 
-function formatWhen(value?: string): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+function typeIcon(kind: DeskKind) {
+  if (kind === 'problem') return <IconSearch />;
+  if (kind === 'change') return <IconLink />;
+  if (kind === 'incident') return <IconClock />;
+  return <IconDoc />;
 }
 
 function asList(raw: unknown): Record<string, unknown>[] {
@@ -154,6 +151,35 @@ function num(value: unknown): number {
   return 0;
 }
 
+function recordReference(prefix: 'CHG' | 'INC' | 'PRB' | 'REQ', id: number, stored: string): string {
+  const text = stored.trim();
+  if (text && !text.includes('-')) return text;
+  return `${prefix}${String(id).padStart(7, '0')}`;
+}
+
+function namedEnvironment(value: string): string {
+  const text = value.trim().toLowerCase();
+  if (!text || text === 'unknown' || text === 'unspecified' || text === '—' || text === '-') return '';
+  return text;
+}
+
+function environmentMatches(itemEnvironment: string, selected: string): boolean {
+  if (!selected.trim()) return true;
+  return namedEnvironment(itemEnvironment) === selected.trim().toLowerCase();
+}
+
+function deskReturnPath(): string {
+  if (typeof window === 'undefined') return '/service-desk';
+  const path = `${window.location.pathname}${window.location.search}`;
+  return path.startsWith('/service-desk') ? path : '/service-desk';
+}
+
+function openTicketHref(item: { kind: DeskKind; href: string }): string {
+  if (item.kind !== 'request') return item.href;
+  const path = item.href.split('?')[0];
+  return `${path}?from=${encodeURIComponent(deskReturnPath())}`;
+}
+
 function storedIsAdmin(): boolean {
   try {
     const raw = localStorage.getItem(DEVOPS_USER_KEY);
@@ -162,6 +188,25 @@ function storedIsAdmin(): boolean {
   } catch {
     return false;
   }
+}
+
+const DESK_VIEW_KEY = 'opstrellis-desk-view';
+const PAGE_SIZE = 25;
+
+type SortKey = 'created' | 'type' | 'priority' | 'status' | 'owner';
+type SortDir = 'asc' | 'desc';
+
+function priorityRank(priority: string) {
+  const p = priority.toLowerCase();
+  if (p.includes('critical') || p === 'p1' || p === 'sev1') return 0;
+  if (p.includes('high') || p === 'p2' || p === 'sev2') return 1;
+  if (p.includes('medium') || p === 'p3' || p === 'sev3') return 2;
+  if (p.includes('low') || p === 'p4' || p === 'sev4') return 3;
+  return 4;
+}
+
+function csvCell(value: string) {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 export default function ServiceDeskPage() {
@@ -175,7 +220,17 @@ export default function ServiceDeskPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [ownerFilter, setOwnerFilter] = useState('');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [sortKey, setSortKey] = useState<SortKey>('created');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState(1);
+  const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNotice, setBulkNotice] = useState('');
+  const viewHydrated = useRef(false);
+  const urlWriteReady = useRef(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const confirm = useConfirm();
+  const { scope } = useWorkspaceScope();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [finishing, setFinishing] = useState('');
@@ -194,6 +249,91 @@ export default function ServiceDeskPage() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = {
+      query: params.get('q') || '',
+      typeFilter: params.get('kind') || '',
+      priorityFilter: params.get('priority') || '',
+      ownerFilter: params.get('owner') || '',
+      page: Number(params.get('page') || ''),
+    };
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as Record<string, unknown>;
+      if (!fromUrl.query && (saved.tab === 'all' || saved.tab === 'mine' || saved.tab === 'approval')) setTab(saved.tab);
+      if (fromUrl.query) setQuery(fromUrl.query);
+      else if (typeof saved.query === 'string') setQuery(saved.query);
+      if (fromUrl.typeFilter) setTypeFilter(fromUrl.typeFilter);
+      else if (typeof saved.typeFilter === 'string') setTypeFilter(saved.typeFilter);
+      if (fromUrl.priorityFilter) setPriorityFilter(fromUrl.priorityFilter);
+      else if (typeof saved.priorityFilter === 'string') setPriorityFilter(saved.priorityFilter);
+      if (fromUrl.ownerFilter) setOwnerFilter(fromUrl.ownerFilter);
+      else if (typeof saved.ownerFilter === 'string') setOwnerFilter(saved.ownerFilter);
+      if (['created', 'type', 'priority', 'status', 'owner'].includes(String(saved.sortKey))) setSortKey(saved.sortKey as SortKey);
+      if (saved.sortDir === 'asc' || saved.sortDir === 'desc') setSortDir(saved.sortDir);
+      if (fromUrl.page > 0) setPage(fromUrl.page);
+      else if (typeof saved.page === 'number' && saved.page > 0) setPage(saved.page);
+      if (typeof saved.selectedKey === 'string' && saved.selectedKey) setSelectedKey(saved.selectedKey);
+      if (typeof saved.scrollY === 'number') {
+        const scrollY = saved.scrollY;
+        window.requestAnimationFrame(() => window.scrollTo(0, scrollY));
+      }
+    } catch {
+      // A broken saved view falls back to the address, then defaults.
+    }
+    viewHydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!viewHydrated.current) return;
+    try {
+      sessionStorage.setItem(
+        DESK_VIEW_KEY,
+        JSON.stringify({ tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page, selectedKey }),
+      );
+    } catch {
+      // Storage can be unavailable in private windows.
+    }
+  }, [tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, page, selectedKey]);
+
+  useEffect(() => {
+    if (!viewHydrated.current) return;
+    if (!urlWriteReady.current) {
+      urlWriteReady.current = true;
+      return;
+    }
+    const url = new URL(window.location.href);
+    const write = (key: string, value: string) => {
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    };
+    write('q', query.trim());
+    write('kind', typeFilter);
+    write('priority', priorityFilter);
+    write('owner', ownerFilter);
+    if (page > 1) url.searchParams.set('page', String(page));
+    else url.searchParams.delete('page');
+    const next = `${url.pathname}${url.search}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState(window.history.state, '', next);
+    }
+  }, [query, typeFilter, priorityFilter, ownerFilter, page]);
+
+  useEffect(() => {
+    const saveScroll = () => {
+      if (!window.location.pathname.startsWith('/service-desk')) return;
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as Record<string, unknown>;
+        saved.scrollY = window.scrollY;
+        sessionStorage.setItem(DESK_VIEW_KEY, JSON.stringify(saved));
+      } catch {
+        // Scroll restore is optional when storage is unavailable.
+      }
+    };
+    router.events.on('routeChangeStart', saveScroll);
+    return () => router.events.off('routeChangeStart', saveScroll);
+  }, [router]);
+
+  useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       router.replace('/login');
@@ -210,14 +350,16 @@ export default function ServiceDeskPage() {
         .then(async (res) => (res.ok ? res.json().catch(() => ({})) : devopsCall))
         .catch(() => devopsCall);
     };
+    const readJson = (res: Response) => res.json().catch(() => ({}));
     Promise.all([
       loadCatalog('/api/devops/changes', '/api/admin/changes'),
       loadCatalog('/api/devops/incidents', '/api/admin/incidents'),
       fetch(`${apiUrl}/api/devops/problems`, { headers }).then((res) => res.json().catch(() => ({}))),
-      fetch(`${apiUrl}/api/devops/tickets?limit=50`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}/api/history?limit=100`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
+      fetch(`${apiUrl}/api/devops/requests?limit=50`, { headers }).then(async (res) => ({ ok: res.ok, body: await readJson(res) })),
       fetch(`${apiUrl}/api/devops/iam/access-requests?scope=desk`, { headers }).then((res) => (res.ok ? res.json().catch(() => ({})) : { requests: [] })),
     ])
-      .then(([changesData, incidentsData, problemsData, ticketsData, accessData]) => {
+      .then(([changesData, incidentsData, problemsData, historyData, queueData, accessData]) => {
         const next: DeskTicket[] = [];
 
         asList(changesData.changes).forEach((row) => {
@@ -231,14 +373,18 @@ export default function ServiceDeskPage() {
             summary: str(row.summary) || str(row.service) || str(row.repo),
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
-            owner: str(row.assignee_username) || str(row.author) || 'Unassigned',
+            owner: str(row.assignee_username) || 'Unassigned',
+            author: str(row.author),
             requester: str(row.created_by_username) || str(row.author),
             service: str(row.service) || 'Unknown',
+            serviceId: num(row.service_id) || num(row.service_map_id) || undefined,
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.pipeline_url) ? 'Webhook' : 'Manual',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/changes/${id}`,
+            reference: recordReference('CHG', id, str(row.change_number)),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
@@ -258,11 +404,14 @@ export default function ServiceDeskPage() {
             owner: str(row.owner_username) || str(row.assignee_username) || 'Unassigned',
             requester: str(row.created_by_username) || str(row.caller) || str(row.owner_username),
             service: str(row.service) || 'Unknown',
+            serviceId: num(row.service_id) || undefined,
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: str(row.source) || 'Webhook',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/incidents/${id}/edit`,
+            reference: recordReference('INC', id, str(row.incident_number)),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
@@ -280,41 +429,54 @@ export default function ServiceDeskPage() {
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
             owner: str(row.assignee_username) || 'Unassigned',
+            author: str(row.created_by_username),
             requester: str(row.created_by_username),
             service: str(row.service) || 'Unknown',
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
             href: `/problems/${id}`,
+            reference: recordReference('PRB', id, str(row.problem_number)),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
         });
 
-        asList(ticketsData.tickets || ticketsData.requests).forEach((row) => {
+        const requestRows = new Map<number, DeskTicket>();
+        const pushRequest = (row: Record<string, unknown>, href: string) => {
           const id = num(row.id);
-          if (!id) return;
-          next.push({
+          if (!id || requestRows.has(id)) return;
+          requestRows.set(id, {
             id,
             key: `request-${id}`,
             kind: 'request',
             title: str(row.service, `Request #${id}`),
-            summary: `${str(row.cloud)} · ${str(row.env) || str(row.environment)}`.trim(),
+            summary: `${str(row.cloud)} · ${str(row.env) || str(row.environment)}`.replace(/^ · | · $/g, '').trim() || 'Infrastructure request',
             status: str(row.status, 'new'),
             priority: str(row.priority, 'medium'),
-            owner: str(row.assignee_username) || str(row.created_by_username) || 'Unassigned',
+            owner: str(row.assignee_username) || 'Unassigned',
+            author: str(row.created_by_username),
             requester: str(row.created_by_username),
             service: str(row.service) || 'Unknown',
+            projectId: num(row.project_id) ? String(num(row.project_id)) : '',
             environment: str(row.environment) || str(row.env) || 'Unknown',
             source: 'Manual',
             dueAt: str(row.due_at) || str(row.due_date) || undefined,
             nextAction: str(row.next_action) || str(row.next_step) || undefined,
-            href: `/tickets?id=${id}`,
+            href,
+            reference: recordReference('REQ', id, ''),
             createdAt: str(row.created_at),
             updatedAt: str(row.updated_at),
           });
-        });
+        };
+        if (historyData.ok) asList(historyData.body?.requests).forEach((row) => pushRequest(row, `/requests/${num(row.id)}`));
+        if (queueData.ok) asList(queueData.body?.requests || queueData.body?.tickets).forEach((row) => pushRequest(row, `/tickets?id=${num(row.id)}`));
+        requestRows.forEach((item) => next.push(item));
+        if (!historyData.ok && !queueData.ok) {
+          setError('Requests could not be loaded. Incidents, changes, and problems are still listed below.');
+        }
 
         asList(accessData.requests).forEach((row, index) => {
           const rawId = str(row.id);
@@ -344,23 +506,91 @@ export default function ServiceDeskPage() {
         });
 
         return loadTicketAudience(apiUrl).then((audience) => {
-          const visible = next.filter((item) => ticketVisible([item.owner, item.requester || ''], audience));
+          const visible = next.filter((item) => item.href.startsWith('/requests/') || ticketVisible([item.owner, item.requester || ''], audience));
           visible.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setItems(visible);
-          if (!selectedKey && visible[0]) setSelectedKey(visible[0].key);
+          setSelectedKey((current) => {
+            if (current) return current;
+            try {
+              const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as { selectedKey?: string };
+              if (typeof saved.selectedKey === 'string' && saved.selectedKey) return saved.selectedKey;
+            } catch {
+              // A missing saved ticket falls through to the first visible row.
+            }
+            return visible[0]?.key || null;
+          });
         });
       })
-      .catch(() => setError('Failed to load service desk'))
+      .catch(() => setError('The service desk could not load. Check your connection, then try again.'))
       .finally(() => setLoading(false));
   }, [apiUrl, router, reloadTick]);
 
-  const selected = useMemo(() => items.find((item) => item.key === selectedKey) || null, [items, selectedKey]);
+  const scopeProject = (router.isReady ? queryString(router.query, 'project_id') : '') || scope.projectId;
+  const scopeEnvironment = (router.isReady ? queryString(router.query, 'environment') : '') || scope.environment;
+  const scopedItems = useMemo(() => items.filter((item) => {
+    if (scopeProject && item.projectId !== scopeProject) return false;
+    return environmentMatches(item.environment, scopeEnvironment);
+  }), [items, scopeEnvironment, scopeProject]);
+
+  const selected = useMemo(() => scopedItems.find((item) => item.key === selectedKey) || null, [scopedItems, selectedKey]);
+  const scopeWatch = useRef(`${scopeProject}|${scopeEnvironment}`);
+
+  useEffect(() => {
+    const nextScope = `${scopeProject}|${scopeEnvironment}`;
+    if (scopeWatch.current === nextScope || loading) return;
+    scopeWatch.current = nextScope;
+    setCheckedKeys([]);
+    if (!selectedKey || selected || !items.some((item) => item.key === selectedKey)) return;
+    const rowId = `sd-row-${selectedKey.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+    setSelectedKey(null);
+    setBulkNotice('That ticket is outside the current project or environment, so its details closed and the page selection was cleared.');
+    window.requestAnimationFrame(() => document.getElementById(rowId)?.focus());
+  }, [items, loading, scopeEnvironment, scopeProject, selected, selectedKey]);
+
+  useEffect(() => {
+    if (!selectedKey || !selected) return;
+    const rowId = `sd-row-${selectedKey.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+    const panel = document.querySelector<HTMLElement>('.sd-inspector');
+    window.setTimeout(() => panel?.querySelector<HTMLElement>('.sd-inspector__close')?.focus(), 0);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        setSelectedKey(null);
+        window.requestAnimationFrame(() => document.getElementById(rowId)?.focus());
+        return;
+      }
+      if (event.key !== 'Tab' || !panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !panel.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selected, selectedKey]);
 
   const finishIncident = async (ticket: DeskTicket, action: 'close' | 'cancel') => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
-      void router.replace('/login');
+      expireSession();
       return;
+    }
+    let note = '';
+    if (action === 'close') {
+      const recovery = window.prompt('Recovery notes are required to close this incident. Describe what restored service.');
+      if (!recovery || !recovery.trim()) {
+        setError('Close was not sent. Recovery notes are required.');
+        return;
+      }
+      note = recovery.trim();
     }
     setFinishing(ticket.key);
     setError('');
@@ -368,10 +598,10 @@ export default function ServiceDeskPage() {
       const response = await fetch(`${apiUrl}/api/devops/incidents/${ticket.id}/${action}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify(note ? { note } : {}),
       });
       if (response.status === 401) {
-        void router.replace('/login');
+        expireSession();
         return;
       }
       if (!response.ok) {
@@ -388,11 +618,11 @@ export default function ServiceDeskPage() {
     }
   };
 
-  const owners = useMemo(() => Array.from(new Set(items.map((item) => item.owner))).sort(), [items]);
+  const owners = useMemo(() => Array.from(new Set(scopedItems.map((item) => item.owner))).sort(), [scopedItems]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const next = items.filter((item) => {
+    const next = scopedItems.filter((item) => {
       if (tab === 'mine' && username && !item.owner.toLowerCase().includes(username.toLowerCase())) return false;
       if (tab === 'approval') {
         const s = item.status.toLowerCase();
@@ -406,69 +636,203 @@ export default function ServiceDeskPage() {
         .toLowerCase()
         .includes(needle);
     });
+    const direction = sortDir === 'asc' ? 1 : -1;
     next.sort((a, b) => {
-      const delta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return sortOrder === 'newest' ? -delta : delta;
+      let delta = 0;
+      if (sortKey === 'priority') delta = priorityRank(b.priority) - priorityRank(a.priority);
+      else if (sortKey === 'status') delta = a.status.localeCompare(b.status);
+      else if (sortKey === 'owner') delta = a.owner.localeCompare(b.owner);
+      else if (sortKey === 'type') delta = a.kind.localeCompare(b.kind);
+      if (delta === 0) delta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return delta * direction;
     });
     return next;
-  }, [items, tab, query, typeFilter, priorityFilter, ownerFilter, sortOrder, username]);
+  }, [scopedItems, tab, query, typeFilter, priorityFilter, ownerFilter, sortKey, sortDir, username]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+  const pageKeys = pageRows.map((item) => item.key);
+  const checkedOnPage = pageKeys.filter((key) => checkedKeys.includes(key));
+  const allOnPageChecked = pageKeys.length > 0 && checkedOnPage.length === pageKeys.length;
+  const someOnPageChecked = checkedOnPage.length > 0 && !allOnPageChecked;
+  const checkedTickets = pageRows.filter((item) => checkedKeys.includes(item.key));
+  const closableIncidents = checkedTickets.filter((item) => item.kind === 'incident' && incidentCanFinish(item.status));
+  const filtersActive = Boolean(query.trim() || typeFilter || priorityFilter || ownerFilter || tab !== 'all');
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someOnPageChecked;
+  }, [someOnPageChecked]);
+
+  const changeView = (apply: () => void) => {
+    apply();
+    setPage(1);
+    setCheckedKeys([]);
+    setBulkNotice('');
+  };
+
+  const goToPage = (next: number) => {
+    setPage(Math.min(Math.max(1, next), pageCount));
+    setCheckedKeys([]);
+    setBulkNotice('');
+  };
+
+  const clearFilters = () =>
+    changeView(() => {
+      setTab('all');
+      setQuery('');
+      setTypeFilter('');
+      setPriorityFilter('');
+      setOwnerFilter('');
+    });
+
+  const sortBy = (key: SortKey) =>
+    changeView(() => {
+      if (sortKey === key) {
+        setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortKey(key);
+        setSortDir(key === 'created' || key === 'priority' ? 'desc' : 'asc');
+      }
+    });
+
+  const ariaSort = (key: SortKey): 'ascending' | 'descending' | 'none' =>
+    sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none';
+
+  const toggleChecked = (key: string) => {
+    setBulkNotice('');
+    setCheckedKeys((current) => (current.includes(key) ? current.filter((k) => k !== key) : [...current, key]));
+  };
+
+  const toggleAllOnPage = () => {
+    setBulkNotice('');
+    setCheckedKeys(allOnPageChecked ? [] : pageKeys);
+  };
+
+  const exportChecked = () => {
+    const header = ['Ticket', 'Type', 'Title', 'Priority', 'Status', 'Owner', 'Service', 'Environment', 'Created'];
+    const lines = checkedTickets.map((item) =>
+      [ticketIdLabel(item), kindLabel(item.kind), item.title, item.priority, item.status, item.owner, item.service, item.environment, item.createdAt]
+        .map((value) => csvCell(String(value || '')))
+        .join(','),
+    );
+    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'opstrellis-service-desk.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    setBulkNotice(`Exported ${checkedTickets.length} ticket${checkedTickets.length === 1 ? '' : 's'}.`);
+  };
+
+  const closeCheckedIncidents = async () => {
+    if (!closableIncidents.length || bulkBusy) return;
+    const recovery = window.prompt('Recovery notes are required to close these incidents. Describe what restored service.');
+    if (!recovery || !recovery.trim()) {
+      setBulkNotice('Close was not sent. Recovery notes are required.');
+      return;
+    }
+    const ok = await confirm({
+      title: `Close ${closableIncidents.length} incident${closableIncidents.length === 1 ? '' : 's'}?`,
+      message: 'Closed incidents leave the open queue. Other selected tickets are not changed.',
+      detailLines: productionDetailLines({
+        project: '',
+        environment: Array.from(new Set(closableIncidents.map((item) => item.environment || 'Unknown'))).slice(0, 4).join(', '),
+        resource: closableIncidents.map((item) => `${ticketIdLabel(item)} (${item.service || 'service unknown'})`).slice(0, 5).join(', '),
+        consequence: 'These incidents are marked closed and leave the open queue. This does not roll back a deployment.',
+      }),
+      confirmLabel: 'Close incidents',
+      destructive: true,
+    });
+    if (!ok) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      expireSession();
+      return;
+    }
+    setBulkBusy(true);
+    setBulkNotice('');
+    let closed = 0;
+    for (const ticket of closableIncidents) {
+      try {
+        const response = await fetch(`${apiUrl}/api/devops/incidents/${ticket.id}/close`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note: recovery.trim() }),
+        });
+        if (response.status === 401) {
+          expireSession();
+          return;
+        }
+        if (response.ok) closed += 1;
+      } catch {
+        // Counted as not closed below.
+      }
+    }
+    const failed = closableIncidents.length - closed;
+    setBulkNotice(failed ? `Closed ${closed} of ${closableIncidents.length}. ${failed} could not be closed; open them to see why.` : `Closed ${closed} incident${closed === 1 ? '' : 's'}.`);
+    setCheckedKeys([]);
+    setBulkBusy(false);
+    setReloadTick((current) => current + 1);
+  };
 
   const stats = useMemo(() => {
-    const open = items.filter((item) => !['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(item.status.toLowerCase())).length;
-    const critical = items.filter((item) => {
+    const open = scopedItems.filter((item) => !['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(item.status.toLowerCase())).length;
+    const critical = scopedItems.filter((item) => {
       const p = item.priority.toLowerCase();
       return item.kind === 'incident' && (p.includes('critical') || p === 'p1');
     }).length;
-    const awaiting = items.filter((item) => {
+    const awaiting = scopedItems.filter((item) => {
       const s = item.status.toLowerCase();
       return s.includes('approv') || s === 'new' || s.includes('pending');
     }).length;
-    const dueToday = items.filter((item) => {
+    const dueToday = scopedItems.filter((item) => {
       if (!item.dueAt) return false;
       const due = new Date(item.dueAt);
       if (Number.isNaN(due.getTime())) return false;
       return due.toDateString() === new Date().toDateString();
     }).length;
     return { open, critical, awaiting, dueToday };
-  }, [items]);
+  }, [scopedItems]);
 
   const ticketIdLabel = (item: DeskTicket) => {
     if (item.reference) return item.reference;
-    if (item.kind === 'change') return `CHG-${String(item.id).padStart(3, '0')}`;
-    if (item.kind === 'incident') return `INC-${String(item.id).padStart(3, '0')}`;
-    if (item.kind === 'problem') return `PRB-${String(item.id).padStart(3, '0')}`;
-    if (item.kind === 'access') return `ACC-${String(item.id).padStart(3, '0')}`;
-    return `REQ-${String(item.id).padStart(3, '0')}`;
+    if (item.kind === 'change') return recordReference('CHG', item.id, '');
+    if (item.kind === 'incident') return recordReference('INC', item.id, '');
+    if (item.kind === 'problem') return recordReference('PRB', item.id, '');
+    if (item.kind === 'access') return `ACC${String(item.id).padStart(7, '0')}`;
+    return recordReference('REQ', item.id, '');
   };
 
   return (
     <DevOpsLayout>
       <Head>
-        <title>Service desk - DevOps</title>
+        <title>Service desk - OpsTrellis</title>
       </Head>
       <div className={`sd-page${selected ? ' sd-page--with-inspector' : ''}`}>
         <header className="sd-hero">
           <div>
             <p className="ops-kicker">Service management</p>
             <h1 className="sd-hero__title">Great service starts here.</h1>
-            <p className="sd-hero__subtitle">Resolve incidents, plan changes and keep every request moving.</p>
+            <p className="sd-hero__subtitle">
+              {scopeEnvironment || scopeProject
+                ? `Showing ${scopeEnvironment || 'every environment'}${scopeProject ? ' in the selected project' : ''}.`
+                : 'Resolve incidents, plan changes and keep every request moving.'}
+            </p>
           </div>
           <Link href="/changes/new" className="btn btn-primary">Create change</Link>
         </header>
 
-        <section className="ops-spotlight">
-          <div>
-            <p className="ops-home__eyebrow">Your team&apos;s service hub</p>
-            <h2>One queue. Clear ownership. Faster action.</h2>
-            <p>Choose a request below, or pick up work from your shared queue.</p>
+        {error ? (
+          <div className="alert alert-error sd-alert" role="alert">
+            <span>{error}</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReloadTick((current) => current + 1)}>
+              Try again
+            </button>
           </div>
-          <div>
-            <small>{loading || error ? 'QUEUE' : `${items.length} LIVE TICKETS`}</small>
-            <span>{loading || error ? 'Counts stay unknown until the queue loads.' : 'Live records for this workspace. Missing fields stay blank.'}</span>
-          </div>
-        </section>
-
-        {error ? <div className="alert alert-error">{error}</div> : null}
+        ) : null}
 
         <section className="ops-actions-4" aria-label="Start a request">
           <Link href="/incidents/new" className="ops-jump ops-jump--peach">
@@ -483,9 +847,9 @@ export default function ServiceDeskPage() {
             <span>Find the root cause</span>
             <small>Investigate recurring issues.</small>
           </Link>
-          <Link href="/projects/new" className="ops-jump ops-jump--mint">
-            <span>Request infrastructure</span>
-            <small>Open project onboarding.</small>
+          <Link href="/requests/new" className="ops-jump ops-jump--mint">
+            <span>Raise a request</span>
+            <small>Ask for a cloud service on a project.</small>
           </Link>
         </section>
 
@@ -493,9 +857,9 @@ export default function ServiceDeskPage() {
           <div className="sd-main">
             <div className="sd-tabs" role="tablist">
               {[
-                { id: 'all' as const, label: `All tickets (${items.length})` },
-                { id: 'mine' as const, label: `Assigned to me (${items.filter((i) => username && i.owner.toLowerCase().includes(username.toLowerCase())).length})` },
-                { id: 'approval' as const, label: `Needs approval (${stats.awaiting})` },
+                { id: 'all' as const, label: `All tickets (${loading || error ? '—' : scopedItems.length})` },
+                { id: 'mine' as const, label: `Assigned to me (${loading || error ? '—' : scopedItems.filter((i) => username && i.owner !== 'Unassigned' && i.owner.toLowerCase().includes(username.toLowerCase())).length})` },
+                { id: 'approval' as const, label: `Needs approval (${loading || error ? '—' : stats.awaiting})` },
               ].map((entry) => (
                 <button
                   key={entry.id}
@@ -503,7 +867,7 @@ export default function ServiceDeskPage() {
                   role="tab"
                   aria-selected={tab === entry.id}
                   className={`sd-tab${tab === entry.id ? ' is-active' : ''}`}
-                  onClick={() => setTab(entry.id)}
+                  onClick={() => changeView(() => setTab(entry.id))}
                 >
                   {entry.label}
                 </button>
@@ -513,69 +877,167 @@ export default function ServiceDeskPage() {
             <div className="sd-filters">
               <input
                 className="input sd-search"
-                placeholder="Search tickets..."
+                type="search"
+                placeholder="Search tickets…"
+                aria-label="Search tickets"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  changeView(() => setQuery(value));
+                }}
               />
-              <select className="input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label="Type">
-                <option value="">Type</option>
+              <select className="input" value={typeFilter} onChange={(event) => { const value = event.target.value; changeView(() => setTypeFilter(value)); }} aria-label="Type">
+                <option value="">All types</option>
                 <option value="incident">Incident</option>
                 <option value="change">Change</option>
                 <option value="problem">Problem</option>
                 <option value="request">Request</option>
                 <option value="access">Access request</option>
               </select>
-              <select className="input" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} aria-label="Priority">
-                <option value="">Priority</option>
+              <select className="input" value={priorityFilter} onChange={(event) => { const value = event.target.value; changeView(() => setPriorityFilter(value)); }} aria-label="Priority">
+                <option value="">All priorities</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
-              <select className="input" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} aria-label="Owner">
-                <option value="">Owner</option>
+              <select className="input" value={ownerFilter} onChange={(event) => { const value = event.target.value; changeView(() => setOwnerFilter(value)); }} aria-label="Owner">
+                <option value="">All owners</option>
                 {owners.map((owner) => (
                   <option key={owner} value={owner}>{owner}</option>
                 ))}
               </select>
-              <select className="input sd-sort" value={sortOrder} onChange={(event) => setSortOrder(event.target.value === 'oldest' ? 'oldest' : 'newest')} aria-label="Sort">
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
+              <select
+                className="input sd-sort"
+                value={`${sortKey}:${sortDir}`}
+                onChange={(event) => {
+                  const [key, dir] = event.target.value.split(':') as [SortKey, SortDir];
+                  changeView(() => {
+                    setSortKey(key);
+                    setSortDir(dir);
+                  });
+                }}
+                aria-label="Sort"
+              >
+                <option value="created:desc">Newest first</option>
+                <option value="created:asc">Oldest first</option>
+                <option value="priority:desc">Highest priority</option>
+                <option value="status:asc">Status A–Z</option>
+                <option value="owner:asc">Owner A–Z</option>
+                <option value="type:asc">Type A–Z</option>
               </select>
+              {filtersActive ? (
+                <button type="button" className="btn btn-secondary btn-sm sd-clear" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              ) : null}
             </div>
 
+            {checkedTickets.length > 0 || bulkNotice ? (
+              <div className="sd-bulk" role="region" aria-label="Bulk actions">
+                {checkedTickets.length > 0 ? (
+                  <>
+                    <strong>{checkedTickets.length} selected</strong>
+                    <span className="sd-bulk__scope">on this page</span>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={exportChecked} disabled={bulkBusy}>
+                      Export CSV
+                    </button>
+                    {closableIncidents.length > 0 ? (
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => void closeCheckedIncidents()} disabled={bulkBusy}>
+                        {bulkBusy ? 'Closing…' : `Close ${closableIncidents.length} incident${closableIncidents.length === 1 ? '' : 's'}`}
+                      </button>
+                    ) : null}
+                    <button type="button" className="sd-bulk__clear" onClick={() => setCheckedKeys([])} disabled={bulkBusy}>
+                      Clear selection
+                    </button>
+                  </>
+                ) : null}
+                {bulkNotice ? <span className="sd-bulk__notice" role="status">{bulkNotice}</span> : null}
+              </div>
+            ) : null}
+
             <div className="sd-table-wrap">
-              {loading ? <div className="empty-state">Loading service desk…</div> : null}
+              {loading ? <div className="empty-state" role="status">Loading service desk…</div> : null}
+              {!loading && !error && scopedItems.length === 0 ? (
+                <div className="sd-empty">
+                  <h3>{items.length === 0 ? 'No tickets yet' : 'No tickets in this scope'}</h3>
+                  <p>{items.length === 0 ? 'Incidents, changes, problems and requests you can see will appear here.' : 'The selected project and environment have no matching tickets. Tickets from other environments stay out of this list.'}</p>
+                  <Link href="/incidents/new" className="btn btn-primary btn-sm">Report an incident</Link>
+                </div>
+              ) : null}
+              {!loading && scopedItems.length > 0 && filtered.length === 0 ? (
+                <div className="sd-empty">
+                  <h3>No tickets match these filters</h3>
+                  <p>Try a different search, or clear the filters to see every ticket.</p>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={clearFilters}>Clear filters</button>
+                </div>
+              ) : null}
               {!loading && filtered.length > 0 ? (
                 <table className="sd-table">
                   <thead>
                     <tr>
-                      <th>Ticket</th>
-                      <th>Type</th>
-                      <th>Priority</th>
-                      <th>Status</th>
-                      <th>Owner</th>
-                      <th>Source</th>
+                      <th className="sd-table__check" scope="col">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          checked={allOnPageChecked}
+                          onChange={toggleAllOnPage}
+                          aria-label={allOnPageChecked ? 'Clear selection on this page' : 'Select all tickets on this page'}
+                        />
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('created')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('created')}>Ticket</button>
+                      </th>
+                      <th scope="col" className="sd-col-type" aria-sort={ariaSort('type')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('type')}>Type</button>
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('priority')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('priority')}>Priority</button>
+                      </th>
+                      <th scope="col" aria-sort={ariaSort('status')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('status')}>Status</button>
+                      </th>
+                      <th scope="col" className="sd-col-owner" aria-sort={ariaSort('owner')}>
+                        <button type="button" className="sd-sort-btn" onClick={() => sortBy('owner')}>Owner</button>
+                      </th>
+                      <th scope="col" className="sd-col-source">Source</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((item) => (
+                    {pageRows.map((item) => (
                       <tr
                         key={item.key}
-                        className={selectedKey === item.key ? 'is-selected' : undefined}
+                        id={`sd-row-${item.key.replace(/[^A-Za-z0-9_-]/g, '-')}`}
+                        className={`${selectedKey === item.key ? 'is-selected' : ''}${checkedKeys.includes(item.key) ? ' is-checked' : ''}`.trim() || undefined}
                         onClick={() => setSelectedKey(item.key)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && event.target === event.currentTarget) setSelectedKey(item.key);
+                        }}
+                        tabIndex={0}
+                        aria-selected={selectedKey === item.key}
                       >
+                        <td className="sd-table__check" onClick={(event) => event.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={checkedKeys.includes(item.key)}
+                            onChange={() => toggleChecked(item.key)}
+                            aria-label={`Select ${ticketIdLabel(item)}`}
+                          />
+                        </td>
                         <td>
                           <div className="sd-ticket-cell">
-                            <span className="sd-ticket-id">{ticketIdLabel(item)}</span>
+                            <span className="sd-ticket-id">
+                              {ticketIdLabel(item)}
+                              <CopyButton value={ticketIdLabel(item)} label="ticket number" />
+                            </span>
                             <strong>{item.title}</strong>
                             <span className="sd-ticket-summary">{item.summary || 'Unknown'}</span>
                           </div>
                         </td>
-                        <td>
-                          <span className={`sd-type sd-type--${item.kind}`}>
-                            {item.kind === 'problem' ? <IconSearch /> : item.kind === 'change' ? <IconLink /> : <IconAlert />}
-                            {kindLabel(item.kind)}
+                        <td className="sd-col-type">
+                          <span className={`sd-type sd-type--${item.kind}`} title={kindLabel(item.kind)}>
+                            {typeIcon(item.kind)}
+                            <span className="sd-clip">{kindLabel(item.kind)}</span>
                           </span>
                         </td>
                         <td>
@@ -584,18 +1046,18 @@ export default function ServiceDeskPage() {
                         <td>
                           <span className={`sd-badge sd-badge--${statusTone(item.status)}`}>{sentence(item.status)}</span>
                         </td>
-                        <td>
-                          <span className="sd-owner">
+                        <td className="sd-col-owner">
+                          <span className="sd-owner" title={item.owner}>
                             <span className="sd-avatar" aria-hidden>
                               {initials(item.owner)}
                             </span>
-                            {item.owner}
+                            <span className="sd-clip">{item.owner}</span>
                           </span>
                         </td>
-                        <td>
-                          <span className="sd-source">
+                        <td className="sd-col-source">
+                          <span className="sd-source" title={sentence(item.source)}>
                             {item.source.toLowerCase().includes('webhook') ? <IconLink /> : <IconDoc />}
-                            {sentence(item.source)}
+                            <span className="sd-clip">{sentence(item.source)}</span>
                           </span>
                         </td>
                       </tr>
@@ -604,13 +1066,30 @@ export default function ServiceDeskPage() {
                 </table>
               ) : null}
             </div>
+            {!loading && filtered.length > PAGE_SIZE ? (
+              <nav className="sd-pager" aria-label="Ticket pages">
+                <span>
+                  {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+                </span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+                  Previous
+                </button>
+                <span aria-current="page">Page {currentPage} of {pageCount}</span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= pageCount}>
+                  Next
+                </button>
+              </nav>
+            ) : null}
           </div>
 
           {selected ? (
             <aside className="sd-inspector" aria-label="Ticket details">
               <div className="sd-inspector__head">
                 <div>
-                  <span className="sd-ticket-id">{ticketIdLabel(selected)}</span>
+                  <span className="sd-ticket-id">
+                    {ticketIdLabel(selected)}
+                    <CopyButton value={ticketIdLabel(selected)} label="ticket number" />
+                  </span>
                   <h2 className="sd-inspector__title">{selected.title}</h2>
                 </div>
                 <button type="button" className="sd-inspector__close" onClick={() => setSelectedKey(null)} aria-label="Close">
@@ -619,7 +1098,7 @@ export default function ServiceDeskPage() {
               </div>
               <span className={`sd-badge sd-badge--prio-${priorityTone(selected.priority)}`}>{sentence(selected.priority)}</span>
               <div className="sd-inspector__actions">
-                <Link href={selected.href} className="btn btn-primary sd-inspector__cta">
+                <Link href={openTicketHref(selected)} className="btn btn-primary sd-inspector__cta">
                   Open {kindLabel(selected.kind).toLowerCase()}
                 </Link>
                 {selected.kind === 'incident' && incidentCanFinish(selected.status) ? (
@@ -664,12 +1143,16 @@ export default function ServiceDeskPage() {
                 </div>
                 <div>
                   <dt>Assigned to</dt>
-                  <dd className="sd-owner">
+                  <dd className="sd-owner" title={selected.owner}>
                     <span className="sd-avatar" aria-hidden>
                       {initials(selected.owner)}
                     </span>
-                    {selected.owner}
+                    <span className="sd-clip">{selected.owner}</span>
                   </dd>
+                </div>
+                <div>
+                  <dt>Author</dt>
+                  <dd title={selected.author || 'Unknown'}>{selected.author || 'Unknown'}</dd>
                 </div>
                 <div>
                   <dt>Affected service</dt>
@@ -681,11 +1164,11 @@ export default function ServiceDeskPage() {
                 </div>
                 <div>
                   <dt>Created</dt>
-                  <dd>{formatWhen(selected.createdAt)}</dd>
+                  <dd>{formatOperationalTime(selected.createdAt)}</dd>
                 </div>
                 <div>
                   <dt>Last update</dt>
-                  <dd>{formatWhen(selected.updatedAt || selected.createdAt)}</dd>
+                  <dd>{formatOperationalTime(selected.updatedAt || selected.createdAt)}</dd>
                 </div>
               </dl>
 
@@ -695,22 +1178,36 @@ export default function ServiceDeskPage() {
               </section>
 
               <section className="sd-section">
-                <h3>Next action</h3>
-                <label className="sd-next">
-                  <input type="checkbox" disabled checked={false} />
-                  <span>
-                    {selected.nextAction || 'Unknown'}
-                    <small>{selected.owner} · {selected.dueAt ? `Due ${formatWhen(selected.dueAt)}` : 'Due Unknown'}</small>
-                  </span>
-                </label>
+                {['closed', 'resolved', 'cancelled', 'failed', 'completed', 'rejected'].includes(selected.status.toLowerCase()) ? (
+                  <>
+                    <h3>Completion</h3>
+                    <p>No action required.</p>
+                    <p className="access-hint">Completed {formatOperationalTime(selected.updatedAt || selected.createdAt)}.</p>
+                    <p className="access-hint">{selected.dueAt ? `Requested date ${formatCalendarDate(selected.dueAt)}. This is the original requested date.` : 'No requested date was recorded.'}</p>
+                  </>
+                ) : (
+                  <>
+                    <h3>Next action</h3>
+                    <p>{selected.nextAction || 'No next action configured'}</p>
+                    <p className="access-hint">{selected.dueAt ? `Due ${formatCalendarDate(selected.dueAt)}` : 'No due date'}</p>
+                  </>
+                )}
               </section>
 
               <section className="sd-section">
                 <h3>Related items</h3>
-                <Link href={selected.href} className="sd-related-card">
-                  <span>{selected.service}</span>
-                  <small>Service · {selected.environment}</small>
-                </Link>
+                {selected.serviceId ? (
+                  <Link href={`/services/${selected.serviceId}`} className="sd-related-card">
+                    <span>{selected.service}</span>
+                    <small>Service · {selected.environment}</small>
+                  </Link>
+                ) : (
+                  <div className="sd-related-card">
+                    <span>Service not linked</span>
+                    <small>{selected.service && selected.service !== 'Unknown' ? `Search the catalog for ${selected.service}. This does not attach it to the ticket.` : 'Search the catalog. This does not attach a service to the ticket.'}</small>
+                    <Link className="sd-related" href={`/services?q=${encodeURIComponent(selected.service && selected.service !== 'Unknown' ? selected.service : '')}`}>Find matching service</Link>
+                  </div>
+                )}
               </section>
             </aside>
           ) : null}
