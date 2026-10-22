@@ -408,15 +408,6 @@ func updateServiceMapByID(id int, item serviceMapEntry) (*serviceMapEntry, error
 	if item.Criticality == "" {
 		item.Criticality = current.Criticality
 	}
-	if item.SupportTeam == "" {
-		item.SupportTeam = current.SupportTeam
-	}
-	if item.EscalationRoute == "" {
-		item.EscalationRoute = current.EscalationRoute
-	}
-	if item.RunbookURL == "" {
-		item.RunbookURL = current.RunbookURL
-	}
 	if _, err := execContext(`
 		UPDATE service_map
 		SET project_id = $2, service = $3, repo = $4, environment = $5, grafana_uid = $6, promql = $7, dashboard_url = $8, metrics_url = $9, team = $10,

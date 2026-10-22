@@ -55,6 +55,9 @@ export default function NewServiceMapPage() {
   const [metricsURL, setMetricsURL] = useState('');
   const [team, setTeam] = useState('');
   const [criticality, setCriticality] = useState('unclassified');
+  const [supportTeam, setSupportTeam] = useState('');
+  const [escalationRoute, setEscalationRoute] = useState('');
+  const [runbookURL, setRunbookURL] = useState('');
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
@@ -158,6 +161,9 @@ export default function NewServiceMapPage() {
       metrics_url: metricsURL.trim(),
       team: team.trim(),
       criticality,
+      support_team: supportTeam.trim(),
+      escalation_route: escalationRoute.trim(),
+      runbook_url: runbookURL.trim(),
       project_id: projectId ? Number(projectId) : undefined,
     };
     try {
@@ -183,10 +189,10 @@ export default function NewServiceMapPage() {
         kind: 'Service',
         id: saved.service || service.trim(),
         status: saveIntent.current === 'draft' ? 'incomplete draft' : 'active',
-        next: saved.id ? `Open service #${saved.id} to confirm the owner and monitoring links. Health stays Unknown until those links exist.` : 'Confirm the owner and monitoring links. Health stays Unknown until those links exist.',
-        href: saved.id ? `/services/${saved.id}` : scopeListHref('/services', router.query),
+        next: saved.id ? `Open service #${saved.id} to confirm owner, support, findings, and monitoring. Health stays Unknown until monitors are evaluated.` : 'Confirm the owner and monitoring links. Health stays Unknown until those links exist.',
+        href: saved.id ? `/services/${saved.id}?tab=configuration` : scopeListHref('/services', router.query),
       });
-      await router.push(scopeListHref('/services', router.query));
+      await router.push(saved.id ? `/services/${saved.id}?tab=configuration` : scopeListHref('/services', router.query));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save service';
       setError(message === 'Failed to fetch' ? outcomeForFailedSubmit(0, '').message : message);
@@ -264,6 +270,24 @@ export default function NewServiceMapPage() {
                 <label className="label">
                   Repo <span className="onboard-optional">Optional</span>
                   <input className="input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="acme/payments-api" />
+                </label>
+              </div>
+            </fieldset>
+            <fieldset className="form-section">
+              <legend className="form-section__title">Support and response</legend>
+              <p className="form-section__copy">These stay on the service so on-call can find them later. They are not a health signal.</p>
+              <div className="portal-form-grid">
+                <label className="label">
+                  Support team <span className="onboard-optional">Optional</span>
+                  <input className="input" value={supportTeam} onChange={(e) => setSupportTeam(e.target.value)} placeholder="payments-oncall" />
+                </label>
+                <label className="label">
+                  Escalation route <span className="onboard-optional">Optional</span>
+                  <input className="input" value={escalationRoute} onChange={(e) => setEscalationRoute(e.target.value)} placeholder="PagerDuty service or Slack channel" />
+                </label>
+                <label className="label">
+                  Runbook URL <span className="onboard-optional">Optional</span>
+                  <input className="input" value={runbookURL} onChange={(e) => setRunbookURL(e.target.value)} placeholder="https://internal/wiki/runbook" />
                 </label>
               </div>
             </fieldset>

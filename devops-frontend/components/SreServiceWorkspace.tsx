@@ -98,6 +98,7 @@ export default function SreServiceWorkspace({
   overview,
   evidenceUrl,
   onConfigure,
+  configurationLead,
 }: {
   apiUrl: string;
   token: string;
@@ -108,6 +109,7 @@ export default function SreServiceWorkspace({
   overview: ReactNode;
   evidenceUrl?: string;
   onConfigure?: () => void;
+  configurationLead?: ReactNode;
 }) {
   const router = useRouter();
   const tab = workspaceTab(router.query.tab);
@@ -227,6 +229,18 @@ export default function SreServiceWorkspace({
   const latency = monitors.find((item) => item.measurement_type === 'latency_sli');
   const openFindings = findings.filter((item) => item.lifecycle !== 'resolved');
   const lastEval = monitors.map((item) => item.latest?.evaluated_at || item.latest?.measurement?.observed_at).filter(Boolean).sort().at(-1);
+  const visibleFindings = openFindings.concat(findings.filter((item) => item.lifecycle === 'resolved')).filter((item) => (
+    (!findingFilter.severity || item.severity === findingFilter.severity)
+    && (!findingFilter.lifecycle || item.lifecycle === findingFilter.lifecycle)
+    && (!findingFilter.source || item.source_type === findingFilter.source)
+  ));
+  const findingsEmptyCopy = !findings.length && !lastEval
+    ? 'Not evaluated yet. Findings appear after a successful refresh on Observability.'
+    : !findings.length
+      ? 'No findings from successful evaluations.'
+      : visibleFindings.length
+        ? ''
+        : 'No findings match these filters.';
 
   const refresh = async (monitorIds?: number[], retryFailed = false) => {
     setRefreshing(true);
@@ -500,6 +514,13 @@ export default function SreServiceWorkspace({
           <button type="button" className="btn btn-secondary" disabled={refreshing} onClick={() => void refresh([], true)}>Retry failed</button>
         </div>
       )
+      : tab === 'findings'
+        ? (
+          <div className="portal-page__actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setTab('observability')}>Open observability</button>
+            {isManager ? <button type="button" className="btn btn-primary" onClick={() => setTab('configuration')}>Open configuration</button> : null}
+          </div>
+        )
       : tab === 'configuration' && isManager
         ? <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>Add monitor</button>
         : null;
@@ -558,6 +579,7 @@ export default function SreServiceWorkspace({
               <span>Active findings</span>
               <strong>{loading ? '…' : openFindings.length}</strong>
               <small>{openFindings.length ? 'Open Critical and Warning items' : 'An empty list is not proof of health if nothing was evaluated.'}</small>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTab('findings')}>{openFindings.length ? 'Open findings' : 'View findings'}</button>
             </article>
           </section>
           {overview}
@@ -589,6 +611,7 @@ export default function SreServiceWorkspace({
               <span>Active findings</span>
               <strong>{loading ? '…' : openFindings.length}</strong>
               <small>{openFindings.length ? 'Open Critical and Warning items' : 'An empty list is not proof of health if nothing was evaluated.'}</small>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTab('findings')}>{openFindings.length ? 'Open findings' : 'View findings'}</button>
             </article>
           </section>
           {why ? (
@@ -660,9 +683,16 @@ export default function SreServiceWorkspace({
               </ul>
             </section>
           ) : null}
-          {!loading && !findings.length ? <p className="empty-state">No findings from successful evaluations. This is not a healthy result if monitors have not been evaluated.</p> : null}
+          {!loading && findingsEmptyCopy ? <p className="empty-state">{findingsEmptyCopy}</p> : null}
+          {!loading && !monitors.length ? (
+            <p className="ops-note">
+              <strong>No monitors yet</strong>
+              <span>Configuration is where monitors, connectors, and identity edits live. Observability refresh creates findings.</span>
+              {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTab('configuration')}>Open configuration</button> : null}
+            </p>
+          ) : null}
           <ul className="sre-findings">
-            {openFindings.concat(findings.filter((item) => item.lifecycle === 'resolved')).filter((item) => (!findingFilter.severity || item.severity === findingFilter.severity) && (!findingFilter.lifecycle || item.lifecycle === findingFilter.lifecycle) && (!findingFilter.source || item.source_type === findingFilter.source)).map((finding) => (
+            {visibleFindings.map((finding) => (
               <li key={finding.id}>
                 <button type="button" className={`sre-finding is-${finding.lifecycle === 'resolved' ? 'resolved' : finding.severity}`} onClick={() => openFinding(finding)}>
                   <strong>{finding.severity === 'critical' ? 'Critical' : finding.severity === 'warning' ? 'Warning' : 'Info'} · {finding.title}</strong>
@@ -677,6 +707,7 @@ export default function SreServiceWorkspace({
 
       {tab === 'configuration' ? (
         <div className="sre-config">
+          {configurationLead}
           <section className="portal-surface">
             <h2>Monitors and queries</h2>
             <p className="form-section__copy">Credentials stay on the server. A dashboard URL is evidence, not an executable query.</p>

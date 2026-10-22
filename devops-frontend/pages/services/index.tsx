@@ -487,9 +487,9 @@ export default function ServiceMapPage() {
           headerActions={preview ? <CopyButton value={preview.service} label="service name" /> : null}
           footer={preview ? (
             <div className="portal-page__actions">
-              {(preview.open_critical || preview.open_warning) ? (
-                <Link className="btn btn-secondary" href={`${serviceDetailHref(preview.id, router.query)}&tab=findings`}>Open findings</Link>
-              ) : null}
+              <Link className="btn btn-secondary" href={`${serviceDetailHref(preview.id, router.query)}&tab=findings`}>
+                {(preview.open_critical || preview.open_warning) ? 'Open findings' : 'View findings'}
+              </Link>
               <Link
                 className="btn btn-primary"
                 href={serviceDetailHref(preview.id, router.query)}
@@ -504,7 +504,7 @@ export default function ServiceMapPage() {
             <div className="portal-stack">
               <p>Project: {preview.project_name || 'Unknown'}</p>
               <p>Environment: {preview.environment || 'Unknown'}</p>
-              <p>Repository: {preview.repo.trim() || 'Not connected'}</p>
+              <p>Repository: {(preview.repo || '').trim() || 'Not connected'}</p>
               <p>Owner: {label(preview.team || '') === 'Unknown' ? 'Unassigned' : label(preview.team || '')}</p>
               <p>Class: <ServiceClassBadge value={preview.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span></p>
               <p>Open findings: {(preview.open_critical || 0) + (preview.open_warning || 0) ? `${preview.open_critical || 0} critical / ${preview.open_warning || 0} warning` : 'None recorded. That is not proof of health if monitors have not been evaluated.'}</p>
