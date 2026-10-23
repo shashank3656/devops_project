@@ -8,7 +8,8 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { SERVICE_CLASSES, monitoredEnvironmentName } from '../../lib/sreMonitoring';
 import { scopeListHref } from '../../lib/scopeHref';
-import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
+import { describeSubmitFailure, forgetAttempt, rememberAttempt } from '../../lib/submitAttempt';
+import { buildPortalApiUrl, portalFetch } from '@infragate/ui';
 
 const SERVICE_ATTEMPT_KEY = 'opstrellis-service-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -133,7 +134,10 @@ export default function NewServiceMapPage() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) return;
+    if (!token) {
+      setError('Sign in to create a service.');
+      return;
+    }
     if (!service.trim()) {
       setError('Service name is required');
       return;
@@ -162,10 +166,10 @@ export default function NewServiceMapPage() {
       project_id: projectId ? Number(projectId) : undefined,
     };
     try {
-      const response = await fetch(`${apiUrl}/api/devops/services`, {
+      const response = await portalFetch(buildPortalApiUrl(apiUrl, '/api/devops/services'), {
         method: 'POST',
+        token,
         headers: {
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Idempotency-Key': rememberAttempt(SERVICE_ATTEMPT_KEY, JSON.stringify(payload)),
         },
@@ -173,7 +177,8 @@ export default function NewServiceMapPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const outcome = outcomeForFailedSubmit(response.status, typeof data?.error === 'string' ? data.error : '');
+        const serverMessage = typeof data?.error === 'string' ? data.error : '';
+        const outcome = describeSubmitFailure(null, response.status, serverMessage);
         if (!outcome.keepAttempt) forgetAttempt(SERVICE_ATTEMPT_KEY);
         throw new Error(outcome.message);
       }
@@ -189,8 +194,8 @@ export default function NewServiceMapPage() {
       });
       await router.push(saved.id ? `/services/${saved.id}?tab=configuration` : scopeListHref('/services', router.query));
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save service';
-      setError(message === 'Failed to fetch' ? outcomeForFailedSubmit(0, '').message : message);
+      const outcome = describeSubmitFailure(err);
+      setError(outcome.message);
     } finally {
       submitLock.current = false;
       setSaving(false);

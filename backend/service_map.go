@@ -565,10 +565,7 @@ func devopsServiceMapHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
-		if body.ProjectID == nil || !ensureProjectVisible(w, r, userID, *body.ProjectID) {
-			if body.ProjectID == nil {
-				writeAPIError(w, r, http.StatusNotFound, "project not found", nil)
-			}
+		if body.ProjectID != nil && !ensureProjectVisible(w, r, userID, *body.ProjectID) {
 			return
 		}
 		item, err := upsertServiceMap(body)
