@@ -66,7 +66,7 @@ export default function ScorecardsPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Services</span>
+            <span className="portal-page__eyebrow">Service inventory</span>
             <h1 className="portal-page__title">Scorecards</h1>
             <p className="portal-page__subtitle">Readiness is the share of known checks: owner, SLO, open incidents, runbook, last change, live drift, and 30-day change-failure rate. A missing sample is Unknown and is left out of the percentage. It is never counted as healthy.</p>
           </div>

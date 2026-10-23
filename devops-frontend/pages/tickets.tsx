@@ -22,6 +22,8 @@ import {
   formatOperationalTime,
   queryString,
   useUndoQueue,
+  buildPortalApiUrl,
+  portalFetch,
   type DataTableColumn,
   type DeliveryVisibility,
   type PlanReview,
@@ -282,6 +284,12 @@ function getRequestServiceBundle(request: (Pick<TicketRow, 'config'> & { service
   }
 }
 
+function filterText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && typeof value[0] === 'string') return value[0];
+  return '';
+}
+
 function normalizeBundlePathSegment(value: string | number | undefined | null, fallback: string): string {
   const normalized = String(value || '')
     .trim()
@@ -292,8 +300,8 @@ function normalizeBundlePathSegment(value: string | number | undefined | null, f
 }
 
 function normalizeBundleServicePathKey(cloud: string, service: string): string {
-  const normalizedCloud = cloud.trim().toLowerCase();
-  const normalizedService = service.trim().toLowerCase();
+  const normalizedCloud = filterText(cloud).trim().toLowerCase();
+  const normalizedService = filterText(service).trim().toLowerCase();
   if (normalizedCloud === 'gcp') {
     if (normalizedService === 'cloud-storage' || normalizedService === 'storage') return 'storage';
     if (normalizedService === 'cloud-sql' || normalizedService === 'cloudsql') return 'cloudsql';
@@ -302,7 +310,7 @@ function normalizeBundleServicePathKey(cloud: string, service: string): string {
 }
 
 function formatBundleEnvironmentLabel(entry: ServiceBundleEntry, request: TicketDetail | null | undefined): string {
-  const rawEnv = entry.env || entry.config?.env || request?.env || 'env';
+  const rawEnv = filterText(entry.env) || filterText(entry.config?.env) || filterText(request?.env) || 'env';
   return rawEnv.trim() ? rawEnv.trim().toUpperCase() : 'ENV';
 }
 
@@ -364,6 +372,7 @@ export default function DevOpsTickets() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detailId, setDetailId] = useState<number | null>(null);
   const detailSeq = useRef(0);
+  const listSeq = useRef(0);
   const [detailRequest, setDetailRequest] = useState<TicketDetail | null>(null);
   const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
   const [detailTimeline, setDetailTimeline] = useState<RequestTimelineEvent[]>([]);
@@ -394,14 +403,22 @@ export default function DevOpsTickets() {
     portal: 'devops',
   });
 
-  const hasActiveFilters = Boolean(idFilter || team || cloud || status || search || requester || atRisk || mine);
+  const envFilter = filterText(environment);
+  const projectFilter = filterText(projectId);
+  const idQuery = filterText(idFilter);
+  const teamFilter = filterText(team);
+  const cloudFilter = filterText(cloud);
+  const statusFilter = filterText(status);
+  const searchFilter = filterText(search);
+  const requesterFilter = filterText(requester);
+  const hasActiveFilters = Boolean(idQuery || teamFilter || cloudFilter || statusFilter || searchFilter || requesterFilter || atRisk || mine);
   const activeFilterCount = [
-    idFilter.trim(),
-    team.trim(),
-    cloud,
-    status,
-    search.trim(),
-    requester.trim(),
+    idQuery.trim(),
+    teamFilter.trim(),
+    cloudFilter,
+    statusFilter,
+    searchFilter.trim(),
+    requesterFilter.trim(),
     atRisk ? 'at-risk' : '',
     mine ? 'mine' : '',
     sortBy !== 'created_at' ? sortBy : '',
@@ -409,37 +426,40 @@ export default function DevOpsTickets() {
   ].filter(Boolean).length;
   const detailOutsideScope = Boolean(
     detailRequest && (
-      (projectId && String(detailRequest.project_id || '') !== projectId) ||
-      (environment && detailRequest.env.toLowerCase() !== environment.toLowerCase()) ||
-      (status && detailRequest.status !== status) ||
-      (cloud && detailRequest.cloud !== cloud) ||
-      (team && detailRequest.team !== team) ||
-      (search.trim() && !`${detailRequest.service} ${detailRequest.team} ${detailRequest.project_name || ''}`.toLowerCase().includes(search.trim().toLowerCase()))
+      (projectFilter && String(detailRequest.project_id || '') !== projectFilter) ||
+      (envFilter && String(detailRequest.env || '').toLowerCase() !== envFilter.toLowerCase()) ||
+      (statusFilter && detailRequest.status !== statusFilter) ||
+      (cloudFilter && detailRequest.cloud !== cloudFilter) ||
+      (teamFilter && detailRequest.team !== teamFilter) ||
+      (searchFilter.trim() && !`${detailRequest.service} ${detailRequest.team} ${detailRequest.project_name || ''}`.toLowerCase().includes(searchFilter.trim().toLowerCase()))
     ),
   );
   const canActOnDetail = detailRequest?.status === 'pending_devops_approval' && !detailOutsideScope;
 
   const fetchTickets = () => {
     if (!token) return;
+    listSeq.current += 1;
+    const seq = listSeq.current;
     setLoading(true);
     setListError('');
     const params = new URLSearchParams();
-    if (idFilter.trim()) params.set('id', requestIdFromQuery(idFilter));
-    if (team) params.set('team', team);
-    if (projectId) params.set('project_id', projectId);
-    if (environment) params.set('env', environment);
-    if (cloud) params.set('cloud', cloud);
-    if (status) params.set('status', status);
-    if (search) params.set('q', search);
-    if (requester) params.set('requester', requester);
+    if (idQuery.trim()) params.set('id', requestIdFromQuery(idQuery));
+    if (teamFilter) params.set('team', teamFilter);
+    if (projectFilter) params.set('project_id', projectFilter);
+    if (envFilter) params.set('environment', envFilter);
+    if (cloudFilter) params.set('cloud', cloudFilter);
+    if (statusFilter) params.set('status', statusFilter);
+    if (searchFilter) params.set('q', searchFilter);
+    if (requesterFilter) params.set('requester', requesterFilter);
     params.set('sort_by', sortBy);
     params.set('sort_order', sortOrder);
     if (atRisk) params.set('at_risk', 'true');
     if (mine) params.set('mine', '1');
     params.set('limit', String(limit));
     params.set('offset', String(offset));
-    fetch(`${apiUrl}/api/devops/requests?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests?${params.toString()}`), { token })
       .then(async (res) => {
+        if (seq !== listSeq.current) return null;
         if (res.status === 401) {
           expireSession();
           return null;
@@ -451,25 +471,33 @@ export default function DevOpsTickets() {
           return null;
         }
         const data = asRecord(await res.json().catch(() => ({})));
-        if (!res.ok || !Array.isArray(data.requests)) {
+        const rows = Array.isArray(data.requests) ? data.requests : Array.isArray(data.tickets) ? data.tickets : null;
+        if (!res.ok || !rows) {
           setRequests([]);
           setTotal(0);
           setListError('The request queue could not be loaded.');
           return null;
         }
-        return data;
+        const payload: { requests: TicketRow[]; total_count: number } = {
+          requests: rows as TicketRow[],
+          total_count: typeof data.total_count === 'number' ? data.total_count : rows.length,
+        };
+        return payload;
       })
       .then((data) => {
-        if (!data) return;
-        setRequests(data.requests as TicketRow[]);
-        if (typeof data.total_count === 'number') setTotal(data.total_count);
+        if (!data || seq !== listSeq.current) return;
+        setRequests(data.requests);
+        setTotal(data.total_count);
       })
       .catch(() => {
+        if (seq !== listSeq.current) return;
         setRequests([]);
         setTotal(0);
         setListError('We couldn’t load the request queue right now.');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (seq === listSeq.current) setLoading(false);
+      });
   };
 
   const fetchProjects = () => {
@@ -490,11 +518,10 @@ export default function DevOpsTickets() {
     setDetailError('');
     setDetailNotice('');
     try {
-      const headers: HeadersInit = { Authorization: `Bearer ${token}` };
       const [detailRes, commentsRes, timelineRes] = await Promise.all([
-        fetch(`${apiUrl}/api/devops/requests/${id}`, { headers }),
-        fetch(`${apiUrl}/api/devops/requests/${id}/comments`, { headers }),
-        fetch(`${apiUrl}/api/devops/requests/${id}/timeline`, { headers }),
+        portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests/${id}`), { token }),
+        portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests/${id}/comments`), { token }),
+        portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests/${id}/timeline`), { token }),
       ]);
 
       if (!detailRes.ok) {
@@ -950,16 +977,14 @@ export default function DevOpsTickets() {
       if (value) next[key] = value;
       else delete next[key];
     };
-    assign('status', status);
-    assign('q', search);
-    assign('project_id', projectId);
-    assign('environment', environment);
+    assign('status', filterText(status));
+    assign('q', filterText(search));
     assign('mine', mine ? '1' : '');
     assign('at_risk', atRisk ? 'true' : '');
-    const same = ['status', 'q', 'project_id', 'environment', 'mine', 'at_risk'].every((key) => String(next[key] || '') === queryString(router.query, key));
+    const same = ['status', 'q', 'mine', 'at_risk'].every((key) => queryString(next, key) === queryString(router.query, key));
     if (same) return;
     void router.replace({ pathname: '/tickets', query: next }, undefined, { shallow: true });
-  }, [atRisk, environment, mine, projectId, router.isReady, router.query, search, shareReady, status]);
+  }, [atRisk, mine, router.isReady, router.query.at_risk, router.query.mine, router.query.q, router.query.status, search, shareReady, status]);
 
   useEffect(() => {
     fetchProjects();
@@ -978,8 +1003,8 @@ export default function DevOpsTickets() {
   }, []);
 
   useEffect(() => {
-    if (requests.length === 1 && idFilter.trim()) {
-      const id = parseInt(idFilter.trim(), 10);
+    if (requests.length === 1 && idQuery.trim()) {
+      const id = parseInt(idQuery.trim(), 10);
       if (!Number.isNaN(id) && requests[0].id === id) {
         addRecentRequestId(id);
         setRecentIds(getRecentRequestIds());
@@ -1025,19 +1050,19 @@ export default function DevOpsTickets() {
   };
 
   const applyFilterSet = (next: TicketFilters) => {
-    setIdFilter(next.idFilter);
-    setTeam(next.team);
-    setProjectId(next.projectId);
-    setCloud(next.cloud);
-    setStatus(next.status);
-    setSearch(next.search);
-    setRequester(next.requester);
-    setSortBy(next.sortBy);
-    setSortOrder(next.sortOrder);
-    setAtRisk(next.atRisk);
+    setIdFilter(filterText(next.idFilter));
+    setTeam(filterText(next.team));
+    setProjectId(filterText(next.projectId));
+    setCloud(filterText(next.cloud));
+    setStatus(filterText(next.status));
+    setSearch(filterText(next.search));
+    setRequester(filterText(next.requester));
+    setSortBy(filterText(next.sortBy) || 'created_at');
+    setSortOrder(filterText(next.sortOrder) || 'desc');
+    setAtRisk(Boolean(next.atRisk));
     setMine(Boolean(next.mine));
     setOffset(0);
-    setFilterExpanded(Boolean(next.team || next.cloud || next.requester || next.atRisk || next.sortBy !== 'created_at' || next.sortOrder !== 'desc'));
+    setFilterExpanded(Boolean(filterText(next.team) || filterText(next.cloud) || filterText(next.requester) || next.atRisk || filterText(next.sortBy) !== 'created_at' || filterText(next.sortOrder) !== 'desc'));
   };
 
   const clearFilters = () => applyFilterSet(DEFAULT_TICKET_FILTERS);
@@ -1050,10 +1075,10 @@ export default function DevOpsTickets() {
         <title>Requests - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
-        <div className="devops-tickets-page">
-          <div className="devops-tickets-header">
+        <div className="portal-page devops-tickets-page">
+          <div className="portal-page__header devops-tickets-header">
             <div>
-              <h1 className="devops-tickets-title">Requests</h1>
+              <h1 className="portal-page__title">Requests</h1>
               {recentIds.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>
@@ -1074,30 +1099,30 @@ export default function DevOpsTickets() {
             </div>
           </div>
 
-          <PageFilters
-            chips={[
-              projectId ? { key: 'project', label: 'Project', value: projects.find((item) => String(item.id) === projectId)?.name || projectId } : null,
-              environment ? { key: 'environment', label: 'Environment', value: environment } : null,
-              status ? { key: 'status', label: 'Status', value: formatStatus(status) } : null,
-              search ? { key: 'q', label: 'Search', value: search } : null,
-              team ? { key: 'team', label: 'Team', value: team } : null,
-              atRisk ? { key: 'at_risk', label: 'Risk', value: 'At risk' } : null,
-            ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
-            onClear={hasActiveFilters ? clearFilters : undefined}
-          />
-
-          <SavedViews<TicketFilters>
-            storageKey="infragate.devops.tickets.views"
-            current={currentFilters}
-            onApply={applyFilterSet}
-            presets={TICKET_VIEW_PRESETS}
-            canSave={activeFilterCount > 0}
-            serverViews={savedViewsReady ? remoteViews : undefined}
-            onServerSave={saveRemote}
-            onServerDelete={deleteRemote}
-          />
-
           <div className="devops-filter-ribbon card">
+            <PageFilters
+              chips={[
+                idQuery ? { key: 'id', label: 'Request', value: idQuery } : null,
+                statusFilter ? { key: 'status', label: 'Status', value: formatStatus(statusFilter) } : null,
+                searchFilter ? { key: 'q', label: 'Search', value: searchFilter } : null,
+                teamFilter ? { key: 'team', label: 'Team', value: teamFilter } : null,
+                requesterFilter ? { key: 'requester', label: 'Requester', value: requesterFilter } : null,
+                cloudFilter ? { key: 'cloud', label: 'Cloud', value: cloudFilter } : null,
+                atRisk ? { key: 'at_risk', label: 'Risk', value: 'At risk' } : null,
+                mine ? { key: 'mine', label: 'Assigned', value: 'Me' } : null,
+              ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
+              onRemoveChip={(key) => {
+                if (key === 'id') setIdFilter('');
+                if (key === 'status') setStatus('');
+                if (key === 'q') setSearch('');
+                if (key === 'team') setTeam('');
+                if (key === 'requester') setRequester('');
+                if (key === 'cloud') setCloud('');
+                if (key === 'at_risk') setAtRisk(false);
+                if (key === 'mine') setMine(false);
+              }}
+              onClear={hasActiveFilters ? clearFilters : undefined}
+            />
             <div className="devops-filter-ribbon__bar">
               <label className="devops-filter-ribbon__pill">
                 <span className="devops-filter-ribbon__key">Request #</span>
@@ -1119,7 +1144,7 @@ export default function DevOpsTickets() {
                   className="devops-filter-ribbon__control"
                 />
               </label>
-              <label className="devops-filter-ribbon__pill">
+              <label className="devops-filter-ribbon__pill devops-filter-ribbon__pill--status">
                 <span className="devops-filter-ribbon__key">Status</span>
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="devops-filter-ribbon__control">
                   {STATUS_OPTIONS.map((entry) => (
@@ -1144,7 +1169,16 @@ export default function DevOpsTickets() {
             </div>
 
             <div className="devops-filter-ribbon__footer">
-              <span className="devops-filter-ribbon__hint">Results update automatically. Open more only when you need a narrower queue.</span>
+              <SavedViews<TicketFilters>
+                storageKey="infragate.devops.tickets.views"
+                current={currentFilters}
+                onApply={applyFilterSet}
+                presets={TICKET_VIEW_PRESETS}
+                canSave={activeFilterCount > 0}
+                serverViews={savedViewsReady ? remoteViews : undefined}
+                onServerSave={saveRemote}
+                onServerDelete={deleteRemote}
+              />
             </div>
 
             {filterExpanded && (
@@ -1236,8 +1270,7 @@ export default function DevOpsTickets() {
             <>
               <div className="devops-tickets-summary">
                 <span>Showing {requests.length} of {total} requests</span>
-                <span>Open a row to work the request without leaving this page.</span>
-                <span>
+                <div className="devops-tickets-summary__columns">
                   <label className="devops-tickets-filter-checkbox">
                     <input
                       type="checkbox"
@@ -1266,7 +1299,7 @@ export default function DevOpsTickets() {
                     />
                     <span>Pull request</span>
                   </label>
-                </span>
+                </div>
               </div>
               <div className="devops-tickets-table-card card ig-table-card">
                 <DataTable<TicketRow>
@@ -1547,7 +1580,7 @@ export default function DevOpsTickets() {
                               </div>
                               <div className="portal-preview-card">
                                 <span className="portal-preview-eyebrow">Review summary</span>
-                                <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} signals</strong>
+                                <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals?.length || 0} signals</strong>
                                 <p className="portal-preview-copy">{detailRequest.cost_risk_preview.summary}</p>
                               </div>
                             </div>
@@ -1658,7 +1691,7 @@ export default function DevOpsTickets() {
                                         <span className="devops-approval-workspace__meta-label">Service {index + 1}</span>
                                         <strong className="portal-detail-card__value">{entry.display_name || entry.service}</strong>
                                         <p className="devops-approval-workspace__bundle-copy">
-                                          {group.environment} · {(entry.cloud || detailRequest.cloud || 'cloud').toUpperCase()}
+                                          {group.environment} · {filterText(entry.cloud || detailRequest.cloud || 'cloud').toUpperCase()}
                                         </p>
                                         <code className="devops-approval-workspace__bundle-path">
                                           {buildBundleTargetPath(detailRequest, entry)}

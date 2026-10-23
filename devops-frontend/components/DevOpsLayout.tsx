@@ -129,7 +129,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/previews': 'Preview environments',
   '/scorecards': 'Scorecards',
   '/evidence': 'Evidence',
-  '/services': 'Services',
+  '/services': 'Service inventory',
   '/services/new': 'Add service',
   '/problems': 'Problems',
   '/problems/new': 'Create problem',
@@ -423,9 +423,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const writeScopeQuery = (next: WorkspaceScope) => {
     if (isRecordDetailPath(router.pathname)) return;
     const query = { ...router.query };
-    if (next.projectId) query.project_id = next.projectId;
+    const projectId = typeof next.projectId === 'string' ? next.projectId : '';
+    const environment = typeof next.environment === 'string' ? next.environment : '';
+    if (projectId) query.project_id = projectId;
     else delete query.project_id;
-    if (next.environment) query.environment = next.environment;
+    if (environment) query.environment = environment;
     else delete query.environment;
     void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
@@ -640,7 +642,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       Icon: IconTickets,
       children: serviceDeskChildren,
     },
-    { href: '/services', label: 'Services', Icon: IconProjects },
+    { href: '/services', label: 'Service inventory', Icon: IconProjects },
   ];
   const operationsNavItems: NavItem[] = isManager
     ? [
@@ -880,7 +882,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const mobileTabs: MobileTab[] = [
     { href: '/dashboard', label: 'Overview', Icon: IconWorkload },
     { href: '/service-desk', label: 'Service desk', Icon: IconFileText },
-    { href: '/services', label: 'Services', Icon: IconProjects },
+    { href: '/services', label: 'Service inventory', Icon: IconProjects },
     { href: '/k8s', label: 'Infra', Icon: IconK8s },
   ].map((tab) => ({ ...tab, active: isNavActive(tab.href), badge: getSidebarBadge(tab.href) }));
 
@@ -1268,7 +1270,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'create-change', label: 'Create change request', href: '/changes/new', hint: 'Open a change' },
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar', hint: 'Scheduled changes' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes', hint: 'What shipped' },
-          { id: 'services', label: 'Services', href: '/services', hint: 'Service catalog' },
+          { id: 'services', label: 'Service inventory', href: '/services', hint: 'Production services, observability, and findings' },
           { id: 'add-service', label: 'Add service', href: '/services/new', hint: 'Register a service' },
           { id: 'operator-activity', label: 'Operator activity', href: '/activity', hint: 'Recent operator actions' },
           { id: 'incidents', label: 'Incidents', href: '/incidents', hint: 'Open incidents' },

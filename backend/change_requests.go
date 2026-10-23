@@ -1014,6 +1014,22 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"change": item, "rollback": plan, "status": "ok"})
 			return
 		}
+		if action == "guardrail-evaluation" {
+			if r.Method != http.MethodPost && r.Method != http.MethodGet {
+				writeMethodNotAllowed(w, r)
+				return
+			}
+			var decision *monitorGuardrailDecision
+			if r.Method == http.MethodPost {
+				decision = evaluateChangeGuardrail(record)
+			} else if svc := lookupServiceMap(record.Service, record.Repo, record.Environment); svc != nil {
+				preview := evaluateServiceGuardrail(svc, record.SHA)
+				decision = &preview
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"decision": decision, "status": "ok"})
+			return
+		}
 		if action == "rollout" {
 			if r.Method != "POST" {
 				writeMethodNotAllowed(w, r)

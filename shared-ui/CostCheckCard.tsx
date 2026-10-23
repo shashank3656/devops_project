@@ -1,10 +1,11 @@
 import type { RequestCostCheck } from './types';
 
 export function formatMoney(value: number, currency = 'USD') {
+  const amount = Number.isFinite(value) ? value : 0;
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: value >= 100 ? 0 : 2 }).format(value);
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: amount >= 100 ? 0 : 2 }).format(amount);
   } catch {
-    return `${currency} ${value.toFixed(2)}`;
+    return `${currency} ${amount.toFixed(2)}`;
   }
 }
 

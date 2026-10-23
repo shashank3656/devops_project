@@ -1,5 +1,6 @@
 export function requestPriorityName(value?: string): string {
-  switch ((value || '').trim().toLowerCase()) {
+  const text = typeof value === 'string' ? value : '';
+  switch (text.trim().toLowerCase()) {
     case 'low':
     case 'l1':
     case 'p4':
@@ -17,9 +18,9 @@ export function requestPriorityName(value?: string): string {
     case 'p3':
       return 'Medium';
     default: {
-      const text = (value || '').trim();
-      if (!text) return 'Medium';
-      return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+      const label = text.trim();
+      if (!label) return 'Medium';
+      return label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
     }
   }
 }

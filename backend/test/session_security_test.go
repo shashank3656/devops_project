@@ -189,6 +189,10 @@ func TestCORSAllowListRejectsUnknownOrigin(t *testing.T) {
 	if got := allowedRec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
 		t.Fatalf("ACAO = %q, want http://localhost:3000", got)
 	}
+	allowedHeaders := strings.ToLower(allowedRec.Header().Get("Access-Control-Allow-Headers"))
+	if !strings.Contains(allowedHeaders, "idempotency-key") {
+		t.Fatalf("Allow-Headers = %q, want Idempotency-Key included", allowedRec.Header().Get("Access-Control-Allow-Headers"))
+	}
 }
 
 func TestProductionSecretsAreRequired(t *testing.T) {

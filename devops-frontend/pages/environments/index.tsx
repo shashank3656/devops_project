@@ -9,6 +9,7 @@ import {
   inventoryListHref,
 } from '../../lib/cloudCatalogLinks';
 import { portalFetch, queryString } from '@infragate/ui';
+import { isMonitoredEnvironment } from '../../lib/sreMonitoring';
 
 interface EnvironmentCatalogRow {
   project_id: number;
@@ -285,7 +286,11 @@ export default function EnvironmentsCatalogPage() {
       return;
     }
     const first = visibleEnvironments[0];
-    if (first) void router.push(`/services?project_id=${first.project_id}&environment=${encodeURIComponent(first.name)}`);
+    if (first) {
+      void router.push(isMonitoredEnvironment(first.name)
+        ? `/services?project_id=${first.project_id}`
+        : `/environments?project_id=${first.project_id}`);
+    }
   };
 
   const clearFilters = () => {
@@ -440,7 +445,7 @@ export default function EnvironmentsCatalogPage() {
               <ul className="svc-tree">
                 {visibleEnvironments.map((row) => (
                   <li key={rowKey(row)} className="svc-tree__row">
-                    <Link className="svc-tree__folder" href={`/services?project_id=${row.project_id}&environment=${encodeURIComponent(row.name)}`}>
+                    <Link className="svc-tree__folder" href={isMonitoredEnvironment(row.name) ? `/services?project_id=${row.project_id}` : `/environments?project_id=${row.project_id}`}>
                       <span>
                         {known(row.name)}
                         <small className="svc-tree__meta">

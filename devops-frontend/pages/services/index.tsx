@@ -2,10 +2,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CopyButton, InspectorDrawer } from '@infragate/ui';
+import { DataTable, EmptyState, formatOperationalTime, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { rememberService } from '../../lib/recentServices';
-import { serviceDetailHref } from '../../lib/scopeHref';
+import { ServiceClassBadge } from '../../components/SreServiceWorkspace';
+import { SERVICE_CLASSES, catalogueSliTone, inventoryServicesPath, scheduleModeCopy, scoreDisplay } from '../../lib/sreMonitoring';
+import { serviceDetailHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -16,35 +18,27 @@ interface ServiceRow {
   service: string;
   repo: string;
   environment: string;
-  grafana_uid?: string;
   team?: string;
   project_name?: string;
+  criticality?: string;
+  open_critical?: number;
+  open_warning?: number;
+  last_evaluated_at?: string;
+  schedule_minutes?: number;
+  last_availability_bps?: number;
+  last_sli_state?: string;
 }
 
 interface ProjectOption {
   id: number;
   name: string;
   code: string;
-  environments: string[];
 }
 
 interface OwnerTeam {
   id: number;
   name: string;
   slug: string;
-}
-
-interface EnvFolder {
-  name: string;
-  count: number;
-  services: ServiceRow[];
-}
-
-interface ProjectFolder {
-  key: string;
-  id: number;
-  name: string;
-  environments: EnvFolder[];
 }
 
 function label(value: string): string {
@@ -88,258 +82,256 @@ function teamMatches(serviceTeam: string, team: OwnerTeam | undefined): boolean 
   return current === team.name.toLowerCase() || (team.slug !== '' && current === team.slug.toLowerCase());
 }
 
-function buildFolders(projects: ProjectOption[], services: ServiceRow[]): ProjectFolder[] {
-  const byId = new Map<number, ProjectFolder>();
-  const loose = new Map<string, ProjectFolder>();
-
-  projects.forEach((project) => {
-    const names = project.environments.map((item) => item.trim()).filter(Boolean);
-    byId.set(project.id, {
-      key: `project-${project.id}`,
-      id: project.id,
-      name: project.name || project.code || 'Unknown',
-      environments: names.map((name) => ({ name, count: 0, services: [] })),
-    });
-  });
-
-  services.forEach((service) => {
-    const projectId = service.project_id && service.project_id > 0 ? service.project_id : 0;
-    let folder = projectId ? byId.get(projectId) : undefined;
-    if (!folder) {
-      const name = label(service.project_name || '');
-      const key = `loose-${name.toLowerCase()}`;
-      folder = loose.get(key) || { key, id: 0, name, environments: [] };
-      loose.set(key, folder);
-    }
-    const envName = label(service.environment);
-    let env = folder.environments.find((item) => item.name.toLowerCase() === envName.toLowerCase());
-    if (!env) {
-      env = { name: envName, count: 0, services: [] };
-      folder.environments.push(env);
-    }
-    env.services.push(service);
-  });
-
-  return [...byId.values(), ...loose.values()];
+function needsSetup(item: ServiceRow): boolean {
+  return !(item.repo || '').trim() || label(item.team || '') === 'Unknown';
 }
 
-export default function ServiceMapPage() {
+function openFindingCount(item: ServiceRow): number {
+  return (item.open_critical || 0) + (item.open_warning || 0);
+}
+
+export default function ServiceInventoryPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [items, setItems] = useState<ServiceRow[]>([]);
-  const [pageTotal, setPageTotal] = useState(0);
-  const [summary, setSummary] = useState<Array<{ project_id: number; project_name: string; environment: string; count: number }>>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [ownerTeamId, setOwnerTeamId] = useState('');
-  const [servicePage, setServicePage] = useState(0);
-  const [preview, setPreview] = useState<ServiceRow | null>(null);
+  const [classFilter, setClassFilter] = useState('');
+  const [findingsFilter, setFindingsFilter] = useState('');
   const [filtersReady, setFiltersReady] = useState(false);
-  const [incompleteCount, setIncompleteCount] = useState<number | null>(null);
   const projectFilter = router.isReady ? firstQuery(router.query.project_id) : '';
-  const environmentFilter = router.isReady ? firstQuery(router.query.environment) : '';
+
   useEffect(() => {
     if (!router.isReady || filtersReady) return;
     setQuery(firstQuery(router.query.q));
     setOwnerTeamId(firstQuery(router.query.team));
+    setClassFilter(firstQuery(router.query.class));
+    setFindingsFilter(firstQuery(router.query.findings));
     setFiltersReady(true);
-  }, [filtersReady, router.isReady, router.query.q, router.query.team]);
+  }, [filtersReady, router.isReady, router.query.class, router.query.findings, router.query.q, router.query.team]);
+
   const selectedTeam = teams.find((team) => String(team.id) === ownerTeamId);
-  const ownerTeamQuery = [selectedTeam?.name, selectedTeam?.slug].map((value) => (value || '').trim()).filter(Boolean).join('|');
-  useEffect(() => {
-    setServicePage(0);
-  }, [projectFilter, environmentFilter, ownerTeamId, query]);
+
   useEffect(() => {
     if (!router.isReady || !filtersReady) return;
     const next = new URLSearchParams();
     if (projectFilter) next.set('project_id', projectFilter);
-    if (environmentFilter) next.set('environment', environmentFilter);
     if (query.trim()) next.set('q', query.trim());
     if (ownerTeamId) next.set('team', ownerTeamId);
+    if (classFilter) next.set('class', classFilter);
+    if (findingsFilter) next.set('findings', findingsFilter);
     const current = new URLSearchParams();
-    ['project_id', 'environment', 'q', 'team'].forEach((key) => {
+    ['project_id', 'q', 'team', 'class', 'findings'].forEach((key) => {
       const value = firstQuery(router.query[key]);
       if (value) current.set(key, value);
     });
     if (next.toString() === current.toString()) return;
-    const queryObject = Object.fromEntries(next.entries());
-    void router.replace({ pathname: '/services', query: queryObject }, undefined, { shallow: true });
-  }, [environmentFilter, filtersReady, ownerTeamId, projectFilter, query, router]);
+    void router.replace({ pathname: '/services', query: Object.fromEntries(next.entries()) }, undefined, { shallow: true });
+  }, [classFilter, filtersReady, findingsFilter, ownerTeamId, projectFilter, query, router]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token || !filtersReady) return;
     setLoading(true);
     const headers = { Authorization: `Bearer ${token}` };
-    const listing = Boolean(query.trim() || environmentFilter || ownerTeamId);
-    const params = new URLSearchParams();
-    if (listing) {
-      params.set('limit', '50');
-      params.set('offset', String(servicePage * 50));
-      if (projectFilter) params.set('project_id', projectFilter);
-      if (environmentFilter) params.set('environment', environmentFilter);
-      if (query.trim()) params.set('q', query.trim());
-      const teamQuery = ownerTeamQuery;
-      if (teamQuery) params.set('team', teamQuery);
-    } else {
-      params.set('view', 'summary');
-      if (projectFilter) params.set('project_id', projectFilter);
-    }
     Promise.all([
-      fetch(`${apiUrl}/api/devops/services?${params}`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}${inventoryServicesPath()}`, { headers }).then((res) => res.json().catch(() => ({}))),
       fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))),
       loadOwnerTeams(apiUrl, token),
     ])
       .then(([servicesData, projectsData, ownerTeams]) => {
         if (servicesData?.error && !Array.isArray(servicesData.services)) {
-          setError(servicesData.error || 'Failed to load services');
+          setError(servicesData.error || 'Failed to load service inventory');
           return;
         }
-        const nextItems = Array.isArray(servicesData.services) ? servicesData.services as ServiceRow[] : [];
-        const nextTotal = typeof servicesData.total === 'number' ? servicesData.total : 0;
-        setItems(nextItems);
-        setPageTotal(nextTotal);
-        setSummary(Array.isArray(servicesData.folders) ? servicesData.folders : []);
-        if (typeof servicesData.incomplete === 'number') {
-          setIncompleteCount(servicesData.incomplete);
-        } else if (nextItems.length >= nextTotal) {
-          setIncompleteCount(nextItems.filter((item) => !item.repo.trim() || !label(item.team || '').trim() || label(item.team || '') === 'Unknown').length);
-        } else {
-          setIncompleteCount(null);
-        }
+        setItems(Array.isArray(servicesData.services) ? servicesData.services as ServiceRow[] : []);
         const list = Array.isArray(projectsData?.projects) ? projectsData.projects : [];
         setProjects(
           list
-            .map((item: { id?: number; name?: string; code?: string; environments?: string[] }) => ({
+            .map((item: { id?: number; name?: string; code?: string }) => ({
               id: typeof item.id === 'number' ? item.id : 0,
               name: item.name || '',
               code: item.code || '',
-              environments: Array.isArray(item.environments) ? item.environments.map((value) => String(value)) : [],
             }))
             .filter((item: ProjectOption) => item.id > 0),
         );
         setTeams(ownerTeams);
       })
-      .catch(() => setError('Failed to load services'))
+      .catch(() => setError('Failed to load service inventory'))
       .finally(() => setLoading(false));
-  }, [apiUrl, environmentFilter, filtersReady, ownerTeamId, ownerTeamQuery, projectFilter, query, servicePage]);
+  }, [apiUrl, filtersReady]);
 
-  const filtering = Boolean(query.trim() || ownerTeamId);
-  const setupLabel = loading || error || incompleteCount === null
-    ? 'Unknown'
-    : String(incompleteCount);
-
-  const matches = useMemo(() => {
+  const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
       if (projectFilter && String(item.project_id || 0) !== projectFilter) return false;
-      if (environmentFilter && label(item.environment).toLowerCase() !== environmentFilter.toLowerCase()) return false;
       if (ownerTeamId && !teamMatches(item.team || '', selectedTeam)) return false;
+      if (classFilter && (item.criticality || 'unclassified') !== classFilter) return false;
+      if (findingsFilter === 'open' && openFindingCount(item) === 0) return false;
+      if (findingsFilter === 'critical' && !(item.open_critical || 0)) return false;
+      if (findingsFilter === 'none' && openFindingCount(item) > 0) return false;
       if (!needle) return true;
-      const haystack = [item.service, item.repo, item.team, item.project_name, item.environment].join(' ').toLowerCase();
-      return haystack.includes(needle);
+      return [item.service, item.repo, item.team, item.project_name].join(' ').toLowerCase().includes(needle);
     });
-  }, [environmentFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
+  }, [classFilter, findingsFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
 
-  const configuredEnvironments = useMemo(() => {
-    const names = new Set<string>();
-    const source = projectFilter ? projects.filter((project) => String(project.id) === projectFilter) : projects;
-    source.forEach((project) => project.environments.forEach((name) => {
-      const text = name.trim();
-      if (text) names.add(text);
-    }));
-    return [...names].sort((left, right) => left.localeCompare(right));
-  }, [projectFilter, projects]);
-
-  const catalog = useMemo(() => {
-    if (!query.trim() && summary.length) {
-      const byId = new Map<number, ProjectFolder>();
-      summary.forEach((row) => {
-        const id = row.project_id || 0;
-        let folder = byId.get(id);
-        if (!folder) {
-          folder = { key: `project-${id}`, id, name: label(row.project_name || ''), environments: [] };
-          byId.set(id, folder);
-        }
-        folder.environments.push({ name: label(row.environment), count: row.count, services: [] });
-      });
-      return [...byId.values()];
-    }
-    return buildFolders(projects, items);
-  }, [items, projects, query, summary]);
+  const filtering = Boolean(query.trim() || projectFilter || ownerTeamId || classFilter || findingsFilter);
+  const incompleteCount = items.filter(needsSetup).length;
+  const openFindings = items.reduce((sum, item) => sum + openFindingCount(item), 0);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
-    const first = matches[0];
+    const first = rows[0];
     if (query.trim() && first) void router.push(serviceDetailHref(first.id, router.query));
   };
 
   const clearFilters = () => {
     setQuery('');
     setOwnerTeamId('');
+    setClassFilter('');
+    setFindingsFilter('');
+    if (projectFilter) void router.replace({ pathname: '/services' }, undefined, { shallow: true });
   };
 
-  const currentProject = catalog.find((project) => projectFilter && String(project.id) === projectFilter) || null;
-  const currentEnv = currentProject?.environments.find((env) => environmentFilter && env.name.toLowerCase() === environmentFilter.toLowerCase()) || null;
-  const visibleProjects = (ownerTeamId
-    ? catalog.filter((project) => project.environments.some((env) => env.services.some((service) => teamMatches(service.team || '', selectedTeam))))
-    : catalog
-  ).filter((project) => project.id > 0);
-  const visibleServices = (currentEnv?.services || []).filter((service) => !ownerTeamId || teamMatches(service.team || '', selectedTeam));
-  const servicePageSize = 50;
-  const serviceTotal = pageTotal || visibleServices.length;
-  const servicePageCount = Math.max(1, Math.ceil(serviceTotal / servicePageSize));
-  const servicePageSafe = Math.min(servicePage, servicePageCount - 1);
-  const pagedServices = visibleServices;
-  const matchTotal = pageTotal || matches.length;
-  const matchPageCount = Math.max(1, Math.ceil(matchTotal / servicePageSize));
-  const matchPageSafe = Math.min(servicePage, matchPageCount - 1);
-  const pagedMatches = matches;
-  const addHref = projectFilter
-    ? `/services/new?project_id=${projectFilter}${environmentFilter ? `&environment=${encodeURIComponent(environmentFilter)}` : ''}`
-    : '/services/new';
+  const setProjectFilter = (value: string) => {
+    const next = new URLSearchParams();
+    if (value) next.set('project_id', value);
+    if (query.trim()) next.set('q', query.trim());
+    if (ownerTeamId) next.set('team', ownerTeamId);
+    if (classFilter) next.set('class', classFilter);
+    if (findingsFilter) next.set('findings', findingsFilter);
+    void router.replace({ pathname: '/services', query: Object.fromEntries(next.entries()) }, undefined, { shallow: true });
+  };
+
+  const columns: DataTableColumn<ServiceRow>[] = useMemo(() => [
+    {
+      id: 'service',
+      header: 'Service',
+      cell: (item) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-title">{item.service || 'Unknown'}</span>
+          <span className="ig-cell-meta">{(item.repo || '').trim() || 'Repository not connected'}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'project',
+      header: 'Project',
+      cell: (item) => label(item.project_name || ''),
+    },
+    {
+      id: 'owner',
+      header: 'Owner team',
+      cell: (item) => (label(item.team || '') === 'Unknown' ? 'Not assigned' : label(item.team || '')),
+    },
+    {
+      id: 'class',
+      header: 'Class',
+      cell: (item) => <ServiceClassBadge value={item.criticality} />,
+    },
+    {
+      id: 'findings',
+      header: 'Findings',
+      cell: (item) => (
+        openFindingCount(item)
+          ? `${item.open_critical || 0} critical / ${item.open_warning || 0} warning`
+          : 'None recorded'
+      ),
+    },
+    {
+      id: 'evaluation',
+      header: 'Last evaluation',
+      cell: (item) => (
+        <div className="ig-cell-stack">
+          <span className={`sre-sli sre-sli--${catalogueSliTone(item.last_sli_state)}`}>
+            {scoreDisplay({ state: item.last_sli_state, availability_bps: item.last_availability_bps })}
+          </span>
+          <span className="ig-cell-title">{item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : 'Unknown'}</span>
+          <span className="ig-cell-meta">{scheduleModeCopy(item.schedule_minutes)}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'tickets',
+      header: 'Tickets',
+      className: 'ig-cell-actions',
+      cell: (item) => (
+        <div className="runbooks__action-row">
+          <Link className="btn btn-secondary btn-sm" href={serviceTicketHref('/changes/new', item)}>Change</Link>
+          <Link className="btn btn-secondary btn-sm" href={serviceTicketHref('/incidents/new', item)}>Incident</Link>
+        </div>
+      ),
+    },
+  ], []);
 
   return (
     <DevOpsLayout>
       <Head>
-        <title>Services - OpsTrellis</title>
+        <title>Service inventory - OpsTrellis</title>
       </Head>
-      <div className="ops-frame">
-        <header className="ops-frame__head">
+      <div className="portal-page">
+        <div className="portal-page__header">
           <div>
-            <h1>{currentEnv ? currentEnv.name : currentProject ? currentProject.name : 'Services'}</h1>
+            <span className="portal-page__eyebrow">Services</span>
+            <h1 className="portal-page__title">Service inventory</h1>
+            <p className="portal-page__subtitle">Production services. Observability and findings stay on the service. Change and incident forms use this same list.</p>
           </div>
-          <Link href={addHref} className="btn btn-primary">Add service</Link>
-        </header>
+          <Link href={projectFilter ? `/services/new?project_id=${projectFilter}` : '/services/new'} className="btn btn-primary">Add service</Link>
+        </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
-        <section className="ops-minis" aria-label="Service summary">
+        <section className="ops-minis" aria-label="Service inventory summary">
           <article className="ops-mini ops-mini--mint">
             <span>Registered services</span>
-            <strong>{loading || error ? 'Unknown' : (pageTotal || matches.length)}</strong>
-            <small>{currentProject ? currentProject.name : 'All visible projects'}</small>
+            <strong>{loading || error ? 'Unknown' : items.length}</strong>
+            <small>Production inventory</small>
           </article>
           <article className="ops-mini ops-mini--lilac">
             <span>Needs setup</span>
-            <strong>{setupLabel}</strong>
+            <strong>{loading || error ? 'Unknown' : incompleteCount}</strong>
             <small>Owner and repository missing</small>
           </article>
           <article className="ops-mini ops-mini--blue">
-            <span>Configured environments</span>
-            <strong>{loading || error ? 'Unknown' : configuredEnvironments.length}</strong>
-            <small>{configuredEnvironments.join(' · ') || 'None listed'}</small>
+            <span>Open findings</span>
+            <strong>{loading || error ? 'Unknown' : openFindings}</strong>
+            <small>Critical and warning on this inventory</small>
           </article>
         </section>
-        <form className="portal-surface" onSubmit={search}>
-          <div className="svc-filters">
+        <section className="portal-surface">
+          <div className="portal-surface__header">
+            <div>
+              <h2 className="portal-surface__title">Production catalogue</h2>
+              <p className="portal-surface__subtitle">Open a row for observability, findings, and configuration. Change and incident forms use this same list.</p>
+            </div>
+          </div>
+          <form className="svc-filters svc-filters--inventory" onSubmit={search}>
             <label>
-              Search services
-              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or repository" />
+              Search
+              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, repository, or team" />
             </label>
             <label>
-              Service owner team
+              Project
+              <select className="input" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+                <option value="">All projects</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.name || project.code}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Criticality
+              <select className="input" value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
+                <option value="">All classes</option>
+                {SERVICE_CLASSES.map((entry) => (
+                  <option key={entry.value} value={entry.value}>{entry.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Owner team
               <select className="input" value={ownerTeamId} onChange={(event) => setOwnerTeamId(event.target.value)}>
                 <option value="">{teams.length ? 'All teams' : 'No teams'}</option>
                 {teams.map((team) => (
@@ -347,146 +339,42 @@ export default function ServiceMapPage() {
                 ))}
               </select>
             </label>
+            <label>
+              Findings
+              <select className="input" value={findingsFilter} onChange={(event) => setFindingsFilter(event.target.value)}>
+                <option value="">All</option>
+                <option value="open">Open findings</option>
+                <option value="critical">Critical</option>
+                <option value="none">None recorded</option>
+              </select>
+            </label>
+            {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : <span />}
+          </form>
+          <div className="ig-legacy-table">
+            <DataTable<ServiceRow>
+              label="Service inventory"
+              columns={columns}
+              rows={rows}
+              rowKey={(item) => item.id}
+              loading={loading}
+              onRowOpen={(item) => {
+                rememberService({
+                  id: item.id,
+                  name: item.service,
+                  project: item.project_name,
+                  environment: item.environment,
+                });
+                void router.push(serviceDetailHref(item.id, router.query));
+              }}
+              empty={
+                <EmptyState
+                  title={filtering ? 'No services match these filters' : 'No production services yet'}
+                  body={filtering ? 'Clear filters to see the full inventory.' : 'Add a service to this inventory. Change and incident requests pick from this list.'}
+                />
+              }
+            />
           </div>
-          {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
-        </form>
-        {projectFilter || environmentFilter ? (
-          <nav className="svc-crumb" aria-label="Location">
-            <Link href="/services">Projects</Link>
-            {currentProject ? (
-              <>
-                <span aria-hidden="true">/</span>
-                {environmentFilter ? (
-                  <Link href={`/services?project_id=${currentProject.id}`}>{currentProject.name}</Link>
-                ) : (
-                  <span>{currentProject.name}</span>
-                )}
-              </>
-            ) : null}
-            {currentEnv ? (
-              <>
-                <span aria-hidden="true">/</span>
-                <span>{currentEnv.name}</span>
-              </>
-            ) : null}
-          </nav>
-        ) : null}
-        {loading ? <div className="empty-state">Loading services...</div> : null}
-        {!loading && query.trim() ? (
-          <>
-          <ul className="svc-tree">
-            {matches.length ? pagedMatches.map((item) => (
-              <li key={item.id}>
-                <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
-                  <strong title={item.service}>{item.service || 'Unknown'}</strong>
-                  <span>Project: {label(item.project_name || '')} · Environment: {label(item.environment)}</span>
-                  <span>{label(item.team || '')}</span>
-                </button>
-              </li>
-            )) : <li className="svc-tree__empty">No services match this search.</li>}
-          </ul>
-          {matchTotal > servicePageSize ? (
-            <div className="ig-table-pager">
-              <span>Showing {matchPageSafe * servicePageSize + 1}–{Math.min(matchTotal, matchPageSafe * servicePageSize + pagedMatches.length)} of {matchTotal}</span>
-              <div className="ig-table-pager__actions">
-                <button type="button" className="btn btn-secondary btn-sm" disabled={matchPageSafe === 0} onClick={() => setServicePage(matchPageSafe - 1)}>Previous</button>
-                <button type="button" className="btn btn-secondary btn-sm" disabled={matchPageSafe >= matchPageCount - 1} onClick={() => setServicePage(matchPageSafe + 1)}>Next</button>
-              </div>
-            </div>
-          ) : null}
-          </>
-        ) : null}
-        {!loading && !query.trim() && !projectFilter ? (
-          visibleProjects.length ? (
-            <ul className="svc-tree">
-              {visibleProjects.map((project) => {
-                const serviceCount = project.environments.reduce((sum, env) => sum + (env.count || env.services.length), 0);
-                const withServices = project.environments.filter((env) => (env.count || env.services.length) > 0).length;
-                return (
-                  <li key={project.key}>
-                    <Link className="svc-tree__folder" href={`/services?project_id=${project.id}`}>
-                      <span>{project.name}</span>
-                      <small>{withServices} {withServices === 1 ? 'environment with services' : 'environments with services'} · {serviceCount} {serviceCount === 1 ? 'service' : 'services'}</small>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : <div className="empty-state">No projects are visible for this scope.</div>
-        ) : null}
-        {!loading && !query.trim() && currentProject && !environmentFilter ? (
-          currentProject.environments.length ? (
-            <ul className="svc-tree">
-              {currentProject.environments.map((env) => (
-                <li key={env.name}>
-                  <Link className="svc-tree__folder" href={`/services?project_id=${currentProject.id}&environment=${encodeURIComponent(env.name)}`}>
-                    <span>{env.name}</span>
-                    <small>{(env.count || env.services.length)} {(env.count || env.services.length) === 1 ? 'service' : 'services'}</small>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : <div className="empty-state">No environments on this project.</div>
-        ) : null}
-        {!loading && !query.trim() && currentProject && currentEnv ? (
-          visibleServices.length ? (
-            <>
-            <ul className="svc-tree svc-tree__services">
-              {pagedServices.map((item) => (
-                <li key={item.id}>
-                  <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
-                    <strong title={item.service}>{item.service || 'Unknown'}</strong>
-                    <span>{item.repo.trim() || 'Repository not connected'}</span>
-                    <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {serviceTotal > servicePageSize ? (
-              <div className="ig-table-pager">
-                <span>Showing {servicePageSafe * servicePageSize + 1}–{Math.min(serviceTotal, servicePageSafe * servicePageSize + pagedServices.length)} of {serviceTotal}</span>
-                <div className="ig-table-pager__actions">
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={servicePageSafe === 0} onClick={() => setServicePage(servicePageSafe - 1)}>Previous</button>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={servicePageSafe >= servicePageCount - 1} onClick={() => setServicePage(servicePageSafe + 1)}>Next</button>
-                </div>
-              </div>
-            ) : null}
-            </>
-          ) : (
-            <div className="svc-tree__empty">
-              <span>No services in this environment.</span>
-              {currentProject.id ? <Link href={addHref}>Add service</Link> : null}
-            </div>
-          )
-        ) : null}
-        <InspectorDrawer
-          open={Boolean(preview)}
-          onClose={() => setPreview(null)}
-          resetKey={preview?.id}
-          label="Service preview"
-          eyebrow="Service"
-          title={preview?.service || 'Service'}
-          subtitle={preview ? [preview.project_name || 'Project unknown', preview.environment || 'Environment unknown'].join(' · ') : undefined}
-          headerActions={preview ? <CopyButton value={preview.service} label="service name" /> : null}
-          footer={preview ? (
-            <Link
-              className="btn btn-primary"
-              href={serviceDetailHref(preview.id, router.query)}
-              onClick={() => rememberService({ id: preview.id, name: preview.service, project: preview.project_name, environment: preview.environment })}
-            >
-              Open service
-            </Link>
-          ) : null}
-        >
-          {preview ? (
-            <div className="portal-stack">
-              <p>Project: {preview.project_name || 'Unknown'}</p>
-              <p>Environment: {preview.environment || 'Unknown'}</p>
-              <p>Repository: {preview.repo.trim() || 'Not connected'}</p>
-              <p>Owner: {label(preview.team || '') === 'Unknown' ? 'Unassigned' : label(preview.team || '')}</p>
-            </div>
-          ) : null}
-        </InspectorDrawer>
+        </section>
       </div>
     </DevOpsLayout>
   );

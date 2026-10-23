@@ -72,7 +72,7 @@ func corsOriginAllowed(origin string) bool {
 
 func applyCORSHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Secret")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key, X-Admin-Secret")
 	if r == nil {
 		return
 	}
@@ -738,6 +738,7 @@ func main() {
 		startDeployIntelSlackDigestScheduler()
 		startChangeWatcherScheduler()
 		startSSOSyncScheduler()
+		startMonitorEvaluationWorker()
 	}
 	InitRuntimeResilience()
 
@@ -939,6 +940,11 @@ func main() {
 	http.HandleFunc("/api/devops/slos", devopsSLOsHandler)
 	http.HandleFunc("/api/devops/services", devopsServiceMapHandler)
 	http.HandleFunc("/api/devops/services/", devopsServiceMapDetailHandler)
+	http.HandleFunc("/api/devops/observability/connectors", devopsObservabilityConnectorsHandler)
+	http.HandleFunc("/api/devops/observability/connectors/", devopsObservabilityConnectorDetailHandler)
+	http.HandleFunc("/api/devops/monitoring/templates", devopsMonitoringTemplatesHandler)
+	http.HandleFunc("/api/devops/monitoring/evaluations/", devopsMonitoringEvaluationHandler)
+	http.HandleFunc("/api/devops/monitoring/guardrail-decisions/", devopsGuardrailDecisionHandler)
 	http.HandleFunc("/api/connections", connectionListHandler)
 	http.HandleFunc("/api/connections/", connectionDetailHandler)
 	http.HandleFunc("/api/outbox/events", outboxEventsHandler)
@@ -1063,6 +1069,8 @@ func main() {
 	http.HandleFunc("/api/webhooks/ci", ciWebhookHandler)
 	http.HandleFunc("/api/webhooks/change", changeWebhookHandler)
 	http.HandleFunc("/api/webhooks/alerts", alertWebhookHandler)
+	http.HandleFunc("/api/webhooks/monitoring", monitoringAlertWebhookHandler)
+	http.HandleFunc("/api/webhooks/monitoring-samples", monitoringSampleWebhookHandler)
 	http.HandleFunc("/api/webhooks/iam-access", iamAccessWebhookHandler)
 	http.HandleFunc("/api/webhooks/irm", irmWebhookHandler)
 	http.HandleFunc("/api/webhooks/irm/", irmWebhookHandler)

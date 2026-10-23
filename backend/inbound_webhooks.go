@@ -755,6 +755,10 @@ func changeWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		writeChangeUpsertError(w, r, "failed to record change", err)
 		return
 	}
+	if decision := releaseBlockedByGuardrail(item); decision != nil {
+		writeAPIError(w, r, http.StatusConflict, decision.Reason, nil)
+		return
+	}
 	if created {
 		go FireOutboundWebhooks("change.created", map[string]interface{}{
 			"change_number": item.ChangeNumber,
@@ -831,6 +835,7 @@ func alertWebhookHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		incidents = append(incidents, *item)
+		correlateMonitorAlert(event, item)
 		switch action {
 		case "created":
 			created++

@@ -15,6 +15,7 @@ import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import BlockedAction from '../../components/BlockedAction';
 import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
+import { inventoryServicesPath } from '../../lib/sreMonitoring';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -178,7 +179,7 @@ export default function NewChangeRequestPage() {
     setLoading(true);
     Promise.all([
       fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${apiUrl}/api/devops/services`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${apiUrl}${inventoryServicesPath()}`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${apiUrl}/api/devops/users?audience=portal`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${apiUrl}/api/devops/changes?mode=preview`, { headers: { Authorization: `Bearer ${token}` } }),
     ])
@@ -310,8 +311,8 @@ export default function NewChangeRequestPage() {
       return;
     }
     if (!selectedService) {
-      focusField('change-service', 'Select a service from the Services catalog');
-      setError('Select a service from the Services catalog');
+      focusField('change-service', 'Select a service from the Service inventory');
+      setError('Select a service from the Service inventory');
       return;
     }
     if (!assigneeUserId) {
@@ -477,7 +478,7 @@ export default function NewChangeRequestPage() {
             <form onSubmit={(event) => void submit(event)}>
               {!services.length ? (
                 <div className="empty-state">
-                  Add a service first. The service dropdown is filled from the Services catalog.
+                  Add a service first. The service dropdown is filled from the Service inventory.
                   {' '}
                   <Link href="/services/new">Create a service</Link>
                 </div>
@@ -485,7 +486,7 @@ export default function NewChangeRequestPage() {
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
                 <legend className="form-section__title">Scope</legend>
-                <p className="form-section__copy">{returnPath ? 'These values came from the service. You can change the project or the service.' : 'Pick the project first. The service list only shows services in that project.'}</p>
+                <p className="form-section__copy">{returnPath ? 'These values came from Service inventory. You can change the project or the service.' : 'Pick the project first. The service list is Service inventory for that project (production).'}</p>
                 <div className="portal-form-grid">
                   <label className="label">
                     Project<span className="form-req" aria-hidden="true"> *</span>
@@ -536,7 +537,7 @@ export default function NewChangeRequestPage() {
                   <dt>Cloud</dt>
                   <dd>{selectedProject?.cloud || 'Unknown'}</dd>
                   <dt>Environment</dt>
-                  <dd>{selectedService?.environment || selectedProject?.environments?.join(', ') || 'Unknown'}</dd>
+                  <dd>{selectedService ? 'Production' : 'Unknown until a service is selected'}</dd>
                 </dl>
               </fieldset>
               <fieldset className="form-section">

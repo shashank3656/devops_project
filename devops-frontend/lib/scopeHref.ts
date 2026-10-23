@@ -43,11 +43,9 @@ export function catalogueListHref(query: {
 }): string {
   const params = new URLSearchParams();
   const projectId = first(query.project_id);
-  const environment = first(query.environment);
   const q = first(query.q);
   const team = first(query.team);
   if (projectId) params.set('project_id', projectId);
-  if (environment) params.set('environment', environment);
   if (q) params.set('q', q);
   if (team) params.set('team', team);
   const search = params.toString();
@@ -73,10 +71,7 @@ export function serviceCatalogueBackHref(
   const from = safeReturnPath(query.from);
   if (from) return from;
   if (item?.project_id) {
-    return scopeListHref('/services', {
-      project_id: String(item.project_id),
-      environment: item.environment,
-    });
+    return scopeListHref('/services', { project_id: String(item.project_id) });
   }
-  return scopeListHref('/services', query);
+  return scopeListHref('/services', { project_id: query.project_id });
 }

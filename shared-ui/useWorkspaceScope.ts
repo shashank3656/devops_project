@@ -54,8 +54,8 @@ export function mergeScopeQuery(
 
 export function queryString(query: Record<string, string | string[] | undefined> | undefined, key: string): string {
   const raw = query?.[key];
-  if (Array.isArray(raw)) return raw[0] || '';
-  return raw || '';
+  if (Array.isArray(raw)) return typeof raw[0] === 'string' ? raw[0] : '';
+  return typeof raw === 'string' ? raw : '';
 }
 
 export function defaultEnvironmentForProject(projects: ScopeProject[], projectId: string, current?: string): string {

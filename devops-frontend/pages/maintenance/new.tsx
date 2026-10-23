@@ -9,6 +9,7 @@ import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 import { useBrowserTimeZoneLabel } from '../../lib/useBrowserTimeZoneLabel';
+import { inventoryServicesPath } from '../../lib/sreMonitoring';
 
 const MAINTENANCE_ATTEMPT_KEY = 'opstrellis-maintenance-attempt';
 const TOKEN_KEY = 'devops_token';
@@ -62,7 +63,7 @@ export default function NewMaintenancePage() {
     const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
       fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))),
-      fetch(`${apiUrl}/api/devops/services`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}${inventoryServicesPath()}`, { headers }).then((res) => res.json().catch(() => ({}))),
       fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
       fetch(`${apiUrl}/api/devops/project-options`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),
       fetch(`${apiUrl}/api/devops/changes`, { headers }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})),

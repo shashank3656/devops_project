@@ -23,7 +23,7 @@ export const SECTION_PAGES: { section: SectionKey; key: string; label: string }[
   { section: 'daily', key: 'problems', label: 'Problems' },
   { section: 'daily', key: 'tickets', label: 'Requests' },
   { section: 'daily', key: 'knowledge', label: 'Knowledge' },
-  { section: 'daily', key: 'services', label: 'Services' },
+  { section: 'daily', key: 'services', label: 'Service inventory' },
   { section: 'operations', key: 'on-call', label: 'On-call' },
   { section: 'operations', key: 'maintenance', label: 'Maintenance' },
   { section: 'operations', key: 'reports', label: 'Reports' },

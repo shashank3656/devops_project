@@ -155,6 +155,21 @@ func TestChangeNeedsViewerAction(t *testing.T) {
 	}
 }
 
+func TestAppendProjectIDRestriction(t *testing.T) {
+	query, args, pos := appendProjectIDRestriction("WHERE 1=1", nil, 1, nil)
+	if query != "WHERE 1=1" || len(args) != 0 || pos != 1 {
+		t.Fatalf("nil restriction = %q %#v %d", query, args, pos)
+	}
+	query, _, _ = appendProjectIDRestriction("WHERE 1=1", nil, 1, []int{})
+	if query != "WHERE 1=1 AND FALSE" {
+		t.Fatalf("empty restriction = %q", query)
+	}
+	query, args, pos = appendProjectIDRestriction("WHERE 1=1", nil, 1, []int{3, 9})
+	if query != "WHERE 1=1 AND r.project_id IN ($1,$2)" || len(args) != 2 || args[0] != 3 || args[1] != 9 || pos != 3 {
+		t.Fatalf("ids restriction = %q %#v %d", query, args, pos)
+	}
+}
+
 func TestRequestQueryEnvPrefersEnvironmentAlias(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "/api/devops/requests?env=dev&environment=prod", nil)
 	if err != nil {

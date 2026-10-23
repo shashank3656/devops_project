@@ -94,9 +94,9 @@ export default function PlanReviewCard({
         </dl>
       ) : null}
 
-      {review.changes.length > 0 ? (
+      {(review.changes || []).length > 0 ? (
         <ul className="ig-plan__changes">
-          {review.changes.map((change) => (
+          {(review.changes || []).map((change) => (
             <li key={`${change.action}:${change.address}`} className={`ig-plan__change ig-plan__change--${change.action}`}>
               <span className="ig-plan__action">{ACTION_LABELS[change.action]}</span>
               <code className="ig-mono">{change.address}</code>
