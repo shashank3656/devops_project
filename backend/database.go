@@ -1677,12 +1677,28 @@ func GetTotalCountForHistory(team, env, cloud string, projectID int, statusFilte
 	return GetTotalCount(team, env, cloud, projectID, statusFilter, "", s, prID, userIDInt, createdByIn, false, fromDate, toDate)
 }
 
-// GetPRRequests retrieves PR requests with optional filters. fromDate, toDate: YYYY-MM-DD for created_at range.
-func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string) ([]PRRequest, error) {
-	return listPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, userIDInt, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, fromDate, toDate, 0)
+func appendProjectIDRestriction(query string, args []any, argPos int, restrictProjectIDs []int) (string, []any, int) {
+	if restrictProjectIDs == nil {
+		return query, args, argPos
+	}
+	if len(restrictProjectIDs) == 0 {
+		return query + " AND FALSE", args, argPos
+	}
+	placeholders := make([]string, len(restrictProjectIDs))
+	for i, id := range restrictProjectIDs {
+		placeholders[i] = fmt.Sprintf("$%d", argPos)
+		args = append(args, id)
+		argPos++
+	}
+	return query + " AND r.project_id IN (" + strings.Join(placeholders, ",") + ")", args, argPos
 }
 
-func listPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string, assignedTo int) ([]PRRequest, error) {
+// GetPRRequests retrieves PR requests with optional filters. fromDate, toDate: YYYY-MM-DD for created_at range.
+func GetPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string) ([]PRRequest, error) {
+	return listPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, userIDInt, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, fromDate, toDate, 0, nil)
+}
+
+func listPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, limit, offset int, sortBy, sortOrder string, atRiskOnly bool, fromDate, toDate string, assignedTo int, restrictProjectIDs []int) ([]PRRequest, error) {
 	query := `
 		SELECT r.id, r.team, r.env, r.cloud, r.service, COALESCE(r.client_name,'') AS client_name, COALESCE(r.application_id,'') AS application_id,
 		       COALESCE(r.priority,'medium') AS priority, r.due_date, r.pr_url, r.branch, r.file_path, r.status,
@@ -1780,6 +1796,7 @@ func listPRRequests(team, env, cloud string, projectID int, statusFilter, priori
 		args = append(args, assignedTo)
 		argPos++
 	}
+	query, args, argPos = appendProjectIDRestriction(query, args, argPos, restrictProjectIDs)
 	var orderCol string
 	switch sortBy {
 	case "updated_at":
@@ -1795,8 +1812,8 @@ func listPRRequests(team, env, cloud string, projectID int, statusFilter, priori
 	if strings.ToLower(sortOrder) == "asc" {
 		orderDir = "ASC"
 	}
-	if orderCol == "due_date" {
-		query += " ORDER BY due_date NULLS LAST " + orderDir
+	if sortBy == "due_date" {
+		query += " ORDER BY r.due_date NULLS LAST " + orderDir
 	} else {
 		query += " ORDER BY " + orderCol + " " + orderDir
 	}
@@ -2799,10 +2816,10 @@ func GetStats(userIDInt int) (*Stats, error) {
 
 // GetTotalCount returns total count of PR requests (for pagination). Same filters as GetPRRequests. fromDate, toDate optional.
 func GetTotalCount(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string) (int, error) {
-	return countPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, userIDInt, createdByIn, atRiskOnly, fromDate, toDate, 0)
+	return countPRRequests(team, env, cloud, projectID, statusFilter, priorityFilter, search, prID, userIDInt, createdByIn, atRiskOnly, fromDate, toDate, 0, nil)
 }
 
-func countPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string, assignedTo int) (int, error) {
+func countPRRequests(team, env, cloud string, projectID int, statusFilter, priorityFilter, search string, prID int, userIDInt int, createdByIn []int, atRiskOnly bool, fromDate, toDate string, assignedTo int, restrictProjectIDs []int) (int, error) {
 	query := "SELECT COUNT(*) FROM pr_requests r LEFT JOIN projects p ON p.id = r.project_id WHERE 1=1"
 	args := []interface{}{}
 	argPos := 1
@@ -2883,7 +2900,9 @@ func countPRRequests(team, env, cloud string, projectID int, statusFilter, prior
 	if assignedTo > 0 {
 		query += fmt.Sprintf(" AND (r.assigned_to = $%d OR r.created_by = $%d)", argPos, argPos)
 		args = append(args, assignedTo)
+		argPos++
 	}
+	query, args, _ = appendProjectIDRestriction(query, args, argPos, restrictProjectIDs)
 
 	var count int
 	err := DB.QueryRow(query, args...).Scan(&count)

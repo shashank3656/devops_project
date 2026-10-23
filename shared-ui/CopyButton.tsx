@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 export default function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
-  const text = value.trim();
+  const text = typeof value === 'string' ? value.trim() : '';
   if (!text) return null;
   return (
     <button

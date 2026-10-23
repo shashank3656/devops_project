@@ -22,6 +22,8 @@ import {
   formatOperationalTime,
   queryString,
   useUndoQueue,
+  buildPortalApiUrl,
+  portalFetch,
   type DataTableColumn,
   type DeliveryVisibility,
   type PlanReview,
@@ -364,6 +366,7 @@ export default function DevOpsTickets() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detailId, setDetailId] = useState<number | null>(null);
   const detailSeq = useRef(0);
+  const listSeq = useRef(0);
   const [detailRequest, setDetailRequest] = useState<TicketDetail | null>(null);
   const [detailComments, setDetailComments] = useState<RequestComment[]>([]);
   const [detailTimeline, setDetailTimeline] = useState<RequestTimelineEvent[]>([]);
@@ -421,13 +424,15 @@ export default function DevOpsTickets() {
 
   const fetchTickets = () => {
     if (!token) return;
+    listSeq.current += 1;
+    const seq = listSeq.current;
     setLoading(true);
     setListError('');
     const params = new URLSearchParams();
     if (idFilter.trim()) params.set('id', requestIdFromQuery(idFilter));
     if (team) params.set('team', team);
     if (projectId) params.set('project_id', projectId);
-    if (environment) params.set('env', environment);
+    if (environment) params.set('environment', environment);
     if (cloud) params.set('cloud', cloud);
     if (status) params.set('status', status);
     if (search) params.set('q', search);
@@ -438,8 +443,9 @@ export default function DevOpsTickets() {
     if (mine) params.set('mine', '1');
     params.set('limit', String(limit));
     params.set('offset', String(offset));
-    fetch(`${apiUrl}/api/devops/requests?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests?${params.toString()}`), { token })
       .then(async (res) => {
+        if (seq !== listSeq.current) return null;
         if (res.status === 401) {
           expireSession();
           return null;
@@ -451,25 +457,29 @@ export default function DevOpsTickets() {
           return null;
         }
         const data = asRecord(await res.json().catch(() => ({})));
-        if (!res.ok || !Array.isArray(data.requests)) {
+        const rows = Array.isArray(data.requests) ? data.requests : Array.isArray(data.tickets) ? data.tickets : null;
+        if (!res.ok || !rows) {
           setRequests([]);
           setTotal(0);
           setListError('The request queue could not be loaded.');
           return null;
         }
-        return data;
+        return { ...data, requests: rows };
       })
       .then((data) => {
-        if (!data) return;
+        if (!data || seq !== listSeq.current) return;
         setRequests(data.requests as TicketRow[]);
-        if (typeof data.total_count === 'number') setTotal(data.total_count);
+        setTotal(typeof data.total_count === 'number' ? data.total_count : (data.requests as TicketRow[]).length);
       })
       .catch(() => {
+        if (seq !== listSeq.current) return;
         setRequests([]);
         setTotal(0);
         setListError('We couldn’t load the request queue right now.');
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (seq === listSeq.current) setLoading(false);
+      });
   };
 
   const fetchProjects = () => {
@@ -490,11 +500,10 @@ export default function DevOpsTickets() {
     setDetailError('');
     setDetailNotice('');
     try {
-      const headers: HeadersInit = { Authorization: `Bearer ${token}` };
       const [detailRes, commentsRes, timelineRes] = await Promise.all([
-        fetch(`${apiUrl}/api/devops/requests/${id}`, { headers }),
-        fetch(`${apiUrl}/api/devops/requests/${id}/comments`, { headers }),
-        fetch(`${apiUrl}/api/devops/requests/${id}/timeline`, { headers }),
+        portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests/${id}`), { token }),
+        portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests/${id}/comments`), { token }),
+        portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/requests/${id}/timeline`), { token }),
       ]);
 
       if (!detailRes.ok) {
@@ -959,7 +968,7 @@ export default function DevOpsTickets() {
     const same = ['status', 'q', 'project_id', 'environment', 'mine', 'at_risk'].every((key) => String(next[key] || '') === queryString(router.query, key));
     if (same) return;
     void router.replace({ pathname: '/tickets', query: next }, undefined, { shallow: true });
-  }, [atRisk, environment, mine, projectId, router.isReady, router.query, search, shareReady, status]);
+  }, [atRisk, environment, mine, projectId, router.isReady, router.query.at_risk, router.query.environment, router.query.mine, router.query.project_id, router.query.q, router.query.status, search, shareReady, status]);
 
   useEffect(() => {
     fetchProjects();
@@ -1547,7 +1556,7 @@ export default function DevOpsTickets() {
                               </div>
                               <div className="portal-preview-card">
                                 <span className="portal-preview-eyebrow">Review summary</span>
-                                <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals.length} signals</strong>
+                                <strong className="portal-preview-value">{detailRequest.cost_risk_preview.signals?.length || 0} signals</strong>
                                 <p className="portal-preview-copy">{detailRequest.cost_risk_preview.summary}</p>
                               </div>
                             </div>

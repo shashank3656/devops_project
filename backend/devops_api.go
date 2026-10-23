@@ -358,14 +358,29 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("mine") == "1" {
 		assignedTo = userID
 	}
-	requests, err := listPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "", assignedTo)
+	seeAll := callerSeesEveryProject(userID)
+	var restrictProjectIDs []int
+	if !seeAll {
+		visibleProjects, visErr := getVisibleProjectIDSetForUser(userID)
+		if visErr != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			encodeDevopsJSON(w, map[string]interface{}{"error": "request failed", "status": "error"})
+			return
+		}
+		restrictProjectIDs = make([]int, 0, len(visibleProjects))
+		for id := range visibleProjects {
+			restrictProjectIDs = append(restrictProjectIDs, id)
+		}
+	}
+	requests, err := listPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, limit, offset, sortBy, sortOrder, atRiskOnly, "", "", assignedTo, restrictProjectIDs)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		encodeDevopsJSON(w, map[string]interface{}{"error": err.Error(), "status": "error"})
 		return
 	}
-	totalCount, _ := countPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "", assignedTo)
+	totalCount, _ := countPRRequests(team, env, cloud, projectID, statusFilter, "", search, prID, 0, createdByIn, atRiskOnly, "", "", assignedTo, restrictProjectIDs)
 	userIDs := make([]int, 0)
 	for _, req := range requests {
 		if req.CreatedBy != nil && *req.CreatedBy > 0 {
@@ -373,22 +388,8 @@ func devopsRequestsListHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	usernames, _ := GetUsernamesByUserIDs(userIDs)
-	seeAll := callerSeesEveryProject(userID)
-	var visibleProjects map[int]bool
-	if !seeAll {
-		visibleProjects, err = getVisibleProjectIDSetForUser(userID)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			encodeDevopsJSON(w, map[string]interface{}{"error": "request failed", "status": "error"})
-			return
-		}
-	}
 	out := make([]map[string]interface{}, 0, len(requests))
 	for _, req := range requests {
-		if !seeAll && (req.ProjectID == nil || !visibleProjects[*req.ProjectID]) {
-			continue
-		}
 		obj := map[string]interface{}{
 			"id": req.ID, "team": req.Team, "env": req.Env, "cloud": req.Cloud, "service": req.Service,
 			"client_name": req.ClientName, "application_id": req.ApplicationID, "priority": req.Priority,
