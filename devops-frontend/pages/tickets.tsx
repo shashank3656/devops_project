@@ -464,12 +464,16 @@ export default function DevOpsTickets() {
           setListError('The request queue could not be loaded.');
           return null;
         }
-        return { ...data, requests: rows };
+        const payload: { requests: TicketRow[]; total_count: number } = {
+          requests: rows as TicketRow[],
+          total_count: typeof data.total_count === 'number' ? data.total_count : rows.length,
+        };
+        return payload;
       })
       .then((data) => {
         if (!data || seq !== listSeq.current) return;
-        setRequests(data.requests as TicketRow[]);
-        setTotal(typeof data.total_count === 'number' ? data.total_count : (data.requests as TicketRow[]).length);
+        setRequests(data.requests);
+        setTotal(data.total_count);
       })
       .catch(() => {
         if (seq !== listSeq.current) return;
