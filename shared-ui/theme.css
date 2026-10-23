@@ -4205,6 +4205,77 @@ html[data-theme] .devops-incident-filter-row__actions {
   margin-left: auto;
 }
 
+html[data-theme] .devops-filter-ribbon__bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+html[data-theme] .devops-filter-ribbon__pill {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 220px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--ig-border-strong);
+  border-radius: var(--ig-radius);
+  background: var(--ig-bg);
+}
+
+html[data-theme] .devops-filter-ribbon__pill--search {
+  flex: 1 1 260px;
+  min-width: 180px;
+}
+
+html[data-theme] .devops-filter-ribbon__pill--status {
+  flex: 0 1 250px;
+}
+
+html[data-theme] .devops-filter-ribbon .ig-page-filters {
+  margin-bottom: 0;
+}
+
+html[data-theme] .devops-filter-ribbon--compact .devops-filter-ribbon__pill {
+  flex: 1 1 auto;
+}
+
+html[data-theme] .devops-filter-ribbon__key {
+  color: var(--ig-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+html[data-theme] .devops-filter-ribbon__control {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ig-text);
+  font-family: var(--ig-font);
+  font-size: 13px;
+  outline: none;
+}
+
+html[data-theme] .devops-filter-ribbon__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+html[data-theme] .devops-filter-ribbon .ig-views {
+  margin: 0;
+}
+
 .svc-filters {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)) max-content;
@@ -4882,9 +4953,16 @@ html[data-theme] .changes-page__sample {
   html[data-theme] .ig-filter-bar > input.input:first-child,
   html[data-theme] .devops-incident-filter-row > input.input:first-child,
   html[data-theme] .devops-incident-filter-chip,
-  html[data-theme] .devops-incident-filter-row__actions {
+  html[data-theme] .devops-incident-filter-row__actions,
+  html[data-theme] .devops-filter-ribbon__pill,
+  html[data-theme] .devops-filter-ribbon__pill--search,
+  html[data-theme] .devops-filter-ribbon__actions {
     flex: 1 1 100%;
     margin-left: 0;
+  }
+
+  html[data-theme] .devops-filter-ribbon__bar {
+    flex-wrap: wrap;
   }
 }
 

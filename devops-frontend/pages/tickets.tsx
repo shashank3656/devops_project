@@ -1099,30 +1099,30 @@ export default function DevOpsTickets() {
             </div>
           </div>
 
-          <PageFilters
-            chips={[
-              projectFilter ? { key: 'project', label: 'Project', value: projects.find((item) => String(item.id) === projectFilter)?.name || projectFilter } : null,
-              envFilter ? { key: 'environment', label: 'Environment', value: envFilter } : null,
-              statusFilter ? { key: 'status', label: 'Status', value: formatStatus(statusFilter) } : null,
-              searchFilter ? { key: 'q', label: 'Search', value: searchFilter } : null,
-              teamFilter ? { key: 'team', label: 'Team', value: teamFilter } : null,
-              atRisk ? { key: 'at_risk', label: 'Risk', value: 'At risk' } : null,
-            ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
-            onClear={hasActiveFilters ? clearFilters : undefined}
-          />
-
-          <SavedViews<TicketFilters>
-            storageKey="infragate.devops.tickets.views"
-            current={currentFilters}
-            onApply={applyFilterSet}
-            presets={TICKET_VIEW_PRESETS}
-            canSave={activeFilterCount > 0}
-            serverViews={savedViewsReady ? remoteViews : undefined}
-            onServerSave={saveRemote}
-            onServerDelete={deleteRemote}
-          />
-
           <div className="devops-filter-ribbon card">
+            <PageFilters
+              chips={[
+                idQuery ? { key: 'id', label: 'Request', value: idQuery } : null,
+                statusFilter ? { key: 'status', label: 'Status', value: formatStatus(statusFilter) } : null,
+                searchFilter ? { key: 'q', label: 'Search', value: searchFilter } : null,
+                teamFilter ? { key: 'team', label: 'Team', value: teamFilter } : null,
+                requesterFilter ? { key: 'requester', label: 'Requester', value: requesterFilter } : null,
+                cloudFilter ? { key: 'cloud', label: 'Cloud', value: cloudFilter } : null,
+                atRisk ? { key: 'at_risk', label: 'Risk', value: 'At risk' } : null,
+                mine ? { key: 'mine', label: 'Assigned', value: 'Me' } : null,
+              ].filter((chip): chip is { key: string; label: string; value: string } => Boolean(chip))}
+              onRemoveChip={(key) => {
+                if (key === 'id') setIdFilter('');
+                if (key === 'status') setStatus('');
+                if (key === 'q') setSearch('');
+                if (key === 'team') setTeam('');
+                if (key === 'requester') setRequester('');
+                if (key === 'cloud') setCloud('');
+                if (key === 'at_risk') setAtRisk(false);
+                if (key === 'mine') setMine(false);
+              }}
+              onClear={hasActiveFilters ? clearFilters : undefined}
+            />
             <div className="devops-filter-ribbon__bar">
               <label className="devops-filter-ribbon__pill">
                 <span className="devops-filter-ribbon__key">Request #</span>
@@ -1144,7 +1144,7 @@ export default function DevOpsTickets() {
                   className="devops-filter-ribbon__control"
                 />
               </label>
-              <label className="devops-filter-ribbon__pill">
+              <label className="devops-filter-ribbon__pill devops-filter-ribbon__pill--status">
                 <span className="devops-filter-ribbon__key">Status</span>
                 <select value={status} onChange={(e) => setStatus(e.target.value)} className="devops-filter-ribbon__control">
                   {STATUS_OPTIONS.map((entry) => (
@@ -1169,7 +1169,16 @@ export default function DevOpsTickets() {
             </div>
 
             <div className="devops-filter-ribbon__footer">
-              <span className="devops-filter-ribbon__hint">Results update automatically. Open more only when you need a narrower queue.</span>
+              <SavedViews<TicketFilters>
+                storageKey="infragate.devops.tickets.views"
+                current={currentFilters}
+                onApply={applyFilterSet}
+                presets={TICKET_VIEW_PRESETS}
+                canSave={activeFilterCount > 0}
+                serverViews={savedViewsReady ? remoteViews : undefined}
+                onServerSave={saveRemote}
+                onServerDelete={deleteRemote}
+              />
             </div>
 
             {filterExpanded && (
@@ -1261,8 +1270,7 @@ export default function DevOpsTickets() {
             <>
               <div className="devops-tickets-summary">
                 <span>Showing {requests.length} of {total} requests</span>
-                <span>Open a row to work the request without leaving this page.</span>
-                <span>
+                <div className="devops-tickets-summary__columns">
                   <label className="devops-tickets-filter-checkbox">
                     <input
                       type="checkbox"
@@ -1291,7 +1299,7 @@ export default function DevOpsTickets() {
                     />
                     <span>Pull request</span>
                   </label>
-                </span>
+                </div>
               </div>
               <div className="devops-tickets-table-card card ig-table-card">
                 <DataTable<TicketRow>

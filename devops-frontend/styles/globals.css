@@ -3070,14 +3070,16 @@ tbody tr td { color: var(--color-text); }
 }
 
 .devops-filter-ribbon__bar {
-  display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 10px;
-  align-items: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 .devops-filter-ribbon--compact .devops-filter-ribbon__bar {
-  grid-template-columns: minmax(220px, 1fr) auto;
+  display: flex;
 }
 
 .devops-filter-ribbon__pill {
@@ -3085,16 +3087,34 @@ tbody tr td { color: var(--color-text); }
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  min-height: 46px;
+  flex: 0 1 210px;
+  min-height: 42px;
+  min-width: 0;
   padding: 0 14px;
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   background: rgba(2, 6, 23, 0.3);
-  min-width: 0;
 }
 
 .devops-filter-ribbon__pill--search {
-  min-width: 0;
+  flex: 1 1 240px;
+  min-width: 180px;
+}
+
+.devops-filter-ribbon__pill--status {
+  flex: 0 1 250px;
+}
+
+.devops-filter-ribbon .ig-page-filters {
+  margin-bottom: 0;
+}
+
+.devops-filter-ribbon .ig-views {
+  margin: 0;
+}
+
+.devops-filter-ribbon--compact .devops-filter-ribbon__pill {
+  flex: 1 1 auto;
 }
 
 .devops-filter-ribbon__key {
@@ -3128,6 +3148,7 @@ tbody tr td { color: var(--color-text); }
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
   white-space: nowrap;
 }
@@ -3234,27 +3255,37 @@ tbody tr td { color: var(--color-text); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: 12px;
   flex-wrap: wrap;
   font-size: 0.875rem;
   color: var(--color-text-muted);
   margin-bottom: var(--space-3);
 }
+.devops-tickets-summary__columns {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: nowrap;
+}
+.devops-tickets-summary__columns .devops-tickets-filter-checkbox {
+  min-height: 0;
+}
 @media (max-width: 1120px) {
   .devops-filter-ribbon__bar {
-    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1fr) auto;
+    flex-wrap: wrap;
   }
 
-  .devops-filter-ribbon--compact .devops-filter-ribbon__bar {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .devops-filter-ribbon__pill,
+  .devops-filter-ribbon__pill--search {
+    flex: 1 1 220px;
   }
 
   .devops-filter-ribbon__actions {
-    justify-content: flex-end;
+    margin-left: auto;
   }
 
   .devops-filter-ribbon__panel-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .devops-tickets-filter-quick {
@@ -3271,7 +3302,13 @@ tbody tr td { color: var(--color-text); }
 
   .devops-filter-ribbon__bar,
   .devops-filter-ribbon__panel-grid {
+    display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .devops-filter-ribbon__pill,
+  .devops-filter-ribbon__pill--search {
+    flex: 1 1 100%;
   }
 
   .devops-filter-ribbon__actions,
