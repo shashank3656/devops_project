@@ -11,6 +11,7 @@ import { FALLBACK_ITSM_CATEGORIES, IMPACT_URGENCY, INCIDENT_STATES, ITSM_PRIORIT
 import { asRecord, getString } from '../../lib/payload';
 import { expireSession } from '../../lib/sessionExpiry';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
+import { inventoryServicesPath } from '../../lib/sreMonitoring';
 
 const INCIDENT_ATTEMPT_KEY = 'opstrellis-incident-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -319,7 +320,7 @@ export default function NewIncidentPage() {
     const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
       fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))),
-      fetch(`${apiUrl}/api/devops/services`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}${inventoryServicesPath()}`, { headers }).then((res) => res.json().catch(() => ({}))),
     ]).then(([projectBody, serviceBody]) => {
       const projectRows = Array.isArray(projectBody?.projects) ? projectBody.projects : [];
       setScopeProjects(projectRows.map((item: { id?: number; name?: string; code?: string; environments?: unknown }) => ({
@@ -352,7 +353,10 @@ export default function NewIncidentPage() {
         if (incidentEnvironment && item.environment && item.environment !== incidentEnvironment) return false;
         return true;
       });
-    if (match) setIncidentService((current) => current || match.service);
+    if (match) {
+      setIncidentService((current) => current || match.service);
+      setIncidentEnvironment((current) => current || match.environment || 'production');
+    }
   }, [incidentEnvironment, projectChoice, scopeServices, scopedService, scopedServiceId]);
 
   useEffect(() => {
@@ -511,8 +515,8 @@ export default function NewIncidentPage() {
                 <legend className="form-section__title">Affected scope</legend>
                 <p className="form-section__copy">
                   {returnPath
-                    ? 'These values came from the service. You can change the project, environment, or service.'
-                    : 'Choose the project this incident belongs to. Use Unknown / cross-project when it is not one project.'}
+                    ? 'These values came from Service inventory. You can change the project or the service.'
+                    : 'Choose the project first. The service list is Service inventory for that project (production). Use Unknown / cross-project when it is not one project.'}
                 </p>
                 <div className="portal-form-grid">
                   <label className="label">
@@ -536,31 +540,31 @@ export default function NewIncidentPage() {
                     </select>
                   </label>
                   <label className="label">
-                    Environment
-                    <select className="input" value={incidentEnvironment} onChange={(event) => { setIncidentEnvironment(event.target.value); setIncidentService(''); }} disabled={!projectChoice}>
-                      <option value="">{projectChoice ? 'Select an environment' : 'Select a project first'}</option>
-                      {(projectChoice === 'cross'
-                        ? ['dev', 'uat', 'prod']
-                        : (scopeProjects.find((project) => String(project.id) === projectChoice)?.environments?.length
-                          ? scopeProjects.find((project) => String(project.id) === projectChoice)?.environments || []
-                          : ['dev', 'uat', 'prod'])
-                      ).map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="label">
                     Service
-                    <select className="input" value={incidentService} onChange={(event) => setIncidentService(event.target.value)} disabled={!projectChoice || projectChoice === 'cross'}>
-                      <option value="">{projectChoice === 'cross' ? 'Not tied to one service' : projectChoice ? 'Select a service' : 'Select a project first'}</option>
+                    <select
+                      className="input"
+                      value={incidentService}
+                      onChange={(event) => {
+                        const name = event.target.value;
+                        setIncidentService(name);
+                        const mapped = scopeServices.find((item) => item.service === name && String(item.project_id) === projectChoice);
+                        setIncidentEnvironment(mapped?.environment || (name ? 'production' : ''));
+                      }}
+                      disabled={!projectChoice || projectChoice === 'cross'}
+                    >
+                      <option value="">{projectChoice === 'cross' ? 'Not tied to one service' : projectChoice ? 'Select a service from inventory' : 'Select a project first'}</option>
                       {projectChoice && projectChoice !== 'cross'
                         ? scopeServices
-                          .filter((item) => String(item.project_id) === projectChoice && (!incidentEnvironment || !item.environment || item.environment === incidentEnvironment))
+                          .filter((item) => String(item.project_id) === projectChoice)
                           .map((item) => (
-                            <option key={item.id} value={item.service}>{item.service}{item.environment ? ` · ${item.environment}` : ''}</option>
+                            <option key={item.id} value={item.service}>{item.service}</option>
                           ))
                         : null}
                     </select>
+                  </label>
+                  <label className="label">
+                    Monitored environment
+                    <input className="input" value={incidentService ? 'Production' : incidentEnvironment || ''} readOnly placeholder={projectChoice === 'cross' ? 'Not tied to one service' : 'Filled from the service'} />
                   </label>
                 </div>
               </fieldset>

@@ -2,12 +2,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CopyButton, InspectorDrawer } from '@infragate/ui';
+import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { rememberService } from '../../lib/recentServices';
 import { ServiceClassBadge } from '../../components/SreServiceWorkspace';
-import { SERVICE_CLASSES } from '../../lib/sreMonitoring';
-import { serviceDetailHref } from '../../lib/scopeHref';
+import { SERVICE_CLASSES, inventoryServicesPath } from '../../lib/sreMonitoring';
+import { serviceDetailHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -18,7 +18,6 @@ interface ServiceRow {
   service: string;
   repo: string;
   environment: string;
-  grafana_uid?: string;
   team?: string;
   project_name?: string;
   criticality?: string;
@@ -36,14 +35,6 @@ interface OwnerTeam {
   id: number;
   name: string;
   slug: string;
-}
-
-interface ProjectFolder {
-  key: string;
-  id: number;
-  name: string;
-  count: number;
-  services: ServiceRow[];
 }
 
 function label(value: string): string {
@@ -87,42 +78,18 @@ function teamMatches(serviceTeam: string, team: OwnerTeam | undefined): boolean 
   return current === team.name.toLowerCase() || (team.slug !== '' && current === team.slug.toLowerCase());
 }
 
-function buildFolders(projects: ProjectOption[], services: ServiceRow[]): ProjectFolder[] {
-  const byId = new Map<number, ProjectFolder>();
-  const loose = new Map<string, ProjectFolder>();
+function needsSetup(item: ServiceRow): boolean {
+  return !(item.repo || '').trim() || label(item.team || '') === 'Unknown';
+}
 
-  projects.forEach((project) => {
-    byId.set(project.id, {
-      key: `project-${project.id}`,
-      id: project.id,
-      name: project.name || project.code || 'Unknown',
-      count: 0,
-      services: [],
-    });
-  });
-
-  services.forEach((service) => {
-    const projectId = service.project_id && service.project_id > 0 ? service.project_id : 0;
-    let folder = projectId ? byId.get(projectId) : undefined;
-    if (!folder) {
-      const name = label(service.project_name || '');
-      const key = `loose-${name.toLowerCase()}`;
-      folder = loose.get(key) || { key, id: 0, name, count: 0, services: [] };
-      loose.set(key, folder);
-    }
-    folder.services.push(service);
-    folder.count += 1;
-  });
-
-  return [...byId.values(), ...loose.values()];
+function openFindingCount(item: ServiceRow): number {
+  return (item.open_critical || 0) + (item.open_warning || 0);
 }
 
 export default function ServiceInventoryPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [items, setItems] = useState<ServiceRow[]>([]);
-  const [pageTotal, setPageTotal] = useState(0);
-  const [summary, setSummary] = useState<Array<{ project_id: number; project_name: string; count: number }>>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
   const [error, setError] = useState('');
@@ -130,57 +97,45 @@ export default function ServiceInventoryPage() {
   const [query, setQuery] = useState('');
   const [ownerTeamId, setOwnerTeamId] = useState('');
   const [classFilter, setClassFilter] = useState('');
-  const [servicePage, setServicePage] = useState(0);
-  const [preview, setPreview] = useState<ServiceRow | null>(null);
+  const [findingsFilter, setFindingsFilter] = useState('');
   const [filtersReady, setFiltersReady] = useState(false);
-  const [incompleteCount, setIncompleteCount] = useState<number | null>(null);
   const projectFilter = router.isReady ? firstQuery(router.query.project_id) : '';
+
   useEffect(() => {
     if (!router.isReady || filtersReady) return;
     setQuery(firstQuery(router.query.q));
     setOwnerTeamId(firstQuery(router.query.team));
+    setClassFilter(firstQuery(router.query.class));
+    setFindingsFilter(firstQuery(router.query.findings));
     setFiltersReady(true);
-  }, [filtersReady, router.isReady, router.query.q, router.query.team]);
+  }, [filtersReady, router.isReady, router.query.class, router.query.findings, router.query.q, router.query.team]);
+
   const selectedTeam = teams.find((team) => String(team.id) === ownerTeamId);
-  const ownerTeamQuery = [selectedTeam?.name, selectedTeam?.slug].map((value) => (value || '').trim()).filter(Boolean).join('|');
-  useEffect(() => {
-    setServicePage(0);
-  }, [projectFilter, ownerTeamId, query]);
+
   useEffect(() => {
     if (!router.isReady || !filtersReady) return;
     const next = new URLSearchParams();
     if (projectFilter) next.set('project_id', projectFilter);
     if (query.trim()) next.set('q', query.trim());
     if (ownerTeamId) next.set('team', ownerTeamId);
+    if (classFilter) next.set('class', classFilter);
+    if (findingsFilter) next.set('findings', findingsFilter);
     const current = new URLSearchParams();
-    ['project_id', 'q', 'team'].forEach((key) => {
+    ['project_id', 'q', 'team', 'class', 'findings'].forEach((key) => {
       const value = firstQuery(router.query[key]);
       if (value) current.set(key, value);
     });
     if (next.toString() === current.toString()) return;
-    const queryObject = Object.fromEntries(next.entries());
-    void router.replace({ pathname: '/services', query: queryObject }, undefined, { shallow: true });
-  }, [filtersReady, ownerTeamId, projectFilter, query, router]);
+    void router.replace({ pathname: '/services', query: Object.fromEntries(next.entries()) }, undefined, { shallow: true });
+  }, [classFilter, filtersReady, findingsFilter, ownerTeamId, projectFilter, query, router]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token || !filtersReady) return;
     setLoading(true);
     const headers = { Authorization: `Bearer ${token}` };
-    const listing = Boolean(query.trim() || projectFilter || ownerTeamId);
-    const params = new URLSearchParams();
-    params.set('monitored', '1');
-    if (listing) {
-      params.set('limit', '50');
-      params.set('offset', String(servicePage * 50));
-      if (projectFilter) params.set('project_id', projectFilter);
-      if (query.trim()) params.set('q', query.trim());
-      if (ownerTeamQuery) params.set('team', ownerTeamQuery);
-    } else {
-      params.set('view', 'summary');
-    }
     Promise.all([
-      fetch(`${apiUrl}/api/devops/services?${params}`, { headers }).then((res) => res.json().catch(() => ({}))),
+      fetch(`${apiUrl}${inventoryServicesPath()}`, { headers }).then((res) => res.json().catch(() => ({}))),
       fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))),
       loadOwnerTeams(apiUrl, token),
     ])
@@ -189,18 +144,7 @@ export default function ServiceInventoryPage() {
           setError(servicesData.error || 'Failed to load service inventory');
           return;
         }
-        const nextItems = Array.isArray(servicesData.services) ? servicesData.services as ServiceRow[] : [];
-        const nextTotal = typeof servicesData.total === 'number' ? servicesData.total : 0;
-        setItems(nextItems);
-        setPageTotal(nextTotal);
-        setSummary(Array.isArray(servicesData.folders) ? servicesData.folders : []);
-        if (typeof servicesData.incomplete === 'number') {
-          setIncompleteCount(servicesData.incomplete);
-        } else if (nextItems.length >= nextTotal) {
-          setIncompleteCount(nextItems.filter((item) => !(item.repo || '').trim() || !label(item.team || '').trim() || label(item.team || '') === 'Unknown').length);
-        } else {
-          setIncompleteCount(null);
-        }
+        setItems(Array.isArray(servicesData.services) ? servicesData.services as ServiceRow[] : []);
         const list = Array.isArray(projectsData?.projects) ? projectsData.projects : [];
         setProjects(
           list
@@ -215,41 +159,29 @@ export default function ServiceInventoryPage() {
       })
       .catch(() => setError('Failed to load service inventory'))
       .finally(() => setLoading(false));
-  }, [apiUrl, filtersReady, ownerTeamId, ownerTeamQuery, projectFilter, query, servicePage]);
+  }, [apiUrl, filtersReady]);
 
-  const filtering = Boolean(query.trim() || ownerTeamId || classFilter);
-  const setupLabel = loading || error || incompleteCount === null
-    ? 'Unknown'
-    : String(incompleteCount);
-
-  const matches = useMemo(() => {
+  const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
       if (projectFilter && String(item.project_id || 0) !== projectFilter) return false;
       if (ownerTeamId && !teamMatches(item.team || '', selectedTeam)) return false;
       if (classFilter && (item.criticality || 'unclassified') !== classFilter) return false;
+      if (findingsFilter === 'open' && openFindingCount(item) === 0) return false;
+      if (findingsFilter === 'critical' && !(item.open_critical || 0)) return false;
+      if (findingsFilter === 'none' && openFindingCount(item) > 0) return false;
       if (!needle) return true;
-      const haystack = [item.service, item.repo, item.team, item.project_name].join(' ').toLowerCase();
-      return haystack.includes(needle);
+      return [item.service, item.repo, item.team, item.project_name].join(' ').toLowerCase().includes(needle);
     });
-  }, [classFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
+  }, [classFilter, findingsFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
 
-  const catalog = useMemo(() => {
-    if (!query.trim() && summary.length) {
-      return summary.map((row) => ({
-        key: `project-${row.project_id || 0}`,
-        id: row.project_id || 0,
-        name: label(row.project_name || ''),
-        count: row.count,
-        services: [] as ServiceRow[],
-      }));
-    }
-    return buildFolders(projects, items);
-  }, [items, projects, query, summary]);
+  const filtering = Boolean(query.trim() || projectFilter || ownerTeamId || classFilter || findingsFilter);
+  const incompleteCount = items.filter(needsSetup).length;
+  const openFindings = items.reduce((sum, item) => sum + openFindingCount(item), 0);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
-    const first = matches[0];
+    const first = rows[0];
     if (query.trim() && first) void router.push(serviceDetailHref(first.id, router.query));
   };
 
@@ -257,67 +189,114 @@ export default function ServiceInventoryPage() {
     setQuery('');
     setOwnerTeamId('');
     setClassFilter('');
+    setFindingsFilter('');
+    if (projectFilter) void router.replace({ pathname: '/services' }, undefined, { shallow: true });
   };
 
-  const currentProject = catalog.find((project) => projectFilter && String(project.id) === projectFilter) || null;
-  const visibleProjects = (ownerTeamId
-    ? catalog.filter((project) => project.services.some((service) => teamMatches(service.team || '', selectedTeam)))
-    : catalog
-  ).filter((project) => project.id > 0);
-  const visibleServices = (currentProject?.services.length ? currentProject.services : items).filter((service) => (
-    (!projectFilter || String(service.project_id || 0) === projectFilter)
-    && (!ownerTeamId || teamMatches(service.team || '', selectedTeam))
-    && (!classFilter || (service.criticality || 'unclassified') === classFilter)
-  ));
-  const servicePageSize = 50;
-  const showingList = Boolean(query.trim() || projectFilter || ownerTeamId);
-  const serviceTotal = pageTotal || (query.trim() ? matches.length : visibleServices.length);
-  const servicePageCount = Math.max(1, Math.ceil(serviceTotal / servicePageSize));
-  const servicePageSafe = Math.min(servicePage, servicePageCount - 1);
-  const pagedServices = visibleServices;
-  const matchTotal = pageTotal || matches.length;
-  const matchPageCount = Math.max(1, Math.ceil(matchTotal / servicePageSize));
-  const matchPageSafe = Math.min(servicePage, matchPageCount - 1);
-  const pagedMatches = matches;
-  const addHref = projectFilter ? `/services/new?project_id=${projectFilter}` : '/services/new';
-  const openFindings = items.reduce((sum, item) => sum + (item.open_critical || 0) + (item.open_warning || 0), 0);
+  const setProjectFilter = (value: string) => {
+    const next = new URLSearchParams();
+    if (value) next.set('project_id', value);
+    if (query.trim()) next.set('q', query.trim());
+    if (ownerTeamId) next.set('team', ownerTeamId);
+    if (classFilter) next.set('class', classFilter);
+    if (findingsFilter) next.set('findings', findingsFilter);
+    void router.replace({ pathname: '/services', query: Object.fromEntries(next.entries()) }, undefined, { shallow: true });
+  };
+
+  const columns: DataTableColumn<ServiceRow>[] = useMemo(() => [
+    {
+      id: 'service',
+      header: 'Service',
+      cell: (item) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-title">{item.service || 'Unknown'}</span>
+          <span className="ig-cell-meta">{(item.repo || '').trim() || 'Repository not connected'}</span>
+        </div>
+      ),
+    },
+    {
+      id: 'project',
+      header: 'Project',
+      cell: (item) => label(item.project_name || ''),
+    },
+    {
+      id: 'owner',
+      header: 'Owner team',
+      cell: (item) => (label(item.team || '') === 'Unknown' ? 'Not assigned' : label(item.team || '')),
+    },
+    {
+      id: 'class',
+      header: 'Class',
+      cell: (item) => <ServiceClassBadge value={item.criticality} />,
+    },
+    {
+      id: 'findings',
+      header: 'Findings',
+      cell: (item) => (
+        openFindingCount(item)
+          ? `${item.open_critical || 0} critical / ${item.open_warning || 0} warning`
+          : 'None recorded'
+      ),
+    },
+    {
+      id: 'tickets',
+      header: 'Tickets',
+      className: 'ig-cell-actions',
+      cell: (item) => (
+        <div className="runbooks__action-row">
+          <Link className="btn btn-secondary btn-sm" href={serviceTicketHref('/changes/new', item)}>Change</Link>
+          <Link className="btn btn-secondary btn-sm" href={serviceTicketHref('/incidents/new', item)}>Incident</Link>
+        </div>
+      ),
+    },
+  ], []);
 
   return (
     <DevOpsLayout>
       <Head>
         <title>Service inventory - OpsTrellis</title>
       </Head>
-      <div className="ops-frame">
-        <header className="ops-frame__head">
+      <div className="portal-page">
+        <div className="portal-page__header">
           <div>
-            <h1>{currentProject ? currentProject.name : 'Service inventory'}</h1>
-            <p className="portal-page__subtitle">Production services. Observability, findings, and configuration stay on the service.</p>
+            <span className="portal-page__eyebrow">Services</span>
+            <h1 className="portal-page__title">Service inventory</h1>
+            <p className="portal-page__subtitle">Production services. Observability and findings stay on the service. Change and incident forms use this same list.</p>
           </div>
-          <Link href={addHref} className="btn btn-primary">Add service</Link>
-        </header>
+          <Link href={projectFilter ? `/services/new?project_id=${projectFilter}` : '/services/new'} className="btn btn-primary">Add service</Link>
+        </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="ops-minis" aria-label="Service inventory summary">
           <article className="ops-mini ops-mini--mint">
             <span>Registered services</span>
-            <strong>{loading || error ? 'Unknown' : (pageTotal || matches.length || visibleProjects.reduce((sum, project) => sum + (project.count || project.services.length), 0))}</strong>
-            <small>{currentProject ? currentProject.name : 'All visible projects'}</small>
+            <strong>{loading || error ? 'Unknown' : items.length}</strong>
+            <small>Production inventory</small>
           </article>
           <article className="ops-mini ops-mini--lilac">
             <span>Needs setup</span>
-            <strong>{setupLabel}</strong>
+            <strong>{loading || error ? 'Unknown' : incompleteCount}</strong>
             <small>Owner and repository missing</small>
           </article>
           <article className="ops-mini ops-mini--blue">
-            <span>Monitored environment</span>
-            <strong>Production</strong>
-            <small>{showingList && !loading && !error ? `${openFindings} open findings on this page` : 'Findings open on each service'}</small>
+            <span>Open findings</span>
+            <strong>{loading || error ? 'Unknown' : openFindings}</strong>
+            <small>Critical and warning on this inventory</small>
           </article>
         </section>
         <form className="portal-surface" onSubmit={search}>
           <div className="svc-filters">
             <label>
-              Search services
-              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or repository" />
+              Search
+              <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, repository, or team" />
+            </label>
+            <label>
+              Project
+              <select className="input" value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+                <option value="">All projects</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.name || project.code}</option>
+                ))}
+              </select>
             </label>
             <label>
               Criticality
@@ -329,7 +308,7 @@ export default function ServiceInventoryPage() {
               </select>
             </label>
             <label>
-              Service owner team
+              Owner team
               <select className="input" value={ownerTeamId} onChange={(event) => setOwnerTeamId(event.target.value)}>
                 <option value="">{teams.length ? 'All teams' : 'No teams'}</option>
                 {teams.map((team) => (
@@ -337,134 +316,44 @@ export default function ServiceInventoryPage() {
                 ))}
               </select>
             </label>
+            <label>
+              Findings
+              <select className="input" value={findingsFilter} onChange={(event) => setFindingsFilter(event.target.value)}>
+                <option value="">All</option>
+                <option value="open">Open findings</option>
+                <option value="critical">Critical</option>
+                <option value="none">None recorded</option>
+              </select>
+            </label>
           </div>
           {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
         </form>
-        {projectFilter ? (
-          <nav className="svc-crumb" aria-label="Location">
-            <Link href="/services">Service inventory</Link>
-            {currentProject ? (
-              <>
-                <span aria-hidden="true">/</span>
-                <span>{currentProject.name}</span>
-              </>
-            ) : null}
-          </nav>
-        ) : null}
-        {loading ? <div className="empty-state">Loading service inventory...</div> : null}
-        {!loading && query.trim() ? (
-          <>
-          <ul className="svc-tree">
-            {matches.length ? pagedMatches.map((item) => (
-              <li key={item.id}>
-                <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
-                  <strong title={item.service}>{item.service || 'Unknown'}</strong>
-                  <span>Project: {label(item.project_name || '')}</span>
-                  <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')} · <ServiceClassBadge value={item.criticality} /></span>
-                </button>
-              </li>
-            )) : <li className="svc-tree__empty">No services match this search.</li>}
-          </ul>
-          {matchTotal > servicePageSize ? (
-            <div className="ig-table-pager">
-              <span>Showing {matchPageSafe * servicePageSize + 1}–{Math.min(matchTotal, matchPageSafe * servicePageSize + pagedMatches.length)} of {matchTotal}</span>
-              <div className="ig-table-pager__actions">
-                <button type="button" className="btn btn-secondary btn-sm" disabled={matchPageSafe === 0} onClick={() => setServicePage(matchPageSafe - 1)}>Previous</button>
-                <button type="button" className="btn btn-secondary btn-sm" disabled={matchPageSafe >= matchPageCount - 1} onClick={() => setServicePage(matchPageSafe + 1)}>Next</button>
-              </div>
-            </div>
-          ) : null}
-          </>
-        ) : null}
-        {!loading && !query.trim() && !projectFilter ? (
-          visibleProjects.length ? (
-            <ul className="svc-tree">
-              {visibleProjects.map((project) => {
-                const serviceCount = project.count || project.services.length;
-                return (
-                  <li key={project.key}>
-                    <Link className="svc-tree__folder" href={`/services?project_id=${project.id}`}>
-                      <span>{project.name}</span>
-                      <small>{serviceCount} {serviceCount === 1 ? 'production service' : 'production services'}</small>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : <div className="empty-state">No projects are visible for this scope.</div>
-        ) : null}
-        {!loading && !query.trim() && currentProject ? (
-          visibleServices.length ? (
-            <>
-            <ul className="svc-tree svc-tree__services">
-              {pagedServices.map((item) => (
-                <li key={item.id}>
-                  <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
-                    <strong title={item.service}>{item.service || 'Unknown'}</strong>
-                    <span>{(item.repo || '').trim() || 'Repository not connected'}</span>
-                    <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')} · <ServiceClassBadge value={item.criticality} />{(item.open_critical || item.open_warning) ? ` · ${item.open_critical || 0} critical / ${item.open_warning || 0} warning` : ''}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {serviceTotal > servicePageSize ? (
-              <div className="ig-table-pager">
-                <span>Showing {servicePageSafe * servicePageSize + 1}–{Math.min(serviceTotal, servicePageSafe * servicePageSize + pagedServices.length)} of {serviceTotal}</span>
-                <div className="ig-table-pager__actions">
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={servicePageSafe === 0} onClick={() => setServicePage(servicePageSafe - 1)}>Previous</button>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={servicePageSafe >= servicePageCount - 1} onClick={() => setServicePage(servicePageSafe + 1)}>Next</button>
-                </div>
-              </div>
-            ) : null}
-            </>
-          ) : (
-            <div className="svc-tree__empty">
-              <span>No production services in this project.</span>
-              {currentProject.id ? <Link href={addHref}>Add service</Link> : null}
-            </div>
-          )
-        ) : null}
-        <InspectorDrawer
-          open={Boolean(preview)}
-          onClose={() => setPreview(null)}
-          resetKey={preview?.id}
-          label="Service preview"
-          eyebrow="Service inventory"
-          title={preview?.service || 'Service'}
-          subtitle={preview ? [preview.project_name || 'Project unknown', 'Production'].join(' · ') : undefined}
-          headerActions={preview ? <CopyButton value={preview.service} label="service name" /> : null}
-          footer={preview ? (
-            <div className="portal-page__actions">
-              <Link className="btn btn-secondary" href={`${serviceDetailHref(preview.id, router.query)}&tab=findings`}>
-                {(preview.open_critical || preview.open_warning) ? 'Open findings' : 'View findings'}
-              </Link>
-              <Link
-                className="btn btn-secondary"
-                href={`${serviceDetailHref(preview.id, router.query)}&tab=observability`}
-              >
-                Open observability
-              </Link>
-              <Link
-                className="btn btn-primary"
-                href={serviceDetailHref(preview.id, router.query)}
-                onClick={() => rememberService({ id: preview.id, name: preview.service, project: preview.project_name, environment: preview.environment })}
-              >
-                Open service
-              </Link>
-            </div>
-          ) : null}
-        >
-          {preview ? (
-            <div className="portal-stack">
-              <p>Project: {preview.project_name || 'Unknown'}</p>
-              <p>Monitored environment: Production</p>
-              <p>Repository: {(preview.repo || '').trim() || 'Not connected'}</p>
-              <p>Owner: {label(preview.team || '') === 'Unknown' ? 'Unassigned' : label(preview.team || '')}</p>
-              <p>Class: <ServiceClassBadge value={preview.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span></p>
-              <p>Open findings: {(preview.open_critical || 0) + (preview.open_warning || 0) ? `${preview.open_critical || 0} critical / ${preview.open_warning || 0} warning` : 'None recorded. That is not proof of health if monitors have not been evaluated.'}</p>
-            </div>
-          ) : null}
-        </InspectorDrawer>
+        <section className="portal-surface">
+          <div className="ig-legacy-table">
+            <DataTable<ServiceRow>
+              label="Service inventory"
+              columns={columns}
+              rows={rows}
+              rowKey={(item) => item.id}
+              loading={loading}
+              onRowOpen={(item) => {
+                rememberService({
+                  id: item.id,
+                  name: item.service,
+                  project: item.project_name,
+                  environment: item.environment,
+                });
+                void router.push(serviceDetailHref(item.id, router.query));
+              }}
+              empty={
+                <EmptyState
+                  title={filtering ? 'No services match these filters' : 'No production services yet'}
+                  body={filtering ? 'Clear filters to see the full inventory.' : 'Add a service to this inventory. Change and incident requests pick from this list.'}
+                />
+              }
+            />
+          </div>
+        </section>
       </div>
     </DevOpsLayout>
   );

@@ -11,6 +11,7 @@ import { expireSession } from '../../lib/sessionExpiry';
 import { focusField } from '../../lib/focusField';
 import { saveSubmissionResult } from '../../lib/submissionResult';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
+import { inventoryServicesPath } from '../../lib/sreMonitoring';
 
 const PROBLEM_ATTEMPT_KEY = 'opstrellis-problem-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -109,7 +110,7 @@ export default function NewProblemPage() {
     };
     Promise.all([
       loadJson('/api/devops/projects'),
-      loadJson('/api/devops/services'),
+      loadJson(inventoryServicesPath()),
       loadJson('/api/devops/users?audience=portal'),
       loadJson('/api/devops/incidents'),
       loadJson('/api/devops/problems?mode=preview'),
@@ -314,7 +315,7 @@ export default function NewProblemPage() {
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
                 <legend className="form-section__title">Scope</legend>
-                <p className="form-section__copy">Pick the project first. Service and environment come from that project.</p>
+                <p className="form-section__copy">Pick the project first. The service list is Service inventory for that project (production).</p>
                 <div className="portal-form-grid">
 <label className="label">
                   Project<span className="form-req" aria-hidden="true"> *</span>
@@ -334,22 +335,13 @@ export default function NewProblemPage() {
                     {projectId ? scopedServices.map((item) => (
                       <option key={item.id} value={item.service}>
                         {item.service}
-                        {item.environment ? ` · ${item.environment}` : ''}
                       </option>
                     )) : null}
                   </select>
                 </label>
 <label className="label">
-                  Environment
-                  <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} disabled={!projectId}>
-                    <option value="">{projectId ? 'Select an environment' : 'Select a project first'}</option>
-                    {projectId ? (projects.find((project) => String(project.id) === projectId)?.environments?.length
-                      ? projects.find((project) => String(project.id) === projectId)?.environments
-                      : Array.from(new Set(scopedServices.map((item) => item.environment).filter(Boolean)))
-                    )?.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    )) : null}
-                  </select>
+                  Monitored environment
+                  <input className="input" value={service ? 'Production' : ''} readOnly placeholder="Filled from the service" />
                 </label>
                 </div>
               </fieldset>

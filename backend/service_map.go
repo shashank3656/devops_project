@@ -524,10 +524,23 @@ func devopsServiceMapHandler(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"services": items, "total": total, "limit": 50, "offset": offset, "status": "ok"})
 			return
 		}
-		items, err := listServiceMap(projectID, r.URL.Query().Get("environment"), r.URL.Query().Get("q"))
+		envFilter := r.URL.Query().Get("environment")
+		if monitored {
+			envFilter = ""
+		}
+		items, err := listServiceMap(projectID, envFilter, r.URL.Query().Get("q"))
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
 			return
+		}
+		if monitored {
+			filtered := make([]serviceMapEntry, 0, len(items))
+			for _, item := range items {
+				if isMonitoredServiceEnvironment(item.Environment) {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
 		}
 		items, err = filterServicesVisible(userID, items)
 		if err != nil {

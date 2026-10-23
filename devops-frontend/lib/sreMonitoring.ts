@@ -3,6 +3,17 @@ export function isMonitoredEnvironment(value?: string): boolean {
   return text === '' || text === 'prod' || text === 'production';
 }
 
+export function inventoryServicesPath(params?: { project_id?: string; q?: string; team?: string }): string {
+  const search = new URLSearchParams({ monitored: '1' });
+  const projectId = params?.project_id?.trim();
+  const q = params?.q?.trim();
+  const team = params?.team?.trim();
+  if (projectId) search.set('project_id', projectId);
+  if (q) search.set('q', q);
+  if (team) search.set('team', team);
+  return `/api/devops/services?${search.toString()}`;
+}
+
 export function monitoredEnvironmentName(options: string[] = []): string {
   const names = options.map((item) => item.trim()).filter(Boolean);
   const production = names.find((item) => item.toLowerCase() === 'production');
