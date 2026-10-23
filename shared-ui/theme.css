@@ -10103,7 +10103,14 @@ html[data-theme] .devops-layout .portal-form-grid__span-2 {
 
 /* Long names, ticket lists, and error text stay inside the page. */
 html[data-theme] .devops-layout :is(.portal-page__title, .devops-navbar__title, .alert, .ops-crumb__list, .ig-scope-bar__field, .ig-table td) {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+}
+
+html[data-theme] .devops-layout .ig-table .ig-mono,
+html[data-theme] .devops-layout .ig-table .ig-cell-title {
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
 }
 
 html[data-theme] .devops-layout .alert {
@@ -11251,8 +11258,9 @@ html[data-theme] .devops-layout :is(input, select, textarea, button, a):focus-vi
 
 .sre-filter-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+  align-items: end;
 }
 
 .sre-filter-bar label {

@@ -26,6 +26,8 @@ export default function PageFilters({
   onClear?: () => void;
 }) {
   const active = chips.filter((chip) => chip.value);
+  const hasFields = Boolean(onSearchChange || (onStatusChange && statusOptions));
+  if (!active.length && !hasFields) return null;
   return (
     <div className="ig-page-filters">
       {active.length > 0 ? (
@@ -48,32 +50,34 @@ export default function PageFilters({
           ) : null}
         </div>
       ) : null}
-      <div className="ig-page-filters__row">
-        {onSearchChange ? (
-          <label className="ig-page-filters__field">
-            <span>Search</span>
-            <input
-              className="input"
-              type="search"
-              value={search || ''}
-              placeholder={searchPlaceholder}
-              onChange={(event) => onSearchChange(event.target.value)}
-            />
-          </label>
-        ) : null}
-        {onStatusChange && statusOptions ? (
-          <label className="ig-page-filters__field">
-            <span>Status</span>
-            <select className="input" value={status || ''} onChange={(event) => onStatusChange(event.target.value)}>
-              {statusOptions.map((option) => (
-                <option key={option.value || 'all'} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-      </div>
+      {hasFields ? (
+        <div className="ig-page-filters__row">
+          {onSearchChange ? (
+            <label className="ig-page-filters__field">
+              <span>Search</span>
+              <input
+                className="input"
+                type="search"
+                value={search || ''}
+                placeholder={searchPlaceholder}
+                onChange={(event) => onSearchChange(event.target.value)}
+              />
+            </label>
+          ) : null}
+          {onStatusChange && statusOptions ? (
+            <label className="ig-page-filters__field">
+              <span>Status</span>
+              <select className="input" value={status || ''} onChange={(event) => onStatusChange(event.target.value)}>
+                {statusOptions.map((option) => (
+                  <option key={option.value || 'all'} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

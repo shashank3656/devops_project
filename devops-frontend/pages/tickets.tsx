@@ -410,7 +410,7 @@ export default function DevOpsTickets() {
   const detailOutsideScope = Boolean(
     detailRequest && (
       (projectId && String(detailRequest.project_id || '') !== projectId) ||
-      (environment && detailRequest.env.toLowerCase() !== environment.toLowerCase()) ||
+      (environment && String(detailRequest.env || '').toLowerCase() !== environment.toLowerCase()) ||
       (status && detailRequest.status !== status) ||
       (cloud && detailRequest.cloud !== cloud) ||
       (team && detailRequest.team !== team) ||
@@ -1050,10 +1050,10 @@ export default function DevOpsTickets() {
         <title>Requests - OpsTrellis</title>
       </Head>
       <DevOpsLayout>
-        <div className="devops-tickets-page">
-          <div className="devops-tickets-header">
+        <div className="portal-page devops-tickets-page">
+          <div className="portal-page__header devops-tickets-header">
             <div>
-              <h1 className="devops-tickets-title">Requests</h1>
+              <h1 className="portal-page__title">Requests</h1>
               {recentIds.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Recent:</span>

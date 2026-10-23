@@ -3071,7 +3071,7 @@ tbody tr td { color: var(--color-text); }
 
 .devops-filter-ribbon__bar {
   display: grid;
-  grid-template-columns: minmax(160px, 0.9fr) minmax(260px, 1.3fr) minmax(180px, 1fr) minmax(170px, 0.9fr) auto;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1fr) auto;
   gap: 10px;
   align-items: stretch;
 }
@@ -3128,7 +3128,8 @@ tbody tr td { color: var(--color-text); }
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .devops-filter-ribbon__badge {
@@ -3165,7 +3166,7 @@ tbody tr td { color: var(--color-text); }
 
 .devops-filter-ribbon__panel-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   align-items: end;
 }
@@ -3241,19 +3242,19 @@ tbody tr td { color: var(--color-text); }
 }
 @media (max-width: 1120px) {
   .devops-filter-ribbon__bar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr) minmax(0, 1fr) auto;
   }
 
   .devops-filter-ribbon--compact .devops-filter-ribbon__bar {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .devops-filter-ribbon__actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
 
   .devops-filter-ribbon__panel-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .devops-tickets-filter-quick {
