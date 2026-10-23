@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState, type ReactNode } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import Service360 from '../../components/Service360';
 import SreServiceWorkspace, { ServiceClassBadge } from '../../components/SreServiceWorkspace';
@@ -50,6 +50,24 @@ interface OwnerTeam {
 function known(value: string | undefined): string {
   const text = (value || '').trim();
   return text || 'Unknown';
+}
+
+function assigned(value?: string): string {
+  return (value || '').trim();
+}
+
+function IdentityField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="sre-meta__item">
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+function IdentityValue({ value, empty }: { value?: string; empty: string }) {
+  const text = assigned(value);
+  return text ? <>{text}</> : <span className="sre-meta__empty">{empty}</span>;
 }
 
 function readTeams(data: { teams?: unknown; owner_teams?: unknown }): OwnerTeam[] {
@@ -306,9 +324,10 @@ export default function ServiceDetailPage() {
             <span className="portal-page__eyebrow">Service inventory</span>
             <h1 className="portal-page__title">{editing ? 'Edit service' : known(item?.service)}</h1>
             {item && !editing ? (
-              <p className="portal-page__subtitle">
+              <p className="portal-page__subtitle sre-service-kicker">
                 <ServiceClassBadge value={item.criticality} />
-                <span> · {known(item.team)} · Production</span>
+                <span>{assigned(item.team) || 'Owner not assigned'}</span>
+                <span>Production</span>
               </p>
             ) : null}
           </div>
@@ -330,7 +349,7 @@ export default function ServiceDetailPage() {
               <p className="ops-note"><strong>Editing service identity</strong><span>Overview, observability, and findings stay open. Save or cancel in Configuration.</span></p>
             ) : null}
             {(!(item.repo || '').trim() || !(item.team || '').trim() || !(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql)) ? (
-              <p className="ops-note"><strong>Setup incomplete</strong><span>Repository, service owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
+              <p className="ops-note ops-note--warn"><strong>Setup incomplete</strong><span>Repository, service owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
             ) : null}
             {sessionToken ? (
               <SreServiceWorkspace
@@ -343,8 +362,13 @@ export default function ServiceDetailPage() {
                 isManager={isManager}
                 configurationLead={(
                   <section className="portal-surface">
-                    <h2>General and ownership</h2>
-                    <p className="form-section__copy">Class, support, escalation, and runbook are identity. They are not a health signal.</p>
+                    <div className="portal-surface__header">
+                      <div>
+                        <h2 className="portal-surface__title">General and ownership</h2>
+                        <p className="portal-surface__subtitle">Class, support, escalation, and runbook are identity. They are not a health signal.</p>
+                      </div>
+                      {isManager && !editing ? <button type="button" className="btn btn-secondary" onClick={() => startEdit()}>Edit identity</button> : null}
+                    </div>
                     {editing ? (
                       <form onSubmit={(event) => void save(event)}>
                         <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
@@ -414,92 +438,81 @@ export default function ServiceDetailPage() {
                       </form>
                     ) : (
                       <>
-                        <dl>
-                          <dt>Monitored environment</dt><dd>Production</dd>
-                          <dt>Criticality</dt>
-                          <dd><ServiceClassBadge value={item.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span></dd>
-                          <dt>Service owner team</dt><dd>{(item.team || '').trim() || 'Not assigned'}</dd>
-                          <dt>Support team</dt><dd>{(item.support_team || '').trim() || 'Not assigned'}</dd>
-                          <dt>Escalation route</dt><dd>{(item.escalation_route || '').trim() || 'Not assigned'}</dd>
-                          <dt>Runbook</dt>
-                          <dd>{(item.runbook_url || '').trim() ? <a href={item.runbook_url} target="_blank" rel="noreferrer">{item.runbook_url}</a> : 'Not linked'}</dd>
-                          <dt>Repository</dt><dd>{(item.repo || '').trim() || 'Not connected'}</dd>
+                        <dl className="sre-meta">
+                          <IdentityField label="Monitored environment">Production</IdentityField>
+                          <IdentityField label="Criticality"><ServiceClassBadge value={item.criticality} /></IdentityField>
+                          <IdentityField label="Service owner team"><IdentityValue value={item.team} empty="Not assigned" /></IdentityField>
+                          <IdentityField label="Support team"><IdentityValue value={item.support_team} empty="Not assigned" /></IdentityField>
+                          <IdentityField label="Escalation route"><IdentityValue value={item.escalation_route} empty="Not assigned" /></IdentityField>
+                          <IdentityField label="Runbook">
+                            {assigned(item.runbook_url) ? <a href={item.runbook_url} target="_blank" rel="noreferrer">{item.runbook_url}</a> : <span className="sre-meta__empty">Not linked</span>}
+                          </IdentityField>
+                          <IdentityField label="Repository"><IdentityValue value={item.repo} empty="Not connected" /></IdentityField>
+                          <IdentityField label="Project"><IdentityValue value={item.project_name} empty="Not assigned" /></IdentityField>
                         </dl>
-                        {isManager ? <button type="button" className="btn btn-primary" onClick={() => startEdit()}>Edit service</button> : <p className="form-section__copy">You can view identity. Editing needs a manager role.</p>}
+                        {!isManager ? <p className="form-section__copy">You can view identity. Editing needs a manager role.</p> : null}
                       </>
                     )}
                   </section>
                 )}
                 overview={(
                   <>
-                    <div className="ops-catalogue">
-                      <section className="ops-service">
-                        <h2>Ownership & source</h2>
-                        <dl>
-                          <dt>Project</dt><dd>{known(item.project_name)}</dd>
-                          <dt>Monitored environment</dt><dd>Production</dd>
-                          <dt>Project team</dt>
-                          <dd>{(projects.find((project) => project.id === item.project_id)?.owner_team || '').trim() || 'Not assigned'}</dd>
-                          <dt>Criticality</dt>
-                          <dd>
-                            <ServiceClassBadge value={item.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span>
-                            {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('class')}>Edit class</button> : null}
-                          </dd>
-                          <dt>Service owner team</dt>
-                          <dd>
-                            {(item.team || '').trim() ? item.team : 'Not assigned'}
-                            {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('team')}>{(item.team || '').trim() ? 'Edit owner' : 'Assign owner'}</button> : null}
-                          </dd>
-                          <dt>Support team</dt>
-                          <dd>
-                            {(item.support_team || '').trim() || 'Not assigned'}
-                            {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('support')}>{(item.support_team || '').trim() ? 'Edit support' : 'Assign support'}</button> : null}
-                          </dd>
-                          <dt>Escalation route</dt>
-                          <dd>
-                            {(item.escalation_route || '').trim() || 'Not assigned'}
-                            {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('escalation')}>{(item.escalation_route || '').trim() ? 'Edit escalation' : 'Add escalation'}</button> : null}
-                          </dd>
-                          <dt>Runbook</dt>
-                          <dd>
-                            {(item.runbook_url || '').trim() ? <a href={item.runbook_url} target="_blank" rel="noreferrer">{item.runbook_url}</a> : 'Not linked'}
-                            {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('runbook')}>{(item.runbook_url || '').trim() ? 'Edit runbook' : 'Link runbook'}</button> : null}
-                          </dd>
-                          <dt>Repository</dt>
-                          <dd>
-                            {(item.repo || '').trim() || 'Not connected'}
-                            {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('repo')}>{(item.repo || '').trim() ? 'Edit repository' : 'Connect repository'}</button> : null}
-                          </dd>
-                        </dl>
-                      </section>
-                      <section className="ops-service">
-                        <h2>Dashboard evidence</h2>
-                        <p>A dashboard URL is evidence, not an executable query. Health stays Unknown until a monitor is evaluated.</p>
-                        {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <span>Grafana {known(item.grafana_uid)}</span>}
-                        {isManager ? (
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit('monitoring')}>{item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql ? 'Edit dashboard' : 'Link dashboard'}</button>
-                        ) : null}
-                      </section>
-                    </div>
-                    <Service360
-                    apiUrl={apiUrl}
-                    token={sessionToken}
-                    serviceName={item.service}
-                    projectId={item.project_id}
-                    environment={item.environment}
-                    ownerTeam={item.team}
-                    repo={item.repo}
-                    overview={(
-                      <section className="ops-caught">
-                        <h2>Start work</h2>
-                        <p>Creating a change or incident keeps this project, service, and environment. You can change that scope on the next page.</p>
-                        <div className="portal-page__actions">
-                          <Link href={serviceTicketHref('/changes/new', item)} className="btn btn-primary">Create change</Link>
-                          <Link href={serviceTicketHref('/incidents/new', item)} className="btn btn-secondary">Report incident</Link>
+                    <section className="portal-surface">
+                      <div className="portal-surface__header">
+                        <div>
+                          <h2 className="portal-surface__title">Ownership and source</h2>
+                          <p className="portal-surface__subtitle">Identity for this production service. Class is not a health indicator.</p>
                         </div>
-                      </section>
-                    )}
-                  />
+                        {isManager ? <button type="button" className="btn btn-secondary" onClick={() => startEdit()}>Edit identity</button> : null}
+                      </div>
+                      <dl className="sre-meta">
+                        <IdentityField label="Project"><IdentityValue value={item.project_name} empty="Not assigned" /></IdentityField>
+                        <IdentityField label="Monitored environment">Production</IdentityField>
+                        <IdentityField label="Criticality"><ServiceClassBadge value={item.criticality} /></IdentityField>
+                        <IdentityField label="Service owner team"><IdentityValue value={item.team} empty="Not assigned" /></IdentityField>
+                        <IdentityField label="Support team"><IdentityValue value={item.support_team} empty="Not assigned" /></IdentityField>
+                        <IdentityField label="Escalation route"><IdentityValue value={item.escalation_route} empty="Not assigned" /></IdentityField>
+                        <IdentityField label="Runbook">
+                          {assigned(item.runbook_url) ? <a href={item.runbook_url} target="_blank" rel="noreferrer">{item.runbook_url}</a> : <span className="sre-meta__empty">Not linked</span>}
+                        </IdentityField>
+                        <IdentityField label="Repository"><IdentityValue value={item.repo} empty="Not connected" /></IdentityField>
+                      </dl>
+                    </section>
+                    <section className="portal-surface">
+                      <div className="portal-surface__header">
+                        <div>
+                          <h2 className="portal-surface__title">Dashboard evidence</h2>
+                          <p className="portal-surface__subtitle">A dashboard URL is evidence, not an executable query. Health stays Unknown until a monitor is evaluated.</p>
+                        </div>
+                        {isManager ? (
+                          <button type="button" className="btn btn-secondary" onClick={() => startEdit('monitoring')}>{item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql ? 'Edit dashboard' : 'Link dashboard'}</button>
+                        ) : null}
+                      </div>
+                      {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <p className="sre-meta__empty">Grafana {known(item.grafana_uid)}</p>}
+                    </section>
+                    <section className="portal-surface">
+                      <div className="portal-surface__header">
+                        <div>
+                          <h2 className="portal-surface__title">Related work</h2>
+                          <p className="portal-surface__subtitle">Resources, changes, incidents, and access for this production service.</p>
+                        </div>
+                      </div>
+                      <Service360
+                        apiUrl={apiUrl}
+                        token={sessionToken}
+                        serviceName={item.service}
+                        projectId={item.project_id}
+                        environment={item.environment}
+                        ownerTeam={item.team}
+                        repo={item.repo}
+                        overview={(
+                          <div className="portal-page__actions">
+                            <Link href={serviceTicketHref('/changes/new', item)} className="btn btn-primary">Create change</Link>
+                            <Link href={serviceTicketHref('/incidents/new', item)} className="btn btn-secondary">Report incident</Link>
+                          </div>
+                        )}
+                      />
+                    </section>
                   </>
                 )}
               />

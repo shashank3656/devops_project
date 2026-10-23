@@ -283,8 +283,14 @@ export default function ServiceInventoryPage() {
             <small>Critical and warning on this inventory</small>
           </article>
         </section>
-        <form className="portal-surface" onSubmit={search}>
-          <div className="svc-filters">
+        <section className="portal-surface">
+          <div className="portal-surface__header">
+            <div>
+              <h2 className="portal-surface__title">Production catalogue</h2>
+              <p className="portal-surface__subtitle">Open a row for observability, findings, and configuration. Change and incident forms use this same list.</p>
+            </div>
+          </div>
+          <form className="svc-filters svc-filters--inventory" onSubmit={search}>
             <label>
               Search
               <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, repository, or team" />
@@ -325,10 +331,8 @@ export default function ServiceInventoryPage() {
                 <option value="none">None recorded</option>
               </select>
             </label>
-          </div>
-          {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
-        </form>
-        <section className="portal-surface">
+            {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : <span />}
+          </form>
           <div className="ig-legacy-table">
             <DataTable<ServiceRow>
               label="Service inventory"

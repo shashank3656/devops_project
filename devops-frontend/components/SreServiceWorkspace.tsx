@@ -521,8 +521,6 @@ export default function SreServiceWorkspace({
             {isManager ? <button type="button" className="btn btn-primary" onClick={() => setTab('configuration')}>Open configuration</button> : null}
           </div>
         )
-      : tab === 'configuration' && isManager
-        ? <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>Add monitor</button>
         : null;
 
   const why = useMemo(() => {
@@ -540,17 +538,19 @@ export default function SreServiceWorkspace({
 
   return (
     <div className="sre-workspace">
-      <div className="sre-workspace__toolbar">
-        <p className="sre-workspace__mode">On-demand monitoring{lastEval ? ` · last successful evaluation ${formatOperationalTime(lastEval)}` : ' · not evaluated yet'}</p>
-        {primaryAction}
-      </div>
-      <div className="sre-tabs" role="tablist" aria-label="Service workspace">
-        {TABS.map((item) => (
-          <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`sre-tabs__tab${tab === item.id ? ' is-active' : ''}`} onClick={() => setTab(item.id)}>
-            {item.label}
-            {item.id === 'findings' && openFindings.length ? <span className="sre-tabs__count">{openFindings.length}</span> : null}
-          </button>
-        ))}
+      <div className="sre-workspace__chrome">
+        <div className="sre-tabs" role="tablist" aria-label="Service workspace">
+          {TABS.map((item) => (
+            <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={`sre-tabs__tab${tab === item.id ? ' is-active' : ''}`} onClick={() => setTab(item.id)}>
+              {item.label}
+              {item.id === 'findings' && openFindings.length ? <span className="sre-tabs__count">{openFindings.length}</span> : null}
+            </button>
+          ))}
+        </div>
+        <div className="sre-workspace__tools">
+          <p className="sre-workspace__mode">On-demand monitoring{lastEval ? ` · last successful evaluation ${formatOperationalTime(lastEval)}` : ' · not evaluated yet'}</p>
+          {primaryAction}
+        </div>
       </div>
       {status ? <p className="sre-live" role="status">{status}</p> : null}
       {error ? <div className="alert alert-error">{error}</div> : null}
@@ -558,7 +558,7 @@ export default function SreServiceWorkspace({
       {testNote ? <div className="alert">{testNote}</div> : null}
 
       {tab === 'overview' ? (
-        <div className="sre-overview">
+        <div className="sre-panel">
           <section className="sre-cards" aria-label="Reliability summary">
             <article className={`sre-card is-${score(availability)?.state || 'unknown'}`}>
               <span>Availability</span>
@@ -587,7 +587,7 @@ export default function SreServiceWorkspace({
       ) : null}
 
       {tab === 'observability' ? (
-        <div>
+        <div className="sre-panel">
           <section className="sre-cards" aria-label="Observability scorecards">
             {[{ key: 'availability', monitor: availability, label: 'Availability' }, { key: 'latency', monitor: latency, label: 'Latency compliance' }].map((card) => {
               const measurement = card.monitor?.latest?.measurement;
@@ -622,7 +622,12 @@ export default function SreServiceWorkspace({
           ) : null}
           {history.length ? (
             <section className="portal-surface" aria-label="Recent availability trend">
-              <h2>Recent evaluations</h2>
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Recent evaluations</h2>
+                  <p className="portal-surface__subtitle">Missing points stay Unknown, not Healthy.</p>
+                </div>
+              </div>
               <div className="sre-spark" aria-hidden="true">
                 {sparklineHeights([...history].reverse().map((item) => item.measurement?.availability_bps || 0)).map((height, index) => (
                   <i key={`${height}-${index}`} style={{ height: `${height}px` }} />
@@ -642,9 +647,9 @@ export default function SreServiceWorkspace({
         </div>
       ) : null}
 
-      {tab === 'findings' ? (
-        <div>
-          <div className="svc-filters">
+          {tab === 'findings' ? (
+        <div className="sre-panel">
+          <div className="sre-filter-bar">
             <label>Severity
               <select className="input" value={findingFilter.severity} onChange={(event) => setFindingFilter({ ...findingFilter, severity: event.target.value })}>
                 <option value="">All</option>
@@ -672,7 +677,11 @@ export default function SreServiceWorkspace({
           </div>
           {episodes.length ? (
             <section className="portal-surface">
-              <h2>Alert episodes</h2>
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Alert episodes</h2>
+                </div>
+              </div>
               <ul className="sre-monitor-list">
                 {episodes.map((episode) => (
                   <li key={episode.id}>
@@ -683,13 +692,18 @@ export default function SreServiceWorkspace({
               </ul>
             </section>
           ) : null}
-          {!loading && findingsEmptyCopy ? <p className="empty-state">{findingsEmptyCopy}</p> : null}
+          {!loading && findingsEmptyCopy ? (
+            <div className="sre-empty">
+              <strong>{findingsEmptyCopy}</strong>
+              <p>An empty list is not proof of health if nothing was evaluated.</p>
+            </div>
+          ) : null}
           {!loading && !monitors.length ? (
-            <p className="ops-note">
+            <div className="sre-empty">
               <strong>No monitors yet</strong>
-              <span>Configuration is where monitors, connectors, and identity edits live. Observability refresh creates findings.</span>
-              {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTab('configuration')}>Open configuration</button> : null}
-            </p>
+              <p>Configuration is where monitors, connectors, and identity edits live. Observability refresh creates findings.</p>
+              {isManager ? <button type="button" className="btn btn-secondary" onClick={() => setTab('configuration')}>Open configuration</button> : null}
+            </div>
           ) : null}
           <ul className="sre-findings">
             {visibleFindings.map((finding) => (
@@ -709,8 +723,13 @@ export default function SreServiceWorkspace({
         <div className="sre-config">
           {configurationLead}
           <section className="portal-surface">
-            <h2>Monitors and queries</h2>
-            <p className="form-section__copy">Credentials stay on the server. A dashboard URL is evidence, not an executable query.</p>
+            <div className="portal-surface__header">
+              <div>
+                <h2 className="portal-surface__title">Monitors and queries</h2>
+                <p className="portal-surface__subtitle">Credentials stay on the server. A dashboard URL is evidence, not an executable query.</p>
+              </div>
+              {isManager && !formOpen ? <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>Add monitor</button> : null}
+            </div>
             {monitors.length ? (
               <ul className="sre-monitor-list">
                 {monitors.map((monitor) => (
@@ -727,7 +746,12 @@ export default function SreServiceWorkspace({
                   </li>
                 ))}
               </ul>
-            ) : <p>No monitors yet.</p>}
+            ) : (
+              <div className="sre-empty">
+                <strong>No monitors yet</strong>
+                <p>Add a monitor to evaluate production telemetry. Until a query runs, health stays Unknown.</p>
+              </div>
+            )}
             {isManager && formOpen ? (
               <form onSubmit={(event) => void saveMonitor(event)} className="sre-monitor-form">
                 <div className="sre-steps" aria-label="Monitor steps">
@@ -800,7 +824,7 @@ export default function SreServiceWorkspace({
                   <button type="button" className="btn btn-secondary" onClick={() => { setFormOpen(false); setFormStep(1); }}>Cancel</button>
                 </div>
               </form>
-            ) : isManager ? <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>Add monitor</button> : <p>You can view configuration. Editing monitors needs a manager role.</p>}
+            ) : !isManager ? <p className="form-section__copy">You can view configuration. Editing monitors needs a manager role.</p> : null}
             {versionDiff.length ? (
               <div>
                 <h3>Query versions</h3>
@@ -816,13 +840,23 @@ export default function SreServiceWorkspace({
             ) : null}
           </section>
           <section className="portal-surface">
-            <h2>Connectors</h2>
+            <div className="portal-surface__header">
+              <div>
+                <h2 className="portal-surface__title">Connectors</h2>
+                <p className="portal-surface__subtitle">Secret values stay in environment variables. This form only stores the variable name.</p>
+              </div>
+            </div>
             {connectors.length ? connectors.map((item) => (
               <div key={item.id} className="sre-connector">
                 <p>{item.name} · {item.source_type} · {item.status} · {item.has_credential ? 'credential on file' : 'no credential'}</p>
                 {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => void testConnector(item)}>Test connector</button> : null}
               </div>
-            )) : <p>No connectors yet. Create a Pilot fixture connector to evaluate known counts without sending secrets to the browser.</p>}
+            )) : (
+              <div className="sre-empty">
+                <strong>No connectors yet</strong>
+                <p>Create a Pilot fixture connector to evaluate known counts without sending secrets to the browser.</p>
+              </div>
+            )}
             {isManager ? (
               <>
                 <button
@@ -870,8 +904,12 @@ export default function SreServiceWorkspace({
           {isManager ? (
             <>
               <section className="portal-surface">
-                <h2>Alert routing</h2>
-                <p className="form-section__copy">Manual findings stay observation-only until you enable incident creation. Existing alert webhooks still record incidents on their own path.</p>
+                <div className="portal-surface__header">
+                  <div>
+                    <h2 className="portal-surface__title">Alert routing</h2>
+                    <p className="portal-surface__subtitle">Manual findings stay observation-only until you enable incident creation. Existing alert webhooks still record incidents on their own path.</p>
+                  </div>
+                </div>
                 <label className="label"><input type="checkbox" checked={routing.observation_only} onChange={(event) => setRouting({ ...routing, observation_only: event.target.checked })} /> Observation only</label>
                 <label className="label"><input type="checkbox" checked={routing.create_incidents} onChange={(event) => setRouting({ ...routing, create_incidents: event.target.checked })} /> Create incidents from monitoring alerts</label>
                 <button type="button" className="btn btn-secondary" onClick={() => {
@@ -881,8 +919,12 @@ export default function SreServiceWorkspace({
                 }}>Save routing</button>
               </section>
               <section className="portal-surface">
-                <h2>Release guardrail</h2>
-                <p className="form-section__copy">Observation records what would have happened. Enforced mode can block a change webhook for this service after a manager enables it.</p>
+                <div className="portal-surface__header">
+                  <div>
+                    <h2 className="portal-surface__title">Release guardrail</h2>
+                    <p className="portal-surface__subtitle">Observation records what would have happened. Enforced mode can block a change webhook for this service after a manager enables it.</p>
+                  </div>
+                </div>
                 <label className="label">Mode
                   <select className="input" value={guardrail.mode} onChange={(event) => setGuardrail({ ...guardrail, mode: event.target.value })}>
                     <option value="observation">Observation</option>
