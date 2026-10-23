@@ -59,6 +59,15 @@ export function scoreDisplay(measurement?: { state?: string; availability_bps?: 
   return formatBps(measurement.availability_bps);
 }
 
+export function catalogueSliTone(state?: string): string {
+  if (state === 'healthy') return 'healthy';
+  if (state === 'at_risk') return 'at_risk';
+  if (state === 'breached') return 'breached';
+  if (state === 'no_traffic') return 'no_traffic';
+  if (state === 'query_failed') return 'query_failed';
+  return 'unknown';
+}
+
 export function budgetDisplay(measurement?: { state?: string; budget_remaining_bps?: number }): string {
   const state = measurement?.state;
   if (!measurement || state === 'query_failed' || state === 'unknown' || state === 'no_traffic' || state === 'disabled' || state === 'stale') {
@@ -114,3 +123,8 @@ export const MEASUREMENT_TYPES = [
   { value: 'latency_percentiles', label: 'Latency percentiles' },
   { value: 'provider_calculated', label: 'Provider-calculated compliance' },
 ] as const;
+
+export function measurementTypeLabel(value?: string): string {
+  const found = MEASUREMENT_TYPES.find((item) => item.value === value);
+  return found ? found.label : 'Monitor';
+}

@@ -254,6 +254,18 @@ func TestServiceEvalMetaEmptyIDs(t *testing.T) {
 	}
 }
 
+func TestConnectorProbeQueryPrometheus(t *testing.T) {
+	if got := connectorProbeQuery("prometheus"); got != "vector(1)" {
+		t.Fatalf("prometheus probe = %q", got)
+	}
+	if got := connectorProbeQuery("grafana"); got != "vector(1)" {
+		t.Fatalf("grafana probe = %q", got)
+	}
+	if got := connectorProbeQuery("fixture"); got != `{"good":1,"total":1}` {
+		t.Fatalf("fixture probe = %q", got)
+	}
+}
+
 func TestFindingIncidentLinkKeepsFirst(t *testing.T) {
 	if got := findingIncidentLink(0, 12); got != 12 {
 		t.Fatalf("empty finding should take the incident, got %d", got)

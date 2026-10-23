@@ -314,21 +314,31 @@ func devopsObservabilityConnectorDetailHandler(w http.ResponseWriter, r *http.Re
 		if _, ok := requireDevopsManager(w, r); !ok {
 			return
 		}
-		var source, secretRef string
-		if err := queryRowContext(`SELECT source_type, secret_ref FROM observability_connectors WHERE id = $1`, id).Scan(&source, &secretRef); err != nil {
+		var source, secretRef, baseURL, datasource string
+		var enabled bool
+		if err := queryRowContext(`
+			SELECT source_type, secret_ref, COALESCE(base_url,''), COALESCE(grafana_datasource_uid,''), COALESCE(enabled, TRUE)
+			FROM observability_connectors WHERE id = $1
+		`, id).Scan(&source, &secretRef, &baseURL, &datasource, &enabled); err != nil {
 			writeAPIError(w, r, http.StatusNotFound, "connector not found", err)
 			return
 		}
 		status := "ready"
 		lastErr := ""
-		if _, failState, execErr := executeMonitorQuery(source, `{"good":1,"total":1}`, secretRef); execErr != nil && source != sourceFixture {
+		if !enabled {
 			status = "failed"
-			lastErr = execErr.Error()
-			_ = failState
-		}
-		if source == sourceFixture {
+			lastErr = "connector is disabled"
+		} else if source == sourceFixture {
 			status = "ready"
-			lastErr = ""
+		} else {
+			_, _, execErr := executeConnectorQuery(connectorQuery{
+				SourceType: source, SecretRef: secretRef, BaseURL: baseURL, DatasourceUID: datasource,
+				Query: connectorProbeQuery(source), ConnectorID: id, GoodField: "good", TotalField: "total",
+			})
+			if execErr != nil {
+				status = "failed"
+				lastErr = execErr.Error()
+			}
 		}
 		_, _ = execContext(`UPDATE observability_connectors SET status = $2, last_error = $3, last_tested_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, id, status, lastErr)
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"status": status, "error": lastErr, "has_credential": strings.TrimSpace(secretRef) != ""})

@@ -3,8 +3,9 @@ import { useRouter } from 'next/router';
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { InspectorDrawer, buildPortalApiUrl, formatOperationalTime } from '@infragate/ui';
 import { useUnsavedChanges } from '../lib/useUnsavedChanges';
-import { CONNECTOR_SOURCES, MEASUREMENT_TYPES, SERVICE_CLASSES, budgetDisplay, formatBps, previewFindingRule, qualityLabel, scheduleModeCopy, scoreDisplay, serviceClassLabel, sparklineHeights, validSecretRefName, type ServiceWorkspaceTab, workspaceTab } from '../lib/sreMonitoring';
+import { CONNECTOR_SOURCES, MEASUREMENT_TYPES, SERVICE_CLASSES, budgetDisplay, formatBps, measurementTypeLabel, previewFindingRule, qualityLabel, scheduleModeCopy, scoreDisplay, serviceClassLabel, sparklineHeights, validSecretRefName, type ServiceWorkspaceTab, workspaceTab } from '../lib/sreMonitoring';
 import { serviceTicketHref } from '../lib/scopeHref';
+import { recordReference } from '../lib/recordRef';
 
 type Monitor = {
   id: number;
@@ -149,7 +150,8 @@ export default function SreServiceWorkspace({
   const [routingOpen, setRoutingOpen] = useState(false);
   const [guardrailOpen, setGuardrailOpen] = useState(false);
   const [formStep, setFormStep] = useState(1);
-  const [findingFilter, setFindingFilter] = useState({ severity: '', lifecycle: '', source: '' });
+  const [findingFilter, setFindingFilter] = useState({ severity: '', lifecycle: '', source: '', monitor: '' });
+  const [trendMonitorId, setTrendMonitorId] = useState(0);
   const [testNote, setTestNote] = useState('');
   const [routing, setRouting] = useState({ observation_only: true, create_incidents: false, page_oncall: false });
   const [guardrail, setGuardrail] = useState({ mode: 'observation', block_on_critical: true, min_budget_bps: 2000, freshness_minutes: 1440 });
@@ -213,12 +215,10 @@ export default function SreServiceWorkspace({
     const monitor = monitors.find((item) => item.measurement_type === 'availability_sli') || monitors[0];
     if (!monitor) return;
     void Promise.all([
-      fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/monitors/${monitor.id}/history`), { headers: authHeaders(token) }).then((res) => res.json().catch(() => ({}))),
       fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/monitors/${monitor.id}/versions`), { headers: authHeaders(token) }).then((res) => res.json().catch(() => ({}))),
       fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/monitoring/context`), { headers: authHeaders(token) }).then((res) => res.json().catch(() => ({}))),
       fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/monitoring/episodes?environment=${encodeURIComponent(environment)}`), { headers: authHeaders(token) }).then((res) => res.json().catch(() => ({}))),
-    ]).then(([historyData, versionData, contextData, episodeData]) => {
-      setHistory(Array.isArray(historyData.history) ? historyData.history : []);
+    ]).then(([versionData, contextData, episodeData]) => {
       setVersions(Array.isArray(versionData.versions) ? versionData.versions : []);
       setVersionDiff(Array.isArray(versionData.diff) ? versionData.diff : []);
       setVersionMonitorId(monitor.id);
@@ -226,6 +226,18 @@ export default function SreServiceWorkspace({
       setEpisodes(Array.isArray(episodeData.episodes) ? episodeData.episodes : []);
     });
   }, [apiUrl, environment, monitors, serviceId, token]);
+
+  useEffect(() => {
+    if (!token || !serviceId) return;
+    const monitor = monitors.find((item) => item.id === trendMonitorId) || monitors.find((item) => item.measurement_type === 'availability_sli') || monitors[0];
+    if (!monitor) {
+      setHistory([]);
+      return;
+    }
+    void fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/monitors/${monitor.id}/history`), { headers: authHeaders(token) })
+      .then((res) => res.json().catch(() => ({})))
+      .then((historyData) => setHistory(Array.isArray(historyData.history) ? historyData.history : []));
+  }, [apiUrl, monitors, serviceId, token, trendMonitorId]);
 
   useEffect(() => {
     const wanted = Number(Array.isArray(router.query.finding_id) ? router.query.finding_id[0] : router.query.finding_id);
@@ -253,6 +265,7 @@ export default function SreServiceWorkspace({
 
   const availability = monitors.find((item) => item.measurement_type === 'availability_sli');
   const latency = monitors.find((item) => item.measurement_type === 'latency_sli');
+  const trendMonitor = monitors.find((item) => item.id === trendMonitorId) || availability || monitors[0];
   const openFindings = findings.filter((item) => item.lifecycle !== 'resolved');
   const lastEval = monitors.map((item) => item.latest?.evaluated_at || item.latest?.measurement?.observed_at).filter(Boolean).sort().at(-1);
   const scheduledMinutes = monitors.filter((item) => item.enabled && (item.schedule_minutes || 0) > 0).map((item) => item.schedule_minutes || 0);
@@ -261,6 +274,7 @@ export default function SreServiceWorkspace({
     (!findingFilter.severity || item.severity === findingFilter.severity)
     && (!findingFilter.lifecycle || item.lifecycle === findingFilter.lifecycle)
     && (!findingFilter.source || item.source_type === findingFilter.source)
+    && (!findingFilter.monitor || String(item.monitor_id) === findingFilter.monitor)
   ));
   const findingsEmptyCopy = !findings.length && !lastEval
     ? 'Not evaluated yet. Findings appear after a successful refresh on Observability.'
@@ -666,6 +680,7 @@ export default function SreServiceWorkspace({
     const measurement = availability?.latest?.measurement;
     if (!measurement) return null;
     return {
+      name: availability.name,
       numerator: measurement.good,
       denominator: measurement.total,
       target: formatBps(measurement.target_bps || availability.target_bps),
@@ -700,9 +715,12 @@ export default function SreServiceWorkspace({
         <div className="sre-panel">
           <section className="sre-cards" aria-label="Reliability summary">
             <article className={`sre-card is-${score(availability)?.state || 'unknown'}`}>
-              <span>Availability</span>
+              <span>{availability?.name || 'Availability'}</span>
               <strong>{scoreDisplay(score(availability))}</strong>
               <small>{formatBps(availability?.target_bps)} over {availability?.window_minutes || '—'} min · {stateLabel(score(availability)?.state)}</small>
+              {monitors.filter((item) => item.measurement_type === 'availability_sli').length > 1 ? (
+                <small>Service rollup uses this monitor. Open Observability for each endpoint SLI.</small>
+              ) : null}
             </article>
             <article className={`sre-card is-${score(latency)?.state || 'unknown'}`}>
               <span>Latency compliance</span>
@@ -728,36 +746,61 @@ export default function SreServiceWorkspace({
 
       {tab === 'observability' ? (
         <div className="sre-panel">
-          <section className="sre-cards" aria-label="Observability scorecards">
-            {[{ key: 'availability', monitor: availability, label: 'Availability' }, { key: 'latency', monitor: latency, label: 'Latency compliance' }].map((card) => {
-              const measurement = card.monitor?.latest?.measurement;
+          <p className="form-section__copy">Each card is one saved monitor and one SLI percentage. Name the monitor after the endpoint or route. A query that sums every route is still one service SLI, not a list of URLs. Missing telemetry stays Unknown.</p>
+          <section className="sre-cards sre-cards--watch" aria-label="Observability scorecards">
+            {monitors.length ? monitors.map((monitor, index) => {
+              const measurement = monitor.latest?.measurement;
+              const state = !monitor.enabled ? 'disabled' : (measurement?.state || 'unknown');
               return (
-                <article key={card.key} className={`sre-card is-${measurement?.state || 'unknown'}`}>
-                  <span>{card.label}</span>
+                <article
+                  key={monitor.id}
+                  className={`sre-card is-${state} sre-card--tone-${index % 6}${trendMonitor?.id === monitor.id ? ' is-selected' : ''}`}
+                  onClick={() => setTrendMonitorId(monitor.id)}
+                >
+                  <div className="sre-card__top">
+                    <span>{monitor.name || measurementTypeLabel(monitor.measurement_type)}</span>
+                    <em className="sre-card__state">{stateLabel(state)}</em>
+                  </div>
                   <strong>{scoreDisplay(measurement)}</strong>
-                  <small>{card.monitor ? `${formatBps(card.monitor.target_bps)} · ${stateLabel(measurement?.state)} · ${qualityLabel(measurement?.quality)}` : 'No monitor configured'}</small>
-                  {card.monitor && !card.monitor.enabled ? <small>Disabled</small> : null}
+                  <small>{measurementTypeLabel(monitor.measurement_type)} · {formatBps(monitor.target_bps)} · {qualityLabel(measurement?.quality)}</small>
+                  {measurement?.good != null && measurement?.total != null ? (
+                    <small>Good {measurement.good} / total {measurement.total} over {measurement.window_minutes || monitor.window_minutes} min</small>
+                  ) : null}
                   {measurement?.reason ? <p>{measurement.reason}</p> : null}
-                  {card.monitor ? <button type="button" className="btn btn-secondary btn-sm" disabled={refreshing || !card.monitor.enabled} onClick={() => void refresh([card.monitor!.id])}>Refresh this monitor</button> : null}
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={refreshing || !monitor.enabled} onClick={(event) => { event.stopPropagation(); void refresh([monitor.id]); }}>Refresh this monitor</button>
                 </article>
               );
-            })}
+            }) : (
+              <article className="sre-card is-unknown">
+                <span>No monitors</span>
+                <strong>Unknown</strong>
+                <small>Add a monitor per endpoint you want as its own SLI percentage.</small>
+                {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTab('configuration')}>Configure monitors</button> : null}
+              </article>
+            )}
             <article className={`sre-card is-${(score(availability)?.budget_remaining_bps ?? 10000) < 2000 ? 'at_risk' : score(availability)?.state || 'unknown'}`}>
-              <span>Error budget remaining</span>
+              <div className="sre-card__top">
+                <span>Error budget remaining</span>
+                <em className="sre-card__state">{stateLabel(score(availability)?.state)}</em>
+              </div>
               <strong>{budgetDisplay(score(availability))}</strong>
-              <small>Burn rate {score(availability)?.burn_rate_milli != null ? `${(Number(score(availability)?.burn_rate_milli) / 1000).toFixed(2)}x` : 'Unknown'}.</small>
+              <small>{availability ? `${availability.name} · ` : ''}Burn rate {score(availability)?.burn_rate_milli != null ? `${(Number(score(availability)?.burn_rate_milli) / 1000).toFixed(2)}x` : 'Unknown'}.</small>
             </article>
             <article className={`sre-card is-${openFindings.some((item) => item.severity === 'critical') ? 'breached' : openFindings.length ? 'at_risk' : 'unknown'}`}>
-              <span>Active findings</span>
+              <div className="sre-card__top">
+                <span>Active findings</span>
+                <em className="sre-card__state">{openFindings.some((item) => item.severity === 'critical') ? 'Critical' : openFindings.length ? 'Warning' : 'None recorded'}</em>
+              </div>
               <strong>{loading ? '…' : openFindings.length}</strong>
               <small>{openFindings.length ? 'Open Critical and Warning items' : 'An empty list is not proof of health if nothing was evaluated.'}</small>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTab('findings')}>{openFindings.length ? 'Open findings' : 'View findings'}</button>
             </article>
           </section>
+          <p className="sre-legend">Healthy is teal. At risk is amber. Breached is red. Unknown stays slate. The left stripe marks the endpoint.</p>
           {why ? (
             <details className="sre-why">
               <summary>Why this result?</summary>
-              <p>Numerator {why.numerator ?? 'Unknown'} / denominator {why.denominator ?? 'Unknown'} against {why.target} over {why.window} minutes. Coverage {why.coverage}. Query version {why.version}. Query success alone does not mean coverage is adequate.</p>
+              <p>{why.name}: numerator {why.numerator ?? 'Unknown'} / denominator {why.denominator ?? 'Unknown'} against {why.target} over {why.window} minutes. Coverage {why.coverage}. Query version {why.version}. This is the service availability monitor, not every endpoint. Query success alone does not mean coverage is adequate.</p>
             </details>
           ) : null}
           {history.length ? (
@@ -765,7 +808,7 @@ export default function SreServiceWorkspace({
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Recent evaluations</h2>
-                  <p className="portal-surface__subtitle">Missing points stay Unknown, not Healthy.</p>
+                  <p className="portal-surface__subtitle">{trendMonitor?.name ? `${trendMonitor.name}. Click a card to change this trend. ` : ''}Missing points stay Unknown, not Healthy.</p>
                 </div>
               </div>
               <div className="sre-spark" aria-hidden="true">
@@ -814,6 +857,14 @@ export default function SreServiceWorkspace({
                 ))}
               </select>
             </label>
+            <label>Monitor
+              <select className="input" value={findingFilter.monitor} onChange={(event) => setFindingFilter({ ...findingFilter, monitor: event.target.value })}>
+                <option value="">All</option>
+                {monitors.map((monitor) => (
+                  <option key={monitor.id} value={String(monitor.id)}>{monitor.name}</option>
+                ))}
+              </select>
+            </label>
           </div>
           {episodes.length ? (
             <section className="portal-surface">
@@ -847,12 +898,15 @@ export default function SreServiceWorkspace({
           ) : null}
           <ul className="sre-findings">
             {visibleFindings.map((finding) => (
-              <li key={finding.id}>
+              <li key={finding.id} className={`sre-finding-row${selectedFinding?.id === finding.id ? ' is-open' : ''}`}>
                 <button type="button" className={`sre-finding is-${finding.lifecycle === 'resolved' ? 'resolved' : finding.severity}`} onClick={() => openFinding(finding)}>
                   <strong>{finding.severity === 'critical' ? 'Critical' : finding.severity === 'warning' ? 'Warning' : 'Info'} · {finding.title}</strong>
                   <span>{finding.observed}. {finding.expected}</span>
-                  <small>{finding.lifecycle} · {finding.source_type || 'source unknown'} · {formatOperationalTime(finding.last_seen_at)}</small>
+                  <small>{finding.lifecycle} · {monitors.find((item) => item.id === finding.monitor_id)?.name || finding.source_type || 'source unknown'} · {formatOperationalTime(finding.last_seen_at)}</small>
                 </button>
+                {finding.incident_id ? (
+                  <Link className="sre-finding__incident" href={`/incidents/${finding.incident_id}/edit`}>{recordReference('INC', finding.incident_id)}</Link>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -890,7 +944,7 @@ export default function SreServiceWorkspace({
             ) : (
               <div className="sre-empty">
                 <strong>No monitors yet</strong>
-                <p>Add a monitor to evaluate production telemetry. Until a query runs, health stays Unknown.</p>
+                <p>Add one monitor per endpoint you want as its own SLI percentage. Until a query runs, health stays Unknown.</p>
               </div>
             )}
             {isManager && formOpen ? (
@@ -903,7 +957,8 @@ export default function SreServiceWorkspace({
                 </div>
                 {formStep === 1 ? (
                   <>
-                    <label className="label">Monitor name<span className="form-req" aria-hidden="true"> *</span><input className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
+                    <label className="label">Monitor name<span className="form-req" aria-hidden="true"> *</span><input className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required placeholder="Checkout /pay availability" /></label>
+                    <p className="form-section__copy">Name it after the endpoint or route. Observability shows one SLI percentage per monitor.</p>
                     <label className="label">Measurement type
                       <select className="input" value={form.measurement_type} onChange={(event) => setForm({ ...form, measurement_type: event.target.value })}>
                         {MEASUREMENT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
@@ -931,6 +986,7 @@ export default function SreServiceWorkspace({
                       <textarea className="input" rows={8} value={form.query_text} onChange={(event) => setForm({ ...form, query_text: event.target.value })} />
                     </label>
                     <p className="form-section__copy">This query runs through an OpsTrellis worker. Credentials are stored securely on the server. Timeout is 15 seconds and results are bounded.</p>
+                    <p className="form-section__copy">For one route, keep a path label such as {`{path="/pay"}`}. To roll several endpoints into one SLI, sum good and total across those routes instead of creating a combined card.</p>
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => void previewDraftQuery()}>Test query</button>
                     <div className="portal-form-grid">
                       <label className="label">Good events field<input className="input" value={form.good_field} onChange={(event) => setForm({ ...form, good_field: event.target.value })} /></label>
@@ -1145,7 +1201,7 @@ export default function SreServiceWorkspace({
             <p>Observed: {selectedFinding.observed}</p>
             <p>Expected: {selectedFinding.expected}</p>
             {evidenceUrl ? <p><a href={evidenceUrl} target="_blank" rel="noreferrer">View evidence</a> A dashboard URL is evidence, not an executable query.</p> : null}
-            {selectedFinding.incident_id ? <p>Linked incident: <Link href={`/incidents/${selectedFinding.incident_id}/edit`}>Open incident</Link></p> : (
+            {selectedFinding.incident_id ? <p>Linked incident: <Link href={`/incidents/${selectedFinding.incident_id}/edit`}>{recordReference('INC', selectedFinding.incident_id)}</Link></p> : (
               <>
                 {routing.observation_only ? <p className="form-section__copy">Routing is observation-only. Auto-create stays off. You can still open a new incident from this finding.</p> : null}
                 <p><Link className="btn btn-secondary btn-sm" href={findingIncidentHref(selectedFinding)}>Create incident</Link></p>

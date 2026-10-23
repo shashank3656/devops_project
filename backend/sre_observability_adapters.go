@@ -106,6 +106,19 @@ func executeMonitorQuery(sourceType, query, secretRef string) (mappedSample, str
 	return executeConnectorQuery(connectorQuery{SourceType: sourceType, Query: query, SecretRef: secretRef})
 }
 
+func connectorProbeQuery(sourceType string) string {
+	switch strings.ToLower(strings.TrimSpace(sourceType)) {
+	case sourceGrafana, sourcePrometheus:
+		return "vector(1)"
+	case sourceSplunk:
+		return "| makeresults count=1 | eval good=1 | eval total=1"
+	case sourceDatadog:
+		return "avg:system.uptime{*}"
+	default:
+		return `{"good":1,"total":1}`
+	}
+}
+
 func executeConnectorQuery(item connectorQuery) (mappedSample, string, error) {
 	source := strings.ToLower(strings.TrimSpace(item.SourceType))
 	switch source {

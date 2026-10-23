@@ -6,7 +6,7 @@ import { DataTable, EmptyState, formatOperationalTime, type DataTableColumn } fr
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { rememberService } from '../../lib/recentServices';
 import { ServiceClassBadge } from '../../components/SreServiceWorkspace';
-import { SERVICE_CLASSES, inventoryServicesPath, scheduleModeCopy } from '../../lib/sreMonitoring';
+import { SERVICE_CLASSES, catalogueSliTone, inventoryServicesPath, scheduleModeCopy, scoreDisplay } from '../../lib/sreMonitoring';
 import { serviceDetailHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
@@ -25,6 +25,8 @@ interface ServiceRow {
   open_warning?: number;
   last_evaluated_at?: string;
   schedule_minutes?: number;
+  last_availability_bps?: number;
+  last_sli_state?: string;
 }
 
 interface ProjectOption {
@@ -245,6 +247,9 @@ export default function ServiceInventoryPage() {
       header: 'Last evaluation',
       cell: (item) => (
         <div className="ig-cell-stack">
+          <span className={`sre-sli sre-sli--${catalogueSliTone(item.last_sli_state)}`}>
+            {scoreDisplay({ state: item.last_sli_state, availability_bps: item.last_availability_bps })}
+          </span>
           <span className="ig-cell-title">{item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : 'Unknown'}</span>
           <span className="ig-cell-meta">{scheduleModeCopy(item.schedule_minutes)}</span>
         </div>

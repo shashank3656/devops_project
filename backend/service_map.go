@@ -12,26 +12,28 @@ import (
 )
 
 type serviceMapEntry struct {
-	ID              int     `json:"id"`
-	ProjectID       *int    `json:"project_id,omitempty"`
-	ProjectName     string  `json:"project_name,omitempty"`
-	ProjectCode     string  `json:"project_code,omitempty"`
-	Service         string  `json:"service"`
-	Repo            string  `json:"repo"`
-	Environment     string  `json:"environment"`
-	GrafanaUID      string  `json:"grafana_uid,omitempty"`
-	PromQL          string  `json:"promql,omitempty"`
-	DashboardURL    string  `json:"dashboard_url,omitempty"`
-	MetricsURL      string  `json:"metrics_url,omitempty"`
-	Team            string  `json:"team,omitempty"`
-	Criticality     string  `json:"criticality"`
-	SupportTeam     string  `json:"support_team,omitempty"`
-	EscalationRoute string  `json:"escalation_route,omitempty"`
-	RunbookURL      string  `json:"runbook_url,omitempty"`
-	OpenCritical    int     `json:"open_critical,omitempty"`
-	OpenWarning     int     `json:"open_warning,omitempty"`
-	LastEvaluatedAt *string `json:"last_evaluated_at,omitempty"`
-	ScheduleMinutes int     `json:"schedule_minutes,omitempty"`
+	ID                  int     `json:"id"`
+	ProjectID           *int    `json:"project_id,omitempty"`
+	ProjectName         string  `json:"project_name,omitempty"`
+	ProjectCode         string  `json:"project_code,omitempty"`
+	Service             string  `json:"service"`
+	Repo                string  `json:"repo"`
+	Environment         string  `json:"environment"`
+	GrafanaUID          string  `json:"grafana_uid,omitempty"`
+	PromQL              string  `json:"promql,omitempty"`
+	DashboardURL        string  `json:"dashboard_url,omitempty"`
+	MetricsURL          string  `json:"metrics_url,omitempty"`
+	Team                string  `json:"team,omitempty"`
+	Criticality         string  `json:"criticality"`
+	SupportTeam         string  `json:"support_team,omitempty"`
+	EscalationRoute     string  `json:"escalation_route,omitempty"`
+	RunbookURL          string  `json:"runbook_url,omitempty"`
+	OpenCritical        int     `json:"open_critical,omitempty"`
+	OpenWarning         int     `json:"open_warning,omitempty"`
+	LastEvaluatedAt     *string `json:"last_evaluated_at,omitempty"`
+	ScheduleMinutes     int     `json:"schedule_minutes,omitempty"`
+	LastAvailabilityBPS *int    `json:"last_availability_bps,omitempty"`
+	LastSLIState        string  `json:"last_sli_state,omitempty"`
 }
 
 const serviceMapSelectCols = `s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
@@ -321,13 +323,21 @@ func attachServiceEvalMeta(items []serviceMapEntry) {
 		if row, ok := meta[items[i].ID]; ok {
 			items[i].LastEvaluatedAt = row.lastEval
 			items[i].ScheduleMinutes = row.schedule
+			items[i].LastSLIState = row.sliState
+			if row.hasSLI {
+				bps := row.availabilityBPS
+				items[i].LastAvailabilityBPS = &bps
+			}
 		}
 	}
 }
 
 type serviceEvalMeta struct {
-	lastEval *string
-	schedule int
+	lastEval        *string
+	schedule        int
+	availabilityBPS int
+	sliState        string
+	hasSLI          bool
 }
 
 func serviceEvalMetaForServices(ids []int) map[int]serviceEvalMeta {
@@ -368,7 +378,40 @@ func serviceEvalMetaForServices(ids []int) map[int]serviceEvalMeta {
 		}
 		out[id] = row
 	}
+	attachAvailabilitySLI(out, ids, placeholders, args)
 	return out
+}
+
+func attachAvailabilitySLI(out map[int]serviceEvalMeta, ids []int, placeholders []string, args []any) {
+	if DB == nil || len(ids) == 0 {
+		return
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT DISTINCT ON (m.service_id)
+		       m.service_id, COALESCE(r.availability_bps, 0), COALESCE(r.state, '')
+		FROM service_monitors m
+		INNER JOIN monitor_evaluation_runs r ON r.monitor_id = m.id
+		WHERE m.service_id IN (`+strings.Join(placeholders, ",")+`)
+		  AND m.measurement_type = 'availability_sli'
+		ORDER BY m.service_id, COALESCE(r.evaluated_at, r.created_at) DESC, r.id DESC
+	`, args...)
+	if err != nil {
+		return
+	}
+	defer cancel()
+	defer rows.Close()
+	for rows.Next() {
+		var id, bps int
+		var state string
+		if rows.Scan(&id, &bps, &state) != nil {
+			continue
+		}
+		row := out[id]
+		row.availabilityBPS = bps
+		row.sliState = state
+		row.hasSLI = true
+		out[id] = row
+	}
 }
 
 func scanServiceMap(scanner interface {

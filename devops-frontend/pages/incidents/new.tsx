@@ -474,6 +474,10 @@ export default function NewIncidentPage() {
         sessionStorage.removeItem('opstrellis-incident-draft');
         sessionStorage.removeItem('opstrellis-incident-note');
         allowLeave();
+        if (queryFindingId && scopedServiceId) {
+          await router.push(`/services/${scopedServiceId}?tab=findings&finding_id=${queryFindingId}`);
+          return;
+        }
         await router.push(`/incidents/${savedIncident.id}/edit`);
         return;
       }
