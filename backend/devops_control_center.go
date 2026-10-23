@@ -1740,6 +1740,7 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 			ConferenceURL    string `json:"conference_url"`
 			ConferenceNotes  string `json:"conference_notes"`
 			Major            *bool  `json:"major"`
+			FindingID        int    `json:"finding_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
@@ -1786,6 +1787,7 @@ func devopsIncidentsHandler(w http.ResponseWriter, r *http.Request) {
 		AppendAuditLog(&managerID, "request_incident_upsert", "pr_request", strconv.Itoa(body.RequestID), item.Severity+":"+item.Status)
 		if item != nil {
 			pageIncidentOwners(*item)
+			attachIncidentToMonitorFinding(managerID, body.FindingID, item.ID)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})

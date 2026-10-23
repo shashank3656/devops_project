@@ -1329,12 +1329,42 @@ func listMonitorFindings(serviceID int, environment, severity, lifecycle string)
 	return out, nil
 }
 
+func findingIncidentLink(current, next int) int {
+	if next <= 0 || current > 0 {
+		return current
+	}
+	return next
+}
+
+func attachIncidentToMonitorFinding(userID, findingID, incidentID int) {
+	if DB == nil || findingID <= 0 || incidentID <= 0 {
+		return
+	}
+	var serviceID, current int
+	if err := queryRowContext(`SELECT service_id, COALESCE(incident_id, 0) FROM monitor_findings WHERE id = $1`, findingID).Scan(&serviceID, &current); err != nil {
+		return
+	}
+	if findingIncidentLink(current, incidentID) == current {
+		return
+	}
+	item, err := getServiceMapByID(serviceID)
+	if err != nil || item == nil {
+		return
+	}
+	visible, visErr := projectPointerVisible(userID, item.ProjectID)
+	if visErr != nil || !visible {
+		return
+	}
+	_, _ = execContext(`UPDATE monitor_findings SET incident_id = $2 WHERE id = $1 AND COALESCE(incident_id, 0) = 0`, findingID, incidentID)
+}
+
 func acknowledgeMonitorFinding(userID, serviceID, findingID int, r *http.Request) (*monitorFindingView, error) {
 	var body struct {
-		Owner   string `json:"owner"`
-		Note    string `json:"note"`
-		Ack     bool   `json:"acknowledge"`
-		Resolve bool   `json:"resolve"`
+		Owner      string `json:"owner"`
+		Note       string `json:"note"`
+		Ack        bool   `json:"acknowledge"`
+		Resolve    bool   `json:"resolve"`
+		IncidentID int    `json:"incident_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return nil, fmt.Errorf("invalid json")
@@ -1365,6 +1395,16 @@ func acknowledgeMonitorFinding(userID, serviceID, findingID int, r *http.Request
 		}
 	} else if strings.TrimSpace(body.Owner) != "" {
 		_, err := execContext(`UPDATE monitor_findings SET owner = $3 WHERE id = $1 AND service_id = $2`, findingID, serviceID, strings.TrimSpace(body.Owner))
+		if err != nil {
+			return nil, err
+		}
+	}
+	if body.IncidentID > 0 {
+		_, err := execContext(`
+			UPDATE monitor_findings
+			SET incident_id = $3
+			WHERE id = $1 AND service_id = $2 AND COALESCE(incident_id, 0) = 0
+		`, findingID, serviceID, body.IncidentID)
 		if err != nil {
 			return nil, err
 		}

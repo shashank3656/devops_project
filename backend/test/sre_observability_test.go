@@ -254,6 +254,22 @@ func TestServiceEvalMetaEmptyIDs(t *testing.T) {
 	}
 }
 
+func TestFindingIncidentLinkKeepsFirst(t *testing.T) {
+	if got := findingIncidentLink(0, 12); got != 12 {
+		t.Fatalf("empty finding should take the incident, got %d", got)
+	}
+	if got := findingIncidentLink(7, 12); got != 7 {
+		t.Fatalf("an existing incident must stay, got %d", got)
+	}
+	if got := findingIncidentLink(7, 0); got != 7 {
+		t.Fatalf("zero incident id must not clear a link, got %d", got)
+	}
+}
+
+func TestAttachFindingIncidentNoopWithoutDB(t *testing.T) {
+	attachIncidentToMonitorFinding(1, 9, 4)
+}
+
 func TestConnectorPublicOmitsSecretValue(t *testing.T) {
 	item := connectorPublic(1, nil, "Grafana prod", "grafana", "prom", "https://metrics.example.internal", "GRAFANA_TOKEN", "ready", "", nil, 0, 15, true)
 	if !item.HasCredential || !item.Enabled {

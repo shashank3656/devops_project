@@ -84,6 +84,15 @@ function mask(value?: string) {
   return text;
 }
 
+function repoDisplay(value?: string) {
+  const text = (value || '').trim();
+  if (!text) return 'Not connected';
+  if (/password|secret|token|bearer/i.test(text)) return 'Hidden';
+  const github = text.match(/github\.com[/:]([^/]+)\/([^/#?]+)/i);
+  if (github) return `${github[1]}/${github[2].replace(/\.git$/i, '')}`;
+  return text;
+}
+
 export default function Service360({
   apiUrl,
   token,
@@ -192,7 +201,7 @@ export default function Service360({
   const latestChange = [...changes].sort((left, right) => (right.updated_at || '').localeCompare(left.updated_at || ''))[0];
   const accessAttention = grants.filter((item) => !['approved', 'completed', 'rejected', 'revoked', 'expired'].includes((item.status || '').toLowerCase()));
   const ownerLabel = (ownerTeam || '').trim() || 'Not assigned';
-  const repoLabel = (repo || '').trim() || 'Unknown';
+  const repoLabel = repoDisplay(repo);
 
   const source = loadedAt
     ? `Source: service catalogue, changes, incidents, cloud resources, and access requests. Loaded ${formatOperationalTime(loadedAt)}. Missing telemetry stays Unknown.`
@@ -218,11 +227,14 @@ export default function Service360({
       {tab === 'overview' ? (
         <>
           <div className="service-360__facts">
-            <button type="button" onClick={() => setTab('overview')}>
+            <div className="service-360__fact">
               <span>Service owner team</span>
               <strong>{loading ? 'Unknown' : ownerLabel}</strong>
-              <small>{loading ? 'Unknown' : repoLabel}</small>
-            </button>
+            </div>
+            <div className="service-360__fact">
+              <span>Repository</span>
+              <strong>{loading ? 'Unknown' : repoLabel}</strong>
+            </div>
             <button type="button" onClick={() => setTab('resources')}>
               <span>Linked resources</span>
               <strong>{loading || error ? 'Unknown' : String(resources.length)}</strong>

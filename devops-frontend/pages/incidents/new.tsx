@@ -432,6 +432,7 @@ export default function NewIncidentPage() {
           major,
           conference_url: conferenceURL,
           conference_notes: conferenceNotes,
+          finding_id: queryFindingId || 0,
       };
       const response = await fetch(`${apiUrl}/api/devops/incidents`, {
         method: 'POST',
@@ -454,6 +455,16 @@ export default function NewIncidentPage() {
       }
       forgetAttempt(INCIDENT_ATTEMPT_KEY);
       const savedIncident = normalizeIncident(data.incident);
+      if (savedIncident.id > 0 && queryFindingId && scopedServiceId) {
+        await fetch(`${apiUrl}/api/devops/services/${scopedServiceId}/monitoring/findings/${queryFindingId}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ incident_id: savedIncident.id }),
+        }).catch(() => ({}));
+      }
       setCurrentIncidentNumber(savedIncident.incident_number || `INC${String(savedIncident.id).padStart(7, '0')}`);
       if (!requestedRequestId && savedIncident.request_id > 0) {
         setRequestId(String(savedIncident.request_id));

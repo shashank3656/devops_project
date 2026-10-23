@@ -9243,6 +9243,7 @@ html[data-theme='dark'] .devops-layout select.input {
   color: #f2f4f8;
   border-color: rgba(255, 255, 255, 0.16);
   color-scheme: dark;
+  caret-color: #f5f7fc;
 }
 
 html[data-theme='dark'] .devops-layout .sd-filters select.input {
@@ -10460,6 +10461,16 @@ html[data-theme] .devops-layout :is(.portal-page__actions, .ops-frame__head, .po
   color: var(--ot-ink, #17233b);
 }
 
+html[data-theme='dark'] .devops-layout :is(.portal-page__actions, .ops-frame__head, .portal-surface__header, .devops-filter-ribbon__actions, .devops-tickets-header, .ig-table) .btn-secondary {
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .devops-layout :is(.portal-page__actions, .ops-frame__head, .portal-surface__header, .devops-filter-ribbon__actions, .devops-tickets-header, .ig-table) .btn-secondary:hover:not(:disabled),
+html[data-theme='dark'] .devops-layout :is(.portal-page__actions, .ops-frame__head, .portal-surface__header, .devops-filter-ribbon__actions, .devops-tickets-header, .ig-table) .btn-secondary:focus-visible {
+  background: #2a2150;
+  color: #c4b5fd;
+}
+
 html[data-theme] .devops-layout .portal-page__header .portal-page__actions,
 html[data-theme] .devops-layout .ig-table .portal-page__actions {
   margin-top: 0;
@@ -10605,9 +10616,11 @@ html[data-theme] .service-360__facts {
   margin-bottom: 16px;
 }
 
-html[data-theme] .service-360__facts button {
+html[data-theme] .service-360__facts button,
+html[data-theme] .service-360__fact {
   display: grid;
   gap: 4px;
+  min-width: 0;
   min-height: 72px;
   padding: 12px;
   border: 1px solid #e2e7f0;
@@ -10615,6 +10628,9 @@ html[data-theme] .service-360__facts button {
   background: #fff;
   color: #17233b;
   text-align: left;
+}
+
+html[data-theme] .service-360__facts button {
   cursor: pointer;
 }
 
@@ -10632,9 +10648,11 @@ html[data-theme] .service-360__facts small {
 html[data-theme] .service-360__facts strong {
   color: #17233b;
   font-size: 16px;
+  overflow-wrap: anywhere;
 }
 
-html[data-theme='dark'] .service-360__facts button {
+html[data-theme='dark'] .service-360__facts button,
+html[data-theme='dark'] .service-360__fact {
   border-color: #2a2150;
   background: #192238;
 }
