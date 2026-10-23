@@ -423,9 +423,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const writeScopeQuery = (next: WorkspaceScope) => {
     if (isRecordDetailPath(router.pathname)) return;
     const query = { ...router.query };
-    if (next.projectId) query.project_id = next.projectId;
+    const projectId = typeof next.projectId === 'string' ? next.projectId : '';
+    const environment = typeof next.environment === 'string' ? next.environment : '';
+    if (projectId) query.project_id = projectId;
     else delete query.project_id;
-    if (next.environment) query.environment = next.environment;
+    if (environment) query.environment = environment;
     else delete query.environment;
     void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
