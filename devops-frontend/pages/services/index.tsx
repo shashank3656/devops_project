@@ -30,7 +30,6 @@ interface ProjectOption {
   id: number;
   name: string;
   code: string;
-  environments: string[];
 }
 
 interface OwnerTeam {
@@ -39,17 +38,12 @@ interface OwnerTeam {
   slug: string;
 }
 
-interface EnvFolder {
-  name: string;
-  count: number;
-  services: ServiceRow[];
-}
-
 interface ProjectFolder {
   key: string;
   id: number;
   name: string;
-  environments: EnvFolder[];
+  count: number;
+  services: ServiceRow[];
 }
 
 function label(value: string): string {
@@ -98,12 +92,12 @@ function buildFolders(projects: ProjectOption[], services: ServiceRow[]): Projec
   const loose = new Map<string, ProjectFolder>();
 
   projects.forEach((project) => {
-    const names = project.environments.map((item) => item.trim()).filter(Boolean);
     byId.set(project.id, {
       key: `project-${project.id}`,
       id: project.id,
       name: project.name || project.code || 'Unknown',
-      environments: names.map((name) => ({ name, count: 0, services: [] })),
+      count: 0,
+      services: [],
     });
   });
 
@@ -113,27 +107,22 @@ function buildFolders(projects: ProjectOption[], services: ServiceRow[]): Projec
     if (!folder) {
       const name = label(service.project_name || '');
       const key = `loose-${name.toLowerCase()}`;
-      folder = loose.get(key) || { key, id: 0, name, environments: [] };
+      folder = loose.get(key) || { key, id: 0, name, count: 0, services: [] };
       loose.set(key, folder);
     }
-    const envName = label(service.environment);
-    let env = folder.environments.find((item) => item.name.toLowerCase() === envName.toLowerCase());
-    if (!env) {
-      env = { name: envName, count: 0, services: [] };
-      folder.environments.push(env);
-    }
-    env.services.push(service);
+    folder.services.push(service);
+    folder.count += 1;
   });
 
   return [...byId.values(), ...loose.values()];
 }
 
-export default function ServiceMapPage() {
+export default function ServiceInventoryPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [items, setItems] = useState<ServiceRow[]>([]);
   const [pageTotal, setPageTotal] = useState(0);
-  const [summary, setSummary] = useState<Array<{ project_id: number; project_name: string; environment: string; count: number }>>([]);
+  const [summary, setSummary] = useState<Array<{ project_id: number; project_name: string; count: number }>>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [teams, setTeams] = useState<OwnerTeam[]>([]);
   const [error, setError] = useState('');
@@ -146,7 +135,6 @@ export default function ServiceMapPage() {
   const [filtersReady, setFiltersReady] = useState(false);
   const [incompleteCount, setIncompleteCount] = useState<number | null>(null);
   const projectFilter = router.isReady ? firstQuery(router.query.project_id) : '';
-  const environmentFilter = router.isReady ? firstQuery(router.query.environment) : '';
   useEffect(() => {
     if (!router.isReady || filtersReady) return;
     setQuery(firstQuery(router.query.q));
@@ -157,42 +145,39 @@ export default function ServiceMapPage() {
   const ownerTeamQuery = [selectedTeam?.name, selectedTeam?.slug].map((value) => (value || '').trim()).filter(Boolean).join('|');
   useEffect(() => {
     setServicePage(0);
-  }, [projectFilter, environmentFilter, ownerTeamId, query]);
+  }, [projectFilter, ownerTeamId, query]);
   useEffect(() => {
     if (!router.isReady || !filtersReady) return;
     const next = new URLSearchParams();
     if (projectFilter) next.set('project_id', projectFilter);
-    if (environmentFilter) next.set('environment', environmentFilter);
     if (query.trim()) next.set('q', query.trim());
     if (ownerTeamId) next.set('team', ownerTeamId);
     const current = new URLSearchParams();
-    ['project_id', 'environment', 'q', 'team'].forEach((key) => {
+    ['project_id', 'q', 'team'].forEach((key) => {
       const value = firstQuery(router.query[key]);
       if (value) current.set(key, value);
     });
     if (next.toString() === current.toString()) return;
     const queryObject = Object.fromEntries(next.entries());
     void router.replace({ pathname: '/services', query: queryObject }, undefined, { shallow: true });
-  }, [environmentFilter, filtersReady, ownerTeamId, projectFilter, query, router]);
+  }, [filtersReady, ownerTeamId, projectFilter, query, router]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token || !filtersReady) return;
     setLoading(true);
     const headers = { Authorization: `Bearer ${token}` };
-    const listing = Boolean(query.trim() || environmentFilter || ownerTeamId);
+    const listing = Boolean(query.trim() || projectFilter || ownerTeamId);
     const params = new URLSearchParams();
+    params.set('monitored', '1');
     if (listing) {
       params.set('limit', '50');
       params.set('offset', String(servicePage * 50));
       if (projectFilter) params.set('project_id', projectFilter);
-      if (environmentFilter) params.set('environment', environmentFilter);
       if (query.trim()) params.set('q', query.trim());
-      const teamQuery = ownerTeamQuery;
-      if (teamQuery) params.set('team', teamQuery);
+      if (ownerTeamQuery) params.set('team', ownerTeamQuery);
     } else {
       params.set('view', 'summary');
-      if (projectFilter) params.set('project_id', projectFilter);
     }
     Promise.all([
       fetch(`${apiUrl}/api/devops/services?${params}`, { headers }).then((res) => res.json().catch(() => ({}))),
@@ -201,7 +186,7 @@ export default function ServiceMapPage() {
     ])
       .then(([servicesData, projectsData, ownerTeams]) => {
         if (servicesData?.error && !Array.isArray(servicesData.services)) {
-          setError(servicesData.error || 'Failed to load services');
+          setError(servicesData.error || 'Failed to load service inventory');
           return;
         }
         const nextItems = Array.isArray(servicesData.services) ? servicesData.services as ServiceRow[] : [];
@@ -212,26 +197,25 @@ export default function ServiceMapPage() {
         if (typeof servicesData.incomplete === 'number') {
           setIncompleteCount(servicesData.incomplete);
         } else if (nextItems.length >= nextTotal) {
-          setIncompleteCount(nextItems.filter((item) => !item.repo.trim() || !label(item.team || '').trim() || label(item.team || '') === 'Unknown').length);
+          setIncompleteCount(nextItems.filter((item) => !(item.repo || '').trim() || !label(item.team || '').trim() || label(item.team || '') === 'Unknown').length);
         } else {
           setIncompleteCount(null);
         }
         const list = Array.isArray(projectsData?.projects) ? projectsData.projects : [];
         setProjects(
           list
-            .map((item: { id?: number; name?: string; code?: string; environments?: string[] }) => ({
+            .map((item: { id?: number; name?: string; code?: string }) => ({
               id: typeof item.id === 'number' ? item.id : 0,
               name: item.name || '',
               code: item.code || '',
-              environments: Array.isArray(item.environments) ? item.environments.map((value) => String(value)) : [],
             }))
             .filter((item: ProjectOption) => item.id > 0),
         );
         setTeams(ownerTeams);
       })
-      .catch(() => setError('Failed to load services'))
+      .catch(() => setError('Failed to load service inventory'))
       .finally(() => setLoading(false));
-  }, [apiUrl, environmentFilter, filtersReady, ownerTeamId, ownerTeamQuery, projectFilter, query, servicePage]);
+  }, [apiUrl, filtersReady, ownerTeamId, ownerTeamQuery, projectFilter, query, servicePage]);
 
   const filtering = Boolean(query.trim() || ownerTeamId || classFilter);
   const setupLabel = loading || error || incompleteCount === null
@@ -242,38 +226,23 @@ export default function ServiceMapPage() {
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
       if (projectFilter && String(item.project_id || 0) !== projectFilter) return false;
-      if (environmentFilter && label(item.environment).toLowerCase() !== environmentFilter.toLowerCase()) return false;
       if (ownerTeamId && !teamMatches(item.team || '', selectedTeam)) return false;
       if (classFilter && (item.criticality || 'unclassified') !== classFilter) return false;
       if (!needle) return true;
-      const haystack = [item.service, item.repo, item.team, item.project_name, item.environment].join(' ').toLowerCase();
+      const haystack = [item.service, item.repo, item.team, item.project_name].join(' ').toLowerCase();
       return haystack.includes(needle);
     });
-  }, [classFilter, environmentFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
-
-  const configuredEnvironments = useMemo(() => {
-    const names = new Set<string>();
-    const source = projectFilter ? projects.filter((project) => String(project.id) === projectFilter) : projects;
-    source.forEach((project) => project.environments.forEach((name) => {
-      const text = name.trim();
-      if (text) names.add(text);
-    }));
-    return [...names].sort((left, right) => left.localeCompare(right));
-  }, [projectFilter, projects]);
+  }, [classFilter, items, ownerTeamId, projectFilter, query, selectedTeam]);
 
   const catalog = useMemo(() => {
     if (!query.trim() && summary.length) {
-      const byId = new Map<number, ProjectFolder>();
-      summary.forEach((row) => {
-        const id = row.project_id || 0;
-        let folder = byId.get(id);
-        if (!folder) {
-          folder = { key: `project-${id}`, id, name: label(row.project_name || ''), environments: [] };
-          byId.set(id, folder);
-        }
-        folder.environments.push({ name: label(row.environment), count: row.count, services: [] });
-      });
-      return [...byId.values()];
+      return summary.map((row) => ({
+        key: `project-${row.project_id || 0}`,
+        id: row.project_id || 0,
+        name: label(row.project_name || ''),
+        count: row.count,
+        services: [] as ServiceRow[],
+      }));
     }
     return buildFolders(projects, items);
   }, [items, projects, query, summary]);
@@ -291,14 +260,18 @@ export default function ServiceMapPage() {
   };
 
   const currentProject = catalog.find((project) => projectFilter && String(project.id) === projectFilter) || null;
-  const currentEnv = currentProject?.environments.find((env) => environmentFilter && env.name.toLowerCase() === environmentFilter.toLowerCase()) || null;
   const visibleProjects = (ownerTeamId
-    ? catalog.filter((project) => project.environments.some((env) => env.services.some((service) => teamMatches(service.team || '', selectedTeam))))
+    ? catalog.filter((project) => project.services.some((service) => teamMatches(service.team || '', selectedTeam)))
     : catalog
   ).filter((project) => project.id > 0);
-  const visibleServices = (currentEnv?.services || []).filter((service) => (!ownerTeamId || teamMatches(service.team || '', selectedTeam)) && (!classFilter || (service.criticality || 'unclassified') === classFilter));
+  const visibleServices = (currentProject?.services.length ? currentProject.services : items).filter((service) => (
+    (!projectFilter || String(service.project_id || 0) === projectFilter)
+    && (!ownerTeamId || teamMatches(service.team || '', selectedTeam))
+    && (!classFilter || (service.criticality || 'unclassified') === classFilter)
+  ));
   const servicePageSize = 50;
-  const serviceTotal = pageTotal || visibleServices.length;
+  const showingList = Boolean(query.trim() || projectFilter || ownerTeamId);
+  const serviceTotal = pageTotal || (query.trim() ? matches.length : visibleServices.length);
   const servicePageCount = Math.max(1, Math.ceil(serviceTotal / servicePageSize));
   const servicePageSafe = Math.min(servicePage, servicePageCount - 1);
   const pagedServices = visibleServices;
@@ -306,27 +279,27 @@ export default function ServiceMapPage() {
   const matchPageCount = Math.max(1, Math.ceil(matchTotal / servicePageSize));
   const matchPageSafe = Math.min(servicePage, matchPageCount - 1);
   const pagedMatches = matches;
-  const addHref = projectFilter
-    ? `/services/new?project_id=${projectFilter}${environmentFilter ? `&environment=${encodeURIComponent(environmentFilter)}` : ''}`
-    : '/services/new';
+  const addHref = projectFilter ? `/services/new?project_id=${projectFilter}` : '/services/new';
+  const openFindings = items.reduce((sum, item) => sum + (item.open_critical || 0) + (item.open_warning || 0), 0);
 
   return (
     <DevOpsLayout>
       <Head>
-        <title>Services - OpsTrellis</title>
+        <title>Service inventory - OpsTrellis</title>
       </Head>
       <div className="ops-frame">
         <header className="ops-frame__head">
           <div>
-            <h1>{currentEnv ? currentEnv.name : currentProject ? currentProject.name : 'Services'}</h1>
+            <h1>{currentProject ? currentProject.name : 'Service inventory'}</h1>
+            <p className="portal-page__subtitle">Production services. Observability, findings, and configuration stay on the service.</p>
           </div>
           <Link href={addHref} className="btn btn-primary">Add service</Link>
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
-        <section className="ops-minis" aria-label="Service summary">
+        <section className="ops-minis" aria-label="Service inventory summary">
           <article className="ops-mini ops-mini--mint">
             <span>Registered services</span>
-            <strong>{loading || error ? 'Unknown' : (pageTotal || matches.length)}</strong>
+            <strong>{loading || error ? 'Unknown' : (pageTotal || matches.length || visibleProjects.reduce((sum, project) => sum + (project.count || project.services.length), 0))}</strong>
             <small>{currentProject ? currentProject.name : 'All visible projects'}</small>
           </article>
           <article className="ops-mini ops-mini--lilac">
@@ -335,9 +308,9 @@ export default function ServiceMapPage() {
             <small>Owner and repository missing</small>
           </article>
           <article className="ops-mini ops-mini--blue">
-            <span>Configured environments</span>
-            <strong>{loading || error ? 'Unknown' : configuredEnvironments.length}</strong>
-            <small>{configuredEnvironments.join(' · ') || 'None listed'}</small>
+            <span>Monitored environment</span>
+            <strong>Production</strong>
+            <small>{showingList && !loading && !error ? `${openFindings} open findings on this page` : 'Findings open on each service'}</small>
           </article>
         </section>
         <form className="portal-surface" onSubmit={search}>
@@ -367,28 +340,18 @@ export default function ServiceMapPage() {
           </div>
           {filtering ? <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear</button> : null}
         </form>
-        {projectFilter || environmentFilter ? (
+        {projectFilter ? (
           <nav className="svc-crumb" aria-label="Location">
-            <Link href="/services">Projects</Link>
+            <Link href="/services">Service inventory</Link>
             {currentProject ? (
               <>
                 <span aria-hidden="true">/</span>
-                {environmentFilter ? (
-                  <Link href={`/services?project_id=${currentProject.id}`}>{currentProject.name}</Link>
-                ) : (
-                  <span>{currentProject.name}</span>
-                )}
-              </>
-            ) : null}
-            {currentEnv ? (
-              <>
-                <span aria-hidden="true">/</span>
-                <span>{currentEnv.name}</span>
+                <span>{currentProject.name}</span>
               </>
             ) : null}
           </nav>
         ) : null}
-        {loading ? <div className="empty-state">Loading services...</div> : null}
+        {loading ? <div className="empty-state">Loading service inventory...</div> : null}
         {!loading && query.trim() ? (
           <>
           <ul className="svc-tree">
@@ -396,8 +359,8 @@ export default function ServiceMapPage() {
               <li key={item.id}>
                 <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
                   <strong title={item.service}>{item.service || 'Unknown'}</strong>
-                  <span>Project: {label(item.project_name || '')} · Environment: {label(item.environment)}</span>
-                    <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')} · <ServiceClassBadge value={item.criticality} /></span>
+                  <span>Project: {label(item.project_name || '')}</span>
+                  <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')} · <ServiceClassBadge value={item.criticality} /></span>
                 </button>
               </li>
             )) : <li className="svc-tree__empty">No services match this search.</li>}
@@ -417,13 +380,12 @@ export default function ServiceMapPage() {
           visibleProjects.length ? (
             <ul className="svc-tree">
               {visibleProjects.map((project) => {
-                const serviceCount = project.environments.reduce((sum, env) => sum + (env.count || env.services.length), 0);
-                const withServices = project.environments.filter((env) => (env.count || env.services.length) > 0).length;
+                const serviceCount = project.count || project.services.length;
                 return (
                   <li key={project.key}>
                     <Link className="svc-tree__folder" href={`/services?project_id=${project.id}`}>
                       <span>{project.name}</span>
-                      <small>{withServices} {withServices === 1 ? 'environment with services' : 'environments with services'} · {serviceCount} {serviceCount === 1 ? 'service' : 'services'}</small>
+                      <small>{serviceCount} {serviceCount === 1 ? 'production service' : 'production services'}</small>
                     </Link>
                   </li>
                 );
@@ -431,21 +393,7 @@ export default function ServiceMapPage() {
             </ul>
           ) : <div className="empty-state">No projects are visible for this scope.</div>
         ) : null}
-        {!loading && !query.trim() && currentProject && !environmentFilter ? (
-          currentProject.environments.length ? (
-            <ul className="svc-tree">
-              {currentProject.environments.map((env) => (
-                <li key={env.name}>
-                  <Link className="svc-tree__folder" href={`/services?project_id=${currentProject.id}&environment=${encodeURIComponent(env.name)}`}>
-                    <span>{env.name}</span>
-                    <small>{(env.count || env.services.length)} {(env.count || env.services.length) === 1 ? 'service' : 'services'}</small>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : <div className="empty-state">No environments on this project.</div>
-        ) : null}
-        {!loading && !query.trim() && currentProject && currentEnv ? (
+        {!loading && !query.trim() && currentProject ? (
           visibleServices.length ? (
             <>
             <ul className="svc-tree svc-tree__services">
@@ -453,7 +401,7 @@ export default function ServiceMapPage() {
                 <li key={item.id}>
                   <button type="button" className="svc-tree__service" onClick={() => setPreview(item)}>
                     <strong title={item.service}>{item.service || 'Unknown'}</strong>
-                    <span>{item.repo.trim() || 'Repository not connected'}</span>
+                    <span>{(item.repo || '').trim() || 'Repository not connected'}</span>
                     <span>{label(item.team || '') === 'Unknown' ? 'Owner not assigned' : label(item.team || '')} · <ServiceClassBadge value={item.criticality} />{(item.open_critical || item.open_warning) ? ` · ${item.open_critical || 0} critical / ${item.open_warning || 0} warning` : ''}</span>
                   </button>
                 </li>
@@ -471,7 +419,7 @@ export default function ServiceMapPage() {
             </>
           ) : (
             <div className="svc-tree__empty">
-              <span>No services in this environment.</span>
+              <span>No production services in this project.</span>
               {currentProject.id ? <Link href={addHref}>Add service</Link> : null}
             </div>
           )
@@ -481,14 +429,20 @@ export default function ServiceMapPage() {
           onClose={() => setPreview(null)}
           resetKey={preview?.id}
           label="Service preview"
-          eyebrow="Service"
+          eyebrow="Service inventory"
           title={preview?.service || 'Service'}
-          subtitle={preview ? [preview.project_name || 'Project unknown', preview.environment || 'Environment unknown'].join(' · ') : undefined}
+          subtitle={preview ? [preview.project_name || 'Project unknown', 'Production'].join(' · ') : undefined}
           headerActions={preview ? <CopyButton value={preview.service} label="service name" /> : null}
           footer={preview ? (
             <div className="portal-page__actions">
               <Link className="btn btn-secondary" href={`${serviceDetailHref(preview.id, router.query)}&tab=findings`}>
                 {(preview.open_critical || preview.open_warning) ? 'Open findings' : 'View findings'}
+              </Link>
+              <Link
+                className="btn btn-secondary"
+                href={`${serviceDetailHref(preview.id, router.query)}&tab=observability`}
+              >
+                Open observability
               </Link>
               <Link
                 className="btn btn-primary"
@@ -503,7 +457,7 @@ export default function ServiceMapPage() {
           {preview ? (
             <div className="portal-stack">
               <p>Project: {preview.project_name || 'Unknown'}</p>
-              <p>Environment: {preview.environment || 'Unknown'}</p>
+              <p>Monitored environment: Production</p>
               <p>Repository: {(preview.repo || '').trim() || 'Not connected'}</p>
               <p>Owner: {label(preview.team || '') === 'Unknown' ? 'Unassigned' : label(preview.team || '')}</p>
               <p>Class: <ServiceClassBadge value={preview.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span></p>

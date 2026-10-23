@@ -7,7 +7,7 @@ import Service360 from '../../components/Service360';
 import SreServiceWorkspace, { ServiceClassBadge } from '../../components/SreServiceWorkspace';
 import { buildPortalApiUrl, parsePortalNumericId, portalFetch } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { SERVICE_CLASSES } from '../../lib/sreMonitoring';
+import { SERVICE_CLASSES, monitoredEnvironmentName } from '../../lib/sreMonitoring';
 import { serviceCatalogueBackHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { rememberService } from '../../lib/recentServices';
@@ -270,7 +270,7 @@ export default function ServiceDetailPage() {
         body: JSON.stringify({
           service: service.trim(),
           repo: repo.trim(),
-          environment: environment.trim(),
+          environment: environment.trim() || monitoredEnvironmentName(projectEnvs),
           grafana_uid: grafanaUID.trim(),
           promql: promql.trim(),
           dashboard_url: dashboardURL.trim(),
@@ -303,12 +303,12 @@ export default function ServiceDetailPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Services</span>
+            <span className="portal-page__eyebrow">Service inventory</span>
             <h1 className="portal-page__title">{editing ? 'Edit service' : known(item?.service)}</h1>
             {item && !editing ? (
               <p className="portal-page__subtitle">
                 <ServiceClassBadge value={item.criticality} />
-                <span> · {known(item.team)} · Record environment {known(item.environment)}</span>
+                <span> · {known(item.team)} · Production</span>
               </p>
             ) : null}
           </div>
@@ -319,7 +319,7 @@ export default function ServiceDetailPage() {
             {isManager && item && editing ? (
               <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setEditing(false)}>Cancel edit</button>
             ) : null}
-            <Link href={serviceCatalogueBackHref(router.query, item || undefined)} className="btn btn-secondary">Back to services</Link>
+            <Link href={serviceCatalogueBackHref(router.query, item || undefined)} className="btn btn-secondary">Back to inventory</Link>
           </div>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
@@ -355,7 +355,11 @@ export default function ServiceDetailPage() {
                             <label className="label">Repo <span className="onboard-optional">Optional</span><input id="service-repo" className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
                             <label className="label">
                               Project
-                              <select className="input" value={projectId} onChange={(event) => { setProjectId(event.target.value); setEnvironment(''); }}>
+                              <select className="input" value={projectId} onChange={(event) => {
+                                setProjectId(event.target.value);
+                                const selected = projects.find((project) => String(project.id) === event.target.value);
+                                setEnvironment(monitoredEnvironmentName(selected?.environments || projectEnvs));
+                              }}>
                                 <option value="">No project</option>
                                 {projects.map((project) => (
                                   <option key={project.id} value={project.id}>{project.name || project.code || 'Unknown'}</option>
@@ -363,13 +367,8 @@ export default function ServiceDetailPage() {
                               </select>
                             </label>
                             <label className="label">
-                              Environment
-                              <select className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} disabled={!projectId || projectEnvs.length === 0}>
-                                <option value="">{projectId ? (projectEnvs.length ? 'Select an environment' : 'No environments on this project') : 'Select a project first'}</option>
-                                {projectEnvs.map((name) => (
-                                  <option key={name} value={name}>{name}</option>
-                                ))}
-                              </select>
+                              Monitored environment
+                              <input className="input" value="Production" readOnly />
                             </label>
                             <label className="label">
                               Criticality
@@ -416,6 +415,7 @@ export default function ServiceDetailPage() {
                     ) : (
                       <>
                         <dl>
+                          <dt>Monitored environment</dt><dd>Production</dd>
                           <dt>Criticality</dt>
                           <dd><ServiceClassBadge value={item.criticality} /> <span className="form-section__copy">Class is not a health indicator.</span></dd>
                           <dt>Service owner team</dt><dd>{(item.team || '').trim() || 'Not assigned'}</dd>
@@ -437,7 +437,7 @@ export default function ServiceDetailPage() {
                         <h2>Ownership & source</h2>
                         <dl>
                           <dt>Project</dt><dd>{known(item.project_name)}</dd>
-                          <dt>Environment</dt><dd>{known(item.environment)}</dd>
+                          <dt>Monitored environment</dt><dd>Production</dd>
                           <dt>Project team</dt>
                           <dd>{(projects.find((project) => project.id === item.project_id)?.owner_team || '').trim() || 'Not assigned'}</dd>
                           <dt>Criticality</dt>

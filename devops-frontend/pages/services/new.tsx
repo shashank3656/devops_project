@@ -6,7 +6,7 @@ import { saveSubmissionResult } from '../../lib/submissionResult';
 import { useEffect, useRef, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { SERVICE_CLASSES } from '../../lib/sreMonitoring';
+import { SERVICE_CLASSES, monitoredEnvironmentName } from '../../lib/sreMonitoring';
 import { scopeListHref } from '../../lib/scopeHref';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 
@@ -47,7 +47,6 @@ export default function NewServiceMapPage() {
   const [projectId, setProjectId] = useState('');
   const [service, setService] = useState('');
   const [repo, setRepo] = useState('');
-  const [environment, setEnvironment] = useState('');
   const [projectEnvs, setProjectEnvs] = useState<string[]>([]);
   const [grafanaUID, setGrafanaUID] = useState('');
   const [promql, setPromql] = useState('');
@@ -101,10 +100,8 @@ export default function NewServiceMapPage() {
   useEffect(() => {
     if (!router.isReady) return;
     const queryProject = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id;
-    const queryEnv = Array.isArray(router.query.environment) ? router.query.environment[0] : router.query.environment;
     if (queryProject) setProjectId(queryProject);
-    if (queryEnv) setEnvironment(queryEnv);
-  }, [router.isReady, router.query.environment, router.query.project_id]);
+  }, [router.isReady, router.query.project_id]);
 
   useEffect(() => {
     const selected = projects.find((project) => String(project.id) === projectId);
@@ -127,11 +124,9 @@ export default function NewServiceMapPage() {
           : [];
         const next = names.length ? names : fromProject;
         setProjectEnvs(next);
-        setEnvironment((current) => (next.includes(current) ? current : next[0] || ''));
       })
       .catch(() => {
         setProjectEnvs(fromProject);
-        setEnvironment((current) => (fromProject.includes(current) ? current : fromProject[0] || ''));
       });
   }, [apiUrl, projectId, projects]);
 
@@ -154,7 +149,7 @@ export default function NewServiceMapPage() {
     const payload = {
       service: service.trim(),
       repo: repo.trim(),
-      environment: environment.trim(),
+      environment: monitoredEnvironmentName(projectEnvs),
       grafana_uid: grafanaUID.trim(),
       promql: promql.trim(),
       dashboard_url: dashboardURL.trim(),
@@ -210,13 +205,13 @@ export default function NewServiceMapPage() {
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
-            <span className="portal-page__eyebrow">Service</span>
+            <span className="portal-page__eyebrow">Service inventory</span>
             <h1 className="portal-page__title">Add service</h1>
             <p className="portal-page__subtitle">
-              Name the service and the project it belongs to. Health stays Unknown until monitoring links exist.
+              Register a production service. Observability, findings, and configuration open on the service after save.
             </p>
           </div>
-          <Link href={scopeListHref('/services', router.query)} className="btn btn-secondary">Back to services</Link>
+          <Link href={scopeListHref('/services', router.query)} className="btn btn-secondary">Back to inventory</Link>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
@@ -224,7 +219,7 @@ export default function NewServiceMapPage() {
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
             <fieldset className="form-section">
               <legend className="form-section__title">Basics</legend>
-              <p className="form-section__copy">An active service needs a project. Without one, Save draft keeps it incomplete. Service owner team stays optional and is separate from the project team.</p>
+              <p className="form-section__copy">An active service needs a project. Inventory monitors production only, so environment folders are not used. Service owner team stays optional and is separate from the project team.</p>
               <div className="portal-form-grid">
                 <label className="label">
                   Service<span className="form-req" aria-hidden="true"> *</span>
@@ -232,7 +227,7 @@ export default function NewServiceMapPage() {
                 </label>
                 <label className="label">
                   Project
-                  <select className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); setEnvironment(''); }}>
+                  <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                     <option value="">No project</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
@@ -242,13 +237,8 @@ export default function NewServiceMapPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Environment
-                  <select className="input" value={environment} onChange={(e) => setEnvironment(e.target.value)} disabled={!projectId || projectEnvs.length === 0} required={Boolean(projectId)}>
-                    <option value="">{projectId ? (projectEnvs.length ? 'Select an environment' : 'No environments on this project') : 'Select a project first'}</option>
-                    {projectEnvs.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
+                  Monitored environment
+                  <input className="input" value="Production" readOnly />
                 </label>
                 <label className="label">
                   Criticality

@@ -96,7 +96,20 @@ func attachServiceFindingCounts(items []serviceMapEntry) {
 	}
 }
 
-func serviceMapConditions(projectID int, environment, query, team string, visible []int, restrict bool) (string, []any) {
+func isMonitoredServiceEnvironment(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "prod", "production":
+		return true
+	default:
+		return false
+	}
+}
+
+func requestMonitoredInventory(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("monitored")), "1")
+}
+
+func serviceMapConditions(projectID int, environment, query, team string, visible []int, restrict, monitored bool) (string, []any) {
 	args := []any{}
 	where := []string{}
 	if restrict {
@@ -115,7 +128,9 @@ func serviceMapConditions(projectID int, environment, query, team string, visibl
 		args = append(args, projectID)
 		where = append(where, fmt.Sprintf("s.project_id = $%d", len(args)))
 	}
-	if trimmed := strings.TrimSpace(environment); trimmed != "" {
+	if monitored {
+		where = append(where, "(s.environment = '' OR LOWER(s.environment) IN ('prod', 'production'))")
+	} else if trimmed := strings.TrimSpace(environment); trimmed != "" {
 		args = append(args, strings.ToLower(trimmed))
 		where = append(where, fmt.Sprintf("(s.environment = '' OR LOWER(s.environment) = $%d)", len(args)))
 	}
@@ -167,14 +182,19 @@ type serviceFolderCount struct {
 	Count       int    `json:"count"`
 }
 
-func listServiceMapSummary(projectID int, visible []int, restrict bool) ([]serviceFolderCount, int, int, *serviceMapEntry, error) {
-	where, args := serviceMapConditions(projectID, "", "", "", visible, restrict)
+func listServiceMapSummary(projectID int, visible []int, restrict, monitored bool) ([]serviceFolderCount, int, int, *serviceMapEntry, error) {
+	where, args := serviceMapConditions(projectID, "", "", "", visible, restrict, monitored)
+	selectSQL := `SELECT COALESCE(s.project_id, 0), COALESCE(p.name, ''), COALESCE(s.environment, ''), COUNT(*)`
+	groupBy := "GROUP BY 1, 2, 3 ORDER BY 2, 3"
+	if monitored {
+		selectSQL = `SELECT COALESCE(s.project_id, 0), COALESCE(p.name, ''), 'production', COUNT(*)`
+		groupBy = "GROUP BY 1, 2 ORDER BY 2"
+	}
 	rows, cancel, err := queryRowsWithTimeout(`
-		SELECT COALESCE(s.project_id, 0), COALESCE(p.name, ''), COALESCE(s.environment, ''), COUNT(*)
+		`+selectSQL+`
 		FROM service_map s
 		LEFT JOIN projects p ON p.id = s.project_id`+where+`
-		GROUP BY 1, 2, 3
-		ORDER BY 2, 3
+		`+groupBy+`
 	`, args...)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
@@ -194,7 +214,7 @@ func listServiceMapSummary(projectID int, visible []int, restrict bool) ([]servi
 		total += folder.Count
 		folders = append(folders, folder)
 	}
-	incompleteWhere, incompleteArgs := serviceMapConditions(projectID, "", "", "", visible, restrict)
+	incompleteWhere, incompleteArgs := serviceMapConditions(projectID, "", "", "", visible, restrict, monitored)
 	incompleteSQL := `SELECT COUNT(*) FROM service_map s LEFT JOIN projects p ON p.id = s.project_id` + incompleteWhere
 	incompleteClause := "(COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '')"
 	if incompleteWhere == "" {
@@ -209,7 +229,7 @@ func listServiceMapSummary(projectID int, visible []int, restrict bool) ([]servi
 		}
 		return nil, 0, 0, nil, err
 	}
-	setupWhere, setupArgs := serviceMapConditions(projectID, "", "", "", visible, restrict)
+	setupWhere, setupArgs := serviceMapConditions(projectID, "", "", "", visible, restrict, monitored)
 	setupSQL := `
 		SELECT ` + serviceMapSelectCols + `
 		FROM service_map s
@@ -239,8 +259,8 @@ func listServiceMapSummary(projectID int, visible []int, restrict bool) ([]servi
 	return folders, total, incomplete, setup, nil
 }
 
-func listServiceMapPage(projectID int, environment, query, team string, visible []int, restrict bool, limit, offset int) ([]serviceMapEntry, int, error) {
-	where, args := serviceMapConditions(projectID, environment, query, team, visible, restrict)
+func listServiceMapPage(projectID int, environment, query, team string, visible []int, restrict, monitored bool, limit, offset int) ([]serviceMapEntry, int, error) {
+	where, args := serviceMapConditions(projectID, environment, query, team, visible, restrict, monitored)
 	var total int
 	if err := queryRowContext(`SELECT COUNT(*) FROM service_map s LEFT JOIN projects p ON p.id = s.project_id`+where, args...).Scan(&total); err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
@@ -335,6 +355,9 @@ func upsertServiceMap(item serviceMapEntry) (*serviceMapEntry, error) {
 	item.Service = strings.TrimSpace(item.Service)
 	item.Repo = strings.TrimSpace(item.Repo)
 	item.Environment = strings.ToLower(strings.TrimSpace(item.Environment))
+	if item.Environment == "" {
+		item.Environment = "production"
+	}
 	if item.Service == "" && item.Repo == "" {
 		return nil, fmt.Errorf("service or repo is required")
 	}
@@ -474,8 +497,9 @@ func devopsServiceMapHandler(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
 			return
 		}
+		monitored := requestMonitoredInventory(r)
 		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("view")), "summary") {
-			folders, total, incomplete, setup, err := listServiceMapSummary(projectID, visibleIDs, !seeAll)
+			folders, total, incomplete, setup, err := listServiceMapSummary(projectID, visibleIDs, !seeAll, monitored)
 			if err != nil {
 				writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
 				return
@@ -487,7 +511,11 @@ func devopsServiceMapHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(r.URL.Query().Get("limit")) != "" {
 			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-			items, total, err := listServiceMapPage(projectID, r.URL.Query().Get("environment"), r.URL.Query().Get("q"), r.URL.Query().Get("team"), visibleIDs, !seeAll, limit, offset)
+			envFilter := r.URL.Query().Get("environment")
+			if monitored {
+				envFilter = ""
+			}
+			items, total, err := listServiceMapPage(projectID, envFilter, r.URL.Query().Get("q"), r.URL.Query().Get("team"), visibleIDs, !seeAll, monitored, limit, offset)
 			if err != nil {
 				writeAPIError(w, r, http.StatusInternalServerError, "failed to list services", err)
 				return

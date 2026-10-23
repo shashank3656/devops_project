@@ -103,10 +103,10 @@ export default function CommandPalette({ apiUrl, token, commands }: CommandPalet
   }, [commands, hits, query]);
 
   const grouped = useMemo(() => {
-    const order = ['Tickets', 'Services', 'Projects', 'People', 'Pages', 'Other'] as const;
+    const order = ['Tickets', 'Service inventory', 'Projects', 'People', 'Pages', 'Other'] as const;
     const bucket = (kind: string) => {
       if (kind === 'request' || kind === 'incident' || kind === 'change' || kind === 'problem' || kind === 'pr') return 'Tickets';
-      if (kind === 'service') return 'Services';
+      if (kind === 'service') return 'Service inventory';
       if (kind === 'project') return 'Projects';
       if (kind === 'person' || kind === 'user') return 'People';
       if (kind === 'page') return 'Pages';

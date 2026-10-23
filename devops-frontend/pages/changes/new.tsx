@@ -310,8 +310,8 @@ export default function NewChangeRequestPage() {
       return;
     }
     if (!selectedService) {
-      focusField('change-service', 'Select a service from the Services catalog');
-      setError('Select a service from the Services catalog');
+      focusField('change-service', 'Select a service from the Service inventory');
+      setError('Select a service from the Service inventory');
       return;
     }
     if (!assigneeUserId) {
@@ -477,7 +477,7 @@ export default function NewChangeRequestPage() {
             <form onSubmit={(event) => void submit(event)}>
               {!services.length ? (
                 <div className="empty-state">
-                  Add a service first. The service dropdown is filled from the Services catalog.
+                  Add a service first. The service dropdown is filled from the Service inventory.
                   {' '}
                   <Link href="/services/new">Create a service</Link>
                 </div>

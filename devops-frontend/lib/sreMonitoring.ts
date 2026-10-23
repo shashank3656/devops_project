@@ -1,3 +1,17 @@
+export function isMonitoredEnvironment(value?: string): boolean {
+  const text = (value || '').trim().toLowerCase();
+  return text === '' || text === 'prod' || text === 'production';
+}
+
+export function monitoredEnvironmentName(options: string[] = []): string {
+  const names = options.map((item) => item.trim()).filter(Boolean);
+  const production = names.find((item) => item.toLowerCase() === 'production');
+  if (production) return production;
+  const prod = names.find((item) => item.toLowerCase() === 'prod');
+  if (prod) return prod;
+  return 'production';
+}
+
 export const SERVICE_CLASSES = [
   { value: 'unclassified', label: 'Unclassified' },
   { value: 'mission_critical', label: 'Mission Critical' },
