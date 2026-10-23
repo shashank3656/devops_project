@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -244,6 +245,23 @@ func TestRetryKeepsOriginalAnchor(t *testing.T) {
 	}
 	if !retryEvaluationAnchor(original, false).IsZero() {
 		t.Fatal("a new refresh must not reuse the previous window")
+	}
+}
+
+func TestServiceEvalMetaEmptyIDs(t *testing.T) {
+	if got := serviceEvalMetaForServices(nil); len(got) != 0 {
+		t.Fatalf("nil ids = %+v", got)
+	}
+}
+
+func TestConnectorPublicOmitsSecretValue(t *testing.T) {
+	item := connectorPublic(1, nil, "Grafana prod", "grafana", "prom", "https://metrics.example.internal", "GRAFANA_TOKEN", "ready", "", nil, 0, 15, true)
+	if !item.HasCredential || !item.Enabled {
+		t.Fatalf("%+v", item)
+	}
+	raw, _ := json.Marshal(item)
+	if strings.Contains(string(raw), "GRAFANA_TOKEN") && strings.Contains(string(raw), `"secret_ref"`) {
+		t.Fatalf("secret reference leaked: %s", raw)
 	}
 }
 

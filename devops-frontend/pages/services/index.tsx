@@ -2,11 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
+import { DataTable, EmptyState, formatOperationalTime, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { rememberService } from '../../lib/recentServices';
 import { ServiceClassBadge } from '../../components/SreServiceWorkspace';
-import { SERVICE_CLASSES, inventoryServicesPath } from '../../lib/sreMonitoring';
+import { SERVICE_CLASSES, inventoryServicesPath, scheduleModeCopy } from '../../lib/sreMonitoring';
 import { serviceDetailHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
@@ -23,6 +23,8 @@ interface ServiceRow {
   criticality?: string;
   open_critical?: number;
   open_warning?: number;
+  last_evaluated_at?: string;
+  schedule_minutes?: number;
 }
 
 interface ProjectOption {
@@ -236,6 +238,16 @@ export default function ServiceInventoryPage() {
         openFindingCount(item)
           ? `${item.open_critical || 0} critical / ${item.open_warning || 0} warning`
           : 'None recorded'
+      ),
+    },
+    {
+      id: 'evaluation',
+      header: 'Last evaluation',
+      cell: (item) => (
+        <div className="ig-cell-stack">
+          <span className="ig-cell-title">{item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : 'Unknown'}</span>
+          <span className="ig-cell-meta">{scheduleModeCopy(item.schedule_minutes)}</span>
+        </div>
       ),
     },
     {

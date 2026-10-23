@@ -356,6 +356,7 @@ export default function ServiceDetailPage() {
                 apiUrl={apiUrl}
                 token={sessionToken}
                 serviceId={item.id}
+                serviceName={item.service}
                 projectId={item.project_id}
                 environment={item.environment}
                 evidenceUrl={item.dashboard_url || item.metrics_url}

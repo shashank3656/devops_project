@@ -150,6 +150,7 @@ func migrateSREObservabilitySchema() {
 	_, _ = DB.Exec(`ALTER TABLE observability_connectors ADD COLUMN IF NOT EXISTS base_url TEXT NOT NULL DEFAULT ''`)
 	_, _ = DB.Exec(`ALTER TABLE observability_connectors ADD COLUMN IF NOT EXISTS ingest_delay_minutes INTEGER NOT NULL DEFAULT 0`)
 	_, _ = DB.Exec(`ALTER TABLE observability_connectors ADD COLUMN IF NOT EXISTS timeout_seconds INTEGER NOT NULL DEFAULT 15`)
+	_, _ = DB.Exec(`ALTER TABLE observability_connectors ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE`)
 	_, _ = DB.Exec(`ALTER TABLE service_monitors ADD COLUMN IF NOT EXISTS schedule_minutes INTEGER NOT NULL DEFAULT 0`)
 	_, _ = DB.Exec(`ALTER TABLE service_monitors ADD COLUMN IF NOT EXISTS last_known_good_version INTEGER NOT NULL DEFAULT 0`)
 	_, _ = DB.Exec(`ALTER TABLE service_monitors ADD COLUMN IF NOT EXISTS ingest_delay_minutes INTEGER NOT NULL DEFAULT 0`)

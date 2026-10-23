@@ -95,6 +95,12 @@ export function previewFindingRule(value: number | null, warningBelow: number, c
   return 'healthy';
 }
 
+export function scheduleModeCopy(minutes?: number): string {
+  const value = Number(minutes) || 0;
+  if (value > 0) return `Scheduled every ${value} min`;
+  return 'On-demand';
+}
+
 export function qualityLabel(value?: string): string {
   if (value === 'valid') return 'Valid';
   if (value === 'partial') return 'Partial';

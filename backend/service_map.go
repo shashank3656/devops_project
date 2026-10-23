@@ -8,27 +8,30 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type serviceMapEntry struct {
-	ID              int    `json:"id"`
-	ProjectID       *int   `json:"project_id,omitempty"`
-	ProjectName     string `json:"project_name,omitempty"`
-	ProjectCode     string `json:"project_code,omitempty"`
-	Service         string `json:"service"`
-	Repo            string `json:"repo"`
-	Environment     string `json:"environment"`
-	GrafanaUID      string `json:"grafana_uid,omitempty"`
-	PromQL          string `json:"promql,omitempty"`
-	DashboardURL    string `json:"dashboard_url,omitempty"`
-	MetricsURL      string `json:"metrics_url,omitempty"`
-	Team            string `json:"team,omitempty"`
-	Criticality     string `json:"criticality"`
-	SupportTeam     string `json:"support_team,omitempty"`
-	EscalationRoute string `json:"escalation_route,omitempty"`
-	RunbookURL      string `json:"runbook_url,omitempty"`
-	OpenCritical    int    `json:"open_critical,omitempty"`
-	OpenWarning     int    `json:"open_warning,omitempty"`
+	ID              int     `json:"id"`
+	ProjectID       *int    `json:"project_id,omitempty"`
+	ProjectName     string  `json:"project_name,omitempty"`
+	ProjectCode     string  `json:"project_code,omitempty"`
+	Service         string  `json:"service"`
+	Repo            string  `json:"repo"`
+	Environment     string  `json:"environment"`
+	GrafanaUID      string  `json:"grafana_uid,omitempty"`
+	PromQL          string  `json:"promql,omitempty"`
+	DashboardURL    string  `json:"dashboard_url,omitempty"`
+	MetricsURL      string  `json:"metrics_url,omitempty"`
+	Team            string  `json:"team,omitempty"`
+	Criticality     string  `json:"criticality"`
+	SupportTeam     string  `json:"support_team,omitempty"`
+	EscalationRoute string  `json:"escalation_route,omitempty"`
+	RunbookURL      string  `json:"runbook_url,omitempty"`
+	OpenCritical    int     `json:"open_critical,omitempty"`
+	OpenWarning     int     `json:"open_warning,omitempty"`
+	LastEvaluatedAt *string `json:"last_evaluated_at,omitempty"`
+	ScheduleMinutes int     `json:"schedule_minutes,omitempty"`
 }
 
 const serviceMapSelectCols = `s.id, s.project_id, COALESCE(p.name,''), COALESCE(p.code,''), COALESCE(s.service,''), COALESCE(s.repo,''),
@@ -80,6 +83,7 @@ func listServiceMap(projectID int, environment, query string) ([]serviceMapEntry
 		out = append(out, *item)
 	}
 	attachServiceFindingCounts(out)
+	attachServiceEvalMeta(out)
 	return out, nil
 }
 
@@ -303,7 +307,68 @@ func listServiceMapPage(projectID int, environment, query, team string, visible 
 		out = append(out, *item)
 	}
 	attachServiceFindingCounts(out)
+	attachServiceEvalMeta(out)
 	return out, total, nil
+}
+
+func attachServiceEvalMeta(items []serviceMapEntry) {
+	ids := make([]int, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	meta := serviceEvalMetaForServices(ids)
+	for i := range items {
+		if row, ok := meta[items[i].ID]; ok {
+			items[i].LastEvaluatedAt = row.lastEval
+			items[i].ScheduleMinutes = row.schedule
+		}
+	}
+}
+
+type serviceEvalMeta struct {
+	lastEval *string
+	schedule int
+}
+
+func serviceEvalMetaForServices(ids []int) map[int]serviceEvalMeta {
+	out := map[int]serviceEvalMeta{}
+	if DB == nil || len(ids) == 0 {
+		return out
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT m.service_id,
+		       MAX(r.evaluated_at),
+		       COALESCE(MAX(CASE WHEN m.enabled THEN m.schedule_minutes ELSE 0 END), 0)
+		FROM service_monitors m
+		LEFT JOIN monitor_evaluation_runs r ON r.monitor_id = m.id
+		WHERE m.service_id IN (`+strings.Join(placeholders, ",")+`)
+		GROUP BY m.service_id
+	`, args...)
+	if err != nil {
+		return out
+	}
+	defer cancel()
+	defer rows.Close()
+	for rows.Next() {
+		var id, schedule int
+		var evaluated sql.NullTime
+		if rows.Scan(&id, &evaluated, &schedule) != nil {
+			continue
+		}
+		row := serviceEvalMeta{schedule: schedule}
+		if evaluated.Valid {
+			stamp := evaluated.Time.UTC().Format(time.RFC3339)
+			row.lastEval = &stamp
+		}
+		out[id] = row
+	}
+	return out
 }
 
 func scanServiceMap(scanner interface {

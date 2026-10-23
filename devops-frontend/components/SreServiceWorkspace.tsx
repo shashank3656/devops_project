@@ -3,7 +3,8 @@ import { useRouter } from 'next/router';
 import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { InspectorDrawer, buildPortalApiUrl, formatOperationalTime } from '@infragate/ui';
 import { useUnsavedChanges } from '../lib/useUnsavedChanges';
-import { CONNECTOR_SOURCES, MEASUREMENT_TYPES, SERVICE_CLASSES, budgetDisplay, formatBps, previewFindingRule, qualityLabel, scoreDisplay, serviceClassLabel, sparklineHeights, validSecretRefName, type ServiceWorkspaceTab, workspaceTab } from '../lib/sreMonitoring';
+import { CONNECTOR_SOURCES, MEASUREMENT_TYPES, SERVICE_CLASSES, budgetDisplay, formatBps, previewFindingRule, qualityLabel, scheduleModeCopy, scoreDisplay, serviceClassLabel, sparklineHeights, validSecretRefName, type ServiceWorkspaceTab, workspaceTab } from '../lib/sreMonitoring';
+import { serviceTicketHref } from '../lib/scopeHref';
 
 type Monitor = {
   id: number;
@@ -22,6 +23,7 @@ type Monitor = {
   latency_threshold_ms?: number;
   min_samples: number;
   min_coverage_bps: number;
+  schedule_minutes?: number;
   warning_rule?: { comparator?: string; threshold?: number; title?: string; description?: string };
   critical_rule?: { comparator?: string; threshold?: number; title?: string; description?: string };
   latest?: {
@@ -61,7 +63,7 @@ type Finding = {
   incident_id?: number;
 };
 
-type Connector = { id: number; name: string; source_type: string; status: string; has_credential: boolean; base_url?: string; ingest_delay_minutes?: number; timeout_seconds?: number };
+type Connector = { id: number; name: string; source_type: string; status: string; has_credential: boolean; enabled?: boolean; base_url?: string; grafana_datasource_uid?: string; ingest_delay_minutes?: number; timeout_seconds?: number };
 type Template = { id: string; name: string; source_type: string; measurement_type: string; query: string; good_field: string; total_field: string; help: string };
 
 const TABS: { id: ServiceWorkspaceTab; label: string }[] = [
@@ -73,6 +75,21 @@ const TABS: { id: ServiceWorkspaceTab; label: string }[] = [
 
 function authHeaders(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+}
+
+const EMPTY_CONNECTOR_FORM = { name: '', source_type: 'grafana', base_url: '', secret_ref: '', grafana_datasource_uid: '', ingest_delay_minutes: 0 };
+const EMPTY_MONITOR_FORM = {
+  name: '', measurement_type: 'availability_sli', connector_id: 0, query_text: '', good_field: 'good', total_field: 'total',
+  target_bps: 9990, window_minutes: 43200, min_samples: 1, min_coverage_bps: 8000, enable: false,
+  warning_below: 20, critical_below: 5, schedule_minutes: 0,
+};
+
+function secretRefPlaceholder(source: string): string {
+  if (source === 'splunk') return 'SPLUNK_TOKEN';
+  if (source === 'private') return 'PRIVATE_SAMPLE_SECRET';
+  if (source === 'datadog') return 'DATADOG_API_KEY';
+  if (source === 'prometheus') return 'PROMETHEUS_TOKEN';
+  return 'GRAFANA_TOKEN';
 }
 
 function stateLabel(state?: string): string {
@@ -99,6 +116,7 @@ export default function SreServiceWorkspace({
   evidenceUrl,
   onConfigure,
   configurationLead,
+  serviceName,
 }: {
   apiUrl: string;
   token: string;
@@ -110,6 +128,7 @@ export default function SreServiceWorkspace({
   evidenceUrl?: string;
   onConfigure?: () => void;
   configurationLead?: ReactNode;
+  serviceName?: string;
 }) {
   const router = useRouter();
   const tab = workspaceTab(router.query.tab);
@@ -124,6 +143,11 @@ export default function SreServiceWorkspace({
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [editingMonitorId, setEditingMonitorId] = useState(0);
+  const [connectorOpen, setConnectorOpen] = useState(false);
+  const [editingConnectorId, setEditingConnectorId] = useState(0);
+  const [routingOpen, setRoutingOpen] = useState(false);
+  const [guardrailOpen, setGuardrailOpen] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const [findingFilter, setFindingFilter] = useState({ severity: '', lifecycle: '', source: '' });
   const [testNote, setTestNote] = useState('');
@@ -134,19 +158,15 @@ export default function SreServiceWorkspace({
   const [versionDiff, setVersionDiff] = useState<string[]>([]);
   const [versionMonitorId, setVersionMonitorId] = useState(0);
   const [changes, setChanges] = useState<{ id: number; change_number?: string; title?: string; sha?: string; created_at?: string }[]>([]);
-  const [connectorForm, setConnectorForm] = useState({ name: '', source_type: 'fixture', base_url: '', secret_ref: '', grafana_datasource_uid: '', ingest_delay_minutes: 0 });
+  const [connectorForm, setConnectorForm] = useState(EMPTY_CONNECTOR_FORM);
   const [episodes, setEpisodes] = useState<{ id: number; title?: string; status?: string; severity?: string; sequence?: number; incident_id?: number }[]>([]);
   const [simulation, setSimulation] = useState('');
   const [findingOwner, setFindingOwner] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const [guardrailDecision, setGuardrailDecision] = useState<{ id?: number; outcome?: string; reason?: string; mode?: string; artifact_sha?: string; expires_at?: string } | null>(null);
   const [lastBatchId, setLastBatchId] = useState(0);
-  const [form, setForm] = useState({
-    name: '', measurement_type: 'availability_sli', connector_id: 0, query_text: '', good_field: 'good', total_field: 'total',
-    target_bps: 9990, window_minutes: 43200, min_samples: 1, min_coverage_bps: 8000, enable: false,
-    warning_below: 20, critical_below: 5, schedule_minutes: 0,
-  });
-  useUnsavedChanges(formOpen);
+  const [form, setForm] = useState(EMPTY_MONITOR_FORM);
+  useUnsavedChanges(formOpen || connectorOpen);
 
   const setTab = (next: ServiceWorkspaceTab) => {
     const query = { ...router.query };
@@ -172,7 +192,13 @@ export default function SreServiceWorkspace({
         setFindings(Array.isArray(findingData.findings) ? findingData.findings : []);
         setConnectors(Array.isArray(connectorData.connectors) ? connectorData.connectors : []);
         setTemplates(Array.isArray(templateData.templates) ? templateData.templates : []);
-        if (routingData.routing) setRouting(routingData.routing);
+        if (routingData.routing) {
+          setRouting({
+            observation_only: routingData.routing.observation_only !== false,
+            create_incidents: Boolean(routingData.routing.create_incidents),
+            page_oncall: Boolean(routingData.routing.page_oncall),
+          });
+        }
         if (guardrailData.policy) setGuardrail(guardrailData.policy);
         if (guardrailData.latest || guardrailData.preview) setGuardrailDecision(guardrailData.latest || guardrailData.preview);
       })
@@ -229,6 +255,8 @@ export default function SreServiceWorkspace({
   const latency = monitors.find((item) => item.measurement_type === 'latency_sli');
   const openFindings = findings.filter((item) => item.lifecycle !== 'resolved');
   const lastEval = monitors.map((item) => item.latest?.evaluated_at || item.latest?.measurement?.observed_at).filter(Boolean).sort().at(-1);
+  const scheduledMinutes = monitors.filter((item) => item.enabled && (item.schedule_minutes || 0) > 0).map((item) => item.schedule_minutes || 0);
+  const scheduleCopy = scheduledMinutes.length ? scheduleModeCopy(Math.min(...scheduledMinutes)) : 'On-demand';
   const visibleFindings = openFindings.concat(findings.filter((item) => item.lifecycle === 'resolved')).filter((item) => (
     (!findingFilter.severity || item.severity === findingFilter.severity)
     && (!findingFilter.lifecycle || item.lifecycle === findingFilter.lifecycle)
@@ -279,12 +307,42 @@ export default function SreServiceWorkspace({
     }
   };
 
+  const startAddMonitor = () => {
+    setEditingMonitorId(0);
+    setForm(EMPTY_MONITOR_FORM);
+    setFormStep(1);
+    setFormOpen(true);
+  };
+
+  const startEditMonitor = (monitor: Monitor) => {
+    setEditingMonitorId(monitor.id);
+    setForm({
+      name: monitor.name,
+      measurement_type: monitor.measurement_type,
+      connector_id: monitor.connector_id || 0,
+      query_text: monitor.query_text,
+      good_field: monitor.good_field,
+      total_field: monitor.total_field,
+      target_bps: monitor.target_bps,
+      window_minutes: monitor.window_minutes,
+      min_samples: monitor.min_samples,
+      min_coverage_bps: monitor.min_coverage_bps,
+      enable: monitor.enabled,
+      warning_below: Number(monitor.warning_rule?.threshold) || 20,
+      critical_below: Number(monitor.critical_rule?.threshold) || 5,
+      schedule_minutes: monitor.schedule_minutes || 0,
+    });
+    setFormStep(1);
+    setFormOpen(true);
+  };
+
   const saveMonitor = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
     try {
-      const response = await fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/monitors`), {
-        method: 'POST',
+      const editing = monitors.find((item) => item.id === editingMonitorId);
+      const response = await fetch(buildPortalApiUrl(apiUrl, editingMonitorId ? `/api/devops/services/${serviceId}/monitors/${editingMonitorId}` : `/api/devops/services/${serviceId}/monitors`), {
+        method: editingMonitorId ? 'PATCH' : 'POST',
         headers: authHeaders(token),
         body: JSON.stringify({
           name: form.name,
@@ -300,6 +358,7 @@ export default function SreServiceWorkspace({
           min_coverage_bps: form.min_coverage_bps,
           schedule_minutes: form.schedule_minutes,
           enabled: form.enable,
+          expected_version: editing?.current_version,
           warning_rule: { comparator: 'below', threshold: form.warning_below, title: 'Error budget running low', description: 'The service still has budget, but consumption needs investigation.' },
           critical_rule: { comparator: 'below', threshold: form.critical_below, title: 'Error budget exhausted', description: 'Budget remaining is below the critical threshold.' },
         }),
@@ -308,7 +367,10 @@ export default function SreServiceWorkspace({
       if (!response.ok) throw new Error(data.error || 'Failed to save monitor');
       setFormOpen(false);
       setFormStep(1);
-      setNotice(form.enable ? 'Monitor saved and enabled for on-demand refresh.' : 'Draft monitor saved. Enable it after a successful Test query.');
+      setEditingMonitorId(0);
+      setForm(EMPTY_MONITOR_FORM);
+      const scheduleCopy = form.schedule_minutes > 0 ? `scheduled every ${form.schedule_minutes} min` : 'on-demand refresh';
+      setNotice(form.enable ? `Monitor saved and enabled for ${scheduleCopy}.` : 'Draft monitor saved. Enable it after a successful Test query.');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save monitor');
@@ -334,6 +396,33 @@ export default function SreServiceWorkspace({
       body: JSON.stringify({ acknowledge: true, note: 'Acknowledged from the service workspace.' }),
     });
     load();
+  };
+
+  const resolveFinding = async (finding: Finding) => {
+    setError('');
+    try {
+      const response = await fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/monitoring/findings/${finding.id}`), {
+        method: 'PATCH',
+        headers: authHeaders(token),
+        body: JSON.stringify({ resolve: true, owner: findingOwner }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to resolve finding');
+      setNotice('Finding resolved. Acknowledgement is not recovery; this records that the investigation is closed.');
+      closeFinding();
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to resolve finding');
+    }
+  };
+
+  const findingIncidentHref = (finding: Finding) => {
+    const href = serviceTicketHref('/incidents/new', { id: serviceId, project_id: projectId, environment, service: serviceName });
+    const params = new URLSearchParams(href.split('?')[1] || '');
+    params.set('summary', finding.title);
+    params.set('notes', [finding.observed, finding.expected].filter(Boolean).join(' '));
+    params.set('finding_id', String(finding.id));
+    return `/incidents/new?${params.toString()}`;
   };
 
   const testMonitor = async (monitor: Monitor) => {
@@ -375,12 +464,15 @@ export default function SreServiceWorkspace({
           warning_rule: monitor.warning_rule,
           critical_rule: monitor.critical_rule,
           expected_version: monitor.current_version,
+          schedule_minutes: monitor.schedule_minutes || 0,
           enabled,
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Failed to update monitor');
-      setNotice(enabled ? 'Monitor enabled for on-demand refresh.' : 'Monitor disabled.');
+      setNotice(enabled
+        ? ((monitor.schedule_minutes || 0) > 0 ? `Monitor enabled. ${scheduleModeCopy(monitor.schedule_minutes)}.` : 'Monitor enabled for on-demand refresh.')
+        : 'Monitor disabled.');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update monitor');
@@ -405,6 +497,25 @@ export default function SreServiceWorkspace({
     }
   };
 
+  const startAddConnector = () => {
+    setEditingConnectorId(0);
+    setConnectorForm(EMPTY_CONNECTOR_FORM);
+    setConnectorOpen(true);
+  };
+
+  const startEditConnector = (item: Connector) => {
+    setEditingConnectorId(item.id);
+    setConnectorForm({
+      name: item.name,
+      source_type: item.source_type,
+      base_url: item.base_url || '',
+      secret_ref: '',
+      grafana_datasource_uid: item.grafana_datasource_uid || '',
+      ingest_delay_minutes: item.ingest_delay_minutes || 0,
+    });
+    setConnectorOpen(true);
+  };
+
   const saveConnector = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -413,13 +524,14 @@ export default function SreServiceWorkspace({
       setError('Store GRAFANA_TOKEN, SPLUNK_TOKEN, or PRIVATE_SAMPLE_SECRET, not the credential.');
       return;
     }
-    if (connectorForm.source_type !== 'fixture' && !secretRef) {
+    const editing = connectors.find((item) => item.id === editingConnectorId);
+    if (connectorForm.source_type !== 'fixture' && !secretRef && !editing?.has_credential) {
       setError('Live and private connectors need a secret reference name on the server.');
       return;
     }
     try {
-      const response = await fetch(buildPortalApiUrl(apiUrl, '/api/devops/observability/connectors'), {
-        method: 'POST',
+      const response = await fetch(buildPortalApiUrl(apiUrl, editingConnectorId ? `/api/devops/observability/connectors/${editingConnectorId}` : '/api/devops/observability/connectors'), {
+        method: editingConnectorId ? 'PATCH' : 'POST',
         headers: authHeaders(token),
         body: JSON.stringify({
           project_id: projectId || undefined,
@@ -429,17 +541,44 @@ export default function SreServiceWorkspace({
           secret_ref: secretRef,
           grafana_datasource_uid: connectorForm.grafana_datasource_uid,
           ingest_delay_minutes: connectorForm.ingest_delay_minutes,
+          enabled: editing ? editing.enabled !== false : true,
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Failed to save connector');
-      setConnectorForm({ name: '', source_type: 'fixture', base_url: '', secret_ref: '', grafana_datasource_uid: '', ingest_delay_minutes: 0 });
+      setConnectorForm(EMPTY_CONNECTOR_FORM);
+      setConnectorOpen(false);
+      setEditingConnectorId(0);
       setNotice(connectorForm.source_type === 'private'
         ? 'Private connector saved. Run workers/push_monitoring_sample.py with the same secret reference name in workers/.env.'
         : 'Connector saved. Credentials stay on the server.');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save connector');
+    }
+  };
+
+  const setConnectorEnabled = async (item: Connector, enabled: boolean) => {
+    setError('');
+    try {
+      const response = await fetch(buildPortalApiUrl(apiUrl, `/api/devops/observability/connectors/${item.id}`), {
+        method: 'PATCH',
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          name: item.name,
+          source_type: item.source_type,
+          base_url: item.base_url || '',
+          grafana_datasource_uid: item.grafana_datasource_uid || '',
+          ingest_delay_minutes: item.ingest_delay_minutes || 0,
+          enabled,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to update connector');
+      setNotice(enabled ? `${item.name} is enabled.` : `${item.name} is disabled. Queries using it stay Unknown until it is enabled.`);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update connector');
     }
   };
 
@@ -548,7 +687,7 @@ export default function SreServiceWorkspace({
           ))}
         </div>
         <div className="sre-workspace__tools">
-          <p className="sre-workspace__mode">On-demand monitoring{lastEval ? ` · last successful evaluation ${formatOperationalTime(lastEval)}` : ' · not evaluated yet'}</p>
+          <p className="sre-workspace__mode">{scheduleCopy}{lastEval ? ` · last evaluation ${formatOperationalTime(lastEval)}` : ' · not evaluated yet'}</p>
           {primaryAction}
         </div>
       </div>
@@ -582,6 +721,7 @@ export default function SreServiceWorkspace({
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTab('findings')}>{openFindings.length ? 'Open findings' : 'View findings'}</button>
             </article>
           </section>
+          <p className="form-section__copy">{scheduleCopy}. Missing telemetry stays Unknown, not Healthy.{lastEval ? ` Last evaluation ${formatOperationalTime(lastEval)}.` : ' This service has not been evaluated yet.'}</p>
           {overview}
         </div>
       ) : null}
@@ -642,7 +782,7 @@ export default function SreServiceWorkspace({
               </p>
             </section>
           ) : null}
-          <p className="form-section__copy">Continuous alerting stays off until a scheduled evaluation or webhook policy is configured.</p>
+          <p className="form-section__copy">{scheduleCopy === 'On-demand' ? 'Refresh evaluates saved queries on demand. A schedule is a worker interval, not 24/7 alerting, until a webhook or on-call policy is on.' : `${scheduleCopy}. This is a worker interval, not 24/7 alerting, until a webhook or on-call policy is on.`}</p>
           {isManager ? <button type="button" className="btn btn-secondary" onClick={() => { setTab('configuration'); onConfigure?.(); }}>Configure monitors</button> : null}
         </div>
       ) : null}
@@ -728,16 +868,17 @@ export default function SreServiceWorkspace({
                 <h2 className="portal-surface__title">Monitors and queries</h2>
                 <p className="portal-surface__subtitle">Credentials stay on the server. A dashboard URL is evidence, not an executable query.</p>
               </div>
-              {isManager && !formOpen ? <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>Add monitor</button> : null}
+              {isManager && !formOpen ? <button type="button" className="btn btn-primary" onClick={startAddMonitor}>Add monitor</button> : null}
             </div>
             {monitors.length ? (
               <ul className="sre-monitor-list">
                 {monitors.map((monitor) => (
                   <li key={monitor.id}>
                     <strong>{monitor.name}</strong>
-                    <span>{monitor.enabled ? 'Enabled' : 'Draft'} · {monitor.measurement_type.replaceAll('_', ' ')} · version {monitor.current_version}{monitor.last_known_good_version ? ` · last known good ${monitor.last_known_good_version}` : ''}</span>
+                    <span>{monitor.enabled ? 'Enabled' : 'Draft'} · {scheduleModeCopy(monitor.schedule_minutes)} · {monitor.measurement_type.replaceAll('_', ' ')} · version {monitor.current_version}{monitor.last_known_good_version ? ` · last known good ${monitor.last_known_good_version}` : ''}</span>
                     {isManager ? (
                       <div className="portal-page__actions">
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEditMonitor(monitor)}>Edit</button>
                         <button type="button" className="btn btn-secondary btn-sm" onClick={() => void testMonitor(monitor)}>Test query</button>
                         <button type="button" className="btn btn-secondary btn-sm" onClick={() => void enableMonitor(monitor, !monitor.enabled)}>{monitor.enabled ? 'Disable' : 'Enable'}</button>
                         {monitor.last_known_good_version ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => void rollbackMonitor(monitor.id, monitor.last_known_good_version)}>Restore last known good</button> : null}
@@ -754,6 +895,7 @@ export default function SreServiceWorkspace({
             )}
             {isManager && formOpen ? (
               <form onSubmit={(event) => void saveMonitor(event)} className="sre-monitor-form">
+                <h3>{editingMonitorId ? 'Edit monitor' : 'Add monitor'}</h3>
                 <div className="sre-steps" aria-label="Monitor steps">
                   {['Basics', 'Query and mapping', 'Objectives and findings', 'Review'].map((label, index) => (
                     <span key={label} className={formStep === index + 1 ? 'is-active' : undefined}>{index + 1}. {label}</span>
@@ -770,7 +912,7 @@ export default function SreServiceWorkspace({
                     <label className="label">Connector
                       <select className="input" value={form.connector_id} onChange={(event) => setForm({ ...form, connector_id: Number(event.target.value) })}>
                         <option value={0}>Select a connector</option>
-                        {connectors.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.source_type})</option>)}
+                        {connectors.filter((item) => item.enabled !== false || item.id === form.connector_id).map((item) => <option key={item.id} value={item.id}>{item.name} ({item.source_type}{item.enabled === false ? ', disabled' : ''})</option>)}
                       </select>
                     </label>
                   </>
@@ -804,7 +946,8 @@ export default function SreServiceWorkspace({
                     <label className="label">Minimum coverage (bps)<input className="input" type="number" value={form.min_coverage_bps} onChange={(event) => setForm({ ...form, min_coverage_bps: Number(event.target.value) })} /></label>
                     <label className="label">Warning if remaining budget below %<input className="input" type="number" value={form.warning_below} onChange={(event) => setForm({ ...form, warning_below: Number(event.target.value) })} /></label>
                     <label className="label">Critical if remaining budget below %<input className="input" type="number" value={form.critical_below} onChange={(event) => setForm({ ...form, critical_below: Number(event.target.value) })} /></label>
-                    <label className="label">Schedule every N minutes (0 = on-demand only)<input className="input" type="number" value={form.schedule_minutes} onChange={(event) => setForm({ ...form, schedule_minutes: Number(event.target.value) })} /></label>
+                    <label className="label">Evaluate every N minutes (0 = on-demand only)<input className="input" type="number" min={0} value={form.schedule_minutes} onChange={(event) => setForm({ ...form, schedule_minutes: Number(event.target.value) })} /></label>
+                    <p className="form-section__copy">A schedule runs the saved query on an OpsTrellis worker. It is not 24/7 alerting until a webhook or on-call policy is on. Missing data stays Unknown.</p>
                     <p className="form-section__copy">Rule preview is a local simulation. Critical wins when both rules match. Missing data is Unknown.</p>
                     <p>Healthy sample: {previewFindingRule(form.warning_below + 5, form.warning_below, form.critical_below)}. Warning sample: {previewFindingRule(form.warning_below - 1, form.warning_below, form.critical_below)}. Critical sample: {previewFindingRule(form.critical_below - 1, form.warning_below, form.critical_below)}. Missing data: {previewFindingRule(null, form.warning_below, form.critical_below)}.</p>
                   </div>
@@ -814,14 +957,14 @@ export default function SreServiceWorkspace({
                     <p><strong>{form.name || 'Unnamed monitor'}</strong> · {form.measurement_type.replaceAll('_', ' ')}</p>
                     <p>Connector {connectors.find((item) => item.id === form.connector_id)?.name || 'not selected'}. Target {formatBps(form.target_bps)} over {form.window_minutes} minutes.</p>
                     <p>Critical wins if remaining budget is below {form.critical_below}%. Warning is below {form.warning_below}%.</p>
-                    <p className="form-section__copy">Refresh evaluates saved queries. Continuous alerting needs a schedule or an alert integration.</p>
+                    <p className="form-section__copy">{form.schedule_minutes > 0 ? `${scheduleModeCopy(form.schedule_minutes)}. This is a worker schedule, not 24/7 alerting, until a webhook or on-call policy is on.` : 'Refresh evaluates saved queries on demand. Continuous alerting needs a schedule or an alert integration.'}</p>
                   </div>
                 ) : null}
-                {formStep === 4 ? <label className="label"><input type="checkbox" checked={form.enable} onChange={(event) => setForm({ ...form, enable: event.target.checked })} /> Save and enable for on-demand refresh</label> : null}
+                {formStep === 4 ? <label className="label"><input type="checkbox" checked={form.enable} onChange={(event) => setForm({ ...form, enable: event.target.checked })} /> Save and enable for {form.schedule_minutes > 0 ? 'scheduled evaluation' : 'on-demand refresh'}</label> : null}
                 <div className="portal-form-actions">
                   {formStep > 1 ? <button type="button" className="btn btn-secondary" onClick={() => setFormStep(formStep - 1)}>Back</button> : null}
                   {formStep < 4 ? <button type="button" className="btn btn-primary" onClick={() => setFormStep(formStep + 1)}>Next</button> : <button type="submit" className="btn btn-primary">{form.enable ? 'Save and enable' : 'Save draft'}</button>}
-                  <button type="button" className="btn btn-secondary" onClick={() => { setFormOpen(false); setFormStep(1); }}>Cancel</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => { setFormOpen(false); setFormStep(1); setEditingMonitorId(0); setForm(EMPTY_MONITOR_FORM); }}>Cancel</button>
                 </div>
               </form>
             ) : !isManager ? <p className="form-section__copy">You can view configuration. Editing monitors needs a manager role.</p> : null}
@@ -845,85 +988,104 @@ export default function SreServiceWorkspace({
                 <h2 className="portal-surface__title">Connectors</h2>
                 <p className="portal-surface__subtitle">Secret values stay in environment variables. This form only stores the variable name.</p>
               </div>
+              {isManager && !connectorOpen ? <button type="button" className="btn btn-primary" onClick={startAddConnector}>Add connector</button> : null}
             </div>
             {connectors.length ? connectors.map((item) => (
               <div key={item.id} className="sre-connector">
-                <p>{item.name} · {item.source_type} · {item.status} · {item.has_credential ? 'credential on file' : 'no credential'}</p>
-                {isManager ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => void testConnector(item)}>Test connector</button> : null}
+                <p>{item.name} · {item.source_type} · {item.enabled === false ? 'Disabled' : item.status} · {item.has_credential ? 'credential on file' : 'no credential'}</p>
+                {isManager ? (
+                  <div className="portal-page__actions">
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEditConnector(item)}>Edit</button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => void testConnector(item)}>Test connector</button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => void setConnectorEnabled(item, item.enabled === false)}>{item.enabled === false ? 'Enable' : 'Disable'}</button>
+                  </div>
+                ) : null}
               </div>
             )) : (
               <div className="sre-empty">
                 <strong>No connectors yet</strong>
-                <p>Create a Pilot fixture connector to evaluate known counts without sending secrets to the browser.</p>
+                <p>Choose a source with Add connector. Pilot fixture evaluates known counts without sending secrets to the browser.</p>
               </div>
             )}
-            {isManager ? (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    void fetch(buildPortalApiUrl(apiUrl, '/api/devops/observability/connectors'), {
-                      method: 'POST',
-                      headers: authHeaders(token),
-                      body: JSON.stringify({ name: 'Pilot fixture', source_type: 'fixture', project_id: projectId || undefined }),
-                    }).then(() => load());
-                  }}
-                >
-                  Add pilot fixture connector
-                </button>
-                <form onSubmit={(event) => void saveConnector(event)} className="sre-monitor-form">
-                  <h3>Add connector</h3>
-                  <p className="form-section__copy">Enter the environment variable name that holds the credential. The secret itself never belongs in this form or in tickets.</p>
-                  <label className="label">Name<span className="form-req" aria-hidden="true"> *</span><input className="input" value={connectorForm.name} onChange={(event) => setConnectorForm({ ...connectorForm, name: event.target.value })} required /></label>
-                  <label className="label">Source
-                    <select className="input" value={connectorForm.source_type} onChange={(event) => setConnectorForm({ ...connectorForm, source_type: event.target.value })}>
-                      {CONNECTOR_SOURCES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                    </select>
-                  </label>
-                  {connectorForm.source_type !== 'fixture' ? (
-                    <>
-                      <label className="label">Base URL<input className="input" value={connectorForm.base_url} onChange={(event) => setConnectorForm({ ...connectorForm, base_url: event.target.value })} placeholder="https://metrics.example.internal" /></label>
-                      <label className="label">Secret reference name<span className="form-req" aria-hidden="true"> *</span><input className="input" value={connectorForm.secret_ref} onChange={(event) => setConnectorForm({ ...connectorForm, secret_ref: event.target.value.toUpperCase() })} placeholder={connectorForm.source_type === 'splunk' ? 'SPLUNK_TOKEN' : connectorForm.source_type === 'private' ? 'PRIVATE_SAMPLE_SECRET' : connectorForm.source_type === 'datadog' ? 'DATADOG_API_KEY' : connectorForm.source_type === 'prometheus' ? 'PROMETHEUS_TOKEN' : 'GRAFANA_TOKEN'} /></label>
-                    </>
-                  ) : null}
-                  {connectorForm.source_type === 'grafana' ? (
-                    <label className="label">Grafana datasource UID<input className="input" value={connectorForm.grafana_datasource_uid} onChange={(event) => setConnectorForm({ ...connectorForm, grafana_datasource_uid: event.target.value })} /></label>
-                  ) : null}
-                  {connectorForm.source_type !== 'fixture' ? (
-                    <label className="label">Ingestion delay (minutes)<input className="input" type="number" value={connectorForm.ingest_delay_minutes} onChange={(event) => setConnectorForm({ ...connectorForm, ingest_delay_minutes: Number(event.target.value) })} /></label>
-                  ) : null}
-                  {connectorForm.source_type === 'private' ? (
-                    <p className="form-section__copy">Private samples are HMAC-signed pushes from workers/. Use GRAFANA_TOKEN for Grafana, SPLUNK_TOKEN for Splunk, and PRIVATE_SAMPLE_SECRET for the OpsTrellis push. They are not a public scrape.</p>
-                  ) : null}
+            {isManager && connectorOpen ? (
+              <form onSubmit={(event) => void saveConnector(event)} className="sre-monitor-form">
+                <h3>{editingConnectorId ? 'Edit connector' : 'Add connector'}</h3>
+                <p className="form-section__copy">Pick a source, then enter the environment variable name that holds the credential. The secret itself never belongs in this form or in tickets.</p>
+                <div className="sre-source-pick" role="group" aria-label="Connector source">
+                  {CONNECTOR_SOURCES.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      className={connectorForm.source_type === item.value ? 'is-active' : undefined}
+                      onClick={() => setConnectorForm({
+                        ...connectorForm,
+                        source_type: item.value,
+                        name: connectorForm.name || (item.value === 'fixture' ? 'Pilot fixture' : item.label),
+                      })}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <label className="label">Name<span className="form-req" aria-hidden="true"> *</span><input className="input" value={connectorForm.name} onChange={(event) => setConnectorForm({ ...connectorForm, name: event.target.value })} required /></label>
+                {connectorForm.source_type !== 'fixture' ? (
+                  <>
+                    <label className="label">Base URL<input className="input" value={connectorForm.base_url} onChange={(event) => setConnectorForm({ ...connectorForm, base_url: event.target.value })} placeholder="https://metrics.example.internal" /></label>
+                    <label className="label">Secret reference name{editingConnectorId ? '' : <span className="form-req" aria-hidden="true"> *</span>}<input className="input" value={connectorForm.secret_ref} onChange={(event) => setConnectorForm({ ...connectorForm, secret_ref: event.target.value.toUpperCase() })} placeholder={editingConnectorId ? 'Leave blank to keep the stored reference' : secretRefPlaceholder(connectorForm.source_type)} /></label>
+                  </>
+                ) : <p className="form-section__copy">Pilot fixture does not store a credential. It returns known counts for on-demand evaluation.</p>}
+                {connectorForm.source_type === 'grafana' ? (
+                  <label className="label">Grafana datasource UID<input className="input" value={connectorForm.grafana_datasource_uid} onChange={(event) => setConnectorForm({ ...connectorForm, grafana_datasource_uid: event.target.value })} /></label>
+                ) : null}
+                {connectorForm.source_type !== 'fixture' ? (
+                  <label className="label">Ingestion delay (minutes)<input className="input" type="number" value={connectorForm.ingest_delay_minutes} onChange={(event) => setConnectorForm({ ...connectorForm, ingest_delay_minutes: Number(event.target.value) })} /></label>
+                ) : null}
+                {connectorForm.source_type === 'private' ? (
+                  <p className="form-section__copy">Private samples are HMAC-signed pushes from workers/. Use GRAFANA_TOKEN for Grafana, SPLUNK_TOKEN for Splunk, and PRIVATE_SAMPLE_SECRET for the OpsTrellis push. They are not a public scrape.</p>
+                ) : null}
+                <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary">Save connector</button>
-                </form>
-              </>
-            ) : null}
+                  <button type="button" className="btn btn-secondary" onClick={() => { setConnectorOpen(false); setConnectorForm(EMPTY_CONNECTOR_FORM); setEditingConnectorId(0); }}>Cancel</button>
+                </div>
+              </form>
+            ) : !isManager ? <p className="form-section__copy">You can view connectors. Adding one needs a manager role.</p> : null}
           </section>
           {isManager ? (
             <>
+              {!routingOpen && !guardrailOpen ? (
+                <div className="portal-page__actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setRoutingOpen(true)}>Alert routing</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setGuardrailOpen(true)}>Release guardrail</button>
+                </div>
+              ) : null}
+              {routingOpen ? (
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
                     <h2 className="portal-surface__title">Alert routing</h2>
                     <p className="portal-surface__subtitle">Manual findings stay observation-only until you enable incident creation. Existing alert webhooks still record incidents on their own path.</p>
                   </div>
+                  <button type="button" className="btn btn-secondary" onClick={() => setRoutingOpen(false)}>Close</button>
                 </div>
                 <label className="label"><input type="checkbox" checked={routing.observation_only} onChange={(event) => setRouting({ ...routing, observation_only: event.target.checked })} /> Observation only</label>
                 <label className="label"><input type="checkbox" checked={routing.create_incidents} onChange={(event) => setRouting({ ...routing, create_incidents: event.target.checked })} /> Create incidents from monitoring alerts</label>
+                <label className="label"><input type="checkbox" checked={routing.page_oncall} onChange={(event) => setRouting({ ...routing, page_oncall: event.target.checked })} /> Page on-call when an incident is created</label>
+                <p className="form-section__copy">Page on-call is stored with this routing policy. It is not a live pager until an on-call integration is on.</p>
                 <button type="button" className="btn btn-secondary" onClick={() => {
                   void fetch(buildPortalApiUrl(apiUrl, `/api/devops/services/${serviceId}/routing`), {
                     method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ ...routing, environment }),
-                  }).then(() => setNotice('Routing policy saved.'));
+                  }).then(() => setNotice(routing.page_oncall ? 'Routing policy saved. Page on-call is stored with this policy.' : 'Routing policy saved.'));
                 }}>Save routing</button>
               </section>
+              ) : null}
+              {guardrailOpen ? (
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
                     <h2 className="portal-surface__title">Release guardrail</h2>
                     <p className="portal-surface__subtitle">Observation records what would have happened. Enforced mode can block a change webhook for this service after a manager enables it.</p>
                   </div>
+                  <button type="button" className="btn btn-secondary" onClick={() => setGuardrailOpen(false)}>Close</button>
                 </div>
                 <label className="label">Mode
                   <select className="input" value={guardrail.mode} onChange={(event) => setGuardrail({ ...guardrail, mode: event.target.value })}>
@@ -957,6 +1119,7 @@ export default function SreServiceWorkspace({
                 <button type="button" className="btn btn-secondary" onClick={() => void simulatePolicy()}>Simulate policy on history</button>
                 {simulation ? <p className="form-section__copy">{simulation}</p> : null}
               </section>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -969,8 +1132,11 @@ export default function SreServiceWorkspace({
         label="Finding detail"
         eyebrow={selectedFinding ? `${selectedFinding.severity} · ${selectedFinding.lifecycle}` : 'Finding'}
         title={selectedFinding?.title || 'Finding'}
-        footer={selectedFinding && selectedFinding.lifecycle !== 'acknowledged' && selectedFinding.lifecycle !== 'resolved' ? (
-          <button type="button" className="btn btn-secondary" onClick={() => void ackFinding(selectedFinding)}>Acknowledge</button>
+        footer={selectedFinding && selectedFinding.lifecycle !== 'resolved' ? (
+          <div className="portal-page__actions">
+            {selectedFinding.lifecycle !== 'acknowledged' ? <button type="button" className="btn btn-secondary" onClick={() => void ackFinding(selectedFinding)}>Acknowledge</button> : null}
+            <button type="button" className="btn btn-secondary" onClick={() => void resolveFinding(selectedFinding)}>Resolve</button>
+          </div>
         ) : null}
       >
         {selectedFinding ? (
@@ -979,7 +1145,12 @@ export default function SreServiceWorkspace({
             <p>Observed: {selectedFinding.observed}</p>
             <p>Expected: {selectedFinding.expected}</p>
             {evidenceUrl ? <p><a href={evidenceUrl} target="_blank" rel="noreferrer">View evidence</a> A dashboard URL is evidence, not an executable query.</p> : null}
-            {selectedFinding.incident_id ? <p>Linked incident: <Link href={`/incidents/${selectedFinding.incident_id}/edit`}>Open incident</Link></p> : null}
+            {selectedFinding.incident_id ? <p>Linked incident: <Link href={`/incidents/${selectedFinding.incident_id}/edit`}>Open incident</Link></p> : (
+              <>
+                {routing.observation_only ? <p className="form-section__copy">Routing is observation-only. Auto-create stays off. You can still open a new incident from this finding.</p> : null}
+                <p><Link className="btn btn-secondary btn-sm" href={findingIncidentHref(selectedFinding)}>Create incident</Link></p>
+              </>
+            )}
             {changes.length ? (
               <div>
                 <p>Overlapping changes are a possible lead, not a proven cause.</p>

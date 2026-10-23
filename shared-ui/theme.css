@@ -11061,6 +11061,31 @@ html[data-theme] .devops-layout :is(input, select, textarea, button, a):focus-vi
   margin-top: 4px;
 }
 
+.sre-source-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.sre-source-pick button {
+  appearance: none;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #e7e9f0;
+  border-radius: 12px;
+  background: #fff;
+  color: #17233b;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.sre-source-pick button.is-active {
+  border-color: #6d4aff;
+  background: #eee8fb;
+  color: #5835db;
+}
+
 .sre-filter-bar {
   display: grid;
   grid-template-columns: repeat(3, minmax(140px, 1fr));
@@ -11106,6 +11131,18 @@ html[data-theme='dark'] .sre-empty p,
 html[data-theme='dark'] .sre-empty span,
 html[data-theme='dark'] .sre-monitor-list li > span,
 html[data-theme='dark'] .sre-filter-bar label {
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .sre-source-pick button {
+  background: #101525;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .sre-source-pick button.is-active {
+  background: #2a2150;
+  border-color: #6d4aff;
   color: #c4b5fd;
 }
 

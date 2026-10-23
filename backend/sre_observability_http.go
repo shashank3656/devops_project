@@ -18,6 +18,7 @@ type observabilityConnector struct {
 	GrafanaDatasourceUID string  `json:"grafana_datasource_uid,omitempty"`
 	BaseURL              string  `json:"base_url,omitempty"`
 	HasCredential        bool    `json:"has_credential"`
+	Enabled              bool    `json:"enabled"`
 	Status               string  `json:"status"`
 	LastTestedAt         *string `json:"last_tested_at,omitempty"`
 	LastError            string  `json:"last_error,omitempty"`
@@ -132,11 +133,11 @@ func loadVisibleService(w http.ResponseWriter, r *http.Request, userID, serviceI
 	return item, true
 }
 
-func connectorPublic(id int, projectID *int, name, sourceType, datasource, baseURL, secretRef, status, lastErr string, lastTest *time.Time, delay, timeout int) observabilityConnector {
+func connectorPublic(id int, projectID *int, name, sourceType, datasource, baseURL, secretRef, status, lastErr string, lastTest *time.Time, delay, timeout int, enabled bool) observabilityConnector {
 	item := observabilityConnector{
 		ID: id, ProjectID: projectID, Name: name, SourceType: sourceType,
 		GrafanaDatasourceUID: datasource, BaseURL: baseURL, HasCredential: strings.TrimSpace(secretRef) != "",
-		Status: status, LastError: lastErr, IngestDelayMinutes: delay, TimeoutSeconds: timeout,
+		Enabled: enabled, Status: status, LastError: lastErr, IngestDelayMinutes: delay, TimeoutSeconds: timeout,
 	}
 	if lastTest != nil && !lastTest.IsZero() {
 		stamp := lastTest.UTC().Format(time.RFC3339)
@@ -151,7 +152,7 @@ func listObservabilityConnectors(projectID int) ([]observabilityConnector, error
 	}
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT id, project_id, name, source_type, grafana_datasource_uid, COALESCE(base_url,''), secret_ref, status, last_tested_at, last_error,
-		       COALESCE(ingest_delay_minutes,0), COALESCE(timeout_seconds,15)
+		       COALESCE(ingest_delay_minutes,0), COALESCE(timeout_seconds,15), COALESCE(enabled, TRUE)
 		FROM observability_connectors
 		WHERE ($1 = 0 OR project_id = $1 OR project_id IS NULL)
 		ORDER BY name, id
@@ -171,7 +172,8 @@ func listObservabilityConnectors(projectID int) ([]observabilityConnector, error
 		var name, sourceType, datasource, baseURL, secretRef, status, lastErr string
 		var lastTest sql.NullTime
 		var delay, timeout int
-		if err := rows.Scan(&id, &project, &name, &sourceType, &datasource, &baseURL, &secretRef, &status, &lastTest, &lastErr, &delay, &timeout); err != nil {
+		var enabled bool
+		if err := rows.Scan(&id, &project, &name, &sourceType, &datasource, &baseURL, &secretRef, &status, &lastTest, &lastErr, &delay, &timeout, &enabled); err != nil {
 			return nil, err
 		}
 		var projectPtr *int
@@ -183,7 +185,7 @@ func listObservabilityConnectors(projectID int) ([]observabilityConnector, error
 		if lastTest.Valid {
 			tested = &lastTest.Time
 		}
-		out = append(out, connectorPublic(id, projectPtr, name, sourceType, datasource, baseURL, secretRef, status, lastErr, tested, delay, timeout))
+		out = append(out, connectorPublic(id, projectPtr, name, sourceType, datasource, baseURL, secretRef, status, lastErr, tested, delay, timeout, enabled))
 	}
 	return out, nil
 }
@@ -296,6 +298,18 @@ func devopsObservabilityConnectorDetailHandler(w http.ResponseWriter, r *http.Re
 		writeAPIError(w, r, http.StatusBadRequest, "invalid connector id", err)
 		return
 	}
+	if len(parts) == 1 && r.Method == http.MethodPatch {
+		if _, ok := requireDevopsManager(w, r); !ok {
+			return
+		}
+		saved, err := updateObservabilityConnector(id, r)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"connector": saved, "status": "ok"})
+		return
+	}
 	if len(parts) == 2 && parts[1] == "test" && r.Method == http.MethodPost {
 		if _, ok := requireDevopsManager(w, r); !ok {
 			return
@@ -321,6 +335,79 @@ func devopsObservabilityConnectorDetailHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeMethodNotAllowed(w, r)
+}
+
+func updateObservabilityConnector(id int, r *http.Request) (*observabilityConnector, error) {
+	var body struct {
+		Name                 string `json:"name"`
+		SourceType           string `json:"source_type"`
+		GrafanaDatasourceUID string `json:"grafana_datasource_uid"`
+		BaseURL              string `json:"base_url"`
+		SecretRef            string `json:"secret_ref"`
+		IngestDelayMinutes   int    `json:"ingest_delay_minutes"`
+		Enabled              *bool  `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("invalid json")
+	}
+	var currentName, currentSource, currentUID, currentBase, currentSecret, currentStatus, currentErr string
+	var currentDelay, currentTimeout int
+	var currentEnabled bool
+	var project sql.NullInt64
+	var lastTest sql.NullTime
+	if err := queryRowContext(`
+		SELECT project_id, name, source_type, grafana_datasource_uid, COALESCE(base_url,''), secret_ref, status, last_error,
+		       COALESCE(ingest_delay_minutes,0), COALESCE(timeout_seconds,15), COALESCE(enabled, TRUE), last_tested_at
+		FROM observability_connectors WHERE id = $1
+	`, id).Scan(&project, &currentName, &currentSource, &currentUID, &currentBase, &currentSecret, &currentStatus, &currentErr, &currentDelay, &currentTimeout, &currentEnabled, &lastTest); err != nil {
+		return nil, fmt.Errorf("connector not found")
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		name = currentName
+	}
+	source := strings.ToLower(strings.TrimSpace(body.SourceType))
+	if source == "" {
+		source = currentSource
+	}
+	if !supportedMonitorSource(source) {
+		return nil, fmt.Errorf("unsupported source type")
+	}
+	secretRef := strings.TrimSpace(body.SecretRef)
+	if secretRef != "" && !validSecretRef(secretRef) {
+		return nil, fmt.Errorf("store a secret reference name, not the credential")
+	}
+	if secretRef == "" {
+		secretRef = currentSecret
+	}
+	enabled := currentEnabled
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	delay := body.IngestDelayMinutes
+	if delay < 0 {
+		delay = 0
+	}
+	_, err := execContext(`
+		UPDATE observability_connectors
+		SET name = $2, source_type = $3, grafana_datasource_uid = $4, base_url = $5, secret_ref = $6,
+		    ingest_delay_minutes = $7, enabled = $8, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, id, name, source, strings.TrimSpace(body.GrafanaDatasourceUID), strings.TrimSpace(body.BaseURL), secretRef, delay, enabled)
+	if err != nil {
+		return nil, err
+	}
+	var projectPtr *int
+	if project.Valid {
+		value := int(project.Int64)
+		projectPtr = &value
+	}
+	var tested *time.Time
+	if lastTest.Valid {
+		tested = &lastTest.Time
+	}
+	item := connectorPublic(id, projectPtr, name, source, strings.TrimSpace(body.GrafanaDatasourceUID), strings.TrimSpace(body.BaseURL), secretRef, currentStatus, currentErr, tested, delay, currentTimeout, enabled)
+	return &item, nil
 }
 
 func devopsMonitoringTemplatesHandler(w http.ResponseWriter, r *http.Request) {
@@ -634,9 +721,9 @@ func updateServiceMonitor(userID int, service *serviceMapEntry, monitorID int, r
 	_, err = execContext(`
 		UPDATE service_monitors
 		SET name = $2, measurement_type = COALESCE(NULLIF($3, ''), measurement_type), connector_id = NULLIF($4, 0),
-		    current_version = $5, owner = $6, enabled = $7, updated_by = $8, updated_at = CURRENT_TIMESTAMP
+		    current_version = $5, owner = $6, enabled = $7, schedule_minutes = $8, updated_by = $9, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
-	`, monitorID, name, strings.TrimSpace(body.MeasurementType), body.ConnectorID, next, strings.TrimSpace(body.Owner), enabled, userID)
+	`, monitorID, name, strings.TrimSpace(body.MeasurementType), body.ConnectorID, next, strings.TrimSpace(body.Owner), enabled, body.ScheduleMinutes, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -998,10 +1085,11 @@ func runMonitorBatch(batchID int, monitors []serviceMonitorView) {
 			query.SourceType = sourceFixture
 		}
 		delay := monitor.IngestDelayMinutes
+		connectorEnabled := true
 		if monitor.ConnectorID != nil {
 			query.ConnectorID = *monitor.ConnectorID
 			var connectorDelay int
-			_ = queryRowContext(`SELECT COALESCE(secret_ref,''), COALESCE(base_url,''), COALESCE(grafana_datasource_uid,''), COALESCE(ingest_delay_minutes,0) FROM observability_connectors WHERE id = $1`, *monitor.ConnectorID).Scan(&query.SecretRef, &query.BaseURL, &query.DatasourceUID, &connectorDelay)
+			_ = queryRowContext(`SELECT COALESCE(secret_ref,''), COALESCE(base_url,''), COALESCE(grafana_datasource_uid,''), COALESCE(ingest_delay_minutes,0), COALESCE(enabled, TRUE) FROM observability_connectors WHERE id = $1`, *monitor.ConnectorID).Scan(&query.SecretRef, &query.BaseURL, &query.DatasourceUID, &connectorDelay, &connectorEnabled)
 			if delay <= 0 {
 				delay = connectorDelay
 			}
@@ -1011,7 +1099,15 @@ func runMonitorBatch(batchID int, monitors []serviceMonitorView) {
 				continue
 			}
 		}
-		sample, failState, execErr := executeConnectorQuery(query)
+		var sample mappedSample
+		var failState string
+		var execErr error
+		if !connectorEnabled {
+			failState = measureQueryFailed
+			execErr = fmt.Errorf("connector is disabled")
+		} else {
+			sample, failState, execErr = executeConnectorQuery(query)
+		}
 		measurement := sliMeasurement{State: measureUnknown, Quality: qualityInvalid, Reason: "Not evaluated."}
 		if execErr != nil {
 			state = "failed"
@@ -1235,14 +1331,26 @@ func listMonitorFindings(serviceID int, environment, severity, lifecycle string)
 
 func acknowledgeMonitorFinding(userID, serviceID, findingID int, r *http.Request) (*monitorFindingView, error) {
 	var body struct {
-		Owner string `json:"owner"`
-		Note  string `json:"note"`
-		Ack   bool   `json:"acknowledge"`
+		Owner   string `json:"owner"`
+		Note    string `json:"note"`
+		Ack     bool   `json:"acknowledge"`
+		Resolve bool   `json:"resolve"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return nil, fmt.Errorf("invalid json")
 	}
-	if body.Ack {
+	if body.Resolve {
+		_, err := execContext(`
+			UPDATE monitor_findings
+			SET lifecycle = 'resolved',
+			    owner = COALESCE(NULLIF($3, ''), owner),
+			    resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP)
+			WHERE id = $1 AND service_id = $2 AND lifecycle <> 'resolved'
+		`, findingID, serviceID, strings.TrimSpace(body.Owner))
+		if err != nil {
+			return nil, err
+		}
+	} else if body.Ack {
 		_, err := execContext(`
 			UPDATE monitor_findings
 			SET lifecycle = CASE WHEN lifecycle = 'resolved' THEN lifecycle ELSE 'acknowledged' END,

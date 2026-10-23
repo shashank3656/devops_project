@@ -177,6 +177,15 @@ export default function NewIncidentPage() {
     return (value || '').trim();
   }, [router.query.service]);
   const scopedServiceId = useMemo(() => parsePositiveIntQuery(router.query.service_id) || 0, [router.query.service_id]);
+  const querySummary = useMemo(() => {
+    const value = Array.isArray(router.query.summary) ? router.query.summary[0] : router.query.summary;
+    return (value || '').trim();
+  }, [router.query.summary]);
+  const queryNotes = useMemo(() => {
+    const value = Array.isArray(router.query.notes) ? router.query.notes[0] : router.query.notes;
+    return (value || '').trim();
+  }, [router.query.notes]);
+  const queryFindingId = useMemo(() => parsePositiveIntQuery(router.query.finding_id), [router.query.finding_id]);
   const returnPath = safeReturnPath(router.query.return);
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
   const [scopeServices, setScopeServices] = useState<ScopeService[]>([]);
@@ -210,6 +219,15 @@ export default function NewIncidentPage() {
       sessionStorage.removeItem('opstrellis-incident-draft');
     }
   }, []);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (querySummary) setSummary(querySummary);
+    if (queryNotes || queryFindingId) {
+      const findingLine = queryFindingId ? `Opened from finding ${queryFindingId}.` : '';
+      setNotes([queryNotes, findingLine].filter(Boolean).join('\n'));
+    }
+  }, [queryFindingId, queryNotes, querySummary, router.isReady]);
 
   useEffect(() => {
     const blob = JSON.stringify({ summary, notes, impact, urgency, category, subcategory, projectChoice, incidentEnvironment, incidentService });
