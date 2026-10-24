@@ -272,9 +272,10 @@ func runVulnIntelligenceSync(actorID int) (int, error) {
 		markSource("epss", "ok", time.Now().UTC().Format(time.RFC3339), "", epssCount)
 	}
 
-	reevaluateStoredInventories()
+	enrichInventoryFromOSV(loadLatestStoredComponents())
+	repos, matched := reevaluateStoredInventories()
 	invalidateWithdrawnVulnFixes()
-	_, _ = execContext(`UPDATE vuln_intel_runs SET state='succeeded', fetched=$2, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, runID, fetched)
+	_, _ = execContext(`UPDATE vuln_intel_runs SET state='succeeded', fetched=$2, matched=$3, repos_assessed=$4, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, runID, fetched, matched, repos)
 	return fetched, nil
 }
 
@@ -360,6 +361,13 @@ func fetchVulnFeedPost(rawURL string, payload any) ([]byte, error) {
 	return raw, nil
 }
 
+func osvQueryPayload(name, eco, version string) map[string]any {
+	return map[string]any{
+		"package": map[string]string{"name": name, "ecosystem": eco},
+		"version": version,
+	}
+}
+
 func osvEcosystem(eco string) string {
 	switch normalizeEcosystem(eco) {
 	case "npm":
@@ -419,10 +427,7 @@ func enrichInventoryFromOSV(components []vulnComponent) {
 			break
 		}
 		count++
-		body, err := fetchVulnFeedPost("https://api.osv.dev/v1/query", map[string]any{
-			"package": map[string]string{"name": item.PackageName, "ecosystem": eco},
-			"version": item.Version,
-		})
+		body, err := fetchVulnFeedPost("https://api.osv.dev/v1/query", osvQueryPayload(item.PackageName, eco, item.Version))
 		if err != nil {
 			continue
 		}

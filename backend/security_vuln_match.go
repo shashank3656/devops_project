@@ -33,6 +33,9 @@ const (
 	vulnReachNotImported = "not_imported"
 	vulnReachUnknown     = "unknown"
 
+	vulnMatchScan  = "scan"
+	vulnMatchIntel = "intel"
+
 	vulnPatchUnknown   = "unknown"
 	vulnPatchNone      = "no_known_fix"
 	vulnPatchAvailable = "fix_available"

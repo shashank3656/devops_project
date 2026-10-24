@@ -243,7 +243,7 @@ func recordVulnDeployment(userID, serviceID int, environment, digest, commit str
 	for _, item := range sbom {
 		present[normalizeEcosystem(item.Ecosystem)+"|"+normalizePackageName(item.Ecosystem, item.PackageName)+"|"+strings.TrimSpace(item.Version)] = true
 	}
-	findings, _ := listVulnFindings(userID, 0, serviceID, "", "")
+	findings, _ := listVulnFindings(userID, 0, serviceID, "", "", "")
 	for _, item := range findings {
 		if item.Lifecycle == vulnLifeFixed || item.Lifecycle == vulnLifeFalsePos || item.Lifecycle == vulnLifeWithdrawn {
 			continue

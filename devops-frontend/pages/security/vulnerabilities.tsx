@@ -2,13 +2,33 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DataTable, EmptyState, formatOperationalTime, type DataTableColumn } from '@infragate/ui';
+import { CopyButton, DataTable, EmptyState, formatOperationalTime, Stepper, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { asRows, lifecycleLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_PRIMARY_TABS, VULN_SECONDARY_TABS, type VulnTab } from '../../lib/securityVuln';
+import { asRows, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_PRIMARY_TABS, VULN_SECONDARY_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 const DEVOPS_USER_KEY = 'devops_user';
+
+const WIZARD_STEPS = [
+  { id: 'connection', label: 'Connection' },
+  { id: 'repository', label: 'Repository' },
+  { id: 'ownership', label: 'Ownership' },
+  { id: 'policy', label: 'Policy' },
+  { id: 'alerts', label: 'Alerts' },
+  { id: 'review', label: 'Review' },
+];
+
+function collectionModeLabel(value: string): string {
+  switch (value) {
+    case 'agent':
+      return 'Private outbound agent';
+    case 'ci':
+      return 'CI inventory / SBOM upload';
+    default:
+      return 'Hosted collector';
+  }
+}
 
 type Overview = {
   critical_findings?: number;
@@ -19,6 +39,10 @@ type Overview = {
   kev_matches?: number;
   overdue?: number;
   intelligence_synced_at?: string;
+  intel_new_matches?: number;
+  intel_repos_assessed?: number;
+  intel_open_matches?: number;
+  unscanned_repositories?: number;
   github_token_configured?: boolean;
   count_note?: string;
 };
@@ -73,6 +97,7 @@ type FindingRow = {
   last_seen_at?: string;
   service_id?: number;
   reachability?: string;
+  match_source?: string;
 };
 
 type ScanRow = {
@@ -165,6 +190,7 @@ export default function GlobalVulnerabilitiesPage() {
   const [wizardExclusions, setWizardExclusions] = useState('');
   const [kevOnly, setKevOnly] = useState(false);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [intelOnly, setIntelOnly] = useState(false);
   const [teamFilter, setTeamFilter] = useState('');
   const [techFilter, setTechFilter] = useState('');
   const [patchFilter, setPatchFilter] = useState('');
@@ -248,6 +274,7 @@ export default function GlobalVulnerabilitiesPage() {
     setWizardExclusions(item.exclusions || '');
   }, [repos, wizardRepo]);
 
+  const showScorecards = tab === 'services' || tab === 'advisories' || tab === 'findings' || tab === 'remediation' || tab === 'campaigns';
   const teams = useMemo(() => Array.from(new Set(services.map((item) => item.team).filter((item): item is string => Boolean(item)))), [services]);
   const technologies = useMemo(() => Array.from(new Set(services.flatMap((item) => item.technologies || []))), [services]);
 
@@ -280,13 +307,14 @@ export default function GlobalVulnerabilitiesPage() {
     return findings.filter((item) => {
       if (severity && item.severity !== severity) return false;
       if (unassignedOnly && (item.owner || '').trim()) return false;
+      if (intelOnly && item.match_source !== 'intel') return false;
       if (lifecycleFilter && item.lifecycle !== lifecycleFilter) return false;
       if (patchFilter && item.patch_state !== patchFilter) return false;
       if (teamFilter && !`${item.service || ''} ${item.repository}`.toLowerCase().includes(teamFilter.toLowerCase())) return false;
       if (!q) return true;
       return `${item.canonical_id} ${item.package_name} ${item.repository} ${item.service || ''} ${item.owner || ''}`.toLowerCase().includes(q);
     });
-  }, [findings, lifecycleFilter, patchFilter, search, severity, teamFilter, unassignedOnly]);
+  }, [findings, intelOnly, lifecycleFilter, patchFilter, search, severity, teamFilter, unassignedOnly]);
 
   async function scanSelected() {
     if (!selected.length) {
@@ -316,7 +344,7 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'Intelligence sync could not start.');
       return;
     }
-    setNotice('Intelligence sync queued. This page reads saved results; it does not fetch feeds in the browser.');
+    setNotice('Intelligence sync queued. New public advisories will be matched against stored lockfiles; the browser does not fetch feeds.');
   }
 
   async function enrollAgent() {
@@ -499,6 +527,7 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'priority', header: 'Priority', cell: (item) => item.priority || 'review' },
     { id: 'fix', header: 'Fix', cell: (item) => item.patch_state === 'fix_available' ? <span className="sec-sev sec-sev--high">Fix available{item.first_fixed_version ? ` · ${item.first_fixed_version}` : ''}</span> : (item.first_fixed_version || patchLabel(item.patch_state)) },
     { id: 'reach', header: 'Reachability', cell: (item) => reachabilityLabel(item.reachability) },
+    { id: 'origin', header: 'Origin', cell: (item) => matchSourceLabel(item.match_source) },
     { id: 'owner', header: 'Owner', cell: (item) => known(item.owner) },
     { id: 'due', header: 'Due', cell: (item) => (item.due_at ? formatOperationalTime(item.due_at) : 'None') },
     { id: 'seen', header: 'Last scan', cell: (item) => (item.last_seen_at ? formatOperationalTime(item.last_seen_at) : 'Unknown') },
@@ -528,6 +557,32 @@ export default function GlobalVulnerabilitiesPage() {
     void load();
   }
 
+  const repoColumns: DataTableColumn<RepoConfig>[] = useMemo(() => [
+    { id: 'repo', header: 'Repository', cell: (item) => known(item.repository) },
+    { id: 'provider', header: 'Provider', cell: (item) => item.provider || 'github' },
+    { id: 'mode', header: 'Collection', cell: (item) => collectionModeLabel(item.collection_mode) },
+    { id: 'branch', header: 'Branch', cell: (item) => item.branch || 'main' },
+    { id: 'team', header: 'Owner', cell: (item) => known(item.owner_team) },
+    { id: 'gate', header: 'PR gate', cell: (item) => (item.enforce_pr_gate ? 'Enforced' : 'Informational') },
+    { id: 'edit', header: '', cell: (item) => (
+      <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setWizardRepo(String(item.id)); setWizardStep(0); }}>Edit policy</button>
+    ) },
+  ], []);
+
+  const sourceColumns: DataTableColumn<SourceRow>[] = useMemo(() => [
+    { id: 'provider', header: 'Provider', cell: (item) => item.provider },
+    { id: 'status', header: 'Status', cell: (item) => (item.enabled ? item.status : 'Paused') },
+    { id: 'ok', header: 'Last success', cell: (item) => (item.last_success_at ? formatOperationalTime(item.last_success_at) : 'Unknown') },
+    { id: 'err', header: 'Error', cell: (item) => item.last_error || 'None recorded' },
+  ], []);
+
+  const agentColumns: DataTableColumn<AgentRow>[] = useMemo(() => [
+    { id: 'name', header: 'Name', cell: (item) => item.name },
+    { id: 'status', header: 'Status', cell: (item) => item.status },
+    { id: 'ver', header: 'Version', cell: (item) => item.version || 'Unknown' },
+    { id: 'hb', header: 'Last heartbeat', cell: (item) => (item.last_heartbeat_at ? formatOperationalTime(item.last_heartbeat_at) : 'Unknown') },
+  ], []);
+
   const planColumns: DataTableColumn<PlanRow>[] = useMemo(() => [
     { id: 'label', header: 'Plan', cell: (item) => item.label },
     { id: 'repo', header: 'Repository', cell: (item) => known(item.repository) },
@@ -547,19 +602,28 @@ export default function GlobalVulnerabilitiesPage() {
           <div>
             <span className="portal-page__eyebrow">Security</span>
             <h1 className="portal-page__title">Global Vulnerabilities & Patches</h1>
-            <p className="portal-page__subtitle">See which services need action and which patches are available. A public advisory is not proof of repository exposure.</p>
+            <p className="portal-page__subtitle">
+              {tab === 'configuration'
+                ? 'Register a repository, then set collection, ownership, and alert policy. Tokens stay on the API as environment names.'
+                : tab === 'sources'
+                  ? 'Intelligence feeds, private agents, and CI inventory. After each sync, stored lockfiles are re-checked. An online collector does not mean repositories were scanned.'
+                  : 'See which services need action and which patches are available. A public advisory is not proof of repository exposure.'}
+            </p>
           </div>
           <div className="runbooks__action-row">
-            {isManager ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void refreshIntelligence()}>Refresh intelligence</button> : null}
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void scanSelected()}>{busy ? 'Working…' : 'Scan selected services'}</button>
+            {isManager && (showScorecards || tab === 'sources') ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void refreshIntelligence()}>Refresh intelligence</button> : null}
+            {showScorecards ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void scanSelected()}>{busy ? 'Working…' : 'Scan selected services'}</button> : null}
           </div>
         </div>
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
+        {showScorecards ? (
         <p className="ops-scores__meta">
           <span>Last intelligence sync · {overview.intelligence_synced_at ? formatOperationalTime(overview.intelligence_synced_at) : 'Unknown'} · KEV matches {loading ? '…' : overview.kev_matches ?? 0} · Overdue {loading ? '…' : overview.overdue ?? 0}</span>
           <span>Hosted collector · {hosted ? 'Configured' : 'Offline'}</span>
         </p>
+        ) : null}
+        {showScorecards ? (
         <section className="ops-minis ops-minis--four" aria-label="Vulnerability scorecards">
           <article className="ops-mini ops-mini--peach">
             <span>Critical findings</span>
@@ -582,17 +646,43 @@ export default function GlobalVulnerabilitiesPage() {
             <small>Repositories with a stored inventory</small>
           </article>
         </section>
-        <p className="form-section__copy">{overview.count_note || 'Scorecards count confirmed matches, not global advisory volume.'}</p>
+        ) : null}
+        {showScorecards ? <p className="form-section__copy">{overview.count_note || 'Scorecards count confirmed matches, not global advisory volume.'}</p> : null}
+        {showScorecards ? (
+          <p className="ops-scores__meta sec-vuln-intel">
+            <span>
+              Internet advisories · Last sync {overview.intelligence_synced_at ? formatOperationalTime(overview.intelligence_synced_at) : 'Unknown'}
+              {' '}· {loading ? '…' : overview.intel_repos_assessed ?? 0} stored inventories re-checked
+              {' '}· {loading ? '…' : overview.intel_new_matches ?? 0} new matches this sync
+              {' '}· {loading ? '…' : overview.intel_open_matches ?? 0} open internet matches
+            </span>
+            <span>
+              {(overview.unscanned_repositories ?? 0) > 0
+                ? `${overview.unscanned_repositories} registered repos have no inventory, so new CVEs cannot be checked there.`
+                : 'Repos with a stored lockfile are checked when public advisories refresh.'}
+            </span>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setIntelOnly(true);
+                void router.replace({ pathname: '/security/vulnerabilities', query: { ...router.query, tab: 'findings' } }, undefined, { shallow: true });
+              }}
+            >
+              Show internet matches
+            </button>
+          </p>
+        ) : null}
         <nav className="ops-tabs" aria-label="Vulnerability workspace">
           {VULN_PRIMARY_TABS.map((item) => (
             <Link key={item.id} href={{ pathname: '/security/vulnerabilities', query: { ...(projectId ? { project_id: projectId } : {}), ...(item.id === 'services' ? {} : { tab: item.id }) } }} className={tab === item.id ? 'is-current' : undefined}>{item.label}</Link>
           ))}
         </nav>
-        <p className="sec-vuln-secondary">
+        <nav className="sec-vuln-secondary" aria-label="Setup and history">
           {VULN_SECONDARY_TABS.map((item) => (
-            <Link key={item.id} href={{ pathname: '/security/vulnerabilities', query: { ...(projectId ? { project_id: projectId } : {}), tab: item.id } }} className="btn btn-secondary btn-sm">{item.label}</Link>
+            <Link key={item.id} href={{ pathname: '/security/vulnerabilities', query: { ...(projectId ? { project_id: projectId } : {}), tab: item.id } }} className={tab === item.id ? 'is-current' : undefined}>{item.label}</Link>
           ))}
-        </p>
+        </nav>
         {tab === 'services' || tab === 'advisories' || tab === 'findings' ? (
           <form className="svc-filters svc-filters--inventory" onSubmit={(event) => event.preventDefault()}>
             <label>
@@ -648,9 +738,10 @@ export default function GlobalVulnerabilitiesPage() {
                 </select>
               </label>
             ) : null}
-            <button type="button" className="btn btn-secondary" onClick={() => { setSearch(''); setSeverity(''); setKevOnly(false); setUnassignedOnly(false); setTeamFilter(''); setTechFilter(''); setPatchFilter(''); setLifecycleFilter(''); }}>Clear</button>
+            <button type="button" className="btn btn-secondary" onClick={() => { setSearch(''); setSeverity(''); setKevOnly(false); setUnassignedOnly(false); setIntelOnly(false); setTeamFilter(''); setTechFilter(''); setPatchFilter(''); setLifecycleFilter(''); }}>Clear</button>
             {tab === 'advisories' ? <label className="label"><input type="checkbox" checked={kevOnly} onChange={(event) => setKevOnly(event.target.checked)} /> KEV only</label> : null}
             {tab === 'findings' ? <label className="label"><input type="checkbox" checked={unassignedOnly} onChange={(event) => setUnassignedOnly(event.target.checked)} /> Unassigned queue</label> : null}
+            {tab === 'findings' ? <label className="label"><input type="checkbox" checked={intelOnly} onChange={(event) => setIntelOnly(event.target.checked)} /> Internet advisory matches</label> : null}
           </form>
         ) : null}
 
@@ -701,7 +792,7 @@ export default function GlobalVulnerabilitiesPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Repository findings</h2>
-                <p className="portal-surface__subtitle">Confirmed and potential dependency matches. Production exposure stays Unknown until a deployment mapping exists.</p>
+                <p className="portal-surface__subtitle">Confirmed and potential dependency matches, including internet advisories that hit a stored lockfile. Production exposure stays Unknown until a deployment mapping exists.</p>
               </div>
             </div>
             <DataTable
@@ -709,7 +800,7 @@ export default function GlobalVulnerabilitiesPage() {
               columns={findingColumns}
               rows={visibleFindings}
               rowKey={(item) => String(item.id)}
-              empty={<EmptyState title={loading ? 'Loading findings' : 'No matches in scanned scope'} body="This is not a secure label. Check coverage on Scan history if repositories are still unscanned." />}
+              empty={<EmptyState title={loading ? 'Loading findings' : intelOnly ? 'No internet advisory matches' : 'No matches in scanned scope'} body={intelOnly ? 'A public advisory becomes a finding only after it matches a stored lockfile for a registered repository.' : 'This is not a secure label. Check coverage on Scan history if repositories are still unscanned.'} />}
             />
           </section>
         ) : null}
@@ -719,7 +810,7 @@ export default function GlobalVulnerabilitiesPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Campaigns</h2>
-                <p className="portal-surface__subtitle">Open findings grouped by canonical advisory. Unknown coverage is not listed as unaffected.</p>
+                <p className="portal-surface__subtitle">Open findings grouped by canonical advisory, including internet advisories matched to stored lockfiles. Unknown coverage is not listed as unaffected.</p>
               </div>
             </div>
             <DataTable
@@ -855,165 +946,210 @@ export default function GlobalVulnerabilitiesPage() {
         ) : null}
 
         {tab === 'sources' ? (
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <h2 className="portal-surface__title">Agents & sources</h2>
-                <p className="portal-surface__subtitle">An online collector does not mean the feed is fresh. A fresh feed does not mean repositories were scanned.</p>
-              </div>
-            </div>
+          <div className="sec-vuln-workspace">
             <dl className="sre-meta">
               <div className="sre-meta__item">
                 <dt>Hosted collector</dt>
                 <dd>{hosted ? 'Configured' : 'Offline'}</dd>
               </div>
               <div className="sre-meta__item">
-                <dt>Note</dt>
-                <dd>{hostedNote || 'Unknown'}</dd>
-              </div>
-              <div className="sre-meta__item">
-                <dt>Private outbound agents</dt>
+                <dt>Private agents</dt>
                 <dd>{agents.length ? `${agents.length} enrolled` : 'None enrolled'}</dd>
               </div>
+              <div className="sre-meta__item">
+                <dt>Last intelligence sync</dt>
+                <dd>{overview.intelligence_synced_at ? formatOperationalTime(overview.intelligence_synced_at) : 'Unknown'}</dd>
+              </div>
+              <div className="sre-meta__item">
+                <dt>Inventories re-checked</dt>
+                <dd>{overview.intel_repos_assessed ?? 0}</dd>
+              </div>
+              <div className="sre-meta__item">
+                <dt>New internet matches</dt>
+                <dd>{overview.intel_new_matches ?? 0}</dd>
+              </div>
             </dl>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Provider</th>
-                  <th>Status</th>
-                  <th>Last success</th>
-                  <th>Error</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sources.map((item) => (
-                  <tr key={item.provider}>
-                    <td>{item.provider}</td>
-                    <td>{item.enabled ? item.status : 'Paused'}</td>
-                    <td>{item.last_success_at ? formatOperationalTime(item.last_success_at) : 'Unknown'}</td>
-                    <td>{item.last_error || 'None recorded'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <h3 className="portal-surface__title">Private agents</h3>
-            <table className="data-table">
-              <thead>
-                <tr><th>Name</th><th>Status</th><th>Version</th><th>Last heartbeat</th></tr>
-              </thead>
-              <tbody>
-                {agents.length ? agents.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.name}</td>
-                    <td>{item.status}</td>
-                    <td>{item.version || 'Unknown'}</td>
-                    <td>{item.last_heartbeat_at ? formatOperationalTime(item.last_heartbeat_at) : 'Unknown'}</td>
-                  </tr>
-                )) : <tr><td colSpan={4}>None enrolled</td></tr>}
-              </tbody>
-            </table>
-            {isManager ? (
-              <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void enrollAgent(); }}>
-                <label className="label">Agent name<input className="input" value={agentName} onChange={(event) => setAgentName(event.target.value)} /></label>
-                <div className="portal-form-actions">
-                  <button type="submit" className="btn btn-secondary" disabled={busy}>Create bootstrap token</button>
+            <p className="form-section__copy">{hostedNote || 'Hosted collector status is Unknown until the API answers.'}</p>
+            <div className="sec-vuln-split">
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <h2 className="portal-surface__title">Intelligence feeds</h2>
+                    <p className="portal-surface__subtitle">Public advisories saved on the API, then matched to stored lockfiles. A fresh feed is not repository coverage.</p>
+                  </div>
                 </div>
-              </form>
-            ) : null}
-            {bootstrap ? <p className="form-section__copy">Bootstrap token (shown once): {bootstrap}</p> : null}
-            <p className="form-section__copy">Run the private outbound agent from a runner that can read the repository. Put OPSTRELLIS_API_URL and VULN_BOOTSTRAP_TOKEN in workers/.env, then <code>python3 workers/vuln_agent.py</code>. Hosted scans use the API worker with GITHUB_TOKEN, GITLAB_TOKEN, or BITBUCKET_TOKEN. This agent uploads inventory only. It does not print tokens, pull images, or write findings itself.</p>
-            <h3 className="portal-surface__title">CI / SBOM upload</h3>
-            <p className="form-section__copy">Upload a CycloneDX or SPDX document bound to a registered repository and commit. Images are not pulled from a Docker socket. CI can also run <code>python3 workers/vuln_agent.py --ci</code> with VULN_PORTAL_TOKEN and VULN_REPOSITORY_ID.</p>
-            <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
-              <label className="label">Repository
-                <select className="input" value={sbomRepo} onChange={(event) => setSbomRepo(event.target.value)}>
-                  <option value="">Select</option>
-                  {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
-                </select>
-              </label>
-              <label className="label">Commit SHA<input className="input" value={sbomCommit} onChange={(event) => setSbomCommit(event.target.value)} /></label>
-              <label className="label">SBOM JSON<textarea className="input" rows={6} value={sbomText} onChange={(event) => setSbomText(event.target.value)} /></label>
-              <div className="portal-form-actions">
-                <button type="submit" className="btn btn-secondary" disabled={busy}>Upload inventory</button>
-              </div>
-            </form>
-          </section>
-        ) : null}
-
-        {tab === 'configuration' ? (
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <h2 className="portal-surface__title">Configuration</h2>
-                <p className="portal-surface__subtitle">Connection, ownership, policy, and alerts. Tokens stay on the API as environment names, never in this form.</p>
-              </div>
+                <DataTable
+                  label="Intelligence feeds"
+                  columns={sourceColumns}
+                  rows={sources}
+                  rowKey={(item) => item.provider}
+                  empty={<EmptyState title={loading ? 'Loading feeds' : 'No intelligence sources'} body="Refresh intelligence after the API worker can reach the allowlisted feeds." />}
+                />
+              </section>
+              <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <h2 className="portal-surface__title">Private agents</h2>
+                    <p className="portal-surface__subtitle">Outbound workers upload inventory only. They do not print tokens, pull images, or write findings.</p>
+                  </div>
+                </div>
+                <DataTable
+                  label="Private agents"
+                  columns={agentColumns}
+                  rows={agents}
+                  rowKey={(item) => String(item.id)}
+                  empty={<EmptyState title={loading ? 'Loading agents' : 'None enrolled'} body="Create a bootstrap token, then run the worker from a runner that can read the repository." />}
+                />
+                {isManager ? (
+                  <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void enrollAgent(); }}>
+                    <label className="label">Agent name<input className="input" value={agentName} onChange={(event) => setAgentName(event.target.value)} placeholder="build-runner-1" /></label>
+                    <div className="portal-form-actions">
+                      <button type="submit" className="btn btn-primary" disabled={busy}>Create bootstrap token</button>
+                    </div>
+                  </form>
+                ) : <p className="form-section__copy">Enrolling an agent needs a manager role.</p>}
+                {bootstrap ? (
+                  <div className="alert alert-success sec-vuln-token" role="status">
+                    <span>Shown once. Put this in workers/.env as VULN_BOOTSTRAP_TOKEN.</span>
+                    <code>{bootstrap}</code>
+                    <CopyButton value={bootstrap} label="bootstrap token" />
+                  </div>
+                ) : null}
+                <p className="form-section__copy">Set OPSTRELLIS_API_URL and VULN_BOOTSTRAP_TOKEN in workers/.env, then run:</p>
+                <pre className="sec-vuln-run">python3 workers/vuln_agent.py</pre>
+              </section>
             </div>
-            <ol className="form-section__copy">
-              <li className={wizardStep === 0 ? 'is-current' : undefined}>Connection mode</li>
-              <li className={wizardStep === 1 ? 'is-current' : undefined}>Repositories</li>
-              <li className={wizardStep === 2 ? 'is-current' : undefined}>Ownership</li>
-              <li className={wizardStep === 3 ? 'is-current' : undefined}>Policy</li>
-              <li className={wizardStep === 4 ? 'is-current' : undefined}>Alerts</li>
-              <li className={wizardStep === 5 ? 'is-current' : undefined}>Review</li>
-            </ol>
-            <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); if (wizardStep < 5) setWizardStep(wizardStep + 1); else void saveWizard(); }}>
-              {wizardStep <= 1 ? (
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">CI / SBOM upload</h2>
+                  <p className="portal-surface__subtitle">Bind a CycloneDX or SPDX document to a registered repository and commit. Images are not pulled from a Docker socket.</p>
+                </div>
+              </div>
+              <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
                 <label className="label">Repository
-                  <select className="input" value={wizardRepo} onChange={(event) => setWizardRepo(event.target.value)}>
+                  <select className="input" value={sbomRepo} onChange={(event) => setSbomRepo(event.target.value)}>
                     <option value="">Select a registered repository</option>
                     {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
                   </select>
                 </label>
-              ) : null}
-              {wizardStep === 0 ? (
-                <label className="label">Collection mode
-                  <select className="input" value={wizardMode} onChange={(event) => setWizardMode(event.target.value)}>
-                    <option value="hosted">Hosted collector</option>
-                    <option value="agent">Private outbound agent</option>
-                    <option value="ci">CI inventory / SBOM upload</option>
-                  </select>
-                </label>
-              ) : null}
-              {wizardStep === 2 ? (
-                <label className="label">Owner team<input className="input" value={wizardTeam} onChange={(event) => setWizardTeam(event.target.value)} /></label>
-              ) : null}
-              {wizardStep === 3 ? (
-                <>
-                  <label className="label">Schedule minutes<input className="input" value={wizardSchedule} onChange={(event) => setWizardSchedule(event.target.value)} /></label>
-                  <label className="label">Path exclusions<input className="input" value={wizardExclusions} onChange={(event) => setWizardExclusions(event.target.value)} /></label>
-                  <label className="label"><input type="checkbox" checked={wizardForks} onChange={(event) => setWizardForks(event.target.checked)} /> Allow fork pull requests</label>
-                  <label className="label"><input type="checkbox" checked={wizardGate} onChange={(event) => setWizardGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
-                </>
-              ) : null}
-              {wizardStep === 4 ? (
-                <label className="label">Alert from severity
-                  <select className="input" value={wizardAlert} onChange={(event) => setWizardAlert(event.target.value)}>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                  </select>
-                </label>
-              ) : null}
-              {wizardStep === 5 ? (
-                <p className="form-section__copy">
-                  Mode {wizardMode}. Team {wizardTeam || 'unchanged'}. Alerts from {wizardAlert}. Fork PRs {wizardForks ? 'allowed' : 'blocked'}. Comparison gate {wizardGate ? 'enforced' : 'informational'}. Hosted collector never executes package scripts.
-                </p>
-              ) : null}
-              <div className="portal-form-actions">
-                {wizardStep > 0 ? <button type="button" className="btn btn-secondary" onClick={() => setWizardStep(wizardStep - 1)}>Back</button> : null}
-                <button type="submit" className="btn btn-primary" disabled={busy}>{wizardStep < 5 ? 'Next' : 'Save policy'}</button>
+                <label className="label">Commit SHA<input className="input" value={sbomCommit} onChange={(event) => setSbomCommit(event.target.value)} placeholder="Immutable commit" /></label>
+                <label className="label">SBOM JSON<textarea className="input" rows={6} value={sbomText} onChange={(event) => setSbomText(event.target.value)} /></label>
+                <div className="portal-form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={busy}>Upload inventory</button>
+                </div>
+              </form>
+              <p className="form-section__copy">CI can also run <code>python3 workers/vuln_agent.py --ci</code> with VULN_PORTAL_TOKEN and VULN_REPOSITORY_ID.</p>
+            </section>
+          </div>
+        ) : null}
+
+        {tab === 'configuration' ? (
+          <div className="sec-vuln-split">
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Repositories</h2>
+                  <p className="portal-surface__subtitle">GitHub, GitLab, and Bitbucket URLs are accepted. Hosted tokens stay on the API.</p>
+                </div>
               </div>
-            </form>
-            <h3 className="portal-surface__title">Register a repository</h3>
-            <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void registerRepo(); }}>
-              <label className="label">Repository<input className="input" value={newRepo} onChange={(event) => setNewRepo(event.target.value)} placeholder="org/service or gitlab.com/group/service" /></label>
-              <label className="label">Branch<input className="input" value={newRepoBranch} onChange={(event) => setNewRepoBranch(event.target.value)} /></label>
-              <div className="portal-form-actions">
-                <button type="submit" className="btn btn-secondary" disabled={busy || !isManager}>Register</button>
+              <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void registerRepo(); }}>
+                <label className="label">Repository<input className="input" value={newRepo} onChange={(event) => setNewRepo(event.target.value)} placeholder="org/service or gitlab.com/group/service" /></label>
+                <label className="label">Branch<input className="input" value={newRepoBranch} onChange={(event) => setNewRepoBranch(event.target.value)} /></label>
+                <div className="portal-form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={busy || !isManager}>Register</button>
+                </div>
+              </form>
+              {!isManager ? <p className="form-section__copy">Registering a repository needs a manager role.</p> : null}
+              <DataTable
+                label="Registered repositories"
+                columns={repoColumns}
+                rows={repos}
+                rowKey={(item) => String(item.id)}
+                empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then set policy on the right." />}
+              />
+            </section>
+            <section className="portal-surface sec-vuln-wizard">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Repository policy</h2>
+                  <p className="portal-surface__subtitle">Connection, ownership, schedule, and alerts. This form never displays secret values.</p>
+                </div>
               </div>
-            </form>
-            {!isManager ? <p className="form-section__copy">Saving policy needs a manager role.</p> : null}
-          </section>
+              <Stepper
+                steps={WIZARD_STEPS}
+                current={WIZARD_STEPS[wizardStep]?.id || 'connection'}
+                onSelect={(id) => {
+                  const index = WIZARD_STEPS.findIndex((step) => step.id === id);
+                  if (index >= 0) setWizardStep(index);
+                }}
+              />
+              <form className="portal-form-grid" onSubmit={(event) => {
+                event.preventDefault();
+                if (wizardStep === 1 && !wizardRepo) {
+                  setError('Select a registered repository.');
+                  return;
+                }
+                if (wizardStep < 5) setWizardStep(wizardStep + 1);
+                else void saveWizard();
+              }}>
+                {wizardStep === 0 ? (
+                  <label className="label">Collection mode
+                    <select className="input" value={wizardMode} onChange={(event) => setWizardMode(event.target.value)}>
+                      <option value="hosted">Hosted collector</option>
+                      <option value="agent">Private outbound agent</option>
+                      <option value="ci">CI inventory / SBOM upload</option>
+                    </select>
+                  </label>
+                ) : null}
+                {wizardStep === 1 ? (
+                  <label className="label">Repository
+                    <select className="input" value={wizardRepo} onChange={(event) => setWizardRepo(event.target.value)}>
+                      <option value="">Select a registered repository</option>
+                      {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+                {wizardStep === 2 ? (
+                  <label className="label">Owner team<input className="input" value={wizardTeam} onChange={(event) => setWizardTeam(event.target.value)} placeholder="Team that owns this repository" /></label>
+                ) : null}
+                {wizardStep === 3 ? (
+                  <>
+                    <label className="label">Schedule minutes<input className="input" value={wizardSchedule} onChange={(event) => setWizardSchedule(event.target.value)} /></label>
+                    <label className="label">Path exclusions<input className="input" value={wizardExclusions} onChange={(event) => setWizardExclusions(event.target.value)} placeholder="docs/, vendor/" /></label>
+                    <label className="sec-vuln-check"><input type="checkbox" checked={wizardForks} onChange={(event) => setWizardForks(event.target.checked)} /> Allow fork pull requests</label>
+                    <label className="sec-vuln-check"><input type="checkbox" checked={wizardGate} onChange={(event) => setWizardGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
+                  </>
+                ) : null}
+                {wizardStep === 4 ? (
+                  <label className="label">Alert from severity
+                    <select className="input" value={wizardAlert} onChange={(event) => setWizardAlert(event.target.value)}>
+                      <option value="critical">Critical</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                    </select>
+                  </label>
+                ) : null}
+                {wizardStep === 5 ? (
+                  <dl className="sre-meta">
+                    <div className="sre-meta__item"><dt>Repository</dt><dd>{repos.find((item) => String(item.id) === wizardRepo)?.repository || 'Select a repository'}</dd></div>
+                    <div className="sre-meta__item"><dt>Collection</dt><dd>{collectionModeLabel(wizardMode)}</dd></div>
+                    <div className="sre-meta__item"><dt>Owner team</dt><dd>{wizardTeam || 'Unchanged'}</dd></div>
+                    <div className="sre-meta__item"><dt>Alerts from</dt><dd>{wizardAlert}</dd></div>
+                    <div className="sre-meta__item"><dt>Fork PRs</dt><dd>{wizardForks ? 'Allowed' : 'Blocked'}</dd></div>
+                    <div className="sre-meta__item"><dt>Comparison gate</dt><dd>{wizardGate ? 'Enforced' : 'Informational'}</dd></div>
+                  </dl>
+                ) : null}
+                {wizardStep === 0 || wizardStep === 5 ? (
+                  <p className="form-section__copy">Hosted collector never executes package scripts. Saving policy needs a manager role.</p>
+                ) : null}
+                <div className="portal-form-actions">
+                  {wizardStep > 0 ? <button type="button" className="btn btn-secondary" onClick={() => setWizardStep(wizardStep - 1)}>Back</button> : null}
+                  <button type="submit" className="btn btn-primary" disabled={busy || (wizardStep === 5 && !isManager)}>{wizardStep < 5 ? 'Next' : 'Save policy'}</button>
+                </div>
+              </form>
+            </section>
+          </div>
         ) : null}
       </div>
     </DevOpsLayout>

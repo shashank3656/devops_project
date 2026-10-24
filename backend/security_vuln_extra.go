@@ -210,7 +210,7 @@ func getVulnPRComparison(userID, id int) map[string]any {
 }
 
 func listVulnCampaigns(userID int) []map[string]any {
-	findings, err := listVulnFindings(userID, 0, 0, "", "")
+	findings, err := listVulnFindings(userID, 0, 0, "", "", "")
 	if err != nil {
 		return []map[string]any{}
 	}
@@ -400,7 +400,7 @@ func serviceVulnDetail(userID, serviceID int) map[string]any {
 	if service == nil {
 		return nil
 	}
-	findings, _ := listVulnFindings(userID, 0, serviceID, "", "")
+	findings, _ := listVulnFindings(userID, 0, serviceID, "", "", "")
 	plans, _ := listVulnPlans(userID)
 	servicePlans := []vulnPlanView{}
 	for _, plan := range plans {

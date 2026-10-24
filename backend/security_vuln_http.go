@@ -106,7 +106,7 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 		if projectID > 0 && !ensureProjectVisible(w, r, userID, projectID) {
 			return
 		}
-		items, err := listVulnFindings(userID, projectID, serviceID, r.URL.Query().Get("severity"), r.URL.Query().Get("lifecycle"))
+		items, err := listVulnFindings(userID, projectID, serviceID, r.URL.Query().Get("severity"), r.URL.Query().Get("lifecycle"), r.URL.Query().Get("match_source"))
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list findings", err)
 			return

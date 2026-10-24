@@ -80,6 +80,17 @@ export function patchLabel(value: string): string {
   }
 }
 
+export function matchSourceLabel(value?: string): string {
+  switch ((value || '').toLowerCase()) {
+    case 'intel':
+      return 'Internet advisory';
+    case 'scan':
+      return 'Repository scan';
+    default:
+      return 'Unknown';
+  }
+}
+
 export function reachabilityLabel(value?: string): string {
   switch ((value || '').toLowerCase()) {
     case 'imported':

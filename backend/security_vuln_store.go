@@ -65,6 +65,7 @@ type vulnFindingView struct {
 	LastSeenAt     *string `json:"last_seen_at,omitempty"`
 	SourceURL      string  `json:"source_url,omitempty"`
 	Reachability   string  `json:"reachability,omitempty"`
+	MatchSource    string  `json:"match_source,omitempty"`
 }
 
 type vulnServiceRow struct {
@@ -274,7 +275,7 @@ func getVulnAdvisory(id, userID int) (*vulnAdvisoryView, []vulnFindingView, erro
 	item.Affected = countConfirmedForAdvisory(item.CanonicalID)
 	item.PublicLabel = "Public intelligence. This count is not organization exposure."
 	found := &item
-	findings, err := listVulnFindings(userID, 0, 0, "", "")
+	findings, err := listVulnFindings(userID, 0, 0, "", "", "")
 	if err != nil {
 		return found, nil, nil
 	}
@@ -463,17 +464,29 @@ func saveInventoryAndCorrelate(jobID, repoID int, commit string, parsed vulnPars
 	for _, item := range parsed.Components {
 		assessed[item.ModulePath+"|"+item.Ecosystem] = true
 	}
-	upsertVulnMatches(repoID, jobID, commit, matches, assessed)
+	upsertVulnMatches(repoID, jobID, commit, matches, assessed, vulnMatchScan)
 	persistPatchPlans(repoID, matches)
 	return nil
 }
 
-func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, assessed map[string]bool) {
+func intelMatchDetail(commit string) string {
+	sha := strings.TrimSpace(commit)
+	if sha == "" {
+		sha = "the stored inventory"
+	}
+	return "Public advisory matched the stored inventory at commit " + sha + ". The lockfile was not fetched again."
+}
+
+func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, assessed map[string]bool, origin string) int {
 	var projectID int
 	var branch, ownerTeam string
 	_ = queryRowContext(`SELECT COALESCE(project_id,0), branch, owner_team FROM vuln_repositories WHERE id = $1`, repoID).Scan(&projectID, &branch, &ownerTeam)
 	var serviceID int
 	_ = queryRowContext(`SELECT service_id FROM vuln_service_repos WHERE repo_id = $1 ORDER BY id LIMIT 1`, repoID).Scan(&serviceID)
+	if origin != vulnMatchIntel {
+		origin = vulnMatchScan
+	}
+	created := 0
 	for _, match := range matches {
 		canonical := match.CanonicalID
 		var advisoryID int
@@ -492,14 +505,19 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 				INSERT INTO vuln_findings (
 					repo_id, project_id, service_id, advisory_id, canonical_id, ecosystem, package_name, installed_version,
 					module_path, path, branch, confidence, lifecycle, patch_state, first_fixed_version, recommended_version,
-					parent_package, priority, priority_reason, owner, last_scan_id, due_at, reachability
-				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+					parent_package, priority, priority_reason, owner, last_scan_id, due_at, reachability, match_source
+				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
 				RETURNING id
 			`, repoID, nullIfZero(projectID), nullIfZero(serviceID), advisoryID, canonical, match.Component.Ecosystem, match.Component.PackageName,
 				match.Component.Version, match.Component.ModulePath, match.Component.Path, branch, match.Confidence, match.PatchState,
-				match.FirstFixed, match.Recommended, match.ParentPackage, match.Priority, reachabilityReason(match), ownerTeam, jobID, dueAtForPriority(match.Priority), reachabilityValue(match.Component.Reachability)).Scan(&existingID)
+				match.FirstFixed, match.Recommended, match.ParentPackage, match.Priority, reachabilityReason(match), ownerTeam, jobID, dueAtForPriority(match.Priority), reachabilityValue(match.Component.Reachability), origin).Scan(&existingID)
 			if existingID > 0 {
-				_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,'detected',$2)`, existingID, "Confirmed dependency match at commit "+commit)
+				kind, detail := "detected", "Confirmed dependency match at commit "+commit
+				if origin == vulnMatchIntel {
+					kind, detail = "intel_matched", intelMatchDetail(commit)
+				}
+				_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,$2,$3)`, existingID, kind, detail)
+				created++
 				if match.Confidence == vulnConfidenceConfirmed && (match.Severity == vulnSevCritical || match.Severity == vulnSevHigh) {
 					notifyVulnFinding(existingID, projectID, match)
 				}
@@ -510,7 +528,12 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 		if lifecycle == vulnLifeFixed && match.Confidence == vulnConfidenceConfirmed {
 			nextLife = vulnLifeOpen
 			_, _ = execContext(`UPDATE vuln_findings SET episode = episode + 1 WHERE id = $1`, existingID)
-			_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,'reintroduced',$2)`, existingID, "Affected version returned at commit "+commit)
+			detail := "Affected version returned at commit " + commit
+			if origin == vulnMatchIntel {
+				detail = intelMatchDetail(commit)
+				_, _ = execContext(`UPDATE vuln_findings SET match_source=$2 WHERE id=$1`, existingID, vulnMatchIntel)
+			}
+			_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,'reintroduced',$2)`, existingID, detail)
 			notifyVulnFinding(existingID, projectID, match)
 		}
 		if lifecycle == vulnLifePending && match.Confidence != vulnConfidenceConfirmed {
@@ -532,6 +555,7 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 		}
 	}
 	closeVerifiedFindings(repoID, branch, matches, assessed, commit)
+	return created
 }
 
 func closeVerifiedFindings(repoID int, branch string, matches []vulnMatch, assessed map[string]bool, commit string) {
@@ -600,9 +624,9 @@ func persistPatchPlans(repoID int, matches []vulnMatch) {
 	}
 }
 
-func reevaluateStoredInventories() {
+func reevaluateStoredInventories() (repos, created int) {
 	if DB == nil {
-		return
+		return 0, 0
 	}
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT DISTINCT ON (repo_id) id, repo_id, scan_id, commit_sha
@@ -610,7 +634,7 @@ func reevaluateStoredInventories() {
 		ORDER BY repo_id, collected_at DESC
 	`)
 	if err != nil {
-		return
+		return 0, 0
 	}
 	defer cancel()
 	defer rows.Close()
@@ -633,9 +657,34 @@ func reevaluateStoredInventories() {
 		for _, comp := range comps {
 			assessed[comp.ModulePath+"|"+comp.Ecosystem] = true
 		}
-		upsertVulnMatches(item.RepoID, item.ScanID, item.SHA, matches, assessed)
+		created += upsertVulnMatches(item.RepoID, item.ScanID, item.SHA, matches, assessed, vulnMatchIntel)
 		persistPatchPlans(item.RepoID, matches)
 	}
+	return len(items), created
+}
+
+func loadLatestStoredComponents() []vulnComponent {
+	if DB == nil {
+		return nil
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT DISTINCT ON (repo_id) id FROM vuln_inventories ORDER BY repo_id, collected_at DESC
+	`)
+	if err != nil {
+		return nil
+	}
+	defer cancel()
+	defer rows.Close()
+	out := []vulnComponent{}
+	for rows.Next() {
+		var id int
+		if rows.Scan(&id) != nil || id <= 0 {
+			continue
+		}
+		comps, _ := loadInventoryComponents(id)
+		out = append(out, comps...)
+	}
+	return out
 }
 
 func loadInventoryComponents(inventoryID int) ([]vulnComponent, error) {
@@ -867,7 +916,7 @@ func listVulnServiceRows(userID, projectID int) ([]vulnServiceRow, error) {
 	return out, nil
 }
 
-func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle string) ([]vulnFindingView, error) {
+func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, matchSource string) ([]vulnFindingView, error) {
 	if DB == nil {
 		return []vulnFindingView{}, nil
 	}
@@ -895,12 +944,17 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle stri
 		args = append(args, life)
 		where += fmt.Sprintf(" AND f.lifecycle = $%d", len(args))
 	}
+	if src := strings.ToLower(strings.TrimSpace(matchSource)); src == vulnMatchIntel || src == vulnMatchScan {
+		args = append(args, src)
+		where += fmt.Sprintf(" AND COALESCE(NULLIF(f.match_source,''),'scan') = $%d", len(args))
+	}
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT f.id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), COALESCE(s.service,''), COALESCE(f.service_id,0), COALESCE(f.project_id,0),
 		       f.canonical_id, a.title, a.severity, f.priority, f.priority_reason, f.lifecycle, f.patch_state, f.confidence,
 		       f.ecosystem, f.package_name, f.installed_version, f.first_fixed_version, f.recommended_version, f.parent_package,
 		       f.module_path, f.path, f.owner, a.kev, f.pr_url, f.change_ref, f.due_at, f.last_seen_at, a.source_url,
-		       COALESCE((SELECT commit_sha FROM vuln_scan_jobs WHERE id = f.last_scan_id), ''), COALESCE(NULLIF(f.reachability,''),'unknown')
+		       COALESCE((SELECT commit_sha FROM vuln_scan_jobs WHERE id = f.last_scan_id), ''), COALESCE(NULLIF(f.reachability,''),'unknown'),
+		       COALESCE(NULLIF(f.match_source,''),'scan')
 		FROM vuln_findings f
 		JOIN vuln_advisories a ON a.id = f.advisory_id
 		JOIN vuln_repositories r ON r.id = f.repo_id
@@ -921,7 +975,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle stri
 		if err := rows.Scan(&item.ID, &item.Repo, &item.Service, &item.ServiceID, &item.ProjectID, &item.CanonicalID, &item.Title, &item.Severity,
 			&item.Priority, &item.PriorityReason, &item.Lifecycle, &item.PatchState, &item.Confidence, &item.Ecosystem, &item.PackageName,
 			&item.Installed, &item.FirstFixed, &item.Recommended, &item.ParentPackage, &item.ModulePath, &item.Path, &item.Owner, &item.KEV,
-			&item.PRURL, &item.ChangeRef, &due, &seen, &item.SourceURL, &item.CommitSHA, &item.Reachability); err != nil {
+			&item.PRURL, &item.ChangeRef, &due, &seen, &item.SourceURL, &item.CommitSHA, &item.Reachability, &item.MatchSource); err != nil {
 			continue
 		}
 		item.DueAt = nullTimePtr(due)
@@ -932,7 +986,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle stri
 }
 
 func getVulnFinding(userID, id int) (*vulnFindingView, []map[string]any, error) {
-	items, err := listVulnFindings(userID, 0, 0, "", "")
+	items, err := listVulnFindings(userID, 0, 0, "", "", "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1103,7 +1157,7 @@ func listVulnPlans(userID int) ([]vulnPlanView, error) {
 
 func vulnOverview(userID int) map[string]any {
 	rows, _ := listVulnServiceRows(userID, 0)
-	findings, _ := listVulnFindings(userID, 0, 0, "", "")
+	findings, _ := listVulnFindings(userID, 0, 0, "", "", "")
 	crit, high, kev, overdue := 0, 0, 0, 0
 	affected := 0
 	scanned := 0
@@ -1128,10 +1182,26 @@ func vulnOverview(userID int) map[string]any {
 		}
 	}
 	var intel *string
+	intelMatched, intelRepos := 0, 0
+	unscanned := 0
 	if DB != nil {
 		var last sql.NullTime
 		_ = queryRowContext(`SELECT MAX(last_success_at) FROM vuln_intelligence_sources WHERE enabled = TRUE`).Scan(&last)
 		intel = nullTimePtr(last)
+		_ = queryRowContext(`SELECT COALESCE(matched,0), COALESCE(repos_assessed,0) FROM vuln_intel_runs WHERE state='succeeded' ORDER BY id DESC LIMIT 1`).Scan(&intelMatched, &intelRepos)
+		var registered int
+		var withInv int
+		_ = queryRowContext(`SELECT COUNT(*) FROM vuln_repositories WHERE enabled=TRUE`).Scan(&registered)
+		_ = queryRowContext(`SELECT COUNT(DISTINCT repo_id) FROM vuln_inventories`).Scan(&withInv)
+		if registered > withInv {
+			unscanned = registered - withInv
+		}
+	}
+	intelOpen := 0
+	for _, item := range findings {
+		if item.MatchSource == vulnMatchIntel && item.Lifecycle != vulnLifeFixed && item.Lifecycle != vulnLifeFalsePos && item.Lifecycle != vulnLifeWithdrawn {
+			intelOpen++
+		}
 	}
 	return map[string]any{
 		"critical_findings":       crit,
@@ -1139,9 +1209,13 @@ func vulnOverview(userID int) map[string]any {
 		"affected_services":       affected,
 		"registered_services":     len(rows),
 		"scanned_repositories":    scanned,
+		"unscanned_repositories":  unscanned,
 		"kev_matches":             kev,
 		"overdue":                 overdue,
 		"intelligence_synced_at":  intel,
+		"intel_new_matches":       intelMatched,
+		"intel_repos_assessed":    intelRepos,
+		"intel_open_matches":      intelOpen,
 		"github_token_configured": strings.TrimSpace(GitHubToken) != "",
 		"hosted_collector":        vulnHostedCollectorConfigured(),
 		"count_note":              "Scorecards count confirmed repository occurrences in your authorized projects. Global advisories are public intelligence, not exposure.",

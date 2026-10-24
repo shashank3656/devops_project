@@ -449,3 +449,58 @@ func TestDiscoverLockfilesSkipsNodeModules(t *testing.T) {
 		t.Fatalf("discovered = %v", got)
 	}
 }
+
+func TestNodejsRepoMatchesNpmInternetAdvisory(t *testing.T) {
+	components := []vulnComponent{{
+		Ecosystem: "nodejs", PackageName: "express", Version: "4.17.1", Path: "package-lock.json",
+		ModulePath: ".", Resolved: true, Direct: true,
+	}}
+	advisories := []vulnAdvisoryRecord{{
+		CanonicalID: "GHSA-DEMO-NODE",
+		Aliases:     []string{"CVE-2026-4242"},
+		Title:       "express before 4.17.3",
+		Severity:    "high",
+		Ranges: []vulnAffectedRange{{
+			Ecosystem: "npm", Package: "express", Introduced: "0", Fixed: "4.17.3",
+		}},
+	}}
+	got := correlateInventory(components, advisories)
+	if len(got) != 1 || got[0].Confidence != vulnConfidenceConfirmed {
+		t.Fatalf("nodejs inventory must match npm advisory: %+v", got)
+	}
+	safe := correlateInventory([]vulnComponent{{
+		Ecosystem: "javascript", PackageName: "express", Version: "4.17.3", Path: "package-lock.json", Resolved: true, Direct: true,
+	}}, advisories)
+	if len(safe) != 0 {
+		t.Fatalf("fixed node version still matched: %+v", safe)
+	}
+}
+
+func TestIntelMatchDetailDoesNotClaimRescan(t *testing.T) {
+	got := intelMatchDetail("abc123")
+	if !strings.Contains(got, "abc123") || !strings.Contains(got, "was not fetched again") {
+		t.Fatalf("detail = %q", got)
+	}
+	empty := intelMatchDetail("  ")
+	if !strings.Contains(empty, "stored inventory") || !strings.Contains(empty, "was not fetched again") {
+		t.Fatalf("empty = %q", empty)
+	}
+}
+
+func TestOsvQueryPayloadOmitsSource(t *testing.T) {
+	payload := osvQueryPayload("express", "npm", "4.18.2")
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(raw)), "source") {
+		t.Fatalf("source leaked: %s", raw)
+	}
+	pkg, _ := payload["package"].(map[string]string)
+	if pkg["name"] != "express" || pkg["ecosystem"] != "npm" || payload["version"] != "4.18.2" {
+		t.Fatalf("payload = %+v", payload)
+	}
+	if osvEcosystem("nodejs") != "npm" || osvEcosystem("javascript") != "npm" {
+		t.Fatal("nodejs inventory must query OSV as npm")
+	}
+}

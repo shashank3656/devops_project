@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { lifecycleLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
+import { lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
 
 type Finding = {
   id: number;
@@ -36,6 +36,7 @@ type Finding = {
   due_at?: string;
   commit_sha?: string;
   reachability?: string;
+  match_source?: string;
 };
 
 type Activity = { kind: string; detail: string; created_at: string };
@@ -171,6 +172,7 @@ export default function VulnFindingDetailPage() {
               <div className="sre-meta__item"><dt>Priority</dt><dd>{finding.priority} · {finding.priority_reason || 'Unknown'}</dd></div>
               <div className="sre-meta__item"><dt>Confidence</dt><dd>{finding.confidence.replace(/_/g, ' ')}</dd></div>
               <div className="sre-meta__item"><dt>Reachability</dt><dd>{reachabilityLabel(finding.reachability)}{finding.reachability === 'not_imported' ? ' · not a not-affected claim' : ''}</dd></div>
+              <div className="sre-meta__item"><dt>Origin</dt><dd>{matchSourceLabel(finding.match_source)}{finding.match_source === 'intel' ? ' · public advisory matched the stored inventory; the lockfile was not fetched again' : ''}</dd></div>
               <div className="sre-meta__item"><dt>KEV</dt><dd>{finding.kev ? 'Known exploitation' : 'Not listed'}</dd></div>
               <div className="sre-meta__item"><dt>Due</dt><dd>{finding.due_at ? formatOperationalTime(finding.due_at) : 'None'}</dd></div>
               <div className="sre-meta__item"><dt>Last seen</dt><dd>{finding.last_seen_at ? formatOperationalTime(finding.last_seen_at) : 'Unknown'}</dd></div>

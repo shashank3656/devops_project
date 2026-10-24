@@ -9104,10 +9104,32 @@ html[data-theme='dark'] .devops-layout .access-chip {
 }
 
 html[data-theme='dark'] .devops-layout .ops-tabs .is-current,
-html[data-theme='dark'] .devops-layout .access-chip.is-on {
+html[data-theme='dark'] .devops-layout .access-chip.is-on,
+html[data-theme='dark'] .devops-layout .sec-vuln-secondary a.is-current {
   background: #2a2444;
   border-color: rgba(139, 120, 230, 0.45);
   color: #f3eefe;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-secondary a {
+  background: #222633;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-intel {
+  border-color: rgba(196, 181, 253, 0.28);
+  background: rgba(109, 74, 255, 0.16);
+  color: var(--ot-cool-white, #F5F7FC);
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-check {
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-token code {
+  background: #192238;
+  color: #f5f7fc;
 }
 
 html[data-theme='dark'] .devops-layout .access-status.is-ready {
@@ -11570,7 +11592,117 @@ html[data-theme] .devops-layout .portal-page .ops-minis--four {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin: 0 0 20px;
+}
+
+.sec-vuln-secondary a {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e7e9f0;
+  background: #fff;
+  color: #58677f;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sec-vuln-secondary a.is-current {
+  background: #ece8fb;
+  border-color: #d9d0f5;
+  color: #17233b;
+}
+
+.sec-vuln-intel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
   margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid rgba(109, 74, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(196, 181, 253, 0.16);
+  color: var(--ot-ink);
+}
+
+.sec-vuln-intel span {
+  flex: 1 1 240px;
+}
+
+.sec-vuln-workspace,
+.sec-vuln-split {
+  display: grid;
+  gap: 16px;
+}
+
+.sec-vuln-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.sec-vuln-wizard .ig-stepper {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+.sec-vuln-wizard .ig-stepper__label {
+  font-size: 12px;
+}
+
+.sec-vuln-split .portal-form-actions,
+.sec-vuln-split .form-section__copy,
+.sec-vuln-split .sre-meta,
+.sec-vuln-workspace .portal-form-actions,
+.sec-vuln-workspace .form-section__copy {
+  grid-column: 1 / -1;
+}
+
+.sec-vuln-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  color: #17233b;
+  font-size: 14px;
+}
+
+.sec-vuln-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.sec-vuln-run {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #101525;
+  color: #f5f7fc;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.sec-vuln-token {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.sec-vuln-token code {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #f5f7fc;
+  color: #17233b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 980px) {
+  .sec-vuln-split {
+    grid-template-columns: 1fr;
+  }
 }
 
 .sec-sev {
