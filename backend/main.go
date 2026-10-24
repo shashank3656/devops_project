@@ -739,6 +739,7 @@ func main() {
 		startChangeWatcherScheduler()
 		startSSOSyncScheduler()
 		startMonitorEvaluationWorker()
+		startVulnSecurityWorker()
 	}
 	InitRuntimeResilience()
 
@@ -979,6 +980,12 @@ func main() {
 	http.HandleFunc("/api/coverage/native", nativeFindingHandler)
 	http.HandleFunc("/api/coverage/gaps", coverageGapHandler)
 	http.HandleFunc("/api/coverage", coverageReportHandler)
+	http.HandleFunc("/api/devops/security/", devopsSecurityVulnHandler)
+	http.HandleFunc("/api/security/agent/", securityVulnAgentHandler)
+	http.HandleFunc("/api/security/webhooks/github", githubWebhookHandler)
+	http.HandleFunc("/api/security/vulnerabilities/", securityVulnAliasHandler)
+	http.HandleFunc("/api/security/advisories", securityVulnAliasHandler)
+	http.HandleFunc("/api/security/advisories/", securityVulnAliasHandler)
 	http.HandleFunc("/api/security/reports", securityReportHandler)
 	http.HandleFunc("/api/artifacts/sboms", sbomHandler)
 	http.HandleFunc("/api/artifacts/exposures", artifactExposureHandler)

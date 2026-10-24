@@ -150,6 +150,10 @@ const PAGE_TITLES: Record<string, string> = {
   '/security/cloud-scan': 'Cloud scan',
   '/security/code-scan': 'Code scan',
   '/security/findings': 'Findings',
+  '/security/vulnerabilities': 'Vulnerabilities',
+  '/security/vulnerabilities/advisories/[id]': 'Advisory',
+  '/security/vulnerabilities/findings/[id]': 'Finding',
+  '/security/vulnerabilities/services/[id]': 'Service security',
   '/profile': 'Profile',
   '/my-requests': 'My requests',
   '/requests': 'Request',
@@ -694,11 +698,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const securityNavItems: NavItem[] = isManager
     ? [
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
+        { href: '/security/vulnerabilities', label: 'Vulnerabilities', Icon: IconShield },
         { href: '/security/cloud-scan', label: 'Cloud scan', Icon: IconShield },
         { href: '/security/code-scan', label: 'Code scan', Icon: IconShield },
         { href: '/security/findings', label: 'Findings', Icon: IconShield },
       ]
     : [
+        { href: '/security/vulnerabilities', label: 'Vulnerabilities', Icon: IconShield },
         { href: '/security/cloud-scan', label: 'Cloud scan', Icon: IconShield },
         { href: '/security/code-scan', label: 'Code scan', Icon: IconShield },
         { href: '/security/findings', label: 'Findings', Icon: IconShield },

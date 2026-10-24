@@ -106,6 +106,8 @@ func pageForPath(path string) string {
 		return "cloud-accounts"
 	case strings.HasPrefix(path, "/api/devops/cloud/"):
 		return "cloud-inventory"
+	case strings.HasPrefix(path, "/api/devops/security"), strings.HasPrefix(path, "/api/security/advisories"), strings.HasPrefix(path, "/api/security/vulnerabilities"):
+		return "vulnerabilities"
 	default:
 		return ""
 	}
@@ -165,7 +167,9 @@ func sectionForPath(path string) string {
 		path == "/api/me/2fa",
 		path == "/api/change-password",
 		path == "/health",
-		path == "/ready":
+		path == "/ready",
+		strings.HasPrefix(path, "/api/security/agent/"),
+		strings.HasPrefix(path, "/api/security/webhooks/"):
 		return ""
 	case strings.HasPrefix(path, "/api/admin/"), strings.HasPrefix(path, "/api/users/"):
 		return "portal"
@@ -208,6 +212,7 @@ func sectionForPath(path string) string {
 		return "infrastructure"
 	case strings.HasPrefix(path, "/api/devops/credential-audit"),
 		strings.HasPrefix(path, "/api/devops/expiry-tracker/"),
+		strings.HasPrefix(path, "/api/devops/security"),
 		strings.HasPrefix(path, "/api/scans/"),
 		strings.HasPrefix(path, "/api/findings"),
 		strings.HasPrefix(path, "/api/security/"),

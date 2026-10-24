@@ -4,6 +4,7 @@ config/.env
 .env.local
 .env.*.local
 workers/.env
+workers/.agent_token
 
 # Dependencies
 node_modules/
