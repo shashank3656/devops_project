@@ -646,3 +646,45 @@ func TestOsvQueryPayloadOmitsSource(t *testing.T) {
 		t.Fatal("nodejs inventory must query OSV as npm")
 	}
 }
+
+func TestSummarizeVulnCoverageNotes(t *testing.T) {
+	empty := summarizeVulnCoverage(nil)
+	if !strings.Contains(strings.ToLower(empty), "no coverage") {
+		t.Fatalf("empty = %q", empty)
+	}
+	got := summarizeVulnCoverage([]vulnCoverageGap{
+		{Path: "package.json", Reason: "package.json declared versions were used because a lockfile was not preferred for this module."},
+		{Path: "/", Reason: "Source files were not sampled for import evidence."},
+	})
+	if !strings.Contains(got, "package.json") || !strings.Contains(got, "source") {
+		t.Fatalf("got = %q", got)
+	}
+}
+
+func TestBulkLifecycleForbidsFixed(t *testing.T) {
+	next, problem := nextLifecycle(vulnLifeOpen, vulnLifeFixed, "done")
+	if next != vulnLifeOpen || problem == "" {
+		t.Fatalf("fixed must stay blocked: %s %s", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeOpen, vulnLifeAcked, "")
+	if next != vulnLifeAcked || problem != "" {
+		t.Fatalf("ack = %s %s", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeAcked, vulnLifeRemediate, "")
+	if next != vulnLifeRemediate || problem != "" {
+		t.Fatalf("remediate = %s %s", next, problem)
+	}
+}
+
+func TestProbeAccessWithoutTokenDoesNotLeakSecret(t *testing.T) {
+	prev := GitHubToken
+	GitHubToken = ""
+	defer func() { GitHubToken = prev }()
+	state, detail := probeVulnRepoAccess("github", "acme", "api")
+	if state != "no_token" {
+		t.Fatalf("state = %s", state)
+	}
+	if strings.Contains(strings.ToLower(detail), "github_pat") || strings.Contains(detail, "ghp_") {
+		t.Fatalf("token leaked: %s", detail)
+	}
+}

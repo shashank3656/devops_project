@@ -10759,6 +10759,31 @@ html[data-theme='dark'] .devops-layout .ops-minis--four .ops-mini:not([class*='o
   flex-wrap: nowrap;
 }
 
+.sec-vuln-bulk .ig-bulkbar {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  max-width: none;
+  width: 100%;
+  margin: 0 0 16px;
+  justify-content: flex-start;
+}
+
+.sec-vuln-bulk .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #17233b;
+  font-size: 12px;
+}
+
+.sec-vuln-bulk .input {
+  min-height: 32px;
+  width: 148px;
+}
+
 .sec-vuln-coverage {
   margin: 0 0 16px;
   padding: 0;

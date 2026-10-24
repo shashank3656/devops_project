@@ -245,6 +245,12 @@ func migrateSecurityVulnSchema() {
 	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS match_source VARCHAR(40) NOT NULL DEFAULT 'scan'`)
 	_, _ = DB.Exec(`ALTER TABLE vuln_intel_runs ADD COLUMN IF NOT EXISTS matched INTEGER NOT NULL DEFAULT 0`)
 	_, _ = DB.Exec(`ALTER TABLE vuln_intel_runs ADD COLUMN IF NOT EXISTS repos_assessed INTEGER NOT NULL DEFAULT 0`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_repositories ADD COLUMN IF NOT EXISTS access_state VARCHAR(40) NOT NULL DEFAULT 'unknown'`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_repositories ADD COLUMN IF NOT EXISTS access_detail TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_repositories ADD COLUMN IF NOT EXISTS access_checked_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_repositories ADD COLUMN IF NOT EXISTS last_scheduled_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS direct BOOLEAN NOT NULL DEFAULT TRUE`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS dev BOOLEAN NOT NULL DEFAULT FALSE`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS vuln_scan_events (
 			id SERIAL PRIMARY KEY,

@@ -66,6 +66,9 @@ type vulnFindingView struct {
 	SourceURL      string  `json:"source_url,omitempty"`
 	Reachability   string  `json:"reachability,omitempty"`
 	MatchSource    string  `json:"match_source,omitempty"`
+	LastScanID     int     `json:"last_scan_id,omitempty"`
+	Direct         bool    `json:"direct"`
+	Dev            bool    `json:"dev"`
 }
 
 type vulnServiceRow struct {
@@ -95,6 +98,7 @@ type vulnScanView struct {
 	AssessedModules   int               `json:"assessed_modules"`
 	FindingCount      int               `json:"finding_count"`
 	Coverage          []vulnCoverageGap `json:"coverage"`
+	CoverageNote      string            `json:"coverage_note,omitempty"`
 	CreatedAt         *string           `json:"created_at,omitempty"`
 	FinishedAt        *string           `json:"finished_at,omitempty"`
 }
@@ -562,12 +566,12 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 				INSERT INTO vuln_findings (
 					repo_id, project_id, service_id, advisory_id, canonical_id, ecosystem, package_name, installed_version,
 					module_path, path, branch, confidence, lifecycle, patch_state, first_fixed_version, recommended_version,
-					parent_package, priority, priority_reason, owner, last_scan_id, due_at, reachability, match_source
-				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+					parent_package, priority, priority_reason, owner, last_scan_id, due_at, reachability, match_source, direct, dev
+				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
 				RETURNING id
 			`, repoID, nullIfZero(projectID), nullIfZero(serviceID), advisoryID, canonical, match.Component.Ecosystem, match.Component.PackageName,
 				match.Component.Version, match.Component.ModulePath, match.Component.Path, branch, match.Confidence, match.PatchState,
-				match.FirstFixed, match.Recommended, match.ParentPackage, match.Priority, reachabilityReason(match), ownerTeam, jobID, dueAtForPriority(match.Priority), reachabilityValue(match.Component.Reachability), origin).Scan(&existingID)
+				match.FirstFixed, match.Recommended, match.ParentPackage, match.Priority, reachabilityReason(match), ownerTeam, jobID, dueAtForPriority(match.Priority), reachabilityValue(match.Component.Reachability), origin, match.Component.Direct, match.Component.Dev).Scan(&existingID)
 			if existingID > 0 {
 				kind, detail := "detected", "Confirmed dependency match at commit "+commit
 				if origin == vulnMatchIntel {
@@ -575,8 +579,8 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 				}
 				_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,$2,$3)`, existingID, kind, detail)
 				created++
-				if match.Confidence == vulnConfidenceConfirmed && (match.Severity == vulnSevCritical || match.Severity == vulnSevHigh) {
-					notifyVulnFinding(existingID, projectID, match)
+				if match.Confidence == vulnConfidenceConfirmed {
+					notifyVulnFinding(existingID, projectID, match, origin)
 				}
 			}
 			continue
@@ -591,7 +595,7 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 				_, _ = execContext(`UPDATE vuln_findings SET match_source=$2 WHERE id=$1`, existingID, vulnMatchIntel)
 			}
 			_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,'reintroduced',$2)`, existingID, detail)
-			notifyVulnFinding(existingID, projectID, match)
+			notifyVulnFinding(existingID, projectID, match, origin)
 		}
 		if lifecycle == vulnLifePending && match.Confidence != vulnConfidenceConfirmed {
 			nextLife = vulnLifeFixed
@@ -603,9 +607,9 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 			UPDATE vuln_findings SET
 				installed_version=$2, confidence=$3, lifecycle=$4, patch_state=$5, first_fixed_version=$6,
 				recommended_version=$7, parent_package=$8, priority=$9, priority_reason=$10, last_scan_id=$11,
-				reachability=$12, last_seen_at=CURRENT_TIMESTAMP
+				reachability=$12, direct=$13, dev=$14, last_seen_at=CURRENT_TIMESTAMP
 			WHERE id=$1
-		`, existingID, match.Component.Version, match.Confidence, nextLife, match.PatchState, match.FirstFixed, match.Recommended, match.ParentPackage, match.Priority, reachabilityReason(match), jobID, reachabilityValue(match.Component.Reachability))
+		`, existingID, match.Component.Version, match.Confidence, nextLife, match.PatchState, match.FirstFixed, match.Recommended, match.ParentPackage, match.Priority, reachabilityReason(match), jobID, reachabilityValue(match.Component.Reachability), match.Component.Direct, match.Component.Dev)
 		if prevPatch == vulnPatchNone && match.PatchState == vulnPatchAvailable {
 			_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,'fix_available',$2)`, existingID, "A source-supported fix is now listed: "+match.FirstFixed)
 			notifyVulnFixAvailable(existingID, projectID, match)
@@ -785,9 +789,13 @@ func dueAtForPriority(priority string) any {
 	}
 }
 
-func notifyVulnFinding(findingID, projectID int, match vulnMatch) {
+func notifyVulnFinding(findingID, projectID int, match vulnMatch, origin string) {
 	key := fmt.Sprintf("vuln:%d:%s:%d", findingID, "new_match", 1)
 	title := match.CanonicalID + " matched a registered repository"
+	if origin == vulnMatchIntel {
+		key = fmt.Sprintf("vuln:%d:%s:%d", findingID, "intel_match", 1)
+		title = "Internet advisory matched a stored lockfile: " + match.CanonicalID
+	}
 	message := fmt.Sprintf("%s %s %s@%s. Fix listed: %s. This is repository evidence, not proof of production exposure.",
 		severityLabel(match.Severity), match.CanonicalID, match.Component.PackageName, match.Component.Version, firstNonEmpty(match.FirstFixed, "no known fix"))
 	dispatchVulnAlert(key, title, message, findingID, projectID, match.Severity, map[string]any{
@@ -1011,7 +1019,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		       f.ecosystem, f.package_name, f.installed_version, f.first_fixed_version, f.recommended_version, f.parent_package,
 		       f.module_path, f.path, f.owner, a.kev, f.pr_url, f.change_ref, f.due_at, f.last_seen_at, a.source_url,
 		       COALESCE((SELECT commit_sha FROM vuln_scan_jobs WHERE id = f.last_scan_id), ''), COALESCE(NULLIF(f.reachability,''),'unknown'),
-		       COALESCE(NULLIF(f.match_source,''),'scan')
+		       COALESCE(NULLIF(f.match_source,''),'scan'), COALESCE(f.last_scan_id,0), COALESCE(f.direct, TRUE), COALESCE(f.dev, FALSE)
 		FROM vuln_findings f
 		JOIN vuln_advisories a ON a.id = f.advisory_id
 		JOIN vuln_repositories r ON r.id = f.repo_id
@@ -1034,7 +1042,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		if err := rows.Scan(&item.ID, &item.Repo, &item.Service, &item.ServiceID, &item.ProjectID, &item.CanonicalID, &item.Title, &item.Severity, &cvssScore, &cvssVector,
 			&item.Priority, &item.PriorityReason, &item.Lifecycle, &item.PatchState, &item.Confidence, &item.Ecosystem, &item.PackageName,
 			&item.Installed, &item.FirstFixed, &item.Recommended, &item.ParentPackage, &item.ModulePath, &item.Path, &item.Owner, &item.KEV,
-			&item.PRURL, &item.ChangeRef, &due, &seen, &item.SourceURL, &item.CommitSHA, &item.Reachability, &item.MatchSource); err != nil {
+			&item.PRURL, &item.ChangeRef, &due, &seen, &item.SourceURL, &item.CommitSHA, &item.Reachability, &item.MatchSource, &item.LastScanID, &item.Direct, &item.Dev); err != nil {
 			continue
 		}
 		item.DueAt = nullTimePtr(due)
@@ -1115,6 +1123,7 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 		}
 		item.CreatedAt = nullTimePtr(created)
 		item.FinishedAt = nullTimePtr(finished)
+		item.CoverageNote = summarizeVulnCoverage(item.Coverage)
 		out = append(out, item)
 	}
 	return out, nil
@@ -1148,6 +1157,7 @@ func getVulnScan(id int) (*vulnScanView, error) {
 	_ = json.Unmarshal([]byte(raw), &item.Coverage)
 	item.CreatedAt = nullTimePtr(created)
 	item.FinishedAt = nullTimePtr(finished)
+	item.CoverageNote = summarizeVulnCoverage(item.Coverage)
 	return &item, nil
 }
 

@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
+import { lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, usageLabel, vulnRequest } from '../../../../lib/securityVuln';
 
 type Finding = {
   id: number;
@@ -37,6 +37,8 @@ type Finding = {
   commit_sha?: string;
   reachability?: string;
   match_source?: string;
+  direct?: boolean;
+  dev?: boolean;
 };
 
 type Activity = { kind: string; detail: string; created_at: string };
@@ -55,6 +57,7 @@ export default function VulnFindingDetailPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [owner, setOwner] = useState('');
+  const [dueAt, setDueAt] = useState('');
   const [prUrl, setPrUrl] = useState('');
   const [changeRef, setChangeRef] = useState('');
   const [reason, setReason] = useState('');
@@ -76,6 +79,7 @@ export default function VulnFindingDetailPage() {
     const item = result.body.finding as Finding;
     setFinding(item);
     setOwner(item.owner || '');
+    setDueAt(item.due_at ? item.due_at.slice(0, 10) : '');
     setPrUrl(item.pr_url || '');
     setChangeRef(item.change_ref || '');
     setActivity(Array.isArray(result.body.activity) ? result.body.activity as Activity[] : []);
@@ -113,7 +117,7 @@ export default function VulnFindingDetailPage() {
 
   async function onSave(event: FormEvent) {
     event.preventDefault();
-    await patch({ owner, pr_url: prUrl, change_ref: changeRef, reason, lifecycle: finding?.lifecycle || 'open' });
+    await patch({ owner, due_at: dueAt, pr_url: prUrl, change_ref: changeRef, reason, lifecycle: finding?.lifecycle || 'open' });
   }
 
   async function verify() {
@@ -186,6 +190,7 @@ export default function VulnFindingDetailPage() {
               </div>
               <dl className="sre-meta">
                 <div className="sre-meta__item"><dt>Package</dt><dd>{finding.ecosystem} {finding.package_name}@{finding.installed_version || 'unresolved'}</dd></div>
+                <div className="sre-meta__item"><dt>Usage</dt><dd>{usageLabel(finding)}</dd></div>
                 <div className="sre-meta__item"><dt>Repository</dt><dd>{finding.repository || 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Service</dt><dd>{finding.service || 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Module</dt><dd>{finding.module_path || '/'}</dd></div>
@@ -217,6 +222,7 @@ export default function VulnFindingDetailPage() {
               </div>
               <form className="portal-form-grid" onSubmit={onSave}>
                 <label className="label">Owner<input className="input" value={owner} onChange={(event) => setOwner(event.target.value)} /></label>
+                <label className="label">Due<input className="input" type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></label>
                 <label className="label">Pull request URL<input className="input" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} /></label>
                 <label className="label">Change reference<input className="input" value={changeRef} onChange={(event) => setChangeRef(event.target.value)} /></label>
                 <label className="label">Note<input className="input" value={reason} onChange={(event) => setReason(event.target.value)} /></label>

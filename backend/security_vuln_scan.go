@@ -36,9 +36,21 @@ func runVulnScanJob(jobID int) {
 	appendVulnScanLog(jobID, "clone", "Resolving the latest commit for "+owner+"/"+name+". Registered branch is "+branch+".")
 	commit, usedBranch, err := resolveVulnCommit(provider, owner, name, branch)
 	if err != nil {
-		failVulnScan(jobID, "clone", err.Error())
+		detail := err.Error()
+		state := "unknown"
+		switch {
+		case strings.Contains(detail, "not found with this token"), strings.Contains(detail, "No matching branch"):
+			state = "not_found"
+		case strings.Contains(detail, "could not be read"):
+			state = "denied"
+		case strings.Contains(detail, "GITHUB_TOKEN"), strings.Contains(detail, "GITLAB_TOKEN"), strings.Contains(detail, "BITBUCKET_TOKEN"):
+			state = "no_token"
+		}
+		persistVulnRepoAccess(repoID, state, detail)
+		failVulnScan(jobID, "clone", detail)
 		return
 	}
+	persistVulnRepoAccess(repoID, "reachable", "Hosted collector resolved the latest commit.")
 	if usedBranch == "" {
 		usedBranch = branch
 	}

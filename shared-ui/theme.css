@@ -9141,6 +9141,10 @@ html[data-theme='dark'] .devops-layout .sec-vuln-coverage li {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
+html[data-theme='dark'] .devops-layout .sec-vuln-bulk .label {
+  color: #f5f7fc;
+}
+
 html[data-theme='dark'] .devops-layout .access-status.is-ready {
   color: #5eead4;
 }
@@ -11769,6 +11773,31 @@ html[data-theme] .devops-layout .portal-page .ops-minis--four {
   display: inline-flex;
   gap: 8px;
   flex-wrap: nowrap;
+}
+
+.sec-vuln-bulk .ig-bulkbar {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  max-width: none;
+  width: 100%;
+  margin: 0 0 16px;
+  justify-content: flex-start;
+}
+
+.sec-vuln-bulk .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #17233b;
+  font-size: 12px;
+}
+
+.sec-vuln-bulk .input {
+  min-height: 32px;
+  width: 148px;
 }
 
 .sec-vuln-coverage {

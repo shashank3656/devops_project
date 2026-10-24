@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +22,10 @@ type vulnRepoConfig struct {
 	Provider        string  `json:"provider"`
 	Enabled         bool    `json:"enabled"`
 	UpdatedAt       *string `json:"updated_at,omitempty"`
+	AccessState     string  `json:"access_state,omitempty"`
+	AccessDetail    string  `json:"access_detail,omitempty"`
+	AccessCheckedAt *string `json:"access_checked_at,omitempty"`
+	LastScheduledAt *string `json:"last_scheduled_at,omitempty"`
 }
 
 func runVulnPRComparison(userID, repoID, prNumber int) (int, error) {
@@ -214,6 +219,11 @@ func listVulnCampaigns(userID int) []map[string]any {
 	if err != nil {
 		return []map[string]any{}
 	}
+	plans, _ := listVulnPlans(userID)
+	planBy := map[string]int{}
+	for _, plan := range plans {
+		planBy[plan.Repository+"|"+plan.PackageName] = plan.ID
+	}
 	groups := map[string]map[string]any{}
 	order := []string{}
 	for _, item := range findings {
@@ -224,7 +234,7 @@ func listVulnCampaigns(userID int) []map[string]any {
 		if !ok {
 			g = map[string]any{
 				"canonical_id": item.CanonicalID, "title": item.Title, "severity": item.Severity,
-				"services": []string{}, "count": 0,
+				"services": []string{}, "count": 0, "occurrences": []map[string]any{},
 				"unscanned_note": "Unknown coverage is listed separately from unaffected services.",
 			}
 			groups[item.CanonicalID] = g
@@ -234,6 +244,12 @@ func listVulnCampaigns(userID int) []map[string]any {
 		if item.Service != "" {
 			g["services"] = append(g["services"].([]string), item.Service)
 		}
+		occ := map[string]any{
+			"finding_id": item.ID, "repository": item.Repo, "package_name": item.PackageName,
+			"installed_version": item.Installed, "direct": item.Direct, "dev": item.Dev,
+			"plan_id": planBy[item.Repo+"|"+item.PackageName],
+		}
+		g["occurrences"] = append(g["occurrences"].([]map[string]any), occ)
 	}
 	out := make([]map[string]any, 0, len(order))
 	for _, id := range order {
@@ -325,7 +341,8 @@ func listVulnRepoConfigs(userID int) []vulnRepoConfig {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT id, COALESCE(owner,'') || '/' || COALESCE(name,''), COALESCE(project_id,0), branch, owner_team,
 		       COALESCE(NULLIF(collection_mode,''),'hosted'), schedule_minutes, alert_min_severity, exclusions, allow_fork_prs, enforce_pr_gate,
-		       COALESCE(NULLIF(provider,''),'github'), enabled, updated_at
+		       COALESCE(NULLIF(provider,''),'github'), enabled, updated_at,
+		       COALESCE(NULLIF(access_state,''),'unknown'), COALESCE(access_detail,''), access_checked_at, last_scheduled_at
 		FROM vuln_repositories WHERE 1=1 `+extra+` ORDER BY id
 	`, args...)
 	if err != nil {
@@ -337,10 +354,21 @@ func listVulnRepoConfigs(userID int) []vulnRepoConfig {
 	for rows.Next() {
 		var item vulnRepoConfig
 		var updated time.Time
-		if rows.Scan(&item.ID, &item.Repository, &item.ProjectID, &item.Branch, &item.OwnerTeam, &item.CollectionMode, &item.ScheduleMinutes, &item.AlertMinSev, &item.Exclusions, &item.AllowForkPRs, &item.EnforcePRGate, &item.Provider, &item.Enabled, &updated) == nil {
+		var checked, scheduled sql.NullTime
+		if rows.Scan(&item.ID, &item.Repository, &item.ProjectID, &item.Branch, &item.OwnerTeam, &item.CollectionMode, &item.ScheduleMinutes, &item.AlertMinSev, &item.Exclusions, &item.AllowForkPRs, &item.EnforcePRGate, &item.Provider, &item.Enabled, &updated, &item.AccessState, &item.AccessDetail, &checked, &scheduled) == nil {
 			item.UpdatedAt = stampPtr(updated)
+			item.AccessCheckedAt = nullTimePtr(checked)
+			item.LastScheduledAt = nullTimePtr(scheduled)
 			out = append(out, item)
 		}
+	}
+	return out
+}
+
+func listVulnRepoConfigsProbed(userID int, force bool) []vulnRepoConfig {
+	out := listVulnRepoConfigs(userID)
+	for i := range out {
+		refreshVulnRepoAccess(&out[i], force)
 	}
 	return out
 }
@@ -505,7 +533,7 @@ func enqueueDueVulnSchedules() {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT id, COALESCE(project_id,0), schedule_minutes
 		FROM vuln_repositories
-		WHERE enabled = TRUE AND schedule_minutes >= 15
+		WHERE enabled = TRUE AND schedule_minutes >= 15 AND COALESCE(NULLIF(collection_mode,''),'hosted') = 'hosted'
 	`)
 	if err != nil {
 		return
@@ -520,12 +548,20 @@ func enqueueDueVulnSchedules() {
 			items = append(items, item)
 		}
 	}
+	queued := 0
 	for _, item := range items {
 		var last time.Time
 		_ = queryRowContext(`SELECT COALESCE(MAX(created_at), TIMESTAMP '1970-01-01') FROM vuln_scan_jobs WHERE repo_id=$1`, item.ID).Scan(&last)
 		if time.Since(last) < time.Duration(item.Minutes)*time.Minute {
 			continue
 		}
-		_, _ = enqueueVulnScan(item.ID, 0, item.ProjectID, 0, "schedule", "")
+		if _, err := enqueueVulnScan(item.ID, 0, item.ProjectID, 0, "schedule", ""); err != nil {
+			continue
+		}
+		_, _ = execContext(`UPDATE vuln_repositories SET last_scheduled_at=CURRENT_TIMESTAMP WHERE id=$1`, item.ID)
+		queued++
+	}
+	if queued > 0 {
+		kickVulnScanWorker()
 	}
 }

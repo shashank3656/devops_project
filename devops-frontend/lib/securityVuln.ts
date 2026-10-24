@@ -87,6 +87,22 @@ export function patchLabel(value: string): string {
   }
 }
 
+export function accessLabel(value?: string): string {
+  switch ((value || '').toLowerCase()) {
+    case 'reachable':
+      return 'Found';
+    case 'not_found':
+    case 'denied':
+      return 'Private / no access';
+    case 'no_token':
+      return 'Missing';
+    case 'not_hosted':
+      return 'Agent / CI';
+    default:
+      return 'Unknown';
+  }
+}
+
 export function isInternetAdvisoryMatch(value?: string): boolean {
   const source = (value || 'scan').toLowerCase();
   return source === 'intel' || source === 'scan';
@@ -101,6 +117,13 @@ export function matchSourceLabel(value?: string): string {
     default:
       return 'Unknown';
   }
+}
+
+export function usageLabel(item: { direct?: boolean; dev?: boolean; parent_package?: string }): string {
+  const kind = item.direct === false
+    ? (item.parent_package ? `Transitive via ${item.parent_package}` : 'Transitive')
+    : 'Direct';
+  return item.dev ? `${kind} · dev` : kind;
 }
 
 export function reachabilityLabel(value?: string): string {

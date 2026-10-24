@@ -2,10 +2,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CopyButton, DataTable, EmptyState, formatOperationalTime, Stepper, type DataTableColumn } from '@infragate/ui';
+import { BulkBar, CopyButton, DataTable, EmptyState, formatOperationalTime, Stepper, type DataTableColumn, type RowKey } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { asRows, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
+import { accessLabel, asRows, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 const DEVOPS_USER_KEY = 'devops_user';
@@ -91,6 +91,7 @@ type FindingRow = {
   package_name: string;
   installed_version: string;
   first_fixed_version?: string;
+  parent_package?: string;
   owner?: string;
   kev: boolean;
   due_at?: string;
@@ -98,6 +99,9 @@ type FindingRow = {
   service_id?: number;
   reachability?: string;
   match_source?: string;
+  last_scan_id?: number;
+  direct?: boolean;
+  dev?: boolean;
 };
 
 type ScanRow = {
@@ -111,6 +115,7 @@ type ScanRow = {
   assessed_modules: number;
   finding_count?: number;
   coverage?: { path?: string; reason?: string }[];
+  coverage_note?: string;
   created_at?: string;
   finished_at?: string;
 };
@@ -139,10 +144,12 @@ type SourceRow = {
 };
 
 type AgentRow = { id: number; name: string; status: string; version?: string; last_heartbeat_at?: string };
-type CampaignRow = { canonical_id: string; title: string; severity: string; count: number; services?: string[] };
+type CampaignOccurrence = { finding_id: number; repository: string; package_name: string; installed_version?: string; direct?: boolean; dev?: boolean; plan_id?: number };
+type CampaignRow = { canonical_id: string; title: string; severity: string; count: number; services?: string[]; occurrences?: CampaignOccurrence[] };
+type RepoAccess = { repository: string; access_state?: string; access_detail?: string; collection_mode?: string };
 type ComparisonRow = { id: number; pr_number: number; repository: string; state: string; coverage: string; introduced_critical: number; introduced_high: number; removed_count: number; note?: string };
 type NewDepRow = { repository: string; ecosystem: string; package_name: string; version: string; note?: string };
-type RepoConfig = { id: number; repository: string; provider?: string; collection_mode: string; owner_team?: string; schedule_minutes: number; alert_min_severity: string; allow_fork_prs: boolean; enforce_pr_gate?: boolean; exclusions?: string; branch: string };
+type RepoConfig = { id: number; repository: string; provider?: string; collection_mode: string; owner_team?: string; schedule_minutes: number; alert_min_severity: string; allow_fork_prs: boolean; enforce_pr_gate?: boolean; exclusions?: string; branch: string; access_state?: string; access_detail?: string; last_scheduled_at?: string };
 
 function known(value?: string): string {
   const text = (value || '').trim();
@@ -210,6 +217,21 @@ export default function GlobalVulnerabilitiesPage() {
   const [scanLog, setScanLog] = useState<ScanEvent[]>([]);
   const [scanFindings, setScanFindings] = useState<ScanFinding[]>([]);
   const [compareDetail, setCompareDetail] = useState<{ id: number; items: { classification: string; canonical_id: string; package_name: string; severity: string; base_version?: string; head_version?: string }[] } | null>(null);
+  const [repoFilter, setRepoFilter] = useState('');
+  const [latestScanOnly, setLatestScanOnly] = useState(false);
+  const [hideDevDeps, setHideDevDeps] = useState(false);
+  const [reachFilter, setReachFilter] = useState('');
+  const [watchScanId, setWatchScanId] = useState(0);
+  const [findingSelected, setFindingSelected] = useState<Set<RowKey>>(new Set());
+  const [assignOwner, setAssignOwner] = useState('');
+  const [assignDue, setAssignDue] = useState('');
+  const [campaignDetail, setCampaignDetail] = useState<CampaignRow | null>(null);
+  const [repoAccess, setRepoAccess] = useState<RepoAccess[]>([]);
+  const [deployService, setDeployService] = useState('');
+  const [deployEnv, setDeployEnv] = useState('production');
+  const [deployDigest, setDeployDigest] = useState('');
+  const [deployCommitSha, setDeployCommitSha] = useState('');
+  const [deploySbom, setDeploySbom] = useState('');
 
   useEffect(() => {
     try {
@@ -234,6 +256,7 @@ export default function GlobalVulnerabilitiesPage() {
     if (projectId) params.set('project_id', projectId);
     if (serviceId) params.set('service_id', serviceId);
     const projectQuery = params.toString() ? `?${params.toString()}` : '';
+    const probe = tab === 'configuration' || tab === 'sources' ? '?probe=1' : '';
     const [overviewRes, serviceRes, advisoryRes, findingRes, scanRes, planRes, sourceRes, campaignRes, compareRes, depRes, repoRes, meRes] = await Promise.all([
       vulnRequest(apiUrl, '/api/devops/security/overview'),
       vulnRequest(apiUrl, `/api/devops/security/services${projectQuery}`),
@@ -241,11 +264,11 @@ export default function GlobalVulnerabilitiesPage() {
       vulnRequest(apiUrl, `/api/devops/security/findings${projectQuery}`),
       vulnRequest(apiUrl, '/api/devops/security/scans'),
       vulnRequest(apiUrl, '/api/devops/security/plans'),
-      vulnRequest(apiUrl, '/api/devops/security/sources'),
+      vulnRequest(apiUrl, `/api/devops/security/sources${probe}`),
       vulnRequest(apiUrl, '/api/devops/security/campaigns'),
       vulnRequest(apiUrl, '/api/devops/security/pr-comparisons'),
       vulnRequest(apiUrl, '/api/devops/security/new-dependencies'),
-      vulnRequest(apiUrl, '/api/devops/security/repositories'),
+      vulnRequest(apiUrl, `/api/devops/security/repositories${probe}`),
       vulnRequest(apiUrl, '/api/devops/me'),
     ]);
     if (overviewRes.status !== 200) {
@@ -267,11 +290,12 @@ export default function GlobalVulnerabilitiesPage() {
     setRepos(asRows<RepoConfig>(repoRes.body.repositories));
     setHosted(Boolean(sourceRes.body.hosted_collector));
     setHostedNote(typeof sourceRes.body.hosted_collector_note === 'string' ? sourceRes.body.hosted_collector_note : '');
+    setRepoAccess(asRows<RepoAccess>(sourceRes.body.repository_access));
     const profile = meRes.body.devops_profile as { is_manager?: boolean } | undefined;
     const role = typeof meRes.body.role === 'string' ? meRes.body.role : '';
     setIsManager(Boolean(profile?.is_manager) || role === 'admin');
     setLoading(false);
-  }, [apiUrl, projectId, serviceId]);
+  }, [apiUrl, projectId, serviceId, tab]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -304,12 +328,28 @@ export default function GlobalVulnerabilitiesPage() {
   }, [loadScanDetail, scans, selectedScanId, tab]);
 
   useEffect(() => {
-    if (tab !== 'history') return;
-    const active = scans.some((item) => item.state === 'queued' || item.state === 'running');
+    const active = scans.some((item) => item.state === 'queued' || item.state === 'running') || watchScanId > 0;
     if (!active) return;
+    if (tab !== 'history' && watchScanId <= 0) return;
     const timer = window.setInterval(() => { void load(); }, 4000);
     return () => window.clearInterval(timer);
-  }, [load, scans, tab]);
+  }, [load, scans, tab, watchScanId]);
+
+  useEffect(() => {
+    if (!watchScanId) return;
+    const job = scans.find((item) => item.id === watchScanId);
+    if (!job || job.state === 'queued' || job.state === 'running') return;
+    if (job.state === 'failed') {
+      setWatchScanId(0);
+      setNotice(`Scan #${job.id} failed${job.error ? `: ${job.error}` : ''}. Stay on History for the log.`);
+      return;
+    }
+    setRepoFilter(job.repository);
+    setLatestScanOnly(true);
+    setWatchScanId(0);
+    setTab('findings');
+    setNotice(`Scan #${job.id} for ${job.repository} finished (${job.state}). Showing that repository’s findings.`);
+  }, [scans, watchScanId]);
 
   useEffect(() => {
     if (scanTargetRepo || !repos.length) return;
@@ -363,13 +403,23 @@ export default function GlobalVulnerabilitiesPage() {
       if (severity && item.severity !== severity) return false;
       if (unassignedOnly && (item.owner || '').trim()) return false;
       if (intelOnly && !isInternetAdvisoryMatch(item.match_source)) return false;
+      if (repoFilter && item.repository !== repoFilter) return false;
+      const focusScanId = selectedScanId || scans[0]?.id || 0;
+      if (latestScanOnly && focusScanId && item.last_scan_id !== focusScanId) return false;
+      if (hideDevDeps && item.dev) return false;
+      if (reachFilter && (item.reachability || 'unknown') !== reachFilter) return false;
       if (lifecycleFilter && item.lifecycle !== lifecycleFilter) return false;
       if (patchFilter && item.patch_state !== patchFilter) return false;
       if (teamFilter && !`${item.service || ''} ${item.repository}`.toLowerCase().includes(teamFilter.toLowerCase())) return false;
       if (!q) return true;
       return `${item.canonical_id} ${item.package_name} ${item.repository} ${item.service || ''} ${item.owner || ''}`.toLowerCase().includes(q);
     });
-  }, [findings, intelOnly, lifecycleFilter, patchFilter, search, severity, teamFilter, unassignedOnly]);
+  }, [findings, hideDevDeps, intelOnly, latestScanOnly, lifecycleFilter, patchFilter, reachFilter, repoFilter, scans, search, selectedScanId, severity, teamFilter, unassignedOnly]);
+
+  const findingRepos = useMemo(
+    () => Array.from(new Set([...findings.map((item) => item.repository), ...repos.map((item) => item.repository)].filter(Boolean))).sort(),
+    [findings, repos],
+  );
 
   function findingsEmptyBody() {
     const latest = scans[0];
@@ -397,9 +447,12 @@ export default function GlobalVulnerabilitiesPage() {
       return;
     }
     const jobId = Number(result.body.job_id) || 0;
-    setNotice('Scan queued for the selected repositories. Open History for results and logs.');
+    setNotice('Scan queued. History will stay on this job until it finishes.');
     setSelected([]);
-    if (jobId) setSelectedScanId(jobId);
+    if (jobId) {
+      setSelectedScanId(jobId);
+      setWatchScanId(jobId);
+    }
     setTab('history');
     void load();
   }
@@ -423,8 +476,11 @@ export default function GlobalVulnerabilitiesPage() {
       return;
     }
     const jobId = Number(result.body.job_id) || 0;
-    setNotice('Scan queued for the registered repository. Hosted collector reads the latest commit on the registered branch.');
-    if (jobId) setSelectedScanId(jobId);
+    setNotice('Scan queued. History will stay on this job until it finishes, then Findings opens for that repository.');
+    if (jobId) {
+      setSelectedScanId(jobId);
+      setWatchScanId(jobId);
+    }
     setTab('history');
     void load();
   }
@@ -560,7 +616,8 @@ export default function GlobalVulnerabilitiesPage() {
     if (repoId) setScanTargetRepo(String(repoId));
     if (jobId) {
       setSelectedScanId(jobId);
-      setNotice('Repository registered and a hosted scan was queued for the latest commit. Open History for results and logs.');
+      setWatchScanId(jobId);
+      setNotice('Repository registered and a hosted scan was queued. History stays on this job until it finishes.');
       setTab('history');
     } else {
       setNotice('Repository registered. Inventory arrives from a private agent or CI upload.');
@@ -577,6 +634,95 @@ export default function GlobalVulnerabilitiesPage() {
     }
     const comparison = result.body.comparison as { id: number; items?: { classification: string; canonical_id: string; package_name: string; severity: string; base_version?: string; head_version?: string }[] };
     setCompareDetail({ id: comparison.id, items: Array.isArray(comparison.items) ? comparison.items : [] });
+  }
+
+  function selectedFindingIds(): number[] {
+    return Array.from(findingSelected).map((key) => Number(key)).filter((id) => id > 0);
+  }
+
+  async function bulkFindings(lifecycle: string, reason: string) {
+    const ids = selectedFindingIds();
+    if (!ids.length) {
+      setError('Select at least one finding.');
+      return;
+    }
+    const payload: Record<string, unknown> = { ids, reason };
+    if (lifecycle) payload.lifecycle = lifecycle;
+    if (assignOwner.trim()) payload.owner = assignOwner.trim();
+    if (assignDue) payload.due_at = assignDue;
+    setBusy(true);
+    setError('');
+    const result = await vulnRequest(apiUrl, '/api/devops/security/findings/bulk', 'POST', payload);
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'The selected findings could not be updated.');
+      return;
+    }
+    setNotice(`${Number(result.body.updated) || ids.length} findings updated. Fixed is never set from bulk actions.`);
+    setFindingSelected(new Set());
+    void load();
+  }
+
+  async function assignSelectedFindings() {
+    const ids = selectedFindingIds();
+    if (!ids.length) {
+      setError('Select at least one finding.');
+      return;
+    }
+    if (!assignOwner.trim() && !assignDue) {
+      setError('Enter an owner or a due date.');
+      return;
+    }
+    await bulkFindings('', 'Assigned from Findings');
+  }
+
+  async function openCampaignPRs(canonical: string) {
+    setBusy(true);
+    setError('');
+    const result = await vulnRequest(apiUrl, '/api/devops/security/campaigns/prs', 'POST', { canonical_id: canonical });
+    setBusy(false);
+    if (result.status !== 202) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'Draft pull requests could not be opened.');
+      return;
+    }
+    const urls = Array.isArray(result.body.pr_urls) ? result.body.pr_urls.filter((item): item is string => typeof item === 'string') : [];
+    setNotice(urls.length ? `Opened ${urls.length} draft proposal${urls.length === 1 ? '' : 's'}. OpsTrellis does not merge them.` : 'Draft proposals opened. OpsTrellis does not merge them.');
+    void load();
+  }
+
+  async function bindDeployment() {
+    const serviceID = Number(deployService);
+    if (!serviceID || !deployDigest.trim()) {
+      setError('Select a service and enter an image digest. Images are not pulled.');
+      return;
+    }
+    let sbom: unknown;
+    if (deploySbom.trim()) {
+      try {
+        sbom = JSON.parse(deploySbom);
+      } catch {
+        setError('SBOM must be JSON.');
+        return;
+      }
+    }
+    setBusy(true);
+    setError('');
+    const result = await vulnRequest(apiUrl, '/api/devops/security/deployments', 'POST', {
+      service_id: serviceID,
+      environment: deployEnv.trim() || 'production',
+      digest: deployDigest.trim(),
+      commit_sha: deployCommitSha.trim(),
+      sbom,
+    });
+    setBusy(false);
+    if (result.status !== 202) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'The deployment digest could not be saved.');
+      return;
+    }
+    setNotice('Digest recorded. Images were not pulled and production was not patched.');
+    setDeployDigest('');
+    setDeploySbom('');
+    void load();
   }
 
   const serviceColumns: DataTableColumn<ServiceRow>[] = useMemo(() => [
@@ -654,6 +800,7 @@ export default function GlobalVulnerabilitiesPage() {
   const findingColumns: DataTableColumn<FindingRow>[] = useMemo(() => [
     { id: 'adv', header: 'Advisory', cell: (item) => <Link href={`/security/vulnerabilities/findings/${item.id}`}>{item.canonical_id}</Link> },
     { id: 'pkg', header: 'Package', cell: (item) => `${item.package_name}@${item.installed_version || 'unresolved'}` },
+    { id: 'usage', header: 'Usage', cell: (item) => usageLabel(item) },
     { id: 'repo', header: 'Repository', cell: (item) => known(item.repository) },
     { id: 'sev', header: 'Severity', cell: (item) => <span className={severityBadge(item.severity)}>{severityLabel(item.severity)}</span> },
     { id: 'priority', header: 'Priority', cell: (item) => item.priority || 'review' },
@@ -674,6 +821,7 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'state', header: 'State', cell: (item) => `${item.state} · ${item.stage}` },
     { id: 'mods', header: 'Modules', cell: (item) => `${item.assessed_modules} assessed / ${item.discovered_modules} discovered` },
     { id: 'hits', header: 'Findings', cell: (item) => String(item.finding_count ?? 0) },
+    { id: 'cov', header: 'Coverage', cell: (item) => item.coverage_note || ((item.coverage || []).length ? `${item.coverage?.length} notes` : 'No coverage notes') },
     { id: 'commit', header: 'Commit', cell: (item) => item.commit_sha ? item.commit_sha.slice(0, 12) : 'Unknown' },
     { id: 'when', header: 'Queued', cell: (item) => (item.created_at ? formatOperationalTime(item.created_at) : 'Unknown') },
     { id: 'err', header: 'Error', cell: (item) => item.error || 'None recorded' },
@@ -696,8 +844,10 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'repo', header: 'Repository', cell: (item) => known(item.repository) },
     { id: 'provider', header: 'Provider', cell: (item) => item.provider || 'github' },
     { id: 'mode', header: 'Collection', cell: (item) => collectionModeLabel(item.collection_mode) },
+    { id: 'access', header: 'Token', cell: (item) => <span title={item.access_detail || ''}>{accessLabel(item.access_state)}</span> },
     { id: 'branch', header: 'Branch', cell: (item) => item.branch || 'main' },
     { id: 'team', header: 'Owner', cell: (item) => known(item.owner_team) },
+    { id: 'sched', header: 'Last scheduled', cell: (item) => (item.last_scheduled_at ? formatOperationalTime(item.last_scheduled_at) : (item.schedule_minutes >= 15 ? `Every ${item.schedule_minutes}m` : 'Off')) },
     { id: 'gate', header: 'PR gate', cell: (item) => (item.enforce_pr_gate ? 'Enforced' : 'Informational') },
     { id: 'edit', header: '', cell: (item) => (
       <span className="sec-vuln-row-actions">
@@ -871,10 +1021,32 @@ export default function GlobalVulnerabilitiesPage() {
                 </select>
               </label>
             ) : null}
-            <button type="button" className="btn btn-secondary" onClick={() => { setSearch(''); setSeverity(''); setKevOnly(false); setUnassignedOnly(false); setIntelOnly(false); setTeamFilter(''); setTechFilter(''); setPatchFilter(''); setLifecycleFilter(''); }}>Clear</button>
+            {tab === 'findings' ? (
+              <label>
+                Repository
+                <select className="input" value={repoFilter} onChange={(event) => setRepoFilter(event.target.value)}>
+                  <option value="">All repositories</option>
+                  {findingRepos.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {tab === 'findings' ? (
+              <label>
+                Reachability
+                <select className="input" value={reachFilter} onChange={(event) => setReachFilter(event.target.value)}>
+                  <option value="">All evidence</option>
+                  <option value="imported">Imported</option>
+                  <option value="not_imported">Not imported</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+            ) : null}
+            <button type="button" className="btn btn-secondary" onClick={() => { setSearch(''); setSeverity(''); setKevOnly(false); setUnassignedOnly(false); setIntelOnly(false); setTeamFilter(''); setTechFilter(''); setPatchFilter(''); setLifecycleFilter(''); setRepoFilter(''); setLatestScanOnly(false); setHideDevDeps(false); setReachFilter(''); }}>Clear</button>
             {tab === 'advisories' ? <label className="label"><input type="checkbox" checked={kevOnly} onChange={(event) => setKevOnly(event.target.checked)} /> KEV only</label> : null}
             {tab === 'findings' ? <label className="label"><input type="checkbox" checked={unassignedOnly} onChange={(event) => setUnassignedOnly(event.target.checked)} /> Unassigned queue</label> : null}
             {tab === 'findings' ? <label className="label"><input type="checkbox" checked={intelOnly} onChange={(event) => setIntelOnly(event.target.checked)} /> Internet advisory matches</label> : null}
+            {tab === 'findings' ? <label className="label"><input type="checkbox" checked={latestScanOnly} onChange={(event) => setLatestScanOnly(event.target.checked)} /> This scan only</label> : null}
+            {tab === 'findings' ? <label className="label"><input type="checkbox" checked={hideDevDeps} onChange={(event) => setHideDevDeps(event.target.checked)} /> Hide devDependencies</label> : null}
           </form>
         ) : null}
 
@@ -899,6 +1071,22 @@ export default function GlobalVulnerabilitiesPage() {
                 />
               )}
             />
+            <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void bindDeployment(); }}>
+              <label className="label">Service
+                <select className="input" value={deployService} onChange={(event) => setDeployService(event.target.value)}>
+                  <option value="">Select a service</option>
+                  {services.map((item) => <option key={item.service_id} value={item.service_id}>{item.service || `Service ${item.service_id}`}</option>)}
+                </select>
+              </label>
+              <label className="label">Environment<input className="input" value={deployEnv} onChange={(event) => setDeployEnv(event.target.value)} /></label>
+              <label className="label">Image digest<input className="input" value={deployDigest} onChange={(event) => setDeployDigest(event.target.value)} placeholder="sha256:…" /></label>
+              <label className="label">Commit SHA<input className="input" value={deployCommitSha} onChange={(event) => setDeployCommitSha(event.target.value)} /></label>
+              <div className="portal-form-actions">
+                <button type="submit" className="btn btn-secondary" disabled={busy}>Record digest</button>
+              </div>
+              <label className="label">Optional SBOM JSON<textarea className="input" rows={4} value={deploySbom} onChange={(event) => setDeploySbom(event.target.value)} /></label>
+            </form>
+            <p className="form-section__copy">Images are not pulled. A digest without an SBOM cannot prove production is patched.</p>
           </section>
         ) : null}
 
@@ -936,15 +1124,29 @@ export default function GlobalVulnerabilitiesPage() {
                   : (scans[0].finding_count ?? 0) > 0
                     ? ` and created ${scans[0].finding_count} package findings.`
                     : '. It created no package findings. Open History and read that job’s Scan log — a failed clone, missing lockfile, or OSV miss all look empty here.'}
+                {scans[0].coverage_note ? ` Coverage: ${scans[0].coverage_note}.` : ''}
+                {' '}Unknown reachability means source files were not sampled for import evidence; that is not a not-affected claim.
               </p>
             ) : (
               <p className="form-section__copy">No scan has finished yet. Register a repository on Config or use Scan latest commit on History.</p>
             )}
+            <div className="sec-vuln-bulk">
+              <BulkBar count={findingSelected.size} noun="finding" onClear={() => setFindingSelected(new Set())}>
+                <label className="label">Owner<input className="input" value={assignOwner} onChange={(event) => setAssignOwner(event.target.value)} placeholder="Team or owner" /></label>
+                <label className="label">Due<input className="input" type="date" value={assignDue} onChange={(event) => setAssignDue(event.target.value)} /></label>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void assignSelectedFindings()}>Assign</button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void bulkFindings('acknowledged', 'Acknowledged from Findings')}>Acknowledge</button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void bulkFindings('in_remediation', 'Moved to in remediation from Findings')}>In remediation</button>
+              </BulkBar>
+            </div>
             <DataTable
               label="Repository findings"
               columns={findingColumns}
               rows={visibleFindings}
               rowKey={(item) => String(item.id)}
+              selectable
+              selectedKeys={findingSelected}
+              onSelectionChange={setFindingSelected}
               empty={<EmptyState title={loading ? 'Loading findings' : intelOnly ? 'No internet advisory matches' : 'No package findings in this scope'} body={findingsEmptyBody()} />}
             />
           </section>
@@ -969,8 +1171,37 @@ export default function GlobalVulnerabilitiesPage() {
               ]}
               rows={campaigns}
               rowKey={(item) => item.canonical_id}
+              onRowOpen={(item) => setCampaignDetail(item)}
               empty={<EmptyState title={loading ? 'Loading campaigns' : 'No open advisory campaigns'} body="Campaigns appear after confirmed repository findings exist." />}
             />
+            {campaignDetail ? (
+              <div className="portal-surface" style={{ marginTop: 16 }}>
+                <div className="portal-surface__header">
+                  <div>
+                    <h3 className="portal-surface__title">{campaignDetail.canonical_id}</h3>
+                    <p className="portal-surface__subtitle">{campaignDetail.title || 'Open occurrences for this advisory. One draft PR is opened per repository that has a patch plan.'}</p>
+                  </div>
+                  <div className="runbooks__action-row">
+                    {isManager ? <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void openCampaignPRs(campaignDetail.canonical_id)}>Open draft PRs</button> : null}
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCampaignDetail(null)}>Close</button>
+                  </div>
+                </div>
+                <DataTable
+                  label="Campaign occurrences"
+                  columns={[
+                    { id: 'finding', header: 'Finding', cell: (item: CampaignOccurrence) => <Link href={`/security/vulnerabilities/findings/${item.finding_id}`}>#{item.finding_id}</Link> },
+                    { id: 'repo', header: 'Repository', cell: (item: CampaignOccurrence) => known(item.repository) },
+                    { id: 'pkg', header: 'Package', cell: (item: CampaignOccurrence) => `${item.package_name}@${item.installed_version || 'unresolved'}` },
+                    { id: 'usage', header: 'Usage', cell: (item: CampaignOccurrence) => usageLabel(item) },
+                    { id: 'plan', header: 'Plan', cell: (item: CampaignOccurrence) => (item.plan_id ? `Plan ${item.plan_id}` : 'No plan yet') },
+                  ]}
+                  rows={campaignDetail.occurrences || []}
+                  rowKey={(item) => String(item.finding_id)}
+                  empty={<EmptyState title="No occurrences" body="This campaign has no open findings in your scope." />}
+                />
+                {!isManager ? <p className="form-section__copy">Opening draft PRs needs a manager role. OpsTrellis never merges them.</p> : null}
+              </div>
+            ) : <p className="form-section__copy">Open a campaign row to see repositories and open one draft PR per repo that has a patch plan.</p>}
           </section>
         ) : null}
 
@@ -1037,6 +1268,7 @@ export default function GlobalVulnerabilitiesPage() {
                     <div><dt>Finished</dt><dd>{scanDetail.finished_at ? formatOperationalTime(scanDetail.finished_at) : 'In progress'}</dd></div>
                   </dl>
                   {scanDetail.error ? <p className="form-section__copy">{scanDetail.error}</p> : null}
+                  {scanDetail.coverage_note ? <p className="form-section__copy">Coverage: {scanDetail.coverage_note}</p> : null}
                   {scanDetail.state !== 'queued' && scanDetail.state !== 'running' && (scanDetail.finding_count ?? scanFindings.length) === 0 ? (
                     <p className="form-section__copy">This job did not create package findings. The Scan log records whether lockfiles were found and whether OSV answered. An empty Findings tab is not proof the collector skipped the repo.</p>
                   ) : null}
@@ -1194,6 +1426,26 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </dl>
             <p className="form-section__copy">{hostedNote || 'Hosted collector status is Unknown until the API answers. An online collector does not mean repositories were scanned.'}</p>
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Repository token health</h2>
+                  <p className="portal-surface__subtitle">Found, private/no access, or missing. Token values are never shown.</p>
+                </div>
+              </div>
+              <DataTable
+                label="Repository access"
+                columns={[
+                  { id: 'repo', header: 'Repository', cell: (item: RepoAccess) => known(item.repository) },
+                  { id: 'mode', header: 'Collection', cell: (item: RepoAccess) => collectionModeLabel(item.collection_mode || 'hosted') },
+                  { id: 'access', header: 'Token', cell: (item: RepoAccess) => <span title={item.access_detail || ''}>{accessLabel(item.access_state)}</span> },
+                  { id: 'detail', header: 'Detail', cell: (item: RepoAccess) => item.access_detail || 'Unknown' },
+                ]}
+                rows={repoAccess.length ? repoAccess : repos.map((item) => ({ repository: item.repository, access_state: item.access_state, access_detail: item.access_detail, collection_mode: item.collection_mode }))}
+                rowKey={(item) => item.repository}
+                empty={<EmptyState title={loading ? 'Checking access' : 'No registered repositories'} body="Register a repository on Config, then return here. Tokens stay on the API." />}
+              />
+            </section>
             <div className="sec-vuln-split">
               <section className="portal-surface">
                 <div className="portal-surface__header">
@@ -1274,7 +1526,7 @@ export default function GlobalVulnerabilitiesPage() {
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Repositories</h2>
-                  <p className="portal-surface__subtitle">GitHub, GitLab, and Bitbucket URLs are accepted. Hosted tokens stay on the API.</p>
+                  <p className="portal-surface__subtitle">GitHub, GitLab, and Bitbucket URLs are accepted. Hosted tokens stay on the API. Record a runtime image digest on Services; images are not pulled.</p>
                 </div>
               </div>
               <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void registerRepo(); }}>
@@ -1345,6 +1597,7 @@ export default function GlobalVulnerabilitiesPage() {
                 {wizardStep === 3 ? (
                   <>
                     <label className="label">Schedule minutes<input className="input" value={wizardSchedule} onChange={(event) => setWizardSchedule(event.target.value)} /></label>
+                    <p className="form-section__copy">Hosted collector runs due jobs every five minutes when schedule is 15 or more. Agents and CI are not kicked from this schedule.</p>
                     <label className="label">Path exclusions<input className="input" value={wizardExclusions} onChange={(event) => setWizardExclusions(event.target.value)} placeholder="docs/, vendor/" /></label>
                     <label className="sec-vuln-check"><input type="checkbox" checked={wizardForks} onChange={(event) => setWizardForks(event.target.checked)} /> Allow fork pull requests</label>
                     <label className="sec-vuln-check"><input type="checkbox" checked={wizardGate} onChange={(event) => setWizardGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
@@ -1366,6 +1619,9 @@ export default function GlobalVulnerabilitiesPage() {
                     <div><dt>Branch</dt><dd>{wizardBranch || 'Unchanged'}</dd></div>
                     <div><dt>Owner team</dt><dd>{wizardTeam || 'Unchanged'}</dd></div>
                     <div><dt>Alerts from</dt><dd>{wizardAlert}</dd></div>
+                    <div><dt>Schedule</dt><dd>{Number(wizardSchedule) >= 15 ? `Every ${wizardSchedule} minutes` : 'Off (hosted scans need 15 minutes or more)'}</dd></div>
+                    <div><dt>Last scheduled</dt><dd>{repos.find((item) => String(item.id) === wizardRepo)?.last_scheduled_at ? formatOperationalTime(repos.find((item) => String(item.id) === wizardRepo)?.last_scheduled_at || '') : 'Never'}</dd></div>
+                    <div><dt>Token</dt><dd>{accessLabel(repos.find((item) => String(item.id) === wizardRepo)?.access_state)}</dd></div>
                     <div><dt>Fork PRs</dt><dd>{wizardForks ? 'Allowed' : 'Blocked'}</dd></div>
                     <div><dt>Comparison gate</dt><dd>{wizardGate ? 'Enforced' : 'Informational'}</dd></div>
                   </dl>
