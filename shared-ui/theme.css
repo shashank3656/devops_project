@@ -11545,3 +11545,31 @@ html[data-theme='dark'] .sre-sli--unknown { background: #192238; color: #c4b5fd;
 html[data-theme='dark'] .sre-cards--watch .sre-card.is-selected {
   outline-color: #c4b5fd;
 }
+
+.sec-vuln-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.sec-sev {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #d5d9e4;
+  background: #eef1f8;
+  color: #58677f;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sec-sev--critical { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.sec-sev--high { background: #ffedd5; border-color: #fed7aa; color: #9a3412; }
+.sec-sev--medium { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+
+html[data-theme='dark'] .sec-sev { background: #192238; border-color: #2a3654; color: #c4b5fd; }
+html[data-theme='dark'] .sec-sev--critical { background: #3f1d1d; border-color: #7f1d1d; color: #fecaca; }
+html[data-theme='dark'] .sec-sev--high { background: #3a2a20; border-color: #9a3412; color: #fdba74; }
+html[data-theme='dark'] .sec-sev--medium { background: #3a3420; border-color: #854d0e; color: #fde68a; }

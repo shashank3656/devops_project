@@ -35,6 +35,7 @@ export const SECTION_PAGES: { section: SectionKey; key: string; label: string }[
   { section: 'infrastructure', key: 'iam', label: 'IAM' },
   { section: 'infrastructure', key: 'kubernetes', label: 'Kubernetes' },
   { section: 'infrastructure', key: 'releases', label: 'Releases' },
+  { section: 'security', key: 'vulnerabilities', label: 'Vulnerabilities' },
   { section: 'security', key: 'cloud-scan', label: 'Cloud scan' },
   { section: 'security', key: 'code-scan', label: 'Code scan' },
   { section: 'security', key: 'findings', label: 'Findings' },

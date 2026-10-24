@@ -1556,6 +1556,7 @@ func MigrateDatabase() error {
 	migrateSectionGrantsSchema()
 	migrateK8sAccessSchema()
 	migrateSREObservabilitySchema()
+	migrateSecurityVulnSchema()
 
 	log.Println("Database schema is up to date")
 	return nil
