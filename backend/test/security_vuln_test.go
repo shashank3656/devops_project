@@ -438,6 +438,38 @@ func TestDueAtForPriority(t *testing.T) {
 	}
 }
 
+func TestParseOSVQueryKeepsNpmRangeAndSeverity(t *testing.T) {
+	body := []byte(`{"vulns":[{"id":"GHSA-DEMO-NODE","aliases":["CVE-2026-4242"],"summary":"express before 4.17.3","database_specific":{"severity":"HIGH"},"affected":[{"package":{"ecosystem":"npm","name":"express"},"ranges":[{"events":[{"introduced":"0"},{"fixed":"4.17.3"}]}]}]}]}`)
+	got := parseOSVQuery(body, "nodejs", "express")
+	if len(got) != 1 || got[0].CanonicalID == "" || got[0].Severity != "high" {
+		t.Fatalf("parsed = %+v", got)
+	}
+	if len(got[0].Ranges) != 1 || got[0].Ranges[0].Package != "express" || got[0].Ranges[0].Fixed != "4.17.3" {
+		t.Fatalf("ranges = %+v", got[0].Ranges)
+	}
+	match := osvRecordToMatch(vulnComponent{Ecosystem: "npm", PackageName: "express", Version: "4.17.1", Path: "package-lock.json", Resolved: true, Direct: true}, got[0])
+	if match.Confidence != vulnConfidenceConfirmed || match.CanonicalID == "" {
+		t.Fatalf("osv match = %+v", match)
+	}
+	merged := mergeVulnMatches([]vulnMatch{match}, correlateInventory([]vulnComponent{match.Component}, got))
+	if len(merged) != 1 {
+		t.Fatalf("merged = %+v", merged)
+	}
+}
+
+func TestVulnScanQueueNote(t *testing.T) {
+	hosted := vulnScanQueueNote("hosted")
+	if !strings.Contains(hosted, "latest commit") {
+		t.Fatalf("hosted = %q", hosted)
+	}
+	if !strings.Contains(vulnScanQueueNote("agent"), "private agent") {
+		t.Fatal("agent jobs must not claim a hosted clone")
+	}
+	if !strings.Contains(vulnScanQueueNote("ci"), "CI") {
+		t.Fatal("ci jobs must wait for upload")
+	}
+}
+
 func TestDiscoverLockfilesSkipsNodeModules(t *testing.T) {
 	got := discoverVulnLockfiles([]string{
 		"apps/api/package-lock.json",

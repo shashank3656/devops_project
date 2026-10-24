@@ -272,7 +272,7 @@ func runVulnIntelligenceSync(actorID int) (int, error) {
 		markSource("epss", "ok", time.Now().UTC().Format(time.RFC3339), "", epssCount)
 	}
 
-	enrichInventoryFromOSV(loadLatestStoredComponents())
+	enrichInventoryFromOSV(loadLatestStoredComponents(), false)
 	repos, matched := reevaluateStoredInventories()
 	invalidateWithdrawnVulnFixes()
 	_, _ = execContext(`UPDATE vuln_intel_runs SET state='succeeded', fetched=$2, matched=$3, repos_assessed=$4, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, runID, fetched, matched, repos)
@@ -404,12 +404,22 @@ func sourceEnabled(provider string) bool {
 	return enabled
 }
 
-func enrichInventoryFromOSV(components []vulnComponent) {
-	if !sourceEnabled("osv") {
-		return
+type osvEnrichResult struct {
+	Matches []vulnMatch
+	Queried int
+	Saved   int
+	Failed  int
+	Note    string
+}
+
+func enrichInventoryFromOSV(components []vulnComponent, force bool) osvEnrichResult {
+	out := osvEnrichResult{Matches: []vulnMatch{}, Note: "OSV was not queried."}
+	if !force && !sourceEnabled("osv") {
+		out.Note = "OSV is paused, so package versions were not checked against public advisories."
+		return out
 	}
 	seen := map[string]bool{}
-	count := 0
+	lastErr := ""
 	for _, item := range components {
 		if item.Usage == "declared_runtime" || item.Usage == "image_tag" || !item.Resolved || item.Version == "" {
 			continue
@@ -418,26 +428,78 @@ func enrichInventoryFromOSV(components []vulnComponent) {
 		if eco == "" {
 			continue
 		}
-		key := eco + "|" + item.PackageName + "|" + item.Version
+		pkg := normalizePackageName(item.Ecosystem, item.PackageName)
+		key := eco + "|" + pkg + "|" + item.Version
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		if count >= 40 {
+		if out.Queried >= 40 {
+			out.Note = fmt.Sprintf("OSV queried 40 packages; remaining packages were not checked in this pass.")
 			break
 		}
-		count++
-		body, err := fetchVulnFeedPost("https://api.osv.dev/v1/query", osvQueryPayload(item.PackageName, eco, item.Version))
+		out.Queried++
+		body, err := fetchVulnFeedPost("https://api.osv.dev/v1/query", osvQueryPayload(pkg, eco, item.Version))
 		if err != nil {
+			out.Failed++
+			lastErr = err.Error()
 			continue
 		}
-		for _, rec := range parseOSVQuery(body, item.Ecosystem, item.PackageName) {
-			_ = upsertVulnAdvisory(rec)
+		recs := parseOSVQuery(body, item.Ecosystem, pkg)
+		for _, rec := range recs {
+			if upsertVulnAdvisory(rec) == nil {
+				out.Saved++
+			}
+			out.Matches = append(out.Matches, osvRecordToMatch(item, rec))
 		}
 	}
-	if count > 0 {
-		_, _ = execContext(`UPDATE vuln_intelligence_sources SET status='ok', last_success_at=CURRENT_TIMESTAMP, fetched_count=fetched_count+$1, updated_at=CURRENT_TIMESTAMP WHERE provider='osv'`, count)
+	if out.Queried > 0 && out.Failed == 0 {
+		out.Note = fmt.Sprintf("OSV returned %d advisories for %d package versions.", out.Saved, out.Queried)
+		_, _ = execContext(`UPDATE vuln_intelligence_sources SET status='ok', last_success_at=CURRENT_TIMESTAMP, fetched_count=fetched_count+$1, updated_at=CURRENT_TIMESTAMP WHERE provider='osv'`, out.Queried)
+	} else if out.Failed > 0 {
+		out.Note = fmt.Sprintf("OSV queried %d packages, %d failed (%s). Package findings stay Unknown until the feed answers.", out.Queried, out.Failed, lastErr)
+	} else if out.Note == "OSV was not queried." {
+		out.Note = "No resolved lockfile packages were eligible for an OSV query."
 	}
+	return out
+}
+
+func osvRecordToMatch(component vulnComponent, rec vulnAdvisoryRecord) vulnMatch {
+	match := vulnMatch{
+		Component:     component,
+		CanonicalID:   rec.CanonicalID,
+		Title:         rec.Title,
+		Severity:      severityFromScore(rec.CVSSScore, rec.Severity),
+		KEV:           rec.KEV,
+		FirstFixed:    rec.FirstFixed,
+		ParentPackage: component.ParentPackage,
+		Confidence:    vulnConfidenceConfirmed,
+	}
+	match.PatchState = patchStateForFix(match.FirstFixed)
+	match.Recommended = match.FirstFixed
+	match.Priority, match.PriorityWhy = priorityForMatch(match.Severity, rec.KEV, true)
+	return match
+}
+
+func mergeVulnMatches(groups ...[]vulnMatch) []vulnMatch {
+	seen := map[string]bool{}
+	out := []vulnMatch{}
+	for _, group := range groups {
+		for _, match := range group {
+			key := strings.Join([]string{
+				normalizeEcosystem(match.Component.Ecosystem),
+				normalizePackageName(match.Component.Ecosystem, match.Component.PackageName),
+				match.Component.Path,
+				match.CanonicalID,
+			}, "|")
+			if seen[key] || strings.TrimSpace(match.CanonicalID) == "" {
+				continue
+			}
+			seen[key] = true
+			out = append(out, match)
+		}
+	}
+	return out
 }
 
 func parseOSVQuery(body []byte, eco, pkg string) []vulnAdvisoryRecord {
@@ -451,12 +513,16 @@ func parseOSVQuery(body []byte, eco, pkg string) []vulnAdvisoryRecord {
 				Type  string `json:"type"`
 				Score string `json:"score"`
 			} `json:"severity"`
+			DatabaseSpecific struct {
+				Severity string `json:"severity"`
+			} `json:"database_specific"`
 			Affected []struct {
 				Package struct {
 					Ecosystem string `json:"ecosystem"`
 					Name      string `json:"name"`
 				} `json:"package"`
-				Ranges []struct {
+				Versions []string `json:"versions"`
+				Ranges   []struct {
 					Events []struct {
 						Introduced string `json:"introduced"`
 						Fixed      string `json:"fixed"`
@@ -474,8 +540,10 @@ func parseOSVQuery(body []byte, eco, pkg string) []vulnAdvisoryRecord {
 		ranges := []vulnAffectedRange{}
 		firstFixed := ""
 		for _, aff := range vuln.Affected {
+			ecoName := firstNonEmpty(aff.Package.Ecosystem, eco)
+			pkgName := firstNonEmpty(aff.Package.Name, pkg)
 			for _, rng := range aff.Ranges {
-				item := vulnAffectedRange{Ecosystem: normalizeEcosystem(firstNonEmpty(aff.Package.Ecosystem, eco)), Package: normalizePackageName(eco, firstNonEmpty(aff.Package.Name, pkg))}
+				item := vulnAffectedRange{Ecosystem: normalizeEcosystem(ecoName), Package: normalizePackageName(ecoName, pkgName)}
 				for _, ev := range rng.Events {
 					if ev.Introduced != "" && ev.Introduced != "0" {
 						item.Introduced = ev.Introduced
@@ -489,10 +557,17 @@ func parseOSVQuery(body []byte, eco, pkg string) []vulnAdvisoryRecord {
 				}
 				ranges = append(ranges, item)
 			}
+			if len(aff.Ranges) == 0 && len(aff.Versions) > 0 {
+				ranges = append(ranges, vulnAffectedRange{Ecosystem: normalizeEcosystem(ecoName), Package: normalizePackageName(ecoName, pkgName)})
+			}
+		}
+		sevLabel := vuln.DatabaseSpecific.Severity
+		if sevLabel == "" && len(vuln.Severity) > 0 {
+			sevLabel = vuln.Severity[0].Score
 		}
 		out = append(out, vulnAdvisoryRecord{
 			CanonicalID: canonical, Aliases: aliases, Title: firstNonEmpty(vuln.Summary, canonical), Summary: vuln.Summary,
-			Severity: severityFromScore(0, ""), FirstFixed: firstFixed, Ranges: ranges, Source: "osv",
+			Severity: severityFromScore(0, sevLabel), FirstFixed: firstFixed, Ranges: ranges, Source: "osv",
 			SourceURL: "https://osv.dev/vulnerability/" + vuln.ID, Withdrawn: strings.TrimSpace(vuln.Withdrawn) != "",
 		})
 	}

@@ -28,6 +28,7 @@ func runVulnScanJob(jobID int) {
 		return
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET state='running', stage='clone', started_at=COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id=$1`, jobID)
+	appendVulnScanLog(jobID, "clone", "Resolving the latest commit on the registered branch.")
 	provider, owner, name, branch, exclusions := vulnProviderGitHub, "", "", "main", ""
 	if err := queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github'), owner, name, branch, COALESCE(exclusions,'') FROM vuln_repositories WHERE id = $1`, repoID).Scan(&provider, &owner, &name, &branch, &exclusions); err != nil {
 		failVulnScan(jobID, "queued", "Repository registration was not found.")
@@ -38,6 +39,7 @@ func runVulnScanJob(jobID int) {
 		failVulnScan(jobID, "clone", err.Error())
 		return
 	}
+	appendVulnScanLog(jobID, "clone", "Latest commit "+commit+" on "+branch+".")
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='inventory', commit_sha=$2 WHERE id=$1`, jobID, commit)
 	paths, truncated, err := listVulnRepoPaths(provider, owner, name, commit)
 	if err != nil {
@@ -50,6 +52,7 @@ func runVulnScanJob(jobID int) {
 	if len(lockfiles) > vulnMaxLockfiles {
 		lockfiles = lockfiles[:vulnMaxLockfiles]
 	}
+	appendVulnScanLog(jobID, "inventory", fmt.Sprintf("Found %d lockfiles or SBOMs in the tree.", len(lockfiles)))
 	parsedItems := make([]vulnParsedInventory, 0, len(lockfiles))
 	coverage := []vulnCoverageGap{}
 	coverage = append(coverage, excludedGaps...)
@@ -88,6 +91,7 @@ func runVulnScanJob(jobID int) {
 		merged.Coverage = append(merged.Coverage, vulnCoverageGap{Path: "/", Reason: "Source files were not sampled for import evidence. Reachability stays Unknown; this is not a not-affected claim."})
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='correlation' WHERE id=$1`, jobID)
+	appendVulnScanLog(jobID, "correlation", fmt.Sprintf("Matching %d components against saved advisories.", len(merged.Components)))
 	if err := saveInventoryAndCorrelate(jobID, repoID, commit, merged); err != nil {
 		failVulnScan(jobID, "correlation", "Inventory could not be saved.")
 		return
@@ -109,6 +113,7 @@ func runVulnScanJob(jobID int) {
 		SET state=$2, stage='done', coverage_json=$3, discovered_modules=$4, assessed_modules=$5, error='', finished_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, jobID, state, encodeJSONString(merged.Coverage), len(merged.Modules), assessed)
+	appendVulnScanLog(jobID, "done", fmt.Sprintf("Scan %s. %d modules assessed. %d coverage notes.", state, assessed, len(merged.Coverage)))
 }
 
 func failVulnScan(jobID int, stage, message string) {
@@ -117,6 +122,7 @@ func failVulnScan(jobID int, stage, message string) {
 		SET state='failed', stage=$2, error=$3, finished_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, jobID, stage, message)
+	appendVulnScanLog(jobID, stage, message)
 	notifyVulnScanFailed(jobID, message)
 }
 

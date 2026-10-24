@@ -271,6 +271,7 @@ func handleVulnInventoryUpload(w http.ResponseWriter, r *http.Request, userID, a
 		parsed = mergeParsedInventories([]vulnParsedInventory{parsed, sbom})
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET state='running', stage='correlation', commit_sha=$2 WHERE id=$1`, jobID, req.CommitSHA)
+	appendVulnScanLog(jobID, "correlation", "Uploaded inventory received for commit "+req.CommitSHA+".")
 	if err := saveInventoryAndCorrelate(jobID, req.RepoID, req.CommitSHA, parsed); err != nil {
 		failVulnScan(jobID, "correlation", "Uploaded inventory could not be saved.")
 		writeAPIError(w, r, http.StatusInternalServerError, "inventory could not be saved", err)
@@ -281,6 +282,7 @@ func handleVulnInventoryUpload(w http.ResponseWriter, r *http.Request, userID, a
 		state = "partial"
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET state=$2, stage='done', coverage_json=$3, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, jobID, state, encodeJSONString(parsed.Coverage))
+	appendVulnScanLog(jobID, "done", "Uploaded inventory scan "+state+".")
 	if agentID > 0 {
 		_, _ = execContext(`UPDATE vuln_agents SET last_heartbeat_at=CURRENT_TIMESTAMP, status='online' WHERE id=$1`, agentID)
 	}

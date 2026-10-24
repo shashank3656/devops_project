@@ -246,6 +246,16 @@ func migrateSecurityVulnSchema() {
 	_, _ = DB.Exec(`ALTER TABLE vuln_intel_runs ADD COLUMN IF NOT EXISTS matched INTEGER NOT NULL DEFAULT 0`)
 	_, _ = DB.Exec(`ALTER TABLE vuln_intel_runs ADD COLUMN IF NOT EXISTS repos_assessed INTEGER NOT NULL DEFAULT 0`)
 	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS vuln_scan_events (
+			id SERIAL PRIMARY KEY,
+			scan_id INTEGER NOT NULL REFERENCES vuln_scan_jobs(id) ON DELETE CASCADE,
+			stage VARCHAR(40) NOT NULL DEFAULT '',
+			detail TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_vuln_scan_events_scan ON vuln_scan_events (scan_id, id)`)
+	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS vuln_agents (
 			id SERIAL PRIMARY KEY,
 			name VARCHAR(200) NOT NULL,

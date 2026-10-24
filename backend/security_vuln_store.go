@@ -93,9 +93,26 @@ type vulnScanView struct {
 	Error             string            `json:"error,omitempty"`
 	DiscoveredModules int               `json:"discovered_modules"`
 	AssessedModules   int               `json:"assessed_modules"`
+	FindingCount      int               `json:"finding_count"`
 	Coverage          []vulnCoverageGap `json:"coverage"`
 	CreatedAt         *string           `json:"created_at,omitempty"`
 	FinishedAt        *string           `json:"finished_at,omitempty"`
+}
+
+type vulnScanEvent struct {
+	Stage     string `json:"stage"`
+	Detail    string `json:"detail"`
+	CreatedAt string `json:"created_at"`
+}
+
+type vulnScanFinding struct {
+	ID         int    `json:"id"`
+	Canonical  string `json:"canonical_id"`
+	Severity   string `json:"severity"`
+	Package    string `json:"package_name"`
+	Installed  string `json:"installed_version"`
+	Lifecycle  string `json:"lifecycle"`
+	Confidence string `json:"confidence"`
 }
 
 type vulnSourceView struct {
@@ -404,6 +421,9 @@ func enqueueVulnScan(repoID, serviceID, projectID, actorID int, trigger, idempot
 	if serviceID > 0 {
 		serviceAny = serviceID
 	}
+	if projectID <= 0 {
+		_ = queryRowContext(`SELECT COALESCE(project_id,0) FROM vuln_repositories WHERE id = $1`, repoID).Scan(&projectID)
+	}
 	if projectID > 0 {
 		projectAny = projectID
 	}
@@ -413,7 +433,32 @@ func enqueueVulnScan(repoID, serviceID, projectID, actorID int, trigger, idempot
 		INSERT INTO vuln_scan_jobs (repo_id, service_id, project_id, trigger, state, stage, idempotency_key, created_by, collection_mode)
 		VALUES ($1,$2,$3,$4,'queued','queued',$5,$6,$7) RETURNING id
 	`, repoID, serviceAny, projectAny, trigger, idempotency, actorID, mode).Scan(&id)
+	if err == nil && id > 0 {
+		appendVulnScanLog(id, "queued", vulnScanQueueNote(mode))
+	}
 	return id, err
+}
+
+func vulnScanQueueNote(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case "agent":
+		return "Queued for a private agent. Hosted collector will not clone this repository."
+	case "ci":
+		return "Queued for CI inventory upload. Hosted collector will not clone this repository."
+	default:
+		return "Scan queued. Hosted collector will read the latest commit on the registered branch."
+	}
+}
+
+func appendVulnScanLog(jobID int, stage, detail string) {
+	if DB == nil || jobID <= 0 {
+		return
+	}
+	_, _ = execContext(`INSERT INTO vuln_scan_events (scan_id, stage, detail) VALUES ($1,$2,$3)`, jobID, strings.TrimSpace(stage), strings.TrimSpace(detail))
+}
+
+func kickVulnScanWorker() {
+	go drainVulnScanJobs()
 }
 
 func saveInventoryAndCorrelate(jobID, repoID int, commit string, parsed vulnParsedInventory) error {
@@ -423,6 +468,7 @@ func saveInventoryAndCorrelate(jobID, repoID int, commit string, parsed vulnPars
 	var newer int
 	_ = queryRowContext(`SELECT COUNT(*) FROM vuln_scan_jobs WHERE repo_id=$1 AND id>$2 AND state IN ('succeeded','partial') AND finished_at IS NOT NULL`, repoID, jobID).Scan(&newer)
 	if newer > 0 {
+		appendVulnScanLog(jobID, "correlation", "A newer successful scan already stored inventory for this repository. This job did not replace findings.")
 		return nil
 	}
 	var inventoryID int
@@ -458,14 +504,19 @@ func saveInventoryAndCorrelate(jobID, repoID int, commit string, parsed vulnPars
 			parsed.Components[i].Reachability = vulnReachUnknown
 		}
 	}
-	enrichInventoryFromOSV(parsed.Components)
-	matches := correlateInventory(parsed.Components, loadAdvisoriesForMatch())
+	osv := enrichInventoryFromOSV(parsed.Components, true)
+	catalog := loadAdvisoriesForMatch()
+	matches := mergeVulnMatches(osv.Matches, correlateInventory(parsed.Components, catalog))
 	assessed := map[string]bool{}
 	for _, item := range parsed.Components {
 		assessed[item.ModulePath+"|"+item.Ecosystem] = true
 	}
-	upsertVulnMatches(repoID, jobID, commit, matches, assessed, vulnMatchScan)
+	created := upsertVulnMatches(repoID, jobID, commit, matches, assessed, vulnMatchScan)
 	persistPatchPlans(repoID, matches)
+	appendVulnScanLog(jobID, "correlation", fmt.Sprintf(
+		"Package match: %d findings from %d lockfile packages. Advisory catalog %d. %s",
+		created, len(parsed.Components), len(catalog), osv.Note,
+	))
 	return nil
 }
 
@@ -926,11 +977,11 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 	}
 	args := []any{}
 	where := " WHERE f.confidence IN ('confirmed','potential','needs_verification') "
-	extra, args := vulnProjectFilter(seeAll, ids, "f.project_id", args)
+	extra, args := vulnProjectFilter(seeAll, ids, "COALESCE(NULLIF(f.project_id,0), r.project_id)", args)
 	where += extra
 	if projectID > 0 {
 		args = append(args, projectID)
-		where += fmt.Sprintf(" AND f.project_id = $%d", len(args))
+		where += fmt.Sprintf(" AND COALESCE(NULLIF(f.project_id,0), r.project_id) = $%d", len(args))
 	}
 	if serviceID > 0 {
 		args = append(args, serviceID)
@@ -1026,10 +1077,11 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 		return nil, err
 	}
 	args := []any{}
-	extra, args := vulnProjectFilter(seeAll, ids, "j.project_id", args)
+	extra, args := vulnProjectFilter(seeAll, ids, "COALESCE(NULLIF(j.project_id,0), r.project_id)", args)
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT j.id, j.state, j.stage, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
-		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at
+		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
+		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
 		FROM vuln_scan_jobs j
 		JOIN vuln_repositories r ON r.id = j.repo_id
 		WHERE 1=1 `+extra+`
@@ -1045,7 +1097,7 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 		var item vulnScanView
 		var created, finished sql.NullTime
 		var raw string
-		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished); err != nil {
+		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount); err != nil {
 			continue
 		}
 		_ = json.Unmarshal([]byte(raw), &item.Coverage)
@@ -1077,9 +1129,10 @@ func getVulnScan(id int) (*vulnScanView, error) {
 	var raw string
 	err = queryRowContext(`
 		SELECT j.id, j.state, j.stage, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
-		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at
+		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
+		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
 		FROM vuln_scan_jobs j JOIN vuln_repositories r ON r.id = j.repo_id WHERE j.id = $1
-	`, id).Scan(&item.ID, &item.State, &item.Stage, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished)
+	`, id).Scan(&item.ID, &item.State, &item.Stage, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount)
 	if err != nil {
 		return nil, fmt.Errorf("not found")
 	}
@@ -1087,6 +1140,75 @@ func getVulnScan(id int) (*vulnScanView, error) {
 	item.CreatedAt = nullTimePtr(created)
 	item.FinishedAt = nullTimePtr(finished)
 	return &item, nil
+}
+
+func listVulnScanEvents(scanID int, job *vulnScanView) []vulnScanEvent {
+	out := []vulnScanEvent{}
+	if DB != nil && scanID > 0 {
+		rows, cancel, err := queryRowsWithTimeout(`
+			SELECT stage, detail, created_at FROM vuln_scan_events WHERE scan_id=$1 ORDER BY id
+		`, scanID)
+		if err == nil {
+			defer cancel()
+			defer rows.Close()
+			for rows.Next() {
+				var item vulnScanEvent
+				var at time.Time
+				if rows.Scan(&item.Stage, &item.Detail, &at) == nil {
+					item.CreatedAt = at.UTC().Format(time.RFC3339)
+					out = append(out, item)
+				}
+			}
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	if job == nil {
+		return out
+	}
+	if job.CreatedAt != nil {
+		out = append(out, vulnScanEvent{Stage: "queued", Detail: "Scan queued.", CreatedAt: *job.CreatedAt})
+	}
+	detail := strings.TrimSpace(job.Error)
+	if detail == "" {
+		detail = "Scan " + firstNonEmpty(job.State, "unknown") + " at stage " + firstNonEmpty(job.Stage, "unknown") + "."
+	}
+	at := ""
+	if job.FinishedAt != nil {
+		at = *job.FinishedAt
+	} else if job.CreatedAt != nil {
+		at = *job.CreatedAt
+	}
+	out = append(out, vulnScanEvent{Stage: firstNonEmpty(job.Stage, job.State), Detail: detail, CreatedAt: at})
+	return out
+}
+
+func listFindingsForScan(scanID int) []vulnScanFinding {
+	if DB == nil || scanID <= 0 {
+		return []vulnScanFinding{}
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT f.id, f.canonical_id, a.severity, f.package_name, f.installed_version, f.lifecycle, f.confidence
+		FROM vuln_findings f
+		JOIN vuln_advisories a ON a.id = f.advisory_id
+		WHERE f.last_scan_id = $1
+		ORDER BY CASE a.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, f.id
+		LIMIT 50
+	`, scanID)
+	if err != nil {
+		return []vulnScanFinding{}
+	}
+	defer cancel()
+	defer rows.Close()
+	out := []vulnScanFinding{}
+	for rows.Next() {
+		var item vulnScanFinding
+		if rows.Scan(&item.ID, &item.Canonical, &item.Severity, &item.Package, &item.Installed, &item.Lifecycle, &item.Confidence) == nil {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func listVulnSources() []vulnSourceView {

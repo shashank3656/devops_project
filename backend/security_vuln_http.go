@@ -169,7 +169,9 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 			writeAPIError(w, r, http.StatusNotFound, "scan not found", nil)
 			return
 		}
-		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"scan": item, "status": "ok"})
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"scan": item, "log": listVulnScanEvents(id, item), "findings": listFindingsForScan(id), "status": "ok",
+		})
 	case path == "intelligence/sync" && r.Method == http.MethodPost:
 		if _, ok := requireDevopsManager(w, r); !ok {
 			return
@@ -247,7 +249,20 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 			writeAPIError(w, r, http.StatusInternalServerError, "repository could not be registered", err)
 			return
 		}
-		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"repository_id": id, "status": "ok"})
+		mode := "hosted"
+		_ = queryRowContext(`SELECT COALESCE(NULLIF(collection_mode,''),'hosted') FROM vuln_repositories WHERE id=$1`, id).Scan(&mode)
+		jobID := 0
+		if mode == "hosted" {
+			jobID, err = enqueueVulnScan(id, 0, body.ProjectID, userID, "register", "")
+			if err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "scan could not be queued", err)
+				return
+			}
+			kickVulnScanWorker()
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"repository_id": id, "job_id": jobID, "collection_mode": mode, "status": "ok",
+		})
 	case parts[0] == "repositories" && len(parts) == 2 && r.Method == http.MethodPatch:
 		if _, ok := requireDevopsManager(w, r); !ok {
 			return
@@ -479,10 +494,11 @@ func handleVulnException(w http.ResponseWriter, r *http.Request, userID, finding
 
 func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 	var body struct {
-		ServiceIDs []int  `json:"service_ids"`
-		Repository string `json:"repository"`
-		ProjectID  int    `json:"project_id"`
-		Branch     string `json:"branch"`
+		ServiceIDs    []int  `json:"service_ids"`
+		RepositoryIDs []int  `json:"repository_ids"`
+		Repository    string `json:"repository"`
+		ProjectID     int    `json:"project_id"`
+		Branch        string `json:"branch"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
@@ -523,10 +539,32 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 			}
 			jobIDs = append(jobIDs, jobID)
 		}
+	} else if len(body.RepositoryIDs) > 0 {
+		for _, repoID := range body.RepositoryIDs {
+			if repoID <= 0 {
+				writeAPIError(w, r, http.StatusBadRequest, "repository_ids must contain registered repository ids.", nil)
+				return
+			}
+			var projectID int
+			var enabled bool
+			if err := queryRowContext(`SELECT COALESCE(project_id,0), enabled FROM vuln_repositories WHERE id=$1`, repoID).Scan(&projectID, &enabled); err != nil || !enabled {
+				writeAPIError(w, r, http.StatusNotFound, "repository not found", nil)
+				return
+			}
+			if projectID > 0 && !ensureProjectVisible(w, r, userID, projectID) {
+				return
+			}
+			jobID, err := enqueueVulnScan(repoID, 0, projectID, userID, "manual", idem)
+			if err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "scan could not be queued", err)
+				return
+			}
+			jobIDs = append(jobIDs, jobID)
+		}
 	} else {
 		provider, owner, name := parseVulnRepo(body.Repository)
 		if owner == "" {
-			writeAPIError(w, r, http.StatusBadRequest, "Select at least one service or a repository.", nil)
+			writeAPIError(w, r, http.StatusBadRequest, "Select at least one service or a registered repository.", nil)
 			return
 		}
 		if body.ProjectID > 0 && !ensureProjectVisible(w, r, userID, body.ProjectID) {
@@ -549,6 +587,7 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 		return
 	}
 	statusURL := "/api/devops/security/scans/" + strconv.Itoa(jobIDs[0])
+	kickVulnScanWorker()
 	_ = writeJSONResponse(w, http.StatusAccepted, map[string]any{
 		"job_id": jobIDs[0], "job_ids": jobIDs, "status_url": statusURL, "status": "accepted",
 	})

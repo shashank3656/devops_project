@@ -9133,6 +9133,14 @@ html[data-theme='dark'] .devops-layout .sec-vuln-token code {
   color: #f5f7fc;
 }
 
+html[data-theme='dark'] .devops-layout .sec-vuln-coverage {
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-coverage li {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
 html[data-theme='dark'] .devops-layout .access-status.is-ready {
   color: #5eead4;
 }
@@ -11755,6 +11763,56 @@ html[data-theme] .devops-layout .portal-page .ops-minis--four {
   color: #17233b;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.sec-vuln-row-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.sec-vuln-coverage {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  color: #58677f;
+  font-size: 13px;
+}
+
+.sec-vuln-coverage li {
+  padding: 6px 0;
+  border-bottom: 1px solid #e7e9f0;
+}
+
+.sec-vuln-log {
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow: auto;
+  border-radius: 10px;
+  background: #101525;
+  color: #f5f7fc;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sec-vuln-log li {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(245, 247, 252, 0.08);
+}
+
+.sec-vuln-log strong {
+  color: #c4b5fd;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.sec-vuln-log small {
+  color: #9aa6bc;
+  white-space: nowrap;
 }
 
 @media (max-width: 980px) {

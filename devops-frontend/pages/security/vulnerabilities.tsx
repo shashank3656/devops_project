@@ -109,8 +109,14 @@ type ScanRow = {
   error?: string;
   discovered_modules: number;
   assessed_modules: number;
+  finding_count?: number;
+  coverage?: { path?: string; reason?: string }[];
   created_at?: string;
+  finished_at?: string;
 };
+
+type ScanEvent = { stage: string; detail: string; created_at: string };
+type ScanFinding = { id: number; canonical_id: string; severity: string; package_name: string; installed_version: string; lifecycle: string; confidence: string };
 
 type PlanRow = {
   id: number;
@@ -197,6 +203,11 @@ export default function GlobalVulnerabilitiesPage() {
   const [lifecycleFilter, setLifecycleFilter] = useState('');
   const [newRepo, setNewRepo] = useState('');
   const [newRepoBranch, setNewRepoBranch] = useState('main');
+  const [scanTargetRepo, setScanTargetRepo] = useState('');
+  const [selectedScanId, setSelectedScanId] = useState(0);
+  const [scanDetail, setScanDetail] = useState<ScanRow | null>(null);
+  const [scanLog, setScanLog] = useState<ScanEvent[]>([]);
+  const [scanFindings, setScanFindings] = useState<ScanFinding[]>([]);
   const [compareDetail, setCompareDetail] = useState<{ id: number; items: { classification: string; canonical_id: string; package_name: string; severity: string; base_version?: string; head_version?: string }[] } | null>(null);
 
   useEffect(() => {
@@ -261,6 +272,44 @@ export default function GlobalVulnerabilitiesPage() {
     if (!router.isReady) return;
     void load();
   }, [load, router.isReady]);
+
+  const loadScanDetail = useCallback(async (id: number) => {
+    if (!id) {
+      setScanDetail(null);
+      setScanLog([]);
+      setScanFindings([]);
+      return;
+    }
+    const result = await vulnRequest(apiUrl, `/api/devops/security/scans/${id}`);
+    if (result.status !== 200) {
+      return;
+    }
+    setScanDetail((result.body.scan || null) as ScanRow | null);
+    setScanLog(asRows<ScanEvent>(result.body.log));
+    setScanFindings(asRows<ScanFinding>(result.body.findings));
+  }, [apiUrl]);
+
+  useEffect(() => {
+    if (tab !== 'history') return;
+    if (!selectedScanId && scans.length) {
+      setSelectedScanId(scans[0].id);
+      return;
+    }
+    if (selectedScanId) void loadScanDetail(selectedScanId);
+  }, [loadScanDetail, scans, selectedScanId, tab]);
+
+  useEffect(() => {
+    if (tab !== 'history') return;
+    const active = scans.some((item) => item.state === 'queued' || item.state === 'running');
+    if (!active) return;
+    const timer = window.setInterval(() => { void load(); }, 4000);
+    return () => window.clearInterval(timer);
+  }, [load, scans, tab]);
+
+  useEffect(() => {
+    if (scanTargetRepo || !repos.length) return;
+    setScanTargetRepo(String(repos[repos.length - 1].id));
+  }, [repos, scanTargetRepo]);
 
   useEffect(() => {
     const item = repos.find((row) => String(row.id) === wizardRepo);
@@ -330,8 +379,36 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The scan could not be queued.');
       return;
     }
-    setNotice('Scan queued for the selected repositories. A shared repository is scanned once.');
+    const jobId = Number(result.body.job_id) || 0;
+    setNotice('Scan queued for the selected repositories. Open History for results and logs.');
     setSelected([]);
+    if (jobId) setSelectedScanId(jobId);
+    setTab('history');
+    void load();
+  }
+
+  async function scanRepositories(ids: number[]) {
+    const repoIds = ids.filter((id) => id > 0);
+    if (!repoIds.length) {
+      setError('Select a registered repository.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const result = await vulnRequest(apiUrl, '/api/devops/security/scans', 'POST', {
+      repository_ids: repoIds,
+      ...(projectId ? { project_id: Number(projectId) } : {}),
+    });
+    setBusy(false);
+    if (result.status !== 202) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'The scan could not be queued.');
+      return;
+    }
+    const jobId = Number(result.body.job_id) || 0;
+    setNotice('Scan queued for the registered repository. Hosted collector reads the latest commit on the registered branch.');
+    if (jobId) setSelectedScanId(jobId);
+    setTab('history');
     void load();
   }
 
@@ -429,14 +506,25 @@ export default function GlobalVulnerabilitiesPage() {
   async function registerRepo() {
     setBusy(true);
     const result = await vulnRequest(apiUrl, '/api/devops/security/repositories', 'POST', {
-      repository: newRepo.trim(), branch: newRepoBranch.trim() || 'main',
+      repository: newRepo.trim(),
+      branch: newRepoBranch.trim() || 'main',
+      ...(projectId ? { project_id: Number(projectId) } : {}),
     });
     setBusy(false);
     if (result.status !== 200) {
       setError(typeof result.body.error === 'string' ? result.body.error : 'Repository could not be registered.');
       return;
     }
-    setNotice('Repository registered. Scan still needs a successful inventory.');
+    const jobId = Number(result.body.job_id) || 0;
+    const repoId = Number(result.body.repository_id) || 0;
+    if (repoId) setScanTargetRepo(String(repoId));
+    if (jobId) {
+      setSelectedScanId(jobId);
+      setNotice('Repository registered and a hosted scan was queued for the latest commit. Open History for results and logs.');
+      setTab('history');
+    } else {
+      setNotice('Repository registered. Inventory arrives from a private agent or CI upload.');
+    }
     setNewRepo('');
     void load();
   }
@@ -539,14 +627,17 @@ export default function GlobalVulnerabilitiesPage() {
   ], []);
 
   const scanColumns: DataTableColumn<ScanRow>[] = useMemo(() => [
-    { id: 'id', header: 'Job', cell: (item) => `#${item.id}` },
+    { id: 'id', header: 'Job', cell: (item) => (
+      <button type="button" className={item.id === selectedScanId ? 'btn btn-secondary btn-sm is-current' : 'btn btn-secondary btn-sm'} onClick={() => setSelectedScanId(item.id)}>#{item.id}</button>
+    ) },
     { id: 'repo', header: 'Repository', cell: (item) => known(item.repository) },
     { id: 'state', header: 'State', cell: (item) => `${item.state} · ${item.stage}` },
     { id: 'mods', header: 'Modules', cell: (item) => `${item.assessed_modules} assessed / ${item.discovered_modules} discovered` },
+    { id: 'hits', header: 'Findings', cell: (item) => String(item.finding_count ?? 0) },
     { id: 'commit', header: 'Commit', cell: (item) => item.commit_sha ? item.commit_sha.slice(0, 12) : 'Unknown' },
     { id: 'when', header: 'Queued', cell: (item) => (item.created_at ? formatOperationalTime(item.created_at) : 'Unknown') },
     { id: 'err', header: 'Error', cell: (item) => item.error || 'None recorded' },
-  ], []);
+  ], [selectedScanId]);
 
   async function openPatchPR(planId: number) {
     setBusy(true);
@@ -569,9 +660,12 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'team', header: 'Owner', cell: (item) => known(item.owner_team) },
     { id: 'gate', header: 'PR gate', cell: (item) => (item.enforce_pr_gate ? 'Enforced' : 'Informational') },
     { id: 'edit', header: '', cell: (item) => (
-      <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setWizardRepo(String(item.id)); setWizardStep(0); }}>Edit policy</button>
+      <span className="sec-vuln-row-actions">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void scanRepositories([item.id])}>Scan now</button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setWizardRepo(String(item.id)); setWizardStep(0); }}>Edit policy</button>
+      </span>
     ) },
-  ], []);
+  ], [apiUrl, busy, projectId]);
 
   const sourceColumns: DataTableColumn<SourceRow>[] = useMemo(() => [
     { id: 'provider', header: 'Provider', cell: (item) => item.provider },
@@ -794,12 +888,22 @@ export default function GlobalVulnerabilitiesPage() {
                 <p className="portal-surface__subtitle">Confirmed and potential dependency matches, including internet advisories that hit a stored lockfile. Production exposure stays Unknown until a deployment mapping exists.</p>
               </div>
             </div>
+            {scans[0] ? (
+              <p className="form-section__copy">
+                Latest scan #{scans[0].id} for {scans[0].repository} is {scans[0].state}
+                {(scans[0].finding_count ?? 0) > 0
+                  ? ` and created ${scans[0].finding_count} package findings.`
+                  : '. It created no package findings. Open History and read that job’s Scan log — a failed clone, missing lockfile, or OSV miss all look empty here.'}
+              </p>
+            ) : (
+              <p className="form-section__copy">No scan has finished yet. Register a repository on Config or use Scan latest commit on History.</p>
+            )}
             <DataTable
               label="Repository findings"
               columns={findingColumns}
               rows={visibleFindings}
               rowKey={(item) => String(item.id)}
-              empty={<EmptyState title={loading ? 'Loading findings' : intelOnly ? 'No internet advisory matches' : 'No matches in scanned scope'} body={intelOnly ? 'A public advisory becomes a finding only after it matches a stored lockfile for a registered repository.' : 'This is not a secure label. Check coverage on Scan history if repositories are still unscanned.'} />}
+              empty={<EmptyState title={loading ? 'Loading findings' : intelOnly ? 'No internet advisory matches' : 'No package findings in this scope'} body={intelOnly ? 'A public advisory becomes a finding only after it matches a stored lockfile for a registered repository.' : 'A finished scan is not a clean bill of health. Open History for that job’s results and log.'} />}
             />
           </section>
         ) : null}
@@ -847,21 +951,100 @@ export default function GlobalVulnerabilitiesPage() {
         ) : null}
 
         {tab === 'history' ? (
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <h2 className="portal-surface__title">Scan history</h2>
-                <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules.</p>
+          <div className="sec-vuln-workspace">
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Scan history</h2>
+                  <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules.</p>
+                </div>
               </div>
-            </div>
-            <DataTable
-              label="Scan history"
-              columns={scanColumns}
-              rows={scans}
-              rowKey={(item) => String(item.id)}
-              empty={<EmptyState title={loading ? 'Loading history' : 'No scans yet'} body="Select services and run Scan selected services." />}
-            />
-          </section>
+              <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void scanRepositories([Number(scanTargetRepo)]); }}>
+                <label className="label">Registered repository
+                  <select className="input" value={scanTargetRepo} onChange={(event) => setScanTargetRepo(event.target.value)}>
+                    <option value="">Select a repository</option>
+                    {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
+                  </select>
+                </label>
+                <div className="portal-form-actions">
+                  <button type="submit" className="btn btn-primary" disabled={busy || !scanTargetRepo}>Scan latest commit</button>
+                </div>
+              </form>
+              <DataTable
+                label="Scan history"
+                columns={scanColumns}
+                rows={scans}
+                rowKey={(item) => String(item.id)}
+                empty={<EmptyState title={loading ? 'Loading history' : 'No scans yet'} body="Register a repository on Config, or scan a registered repository here." />}
+              />
+            </section>
+            {scanDetail ? (
+              <div className="sec-vuln-split">
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <h2 className="portal-surface__title">Scan results</h2>
+                      <p className="portal-surface__subtitle">{scanDetail.repository} · job #{scanDetail.id}. Empty coverage is not a secure label.</p>
+                    </div>
+                  </div>
+                  <dl className="sec-vuln-status">
+                    <div><dt>State</dt><dd>{scanDetail.state} · {scanDetail.stage}</dd></div>
+                    <div><dt>Commit</dt><dd>{scanDetail.commit_sha ? scanDetail.commit_sha.slice(0, 12) : 'Unknown'}</dd></div>
+                    <div><dt>Modules</dt><dd>{scanDetail.assessed_modules} assessed / {scanDetail.discovered_modules} discovered</dd></div>
+                    <div><dt>Findings</dt><dd>{scanDetail.finding_count ?? scanFindings.length}</dd></div>
+                    <div><dt>Finished</dt><dd>{scanDetail.finished_at ? formatOperationalTime(scanDetail.finished_at) : 'In progress'}</dd></div>
+                  </dl>
+                  {scanDetail.error ? <p className="form-section__copy">{scanDetail.error}</p> : null}
+                  {scanDetail.state !== 'queued' && scanDetail.state !== 'running' && (scanDetail.finding_count ?? scanFindings.length) === 0 ? (
+                    <p className="form-section__copy">This job did not create package findings. The Scan log records whether lockfiles were found and whether OSV answered. An empty Findings tab is not proof the collector skipped the repo.</p>
+                  ) : null}
+                  <h3 className="portal-surface__title">Coverage notes</h3>
+                  {(scanDetail.coverage || []).length ? (
+                    <ul className="sec-vuln-coverage">
+                      {(scanDetail.coverage || []).map((item, index) => (
+                        <li key={`${item.path || 'path'}-${index}`}>{item.path || '/'} · {item.reason || 'Coverage note'}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="form-section__copy">No coverage notes were recorded for this job.</p>
+                  )}
+                  <DataTable
+                    label="Findings from this scan"
+                    columns={[
+                      { id: 'id', header: 'Advisory', cell: (item: ScanFinding) => <Link href={`/security/vulnerabilities/findings/${item.id}`}>{item.canonical_id}</Link> },
+                      { id: 'pkg', header: 'Package', cell: (item: ScanFinding) => `${item.package_name}@${item.installed_version || 'unresolved'}` },
+                      { id: 'sev', header: 'Severity', cell: (item: ScanFinding) => <span className={severityBadge(item.severity)}>{severityLabel(item.severity)}</span> },
+                      { id: 'state', header: 'State', cell: (item: ScanFinding) => lifecycleLabel(item.lifecycle) },
+                    ]}
+                    rows={scanFindings}
+                    rowKey={(item) => String(item.id)}
+                    empty={<EmptyState title={scanDetail.state === 'queued' || scanDetail.state === 'running' ? 'Scan in progress' : 'No matches from this scan'} body="This is not a secure label. Unscanned modules stay Unknown." />}
+                  />
+                </section>
+                <section className="portal-surface">
+                  <div className="portal-surface__header">
+                    <div>
+                      <h2 className="portal-surface__title">Scan log</h2>
+                      <p className="portal-surface__subtitle">Stage trail for this job. Tokens are never written here.</p>
+                    </div>
+                  </div>
+                  {scanLog.length ? (
+                    <ol className="sec-vuln-log">
+                      {scanLog.map((item, index) => (
+                        <li key={`${item.created_at}-${index}`}>
+                          <strong>{item.stage || 'log'}</strong>
+                          <span>{item.detail}</span>
+                          <small>{item.created_at ? formatOperationalTime(item.created_at) : ''}</small>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <EmptyState title="No log yet" body="Events appear as the collector clones, inventories, and correlates the repository." />
+                  )}
+                </section>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {tab === 'comparisons' ? (
