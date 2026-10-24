@@ -9104,17 +9104,18 @@ html[data-theme='dark'] .devops-layout .access-chip {
 }
 
 html[data-theme='dark'] .devops-layout .ops-tabs .is-current,
-html[data-theme='dark'] .devops-layout .access-chip.is-on,
-html[data-theme='dark'] .devops-layout .sec-vuln-secondary a.is-current {
+html[data-theme='dark'] .devops-layout .access-chip.is-on {
   background: #2a2444;
   border-color: rgba(139, 120, 230, 0.45);
   color: #f3eefe;
 }
 
-html[data-theme='dark'] .devops-layout .sec-vuln-secondary a {
-  background: #222633;
-  border-color: rgba(255, 255, 255, 0.08);
-  color: #c4b5fd;
+html[data-theme='dark'] .devops-layout .sec-vuln-status {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-status dd {
+  color: #f5f7fc;
 }
 
 html[data-theme='dark'] .devops-layout .sec-vuln-intel {
@@ -11588,28 +11589,84 @@ html[data-theme] .devops-layout .portal-page .ops-minis--four {
   }
 }
 
-.sec-vuln-secondary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 20px;
+.sec-vuln-tabs {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
-.sec-vuln-secondary a {
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1px solid #e7e9f0;
-  background: #fff;
+.sec-vuln-tabs a {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.sec-vuln-status {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px 28px;
+  margin: 0 0 12px;
+  padding: 0 0 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid #e7e9f0;
+}
+
+.sec-vuln-status dt {
+  margin: 0 0 2px;
   color: #58677f;
-  text-decoration: none;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 650;
 }
 
-.sec-vuln-secondary a.is-current {
-  background: #ece8fb;
-  border-color: #d9d0f5;
+.sec-vuln-status dd {
+  margin: 0;
   color: #17233b;
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.sec-vuln-inline {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: end;
+  gap: 12px 14px;
+  margin: 12px 0 16px;
+}
+
+.sec-vuln-inline .label {
+  flex: 1 1 0;
+  min-width: 140px;
+}
+
+.sec-vuln-inline .portal-form-actions {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.sec-vuln-inline--ci {
+  flex-wrap: wrap;
+}
+
+.sec-vuln-inline--ci .label:has(textarea) {
+  flex: 1 1 100%;
+}
+
+.sec-vuln-inline--policy {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.sec-vuln-inline--policy .sec-vuln-status,
+.sec-vuln-inline--policy .form-section__copy,
+.sec-vuln-inline--policy .portal-form-actions {
+  grid-column: 1 / -1;
 }
 
 .sec-vuln-intel {
@@ -11642,8 +11699,9 @@ html[data-theme] .devops-layout .portal-page .ops-minis--four {
 }
 
 .sec-vuln-wizard .ig-stepper {
-  flex-wrap: wrap;
-  row-gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  row-gap: 0;
 }
 
 .sec-vuln-wizard .ig-stepper__label {
@@ -11701,6 +11759,15 @@ html[data-theme] .devops-layout .portal-page .ops-minis--four {
 
 @media (max-width: 980px) {
   .sec-vuln-split {
+    grid-template-columns: 1fr;
+  }
+
+  .sec-vuln-inline,
+  .sec-vuln-status {
+    flex-wrap: wrap;
+  }
+
+  .sec-vuln-inline--policy {
     grid-template-columns: 1fr;
   }
 }

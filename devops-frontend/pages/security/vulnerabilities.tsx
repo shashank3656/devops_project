@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CopyButton, DataTable, EmptyState, formatOperationalTime, Stepper, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { asRows, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_PRIMARY_TABS, VULN_SECONDARY_TABS, type VulnTab } from '../../lib/securityVuln';
+import { asRows, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 const DEVOPS_USER_KEY = 'devops_user';
@@ -468,13 +468,13 @@ export default function GlobalVulnerabilitiesPage() {
     },
     {
       id: 'service',
-      header: 'Service / repository',
-      cell: (item) => (
-        <div className="ig-cell-stack">
-          <Link className="ig-cell-title" href={`/security/vulnerabilities/services/${item.service_id}`}>{item.service || 'Unknown'}</Link>
-          <span className="ig-cell-meta">{known(item.repository)}</span>
-        </div>
-      ),
+      header: 'Service',
+      cell: (item) => <Link className="ig-cell-title" href={`/security/vulnerabilities/services/${item.service_id}`}>{item.service || 'Unknown'}</Link>,
+    },
+    {
+      id: 'repo',
+      header: 'Repository',
+      cell: (item) => known(item.repository),
     },
     {
       id: 'tech',
@@ -497,14 +497,18 @@ export default function GlobalVulnerabilitiesPage() {
     },
     {
       id: 'coverage',
-      header: 'Coverage / action',
-      cell: (item) => (
-        <div className="ig-cell-stack">
-          <span className="ig-cell-title">{item.coverage}</span>
-          <span className="ig-cell-meta">{item.last_scan_at ? formatOperationalTime(item.last_scan_at) : 'No successful scan'}</span>
-          <Link href={`/security/vulnerabilities/services/${item.service_id}`}>View security</Link>
-        </div>
-      ),
+      header: 'Coverage',
+      cell: (item) => item.coverage,
+    },
+    {
+      id: 'scan',
+      header: 'Last scan',
+      cell: (item) => (item.last_scan_at ? formatOperationalTime(item.last_scan_at) : 'No successful scan'),
+    },
+    {
+      id: 'open',
+      header: '',
+      cell: (item) => <Link href={`/security/vulnerabilities/services/${item.service_id}`}>Open</Link>,
     },
   ], [selected]);
 
@@ -604,9 +608,9 @@ export default function GlobalVulnerabilitiesPage() {
             <h1 className="portal-page__title">Global Vulnerabilities & Patches</h1>
             <p className="portal-page__subtitle">
               {tab === 'configuration'
-                ? 'Register a repository, then set collection, ownership, and alert policy. Tokens stay on the API as environment names.'
+                ? 'Register a repository, then set collection and alert policy. Tokens stay on the API.'
                 : tab === 'sources'
-                  ? 'Intelligence feeds, private agents, and CI inventory. After each sync, stored lockfiles are re-checked. An online collector does not mean repositories were scanned.'
+                  ? 'Feeds, private agents, and CI inventory. A feed is not repository coverage.'
                   : 'See which services need action and which patches are available. A public advisory is not proof of repository exposure.'}
             </p>
           </div>
@@ -673,14 +677,9 @@ export default function GlobalVulnerabilitiesPage() {
             </button>
           </p>
         ) : null}
-        <nav className="ops-tabs" aria-label="Vulnerability workspace">
-          {VULN_PRIMARY_TABS.map((item) => (
+        <nav className="ops-tabs sec-vuln-tabs" aria-label="Vulnerability workspace">
+          {VULN_TABS.map((item) => (
             <Link key={item.id} href={{ pathname: '/security/vulnerabilities', query: { ...(projectId ? { project_id: projectId } : {}), ...(item.id === 'services' ? {} : { tab: item.id }) } }} className={tab === item.id ? 'is-current' : undefined}>{item.label}</Link>
-          ))}
-        </nav>
-        <nav className="sec-vuln-secondary" aria-label="Setup and history">
-          {VULN_SECONDARY_TABS.map((item) => (
-            <Link key={item.id} href={{ pathname: '/security/vulnerabilities', query: { ...(projectId ? { project_id: projectId } : {}), tab: item.id } }} className={tab === item.id ? 'is-current' : undefined}>{item.label}</Link>
           ))}
         </nav>
         {tab === 'services' || tab === 'advisories' || tab === 'findings' ? (
@@ -947,35 +946,35 @@ export default function GlobalVulnerabilitiesPage() {
 
         {tab === 'sources' ? (
           <div className="sec-vuln-workspace">
-            <dl className="sre-meta">
-              <div className="sre-meta__item">
+            <dl className="sec-vuln-status">
+              <div>
                 <dt>Hosted collector</dt>
                 <dd>{hosted ? 'Configured' : 'Offline'}</dd>
               </div>
-              <div className="sre-meta__item">
+              <div>
                 <dt>Private agents</dt>
                 <dd>{agents.length ? `${agents.length} enrolled` : 'None enrolled'}</dd>
               </div>
-              <div className="sre-meta__item">
+              <div>
                 <dt>Last intelligence sync</dt>
                 <dd>{overview.intelligence_synced_at ? formatOperationalTime(overview.intelligence_synced_at) : 'Unknown'}</dd>
               </div>
-              <div className="sre-meta__item">
+              <div>
                 <dt>Inventories re-checked</dt>
                 <dd>{overview.intel_repos_assessed ?? 0}</dd>
               </div>
-              <div className="sre-meta__item">
+              <div>
                 <dt>New internet matches</dt>
                 <dd>{overview.intel_new_matches ?? 0}</dd>
               </div>
             </dl>
-            <p className="form-section__copy">{hostedNote || 'Hosted collector status is Unknown until the API answers.'}</p>
+            <p className="form-section__copy">{hostedNote || 'Hosted collector status is Unknown until the API answers. An online collector does not mean repositories were scanned.'}</p>
             <div className="sec-vuln-split">
               <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>
                     <h2 className="portal-surface__title">Intelligence feeds</h2>
-                    <p className="portal-surface__subtitle">Public advisories saved on the API, then matched to stored lockfiles. A fresh feed is not repository coverage.</p>
+                    <p className="portal-surface__subtitle">Public advisories saved on the API, then matched to stored lockfiles.</p>
                   </div>
                 </div>
                 <DataTable
@@ -990,7 +989,7 @@ export default function GlobalVulnerabilitiesPage() {
                 <div className="portal-surface__header">
                   <div>
                     <h2 className="portal-surface__title">Private agents</h2>
-                    <p className="portal-surface__subtitle">Outbound workers upload inventory only. They do not print tokens, pull images, or write findings.</p>
+                    <p className="portal-surface__subtitle">Workers upload inventory only. They do not print tokens or write findings.</p>
                   </div>
                 </div>
                 <DataTable
@@ -1001,7 +1000,7 @@ export default function GlobalVulnerabilitiesPage() {
                   empty={<EmptyState title={loading ? 'Loading agents' : 'None enrolled'} body="Create a bootstrap token, then run the worker from a runner that can read the repository." />}
                 />
                 {isManager ? (
-                  <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void enrollAgent(); }}>
+                  <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void enrollAgent(); }}>
                     <label className="label">Agent name<input className="input" value={agentName} onChange={(event) => setAgentName(event.target.value)} placeholder="build-runner-1" /></label>
                     <div className="portal-form-actions">
                       <button type="submit" className="btn btn-primary" disabled={busy}>Create bootstrap token</button>
@@ -1026,7 +1025,7 @@ export default function GlobalVulnerabilitiesPage() {
                   <p className="portal-surface__subtitle">Bind a CycloneDX or SPDX document to a registered repository and commit. Images are not pulled from a Docker socket.</p>
                 </div>
               </div>
-              <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
+              <form className="sec-vuln-inline sec-vuln-inline--ci" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
                 <label className="label">Repository
                   <select className="input" value={sbomRepo} onChange={(event) => setSbomRepo(event.target.value)}>
                     <option value="">Select a registered repository</option>
@@ -1034,10 +1033,10 @@ export default function GlobalVulnerabilitiesPage() {
                   </select>
                 </label>
                 <label className="label">Commit SHA<input className="input" value={sbomCommit} onChange={(event) => setSbomCommit(event.target.value)} placeholder="Immutable commit" /></label>
-                <label className="label">SBOM JSON<textarea className="input" rows={6} value={sbomText} onChange={(event) => setSbomText(event.target.value)} /></label>
                 <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={busy}>Upload inventory</button>
                 </div>
+                <label className="label">SBOM JSON<textarea className="input" rows={5} value={sbomText} onChange={(event) => setSbomText(event.target.value)} /></label>
               </form>
               <p className="form-section__copy">CI can also run <code>python3 workers/vuln_agent.py --ci</code> with VULN_PORTAL_TOKEN and VULN_REPOSITORY_ID.</p>
             </section>
@@ -1045,7 +1044,7 @@ export default function GlobalVulnerabilitiesPage() {
         ) : null}
 
         {tab === 'configuration' ? (
-          <div className="sec-vuln-split">
+          <div className="sec-vuln-workspace">
             <section className="portal-surface">
               <div className="portal-surface__header">
                 <div>
@@ -1053,7 +1052,7 @@ export default function GlobalVulnerabilitiesPage() {
                   <p className="portal-surface__subtitle">GitHub, GitLab, and Bitbucket URLs are accepted. Hosted tokens stay on the API.</p>
                 </div>
               </div>
-              <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void registerRepo(); }}>
+              <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void registerRepo(); }}>
                 <label className="label">Repository<input className="input" value={newRepo} onChange={(event) => setNewRepo(event.target.value)} placeholder="org/service or gitlab.com/group/service" /></label>
                 <label className="label">Branch<input className="input" value={newRepoBranch} onChange={(event) => setNewRepoBranch(event.target.value)} /></label>
                 <div className="portal-form-actions">
@@ -1066,7 +1065,7 @@ export default function GlobalVulnerabilitiesPage() {
                 columns={repoColumns}
                 rows={repos}
                 rowKey={(item) => String(item.id)}
-                empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then set policy on the right." />}
+                empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then set policy below." />}
               />
             </section>
             <section className="portal-surface sec-vuln-wizard">
@@ -1084,7 +1083,7 @@ export default function GlobalVulnerabilitiesPage() {
                   if (index >= 0) setWizardStep(index);
                 }}
               />
-              <form className="portal-form-grid" onSubmit={(event) => {
+              <form className="sec-vuln-inline sec-vuln-inline--policy" onSubmit={(event) => {
                 event.preventDefault();
                 if (wizardStep === 1 && !wizardRepo) {
                   setError('Select a registered repository.');
@@ -1131,13 +1130,13 @@ export default function GlobalVulnerabilitiesPage() {
                   </label>
                 ) : null}
                 {wizardStep === 5 ? (
-                  <dl className="sre-meta">
-                    <div className="sre-meta__item"><dt>Repository</dt><dd>{repos.find((item) => String(item.id) === wizardRepo)?.repository || 'Select a repository'}</dd></div>
-                    <div className="sre-meta__item"><dt>Collection</dt><dd>{collectionModeLabel(wizardMode)}</dd></div>
-                    <div className="sre-meta__item"><dt>Owner team</dt><dd>{wizardTeam || 'Unchanged'}</dd></div>
-                    <div className="sre-meta__item"><dt>Alerts from</dt><dd>{wizardAlert}</dd></div>
-                    <div className="sre-meta__item"><dt>Fork PRs</dt><dd>{wizardForks ? 'Allowed' : 'Blocked'}</dd></div>
-                    <div className="sre-meta__item"><dt>Comparison gate</dt><dd>{wizardGate ? 'Enforced' : 'Informational'}</dd></div>
+                  <dl className="sec-vuln-status">
+                    <div><dt>Repository</dt><dd>{repos.find((item) => String(item.id) === wizardRepo)?.repository || 'Select a repository'}</dd></div>
+                    <div><dt>Collection</dt><dd>{collectionModeLabel(wizardMode)}</dd></div>
+                    <div><dt>Owner team</dt><dd>{wizardTeam || 'Unchanged'}</dd></div>
+                    <div><dt>Alerts from</dt><dd>{wizardAlert}</dd></div>
+                    <div><dt>Fork PRs</dt><dd>{wizardForks ? 'Allowed' : 'Blocked'}</dd></div>
+                    <div><dt>Comparison gate</dt><dd>{wizardGate ? 'Enforced' : 'Informational'}</dd></div>
                   </dl>
                 ) : null}
                 {wizardStep === 0 || wizardStep === 5 ? (

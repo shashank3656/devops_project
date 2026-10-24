@@ -2,20 +2,17 @@ import { buildPortalApiUrl, portalFetch } from '@infragate/ui';
 
 export type VulnTab = 'services' | 'advisories' | 'findings' | 'remediation' | 'campaigns' | 'history' | 'sources' | 'configuration' | 'comparisons' | 'new-deps';
 
-export const VULN_PRIMARY_TABS: { id: VulnTab; label: string }[] = [
+export const VULN_TABS: { id: VulnTab; label: string }[] = [
   { id: 'services', label: 'Services' },
-  { id: 'advisories', label: 'Global advisories' },
-  { id: 'findings', label: 'Repository findings' },
+  { id: 'advisories', label: 'Advisories' },
+  { id: 'findings', label: 'Findings' },
   { id: 'remediation', label: 'Remediation' },
   { id: 'campaigns', label: 'Campaigns' },
-];
-
-export const VULN_SECONDARY_TABS: { id: VulnTab; label: string }[] = [
-  { id: 'history', label: 'Scan history' },
-  { id: 'comparisons', label: 'PR comparisons' },
-  { id: 'new-deps', label: 'New dependencies' },
-  { id: 'sources', label: 'Agents & sources' },
-  { id: 'configuration', label: 'Configuration' },
+  { id: 'history', label: 'History' },
+  { id: 'comparisons', label: 'PR diffs' },
+  { id: 'new-deps', label: 'New deps' },
+  { id: 'sources', label: 'Sources' },
+  { id: 'configuration', label: 'Config' },
 ];
 
 export function vulnTab(value: string | string[] | undefined): VulnTab {
