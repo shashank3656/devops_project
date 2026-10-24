@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/go-github/v61/github"
 )
@@ -27,18 +28,18 @@ func runVulnScanJob(jobID int) {
 		return
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET state='running', stage='clone', started_at=COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id=$1`, jobID)
-	owner, name, branch, exclusions := "", "", "main", ""
-	if err := queryRowContext(`SELECT owner, name, branch, COALESCE(exclusions,'') FROM vuln_repositories WHERE id = $1`, repoID).Scan(&owner, &name, &branch, &exclusions); err != nil {
+	provider, owner, name, branch, exclusions := vulnProviderGitHub, "", "", "main", ""
+	if err := queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github'), owner, name, branch, COALESCE(exclusions,'') FROM vuln_repositories WHERE id = $1`, repoID).Scan(&provider, &owner, &name, &branch, &exclusions); err != nil {
 		failVulnScan(jobID, "queued", "Repository registration was not found.")
 		return
 	}
-	commit, err := resolveVulnCommit(owner, name, branch)
+	commit, err := resolveVulnCommit(provider, owner, name, branch)
 	if err != nil {
 		failVulnScan(jobID, "clone", err.Error())
 		return
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='inventory', commit_sha=$2 WHERE id=$1`, jobID, commit)
-	paths, truncated, err := listVulnRepoPaths(owner, name, commit)
+	paths, truncated, err := listVulnRepoPaths(provider, owner, name, commit)
 	if err != nil {
 		failVulnScan(jobID, "inventory", err.Error())
 		return
@@ -53,10 +54,10 @@ func runVulnScanJob(jobID int) {
 	coverage := []vulnCoverageGap{}
 	coverage = append(coverage, excludedGaps...)
 	if truncated {
-		coverage = append(coverage, vulnCoverageGap{Path: "/", Reason: "GitHub truncated the repository tree. Some modules may be unscanned."})
+		coverage = append(coverage, vulnCoverageGap{Path: "/", Reason: "The repository tree was truncated. Some modules may be unscanned."})
 	}
 	for _, filePath := range lockfiles {
-		content, sizeOK, getErr := fetchVulnRepoFile(owner, name, filePath, commit)
+		content, sizeOK, getErr := fetchVulnRepoFile(provider, owner, name, filePath, commit)
 		if getErr != nil {
 			coverage = append(coverage, vulnCoverageGap{Path: filePath, Reason: "File could not be read from the immutable commit."})
 			continue
@@ -71,6 +72,20 @@ func runVulnScanJob(jobID int) {
 	merged.Coverage = append(coverage, merged.Coverage...)
 	if len(lockfiles) == 0 {
 		merged.Coverage = append(merged.Coverage, vulnCoverageGap{Path: "/", Reason: "No supported lockfile or SBOM was found. This is not a clean result."})
+	}
+	sourceBlobs := []string{}
+	sourceScanned := false
+	for _, filePath := range discoverVulnSourceFiles(paths) {
+		content, sizeOK, getErr := fetchVulnRepoFile(provider, owner, name, filePath, commit)
+		if getErr != nil || !sizeOK {
+			continue
+		}
+		sourceBlobs = append(sourceBlobs, content)
+		sourceScanned = true
+	}
+	applyReachability(merged.Components, sourceBlobs, sourceScanned)
+	if !sourceScanned {
+		merged.Coverage = append(merged.Coverage, vulnCoverageGap{Path: "/", Reason: "Source files were not sampled for import evidence. Reachability stays Unknown; this is not a not-affected claim."})
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='correlation' WHERE id=$1`, jobID)
 	if err := saveInventoryAndCorrelate(jobID, repoID, commit, merged); err != nil {
@@ -102,9 +117,58 @@ func failVulnScan(jobID int, stage, message string) {
 		SET state='failed', stage=$2, error=$3, finished_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, jobID, stage, message)
+	notifyVulnScanFailed(jobID, message)
 }
 
-func resolveVulnCommit(owner, name, branch string) (string, error) {
+func notifyVulnScanFailed(jobID int, message string) {
+	if jobID <= 0 {
+		return
+	}
+	var projectID int
+	var team, repo string
+	_ = queryRowContext(`
+		SELECT COALESCE(j.project_id,0), COALESCE(r.owner_team,''), COALESCE(r.owner,'') || '/' || COALESCE(r.name,'')
+		FROM vuln_scan_jobs j JOIN vuln_repositories r ON r.id = j.repo_id WHERE j.id=$1
+	`, jobID).Scan(&projectID, &team, &repo)
+	var projectPtr *int
+	if projectID > 0 {
+		projectPtr = &projectID
+	}
+	_ = dispatchOpsNotification(
+		fmt.Sprintf("vuln-scan:%d:failed", jobID),
+		"security_vuln",
+		"Scan failed for "+firstNonEmpty(repo, "repository"),
+		firstNonEmpty(message, "The scan failed. Coverage stays Unknown; this is not a secure label."),
+		nil,
+		projectPtr,
+		ownerUserIDs(team),
+		map[string]any{"job_id": jobID, "repository": repo},
+	)
+}
+
+func loadGitHubPRSHAs(owner, name string, prNumber int, allowFork bool) (string, string, error) {
+	client, err := vulnGitHubClient()
+	if err != nil {
+		return "", "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pr, _, err := client.PullRequests.Get(ctx, owner, name, prNumber)
+	if err != nil || pr == nil || pr.GetBase() == nil || pr.GetHead() == nil {
+		return "", "", fmt.Errorf("The pull request could not be read.")
+	}
+	if pr.GetHead().GetRepo() != nil && pr.GetBase().GetRepo() != nil && pr.GetHead().GetRepo().GetID() != pr.GetBase().GetRepo().GetID() && !allowFork {
+		return "", "", fmt.Errorf("Fork pull requests are not scanned unless the repository policy allows them.")
+	}
+	baseSHA := pr.GetBase().GetSHA()
+	headSHA := pr.GetHead().GetSHA()
+	if baseSHA == "" || headSHA == "" {
+		return "", "", fmt.Errorf("The pull request was missing an immutable commit SHA.")
+	}
+	return baseSHA, headSHA, nil
+}
+
+func resolveGitHubVulnCommit(owner, name, branch string) (string, error) {
 	client, err := vulnGitHubClient()
 	if err != nil {
 		return "", err
@@ -124,7 +188,7 @@ func resolveVulnCommit(owner, name, branch string) (string, error) {
 	return sha, nil
 }
 
-func listVulnRepoPaths(owner, name, sha string) ([]string, bool, error) {
+func listGitHubVulnRepoPaths(owner, name, sha string) ([]string, bool, error) {
 	client, err := vulnGitHubClient()
 	if err != nil {
 		return nil, false, err
@@ -155,7 +219,7 @@ func listVulnRepoPaths(owner, name, sha string) ([]string, bool, error) {
 	return out, truncated, nil
 }
 
-func fetchVulnRepoFile(owner, name, path, sha string) (string, bool, error) {
+func fetchGitHubVulnRepoFile(owner, name, path, sha string) (string, bool, error) {
 	client, err := vulnGitHubClient()
 	if err != nil {
 		return "", false, err

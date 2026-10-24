@@ -13,13 +13,24 @@ import (
 const vulnPRCheckContext = "opstrellis/vulnerability-comparison"
 
 func vulnPRCheckState(coverage string, introC, introH int) (state, desc string) {
+	return vulnPRCheckDescription(coverage, introC, introH, false)
+}
+
+func vulnPRCheckDescription(coverage string, introC, introH int, enforce bool) (state, desc string) {
+	gate := "Informational only; this does not merge."
+	if enforce {
+		gate = "Policy gate; OpsTrellis does not merge."
+	}
 	if coverage != "complete" {
-		return "pending", "Incomplete coverage is never a clean verdict. Informational only; this does not merge."
+		if enforce {
+			return "pending", "Incomplete coverage never passes. " + gate
+		}
+		return "pending", "Incomplete coverage is never a clean verdict. " + gate
 	}
 	if introC+introH > 0 {
-		return "failure", "Introduced Critical or High findings. Informational only; this does not merge."
+		return "failure", "Introduced Critical or High findings. " + gate
 	}
-	return "success", "No introduced Critical/High in complete coverage. Informational only; this does not merge."
+	return "success", "No introduced Critical/High in complete coverage. " + gate
 }
 
 func deploymentPatchOutcome(current string, hasSBOM, stillPresent bool) string {
@@ -42,24 +53,32 @@ func publishVulnPRCheck(repoID, prNumber int, coverage string, introC, introH in
 	if repoID <= 0 || strings.TrimSpace(headSHA) == "" {
 		return
 	}
-	var owner, name string
-	if queryRowContext(`SELECT owner, name FROM vuln_repositories WHERE id=$1`, repoID).Scan(&owner, &name) != nil {
+	var owner, name, provider string
+	var enforce bool
+	if queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github'), owner, name, enforce_pr_gate FROM vuln_repositories WHERE id=$1`, repoID).Scan(&provider, &owner, &name, &enforce) != nil {
 		return
 	}
-	client, err := vulnGitHubClient()
-	if err != nil {
-		return
-	}
-	state, desc := vulnPRCheckState(coverage, introC, introH)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
+	state, desc := vulnPRCheckDescription(coverage, introC, introH, enforce)
 	target := strings.TrimRight(DevOpsFrontendURL, "/") + "/security/vulnerabilities?tab=comparisons"
-	_, _, _ = client.Repositories.CreateStatus(ctx, owner, name, headSHA, &github.RepoStatus{
-		State:       github.String(state),
-		Context:     github.String(vulnPRCheckContext),
-		Description: github.String(truncateStatusDescription(desc)),
-		TargetURL:   github.String(target),
-	})
+	switch normalizeVulnProvider(provider) {
+	case vulnProviderGitLab:
+		publishGitLabCommitStatus(owner, name, headSHA, state, desc, target)
+	case vulnProviderBitbucket:
+		publishBitbucketCommitStatus(owner, name, headSHA, state, desc, target)
+	default:
+		client, err := vulnGitHubClient()
+		if err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_, _, _ = client.Repositories.CreateStatus(ctx, owner, name, headSHA, &github.RepoStatus{
+			State:       github.String(state),
+			Context:     github.String(vulnPRCheckContext),
+			Description: github.String(truncateStatusDescription(desc)),
+			TargetURL:   github.String(target),
+		})
+	}
 	_ = prNumber
 }
 
@@ -78,10 +97,40 @@ func openVulnPatchPR(userID, planID int) (string, error) {
 	if strings.TrimSpace(target) == "" {
 		return "", fmt.Errorf("No known fix is listed. A patch PR was not opened.")
 	}
-	var owner, name, branch string
-	if err := queryRowContext(`SELECT owner, name, branch FROM vuln_repositories WHERE id=$1`, repoID).Scan(&owner, &name, &branch); err != nil {
+	var owner, name, branch, provider string
+	if err := queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github'), owner, name, branch FROM vuln_repositories WHERE id=$1`, repoID).Scan(&provider, &owner, &name, &branch); err != nil {
 		return "", fmt.Errorf("repository is not registered")
 	}
+	body := vulnPatchProposalMarkdown(planID, owner+"/"+name, module, eco, pkg, current, target, action, rawIDs)
+	path := fmt.Sprintf("security/opstrellis-patch-%d.md", planID)
+	branchName := fmt.Sprintf("opstrellis/vuln-patch-%d", planID)
+	title := fmt.Sprintf("Security patch proposal: %s %s → %s", pkg, current, target)
+	prBody := body + "\n\nThis pull request is a proposal. OpsTrellis does not merge it, does not run package scripts, and does not apply `--force` upgrades."
+	var url string
+	var openErr error
+	switch normalizeVulnProvider(provider) {
+	case vulnProviderGitLab:
+		url, openErr = openGitLabPatchMR(owner, name, branch, branchName, path, title, prBody, body)
+	case vulnProviderBitbucket:
+		return "", fmt.Errorf("Patch proposals are supported for GitHub and GitLab repositories.")
+	default:
+		url, openErr = openGitHubPatchPR(owner, name, branch, branchName, path, title, prBody, body)
+	}
+	if openErr != nil {
+		return "", openErr
+	}
+	var ids []int
+	_ = json.Unmarshal([]byte(firstNonEmpty(rawIDs, "[]")), &ids)
+	for _, id := range ids {
+		_, _ = execContext(`UPDATE vuln_findings SET pr_url=$2, patch_state=$3, lifecycle=CASE WHEN lifecycle='open' THEN 'in_remediation' ELSE lifecycle END WHERE id=$1`, id, url, vulnPatchPRLinked)
+		_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail, actor_id) VALUES ($1,'pr_opened',$2,$3)`, id, "Draft patch proposal opened. Tests are required. This is not merged and not Fixed.", userID)
+	}
+	_, _ = execContext(`UPDATE vuln_patch_plans SET status='pr_linked', updated_at=CURRENT_TIMESTAMP WHERE id=$1`, planID)
+	_ = status
+	return url, nil
+}
+
+func openGitHubPatchPR(owner, name, branch, branchName, path, title, prBody, content string) (string, error) {
 	client, err := vulnGitHubClient()
 	if err != nil {
 		return "", err
@@ -92,7 +141,6 @@ func openVulnPatchPR(userID, planID int) (string, error) {
 	if err != nil || baseRef == nil || baseRef.Object == nil {
 		return "", fmt.Errorf("The default branch could not be resolved.")
 	}
-	branchName := fmt.Sprintf("opstrellis/vuln-patch-%d", planID)
 	_, _, err = client.Git.CreateRef(ctx, owner, name, &github.Reference{
 		Ref:    github.String("refs/heads/" + branchName),
 		Object: &github.GitObject{SHA: baseRef.Object.SHA},
@@ -100,11 +148,9 @@ func openVulnPatchPR(userID, planID int) (string, error) {
 	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "already exists") {
 		return "", fmt.Errorf("A patch branch could not be created.")
 	}
-	body := vulnPatchProposalMarkdown(planID, owner+"/"+name, module, eco, pkg, current, target, action, rawIDs)
-	path := fmt.Sprintf("security/opstrellis-patch-%d.md", planID)
 	opts := &github.RepositoryContentFileOptions{
-		Message: github.String("docs: proposed security patch for " + pkg),
-		Content: []byte(body),
+		Message: github.String("docs: proposed security patch"),
+		Content: []byte(content),
 		Branch:  github.String(branchName),
 	}
 	existing, _, _, getErr := client.Repositories.GetContents(ctx, owner, name, path, &github.RepositoryContentGetOptions{Ref: branchName})
@@ -114,8 +160,6 @@ func openVulnPatchPR(userID, planID int) (string, error) {
 	if _, _, err = client.Repositories.CreateFile(ctx, owner, name, path, opts); err != nil {
 		return "", fmt.Errorf("The patch proposal could not be written.")
 	}
-	title := fmt.Sprintf("Security patch proposal: %s %s → %s", pkg, current, target)
-	prBody := body + "\n\nThis pull request is a proposal. OpsTrellis does not merge it, does not run package scripts, and does not apply `--force` upgrades."
 	created, _, err := client.PullRequests.Create(ctx, owner, name, &github.NewPullRequest{
 		Title: github.String(title),
 		Head:  github.String(branchName),
@@ -131,15 +175,7 @@ func openVulnPatchPR(userID, planID int) (string, error) {
 			return "", fmt.Errorf("The patch pull request could not be opened.")
 		}
 	}
-	url := created.GetHTMLURL()
-	var ids []int
-	_ = json.Unmarshal([]byte(firstNonEmpty(rawIDs, "[]")), &ids)
-	for _, id := range ids {
-		_, _ = execContext(`UPDATE vuln_findings SET pr_url=$2, patch_state=$3, lifecycle=CASE WHEN lifecycle='open' THEN 'in_remediation' ELSE lifecycle END WHERE id=$1`, id, url, vulnPatchPRLinked)
-		_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail, actor_id) VALUES ($1,'pr_opened',$2,$3)`, id, "Draft patch proposal opened. Tests are required. This is not merged and not Fixed.", userID)
-	}
-	_, _ = execContext(`UPDATE vuln_patch_plans SET status='pr_linked', updated_at=CURRENT_TIMESTAMP WHERE id=$1`, planID)
-	return url, nil
+	return created.GetHTMLURL(), nil
 }
 
 func vulnPatchProposalMarkdown(planID int, repo, module, eco, pkg, current, target, action, rawIDs string) string {

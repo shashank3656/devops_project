@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { lifecycleLabel, patchLabel, queryText, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
+import { lifecycleLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
 
 type Finding = {
   id: number;
@@ -33,6 +33,9 @@ type Finding = {
   change_ref?: string;
   source_url?: string;
   last_seen_at?: string;
+  due_at?: string;
+  commit_sha?: string;
+  reachability?: string;
 };
 
 type Activity = { kind: string; detail: string; created_at: string };
@@ -52,6 +55,7 @@ export default function VulnFindingDetailPage() {
   const [notice, setNotice] = useState('');
   const [owner, setOwner] = useState('');
   const [prUrl, setPrUrl] = useState('');
+  const [changeRef, setChangeRef] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [isManager, setIsManager] = useState(false);
@@ -72,6 +76,7 @@ export default function VulnFindingDetailPage() {
     setFinding(item);
     setOwner(item.owner || '');
     setPrUrl(item.pr_url || '');
+    setChangeRef(item.change_ref || '');
     setActivity(Array.isArray(result.body.activity) ? result.body.activity as Activity[] : []);
     setExceptions(Array.isArray(result.body.exceptions) ? result.body.exceptions as ExceptionRow[] : []);
   }, [apiUrl, id]);
@@ -107,7 +112,7 @@ export default function VulnFindingDetailPage() {
 
   async function onSave(event: FormEvent) {
     event.preventDefault();
-    await patch({ owner, pr_url: prUrl, reason, lifecycle: finding?.lifecycle || 'open' });
+    await patch({ owner, pr_url: prUrl, change_ref: changeRef, reason, lifecycle: finding?.lifecycle || 'open' });
   }
 
   async function verify() {
@@ -152,6 +157,7 @@ export default function VulnFindingDetailPage() {
             <span className="portal-page__eyebrow">Security</span>
             <h1 className="portal-page__title">{finding?.canonical_id || 'Finding'}</h1>
             <p className="portal-page__subtitle">{finding?.title || 'Repository dependency evidence. This is not proof of production exposure.'}</p>
+            {finding?.patch_state === 'fix_available' ? <p className="form-section__copy"><span className="sec-sev sec-sev--high">Patch now available</span> A source-supported fix is listed. Tests are still required. This is not production-fixed.</p> : null}
           </div>
           <Link className="btn btn-secondary" href={returnTo.startsWith('/security/vulnerabilities') ? returnTo : '/security/vulnerabilities?tab=findings'}>Back to findings</Link>
         </div>
@@ -164,7 +170,9 @@ export default function VulnFindingDetailPage() {
               <div className="sre-meta__item"><dt>State</dt><dd>{lifecycleLabel(finding.lifecycle)}</dd></div>
               <div className="sre-meta__item"><dt>Priority</dt><dd>{finding.priority} · {finding.priority_reason || 'Unknown'}</dd></div>
               <div className="sre-meta__item"><dt>Confidence</dt><dd>{finding.confidence.replace(/_/g, ' ')}</dd></div>
+              <div className="sre-meta__item"><dt>Reachability</dt><dd>{reachabilityLabel(finding.reachability)}{finding.reachability === 'not_imported' ? ' · not a not-affected claim' : ''}</dd></div>
               <div className="sre-meta__item"><dt>KEV</dt><dd>{finding.kev ? 'Known exploitation' : 'Not listed'}</dd></div>
+              <div className="sre-meta__item"><dt>Due</dt><dd>{finding.due_at ? formatOperationalTime(finding.due_at) : 'None'}</dd></div>
               <div className="sre-meta__item"><dt>Last seen</dt><dd>{finding.last_seen_at ? formatOperationalTime(finding.last_seen_at) : 'Unknown'}</dd></div>
             </dl>
             <section className="portal-surface">
@@ -180,6 +188,7 @@ export default function VulnFindingDetailPage() {
                 <div className="sre-meta__item"><dt>Service</dt><dd>{finding.service || 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Module</dt><dd>{finding.module_path || '/'}</dd></div>
                 <div className="sre-meta__item"><dt>Manifest</dt><dd>{finding.path || 'Unknown'}</dd></div>
+                <div className="sre-meta__item"><dt>Commit</dt><dd>{finding.commit_sha ? finding.commit_sha.slice(0, 12) : 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Advisory</dt><dd>{finding.source_url ? <a href={finding.source_url} target="_blank" rel="noreferrer">{finding.canonical_id}</a> : finding.canonical_id}</dd></div>
               </dl>
             </section>
@@ -207,6 +216,7 @@ export default function VulnFindingDetailPage() {
               <form className="portal-form-grid" onSubmit={onSave}>
                 <label className="label">Owner<input className="input" value={owner} onChange={(event) => setOwner(event.target.value)} /></label>
                 <label className="label">Pull request URL<input className="input" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} /></label>
+                <label className="label">Change reference<input className="input" value={changeRef} onChange={(event) => setChangeRef(event.target.value)} /></label>
                 <label className="label">Note<input className="input" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
                 <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={busy}>Save</button>

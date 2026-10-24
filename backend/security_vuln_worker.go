@@ -26,6 +26,7 @@ func startVulnSecurityWorker() {
 			case <-expireTicker.C:
 				expireVulnExceptions()
 				markStaleVulnAgents()
+				notifyDueVulnFindings()
 			case <-scheduleTicker.C:
 				enqueueDueVulnSchedules()
 			}
@@ -82,5 +83,38 @@ func expireVulnExceptions() {
 		_, _ = execContext(`UPDATE vuln_exceptions SET status='expired' WHERE id=$1`, item.ID)
 		_, _ = execContext(`UPDATE vuln_findings SET lifecycle='open' WHERE id=$1 AND lifecycle='risk_accepted'`, item.FindingID)
 		_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,'exception_expired','Exception expired; finding returned to review.')`, item.FindingID)
+		notifyVulnEvent(item.FindingID, "exception_expired", "Exception expired", "A time-limited exception expired. The finding returned to review. This is not Fixed.")
+	}
+}
+
+func notifyDueVulnFindings() {
+	if DB == nil {
+		return
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT id, canonical_id, due_at FROM vuln_findings
+		WHERE due_at IS NOT NULL AND lifecycle NOT IN ('fixed','false_positive','withdrawn','risk_accepted')
+	`)
+	if err != nil {
+		return
+	}
+	defer cancel()
+	defer rows.Close()
+	now := time.Now().UTC()
+	for rows.Next() {
+		var id int
+		var canonical string
+		var due time.Time
+		if rows.Scan(&id, &canonical, &due) != nil {
+			continue
+		}
+		due = due.UTC()
+		if due.Before(now) {
+			notifyVulnEvent(id, "overdue:"+due.Format("2006-01-02"), "Overdue vulnerability "+canonical, "Remediation is past the due date. Acknowledgement does not close the finding.")
+			continue
+		}
+		if due.Before(now.Add(24 * time.Hour)) {
+			notifyVulnEvent(id, "due_soon:"+due.Format("2006-01-02"), "Deadline approaching for "+canonical, "Remediation is due within 24 hours. This is not a production-fixed claim.")
+		}
 	}
 }

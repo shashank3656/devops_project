@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -18,34 +17,22 @@ type vulnRepoConfig struct {
 	AlertMinSev     string  `json:"alert_min_severity"`
 	Exclusions      string  `json:"exclusions,omitempty"`
 	AllowForkPRs    bool    `json:"allow_fork_prs"`
+	EnforcePRGate   bool    `json:"enforce_pr_gate"`
+	Provider        string  `json:"provider"`
 	Enabled         bool    `json:"enabled"`
 	UpdatedAt       *string `json:"updated_at,omitempty"`
 }
 
 func runVulnPRComparison(userID, repoID, prNumber int) (int, error) {
-	var owner, name string
+	var owner, name, provider string
 	var projectID int
 	var allowFork bool
-	if err := queryRowContext(`SELECT owner, name, COALESCE(project_id,0), allow_fork_prs FROM vuln_repositories WHERE id=$1`, repoID).Scan(&owner, &name, &projectID, &allowFork); err != nil {
+	if err := queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github'), owner, name, COALESCE(project_id,0), allow_fork_prs FROM vuln_repositories WHERE id=$1`, repoID).Scan(&provider, &owner, &name, &projectID, &allowFork); err != nil {
 		return 0, fmt.Errorf("repository is not registered")
 	}
-	client, err := vulnGitHubClient()
+	baseSHA, headSHA, err := loadVulnPRSHAs(provider, owner, name, prNumber, allowFork)
 	if err != nil {
 		return 0, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	pr, _, err := client.PullRequests.Get(ctx, owner, name, prNumber)
-	if err != nil || pr == nil || pr.GetBase() == nil || pr.GetHead() == nil {
-		return 0, fmt.Errorf("The pull request could not be read.")
-	}
-	if pr.GetHead().GetRepo() != nil && pr.GetBase().GetRepo() != nil && pr.GetHead().GetRepo().GetID() != pr.GetBase().GetRepo().GetID() && !allowFork {
-		return 0, fmt.Errorf("Fork pull requests are not scanned unless the repository policy allows them.")
-	}
-	baseSHA := pr.GetBase().GetSHA()
-	headSHA := pr.GetHead().GetSHA()
-	if baseSHA == "" || headSHA == "" {
-		return 0, fmt.Errorf("The pull request was missing an immutable commit SHA.")
 	}
 	var id int
 	err = queryRowContext(`
@@ -55,12 +42,12 @@ func runVulnPRComparison(userID, repoID, prNumber int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	baseInv, baseCov, err := inventoryAtCommit(owner, name, baseSHA)
+	baseInv, baseCov, err := inventoryAtCommit(provider, owner, name, baseSHA)
 	if err != nil {
 		_, _ = execContext(`UPDATE vuln_pr_comparisons SET state='failed', error=$2, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, id, "Base commit inventory failed.")
 		return id, err
 	}
-	headInv, headCov, err := inventoryAtCommit(owner, name, headSHA)
+	headInv, headCov, err := inventoryAtCommit(provider, owner, name, headSHA)
 	if err != nil {
 		_, _ = execContext(`UPDATE vuln_pr_comparisons SET state='failed', error=$2, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, id, "Head commit inventory failed.")
 		return id, err
@@ -115,14 +102,17 @@ func vulnAgentOwnsJob(agentProjectID, jobProjectID int) bool {
 	return agentProjectID == jobProjectID
 }
 
-func inventoryAtCommit(owner, name, sha string) ([]vulnComponent, []vulnCoverageGap, error) {
-	paths, truncated, err := listVulnRepoPaths(owner, name, sha)
+func inventoryAtCommit(provider, owner, name, sha string) ([]vulnComponent, []vulnCoverageGap, error) {
+	if provider == "" {
+		_ = queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github') FROM vuln_repositories WHERE owner=$1 AND name=$2 LIMIT 1`, owner, name).Scan(&provider)
+	}
+	paths, truncated, err := listVulnRepoPaths(provider, owner, name, sha)
 	if err != nil {
 		return nil, nil, err
 	}
 	files := discoverVulnLockfiles(paths)
 	var exclusions string
-	_ = queryRowContext(`SELECT COALESCE(exclusions,'') FROM vuln_repositories WHERE owner=$1 AND name=$2`, owner, name).Scan(&exclusions)
+	_ = queryRowContext(`SELECT COALESCE(exclusions,'') FROM vuln_repositories WHERE COALESCE(NULLIF(provider,''),'github')=$1 AND owner=$2 AND name=$3`, normalizeVulnProvider(provider), owner, name).Scan(&exclusions)
 	excluded := []vulnCoverageGap{}
 	files, excluded = applyVulnExclusions(files, exclusions)
 	parsed := []vulnParsedInventory{}
@@ -135,7 +125,7 @@ func inventoryAtCommit(owner, name, sha string) ([]vulnComponent, []vulnCoverage
 		files = files[:vulnMaxLockfiles]
 	}
 	for _, filePath := range files {
-		content, ok, getErr := fetchVulnRepoFile(owner, name, filePath, sha)
+		content, ok, getErr := fetchVulnRepoFile(provider, owner, name, filePath, sha)
 		if getErr != nil || !ok {
 			coverage = append(coverage, vulnCoverageGap{Path: filePath, Reason: "File could not be read."})
 			continue
@@ -334,7 +324,8 @@ func listVulnRepoConfigs(userID int) []vulnRepoConfig {
 	extra, args := vulnProjectFilter(seeAll, ids, "project_id", args)
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT id, COALESCE(owner,'') || '/' || COALESCE(name,''), COALESCE(project_id,0), branch, owner_team,
-		       COALESCE(NULLIF(collection_mode,''),'hosted'), schedule_minutes, alert_min_severity, exclusions, allow_fork_prs, enabled, updated_at
+		       COALESCE(NULLIF(collection_mode,''),'hosted'), schedule_minutes, alert_min_severity, exclusions, allow_fork_prs, enforce_pr_gate,
+		       COALESCE(NULLIF(provider,''),'github'), enabled, updated_at
 		FROM vuln_repositories WHERE 1=1 `+extra+` ORDER BY id
 	`, args...)
 	if err != nil {
@@ -346,7 +337,7 @@ func listVulnRepoConfigs(userID int) []vulnRepoConfig {
 	for rows.Next() {
 		var item vulnRepoConfig
 		var updated time.Time
-		if rows.Scan(&item.ID, &item.Repository, &item.ProjectID, &item.Branch, &item.OwnerTeam, &item.CollectionMode, &item.ScheduleMinutes, &item.AlertMinSev, &item.Exclusions, &item.AllowForkPRs, &item.Enabled, &updated) == nil {
+		if rows.Scan(&item.ID, &item.Repository, &item.ProjectID, &item.Branch, &item.OwnerTeam, &item.CollectionMode, &item.ScheduleMinutes, &item.AlertMinSev, &item.Exclusions, &item.AllowForkPRs, &item.EnforcePRGate, &item.Provider, &item.Enabled, &updated) == nil {
 			item.UpdatedAt = stampPtr(updated)
 			out = append(out, item)
 		}
@@ -380,6 +371,7 @@ func updateVulnRepoConfig(id int, body map[string]any) error {
 		schedule = v
 	}
 	allowFork, _ := body["allow_fork_prs"].(bool)
+	enforceGate, _ := body["enforce_pr_gate"].(bool)
 	enabled := true
 	if v, ok := body["enabled"].(bool); ok {
 		enabled = v
@@ -387,9 +379,9 @@ func updateVulnRepoConfig(id int, body map[string]any) error {
 	_, err := execContext(`
 		UPDATE vuln_repositories
 		SET collection_mode=$2, owner_team=CASE WHEN $3='' THEN owner_team ELSE $3 END, exclusions=$4,
-		    alert_min_severity=$5, branch=$6, schedule_minutes=$7, allow_fork_prs=$8, enabled=$9, updated_at=CURRENT_TIMESTAMP
+		    alert_min_severity=$5, branch=$6, schedule_minutes=$7, allow_fork_prs=$8, enforce_pr_gate=$9, enabled=$10, updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
-	`, id, mode, strings.TrimSpace(team), strings.TrimSpace(excl), alert, branch, schedule, allowFork, enabled)
+	`, id, mode, strings.TrimSpace(team), strings.TrimSpace(excl), alert, branch, schedule, allowFork, enforceGate, enabled)
 	return err
 }
 
@@ -467,7 +459,7 @@ func handleVulnGitHubEvent(event string, payload map[string]any) {
 	}
 	var repoID, projectID int
 	var branch string
-	if err := queryRowContext(`SELECT id, COALESCE(project_id,0), branch FROM vuln_repositories WHERE owner=$1 AND name=$2 AND enabled=TRUE`, owner, name).Scan(&repoID, &projectID, &branch); err != nil || repoID <= 0 {
+	if err := queryRowContext(`SELECT id, COALESCE(project_id,0), branch FROM vuln_repositories WHERE COALESCE(NULLIF(provider,''),'github')='github' AND owner=$1 AND name=$2 AND enabled=TRUE`, owner, name).Scan(&repoID, &projectID, &branch); err != nil || repoID <= 0 {
 		return
 	}
 	switch event {

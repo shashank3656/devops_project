@@ -78,6 +78,92 @@ func vulnPathExcluded(filePath string, rules []string) bool {
 	return false
 }
 
+func discoverVulnSourceFiles(paths []string) []string {
+	out := make([]string, 0, 30)
+	for _, raw := range paths {
+		clean := strings.TrimPrefix(strings.ReplaceAll(raw, "\\", "/"), "/")
+		if vulnPathSkipped(clean) || vulnSourceSkipped(clean) {
+			continue
+		}
+		lower := strings.ToLower(path.Ext(clean))
+		switch lower {
+		case ".go", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py", ".java", ".kt":
+			out = append(out, clean)
+		}
+		if len(out) >= 30 {
+			break
+		}
+	}
+	return out
+}
+
+func vulnSourceSkipped(clean string) bool {
+	lower := strings.ToLower(clean)
+	base := strings.ToLower(path.Base(clean))
+	if strings.Contains(base, "_test.") || strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") {
+		return true
+	}
+	return strings.Contains(lower, "/test/") || strings.Contains(lower, "/tests/") || strings.Contains(lower, "/__tests__/")
+}
+
+func reachabilityValue(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case vulnReachImported:
+		return vulnReachImported
+	case vulnReachNotImported:
+		return vulnReachNotImported
+	default:
+		return vulnReachUnknown
+	}
+}
+
+func reachabilityReason(match vulnMatch) string {
+	why := strings.TrimSpace(match.PriorityWhy)
+	switch reachabilityValue(match.Component.Reachability) {
+	case vulnReachImported:
+		return strings.TrimSpace(why + " Imported in sampled sources.")
+	case vulnReachNotImported:
+		return strings.TrimSpace(why + " Import not found in sampled sources. This is not a not-affected claim.")
+	default:
+		return strings.TrimSpace(why + " Reachability is Unknown because sources were not sampled.")
+	}
+}
+
+func applyReachability(components []vulnComponent, sources []string, scanned bool) {
+	if !scanned || len(sources) == 0 {
+		for i := range components {
+			if components[i].Reachability == "" {
+				components[i].Reachability = vulnReachUnknown
+			}
+		}
+		return
+	}
+	hay := strings.ToLower(strings.Join(sources, "\n"))
+	for i := range components {
+		pkg := strings.ToLower(strings.TrimSpace(components[i].PackageName))
+		if pkg == "" {
+			components[i].Reachability = vulnReachUnknown
+			continue
+		}
+		needles := []string{pkg}
+		if idx := strings.LastIndex(pkg, "/"); idx >= 0 && idx < len(pkg)-1 {
+			needles = append(needles, pkg[idx+1:])
+		}
+		hit := false
+		for _, needle := range needles {
+			if needle != "" && strings.Contains(hay, needle) {
+				hit = true
+				break
+			}
+		}
+		if hit {
+			components[i].Reachability = vulnReachImported
+		} else {
+			components[i].Reachability = vulnReachNotImported
+		}
+	}
+}
+
 func discoverVulnLockfiles(paths []string) []string {
 	out := make([]string, 0)
 	for _, raw := range paths {

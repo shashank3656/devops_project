@@ -2,9 +2,22 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
+
+func TestVulnAlertKeysStayDeduped(t *testing.T) {
+	first := fmt.Sprintf("vuln:%d:%s:%s", 12, "fix_available", "2.4.2")
+	second := fmt.Sprintf("vuln:%d:%s:%s", 12, "fix_available", "2.4.2")
+	if first != second {
+		t.Fatal("retries of the same fix must reuse one logical alert key")
+	}
+	withdrawn := fmt.Sprintf("vuln:%d:%s", 12, "fix_withdrawn:2.4.2")
+	if withdrawn == first {
+		t.Fatal("a withdrawn fix must be a different event")
+	}
+}
 
 func TestCanonicalizeAdvisoryAliases(t *testing.T) {
 	canonical, aliases := canonicalizeAdvisoryIDs("CVE-2026-1111", "GHSA-aaaa-bbbb-cccc", "CVE-2026-1111")
@@ -140,12 +153,12 @@ func TestPatchPlanGroupsParentUpgrade(t *testing.T) {
 	matches := []vulnMatch{
 		{
 			CanonicalID: "GHSA-1", Confidence: vulnConfidenceConfirmed, FirstFixed: "2.4.2", Recommended: "2.4.2",
-			Component: vulnComponent{Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.0", ModulePath: "apps/api", Direct: false, ParentPackage: "demo-sdk"},
+			Component:     vulnComponent{Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.0", ModulePath: "apps/api", Direct: false, ParentPackage: "demo-sdk"},
 			ParentPackage: "demo-sdk",
 		},
 		{
 			CanonicalID: "GHSA-2", Confidence: vulnConfidenceConfirmed, FirstFixed: "2.4.2", Recommended: "2.4.2",
-			Component: vulnComponent{Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.1", ModulePath: "apps/api", Direct: false, ParentPackage: "demo-sdk"},
+			Component:     vulnComponent{Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.1", ModulePath: "apps/api", Direct: false, ParentPackage: "demo-sdk"},
 			ParentPackage: "demo-sdk",
 		},
 	}
@@ -333,6 +346,52 @@ func TestAcceptedInventorySchema(t *testing.T) {
 	}
 	if acceptedVulnInventorySchema("v2-private-code") {
 		t.Fatal("unknown schema must be rejected")
+	}
+}
+
+func TestParseVulnRepoProviders(t *testing.T) {
+	provider, owner, name := parseVulnRepo("https://gitlab.com/acme/platform/api.git")
+	if provider != "gitlab" || owner != "acme/platform" || name != "api" {
+		t.Fatalf("gitlab = %s %s %s", provider, owner, name)
+	}
+	provider, owner, name = parseVulnRepo("git@bitbucket.org:acme/api.git")
+	if provider != "bitbucket" || owner != "acme" || name != "api" {
+		t.Fatalf("bitbucket = %s %s %s", provider, owner, name)
+	}
+	provider, owner, name = parseVulnRepo("org/service")
+	if provider != "github" || owner != "org" || name != "service" {
+		t.Fatalf("github = %s %s %s", provider, owner, name)
+	}
+}
+
+func TestReachabilityUnknownWithoutSources(t *testing.T) {
+	items := []vulnComponent{{PackageName: "lodash"}}
+	applyReachability(items, nil, false)
+	if items[0].Reachability != vulnReachUnknown {
+		t.Fatalf("unscanned = %s", items[0].Reachability)
+	}
+	applyReachability(items, []string{"import lodash from 'lodash'"}, true)
+	if items[0].Reachability != vulnReachImported {
+		t.Fatalf("imported = %s", items[0].Reachability)
+	}
+	items[0].Reachability = ""
+	applyReachability(items, []string{"console.log('ok')"}, true)
+	if items[0].Reachability != vulnReachNotImported {
+		t.Fatalf("not imported = %s", items[0].Reachability)
+	}
+}
+
+func TestVulnPRCheckEnforceNeverMerges(t *testing.T) {
+	state, desc := vulnPRCheckDescription("incomplete", 0, 0, true)
+	if state != "pending" || !strings.Contains(desc, "does not merge") || !strings.Contains(desc, "Policy gate") {
+		t.Fatalf("enforced incomplete = %s %s", state, desc)
+	}
+	state, desc = vulnPRCheckDescription("complete", 0, 0, true)
+	if state != "success" || !strings.Contains(desc, "does not merge") {
+		t.Fatalf("enforced clean = %s %s", state, desc)
+	}
+	if strings.Contains(strings.ToLower(desc), "auto-merge") {
+		t.Fatal("gate must never claim merge")
 	}
 }
 

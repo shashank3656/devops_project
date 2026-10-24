@@ -7142,6 +7142,16 @@ html[data-theme] .devops-layout .work-board {
   gap: 12px;
 }
 
+.ops-minis--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  .ops-minis--four {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ops-mini {
   border-radius: 16px;
   color: inherit;
@@ -11544,6 +11554,16 @@ html[data-theme='dark'] .sre-sli--unknown { background: #192238; color: #c4b5fd;
 
 html[data-theme='dark'] .sre-cards--watch .sre-card.is-selected {
   outline-color: #c4b5fd;
+}
+
+html[data-theme] .devops-layout .portal-page .ops-minis--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  html[data-theme] .devops-layout .portal-page .ops-minis--four {
+    grid-template-columns: 1fr;
+  }
 }
 
 .sec-vuln-secondary {

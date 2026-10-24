@@ -239,6 +239,9 @@ func migrateSecurityVulnSchema() {
 	_, _ = DB.Exec(`ALTER TABLE vuln_advisories ADD COLUMN IF NOT EXISTS epss_percentile DOUBLE PRECISION`)
 	_, _ = DB.Exec(`ALTER TABLE vuln_exceptions ADD COLUMN IF NOT EXISTS kind VARCHAR(40) NOT NULL DEFAULT 'exception'`)
 	_, _ = DB.Exec(`ALTER TABLE vuln_exceptions ADD COLUMN IF NOT EXISTS issuer VARCHAR(200) NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_repositories ADD COLUMN IF NOT EXISTS enforce_pr_gate BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_components ADD COLUMN IF NOT EXISTS reachability VARCHAR(40) NOT NULL DEFAULT 'unknown'`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS reachability VARCHAR(40) NOT NULL DEFAULT 'unknown'`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS vuln_agents (
 			id SERIAL PRIMARY KEY,

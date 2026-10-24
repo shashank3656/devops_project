@@ -273,8 +273,53 @@ func runVulnIntelligenceSync(actorID int) (int, error) {
 	}
 
 	reevaluateStoredInventories()
+	invalidateWithdrawnVulnFixes()
 	_, _ = execContext(`UPDATE vuln_intel_runs SET state='succeeded', fetched=$2, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, runID, fetched)
 	return fetched, nil
+}
+
+func invalidateWithdrawnVulnFixes() {
+	if DB == nil {
+		return
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT f.id, f.canonical_id, COALESCE(f.first_fixed_version,'')
+		FROM vuln_findings f
+		JOIN vuln_advisories a ON a.id = f.advisory_id
+		WHERE a.withdrawn = TRUE AND f.patch_state IN ('fix_available','pr_linked')
+		  AND f.lifecycle NOT IN ('fixed','withdrawn','false_positive')
+	`)
+	if err != nil {
+		return
+	}
+	defer cancel()
+	defer rows.Close()
+	type row struct {
+		ID         int
+		Canonical  string
+		FirstFixed string
+	}
+	items := []row{}
+	for rows.Next() {
+		var item row
+		if rows.Scan(&item.ID, &item.Canonical, &item.FirstFixed) == nil {
+			items = append(items, item)
+		}
+	}
+	for _, item := range items {
+		_, _ = execContext(`UPDATE vuln_findings SET patch_state=$2 WHERE id=$1`, item.ID, vulnPatchNone)
+		_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail) VALUES ($1,'fix_withdrawn',$2)`, item.ID, "The listed fix was withdrawn. The candidate is invalidated; this is not recovery.")
+		notifyVulnEvent(item.ID, "fix_withdrawn:"+firstNonEmpty(item.FirstFixed, "none"), "Patch candidate withdrawn for "+item.Canonical, "The previously listed fix is no longer valid. The finding stays open until a replacement source-supported fix exists.")
+	}
+	_, _ = execContext(`
+		UPDATE vuln_patch_plans SET status='invalidated', updated_at=CURRENT_TIMESTAMP
+		WHERE status IN ('fix_available','pr_linked','open')
+		  AND package_name IN (
+		    SELECT DISTINCT f.package_name FROM vuln_findings f
+		    JOIN vuln_advisories a ON a.id = f.advisory_id
+		    WHERE a.withdrawn = TRUE
+		  )
+	`)
 }
 
 func fetchVulnFeedPost(rawURL string, payload any) ([]byte, error) {

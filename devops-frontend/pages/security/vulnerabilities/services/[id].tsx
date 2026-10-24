@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DataTable, EmptyState, formatOperationalTime, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { lifecycleLabel, patchLabel, queryText, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
+import { lifecycleLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
 
 type Service = {
   service_id: number;
@@ -30,6 +30,7 @@ type Finding = {
   patch_state: string;
   package_name: string;
   installed_version: string;
+  reachability?: string;
 };
 
 type Dep = {
@@ -39,6 +40,7 @@ type Dep = {
   path?: string;
   usage?: string;
   resolved?: boolean;
+  reachability?: string;
 };
 
 type Plan = { id: number; label: string; package_name: string; current_version: string; target_version: string; status: string };
@@ -130,6 +132,7 @@ export default function VulnServiceDetailPage() {
     { id: 'pkg', header: 'Package', cell: (item) => `${item.package_name}@${item.installed_version || 'unresolved'}` },
     { id: 'sev', header: 'Severity', cell: (item) => <span className={severityBadge(item.severity)}>{severityLabel(item.severity)}</span> },
     { id: 'fix', header: 'Patch', cell: (item) => patchLabel(item.patch_state) },
+    { id: 'reach', header: 'Reachability', cell: (item) => reachabilityLabel(item.reachability) },
     { id: 'state', header: 'State', cell: (item) => lifecycleLabel(item.lifecycle) },
   ];
 
@@ -221,7 +224,7 @@ export default function VulnServiceDetailPage() {
               <section className="portal-surface">
                 <table className="data-table">
                   <thead>
-                    <tr><th>Package</th><th>Version</th><th>Usage</th><th>Path</th></tr>
+                    <tr><th>Package</th><th>Version</th><th>Usage</th><th>Reachability</th><th>Path</th></tr>
                   </thead>
                   <tbody>
                     {deps.length ? deps.map((item, index) => (
@@ -229,10 +232,11 @@ export default function VulnServiceDetailPage() {
                         <td>{item.ecosystem} {item.package_name}</td>
                         <td>{item.version || (item.resolved === false ? 'Unresolved' : 'Unknown')}</td>
                         <td>{item.usage || 'dependency'}</td>
+                        <td>{reachabilityLabel(item.reachability)}</td>
                         <td>{item.path || 'Unknown'}</td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={4}>No stored inventory for this repository.</td></tr>
+                      <tr><td colSpan={5}>No stored inventory for this repository.</td></tr>
                     )}
                   </tbody>
                 </table>

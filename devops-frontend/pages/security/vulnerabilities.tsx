@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataTable, EmptyState, formatOperationalTime, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { asRows, lifecycleLabel, patchLabel, queryText, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_PRIMARY_TABS, VULN_SECONDARY_TABS, type VulnTab } from '../../lib/securityVuln';
+import { asRows, lifecycleLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_PRIMARY_TABS, VULN_SECONDARY_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 const DEVOPS_USER_KEY = 'devops_user';
@@ -17,6 +17,7 @@ type Overview = {
   registered_services?: number;
   scanned_repositories?: number;
   kev_matches?: number;
+  overdue?: number;
   intelligence_synced_at?: string;
   github_token_configured?: boolean;
   count_note?: string;
@@ -71,6 +72,7 @@ type FindingRow = {
   due_at?: string;
   last_seen_at?: string;
   service_id?: number;
+  reachability?: string;
 };
 
 type ScanRow = {
@@ -109,7 +111,7 @@ type AgentRow = { id: number; name: string; status: string; version?: string; la
 type CampaignRow = { canonical_id: string; title: string; severity: string; count: number; services?: string[] };
 type ComparisonRow = { id: number; pr_number: number; repository: string; state: string; coverage: string; introduced_critical: number; introduced_high: number; removed_count: number; note?: string };
 type NewDepRow = { repository: string; ecosystem: string; package_name: string; version: string; note?: string };
-type RepoConfig = { id: number; repository: string; collection_mode: string; owner_team?: string; schedule_minutes: number; alert_min_severity: string; allow_fork_prs: boolean; exclusions?: string; branch: string };
+type RepoConfig = { id: number; repository: string; provider?: string; collection_mode: string; owner_team?: string; schedule_minutes: number; alert_min_severity: string; allow_fork_prs: boolean; enforce_pr_gate?: boolean; exclusions?: string; branch: string };
 
 function known(value?: string): string {
   const text = (value || '').trim();
@@ -159,9 +161,14 @@ export default function GlobalVulnerabilitiesPage() {
   const [wizardAlert, setWizardAlert] = useState('high');
   const [wizardSchedule, setWizardSchedule] = useState('0');
   const [wizardForks, setWizardForks] = useState(false);
+  const [wizardGate, setWizardGate] = useState(false);
   const [wizardExclusions, setWizardExclusions] = useState('');
   const [kevOnly, setKevOnly] = useState(false);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [teamFilter, setTeamFilter] = useState('');
+  const [techFilter, setTechFilter] = useState('');
+  const [patchFilter, setPatchFilter] = useState('');
+  const [lifecycleFilter, setLifecycleFilter] = useState('');
   const [newRepo, setNewRepo] = useState('');
   const [newRepoBranch, setNewRepoBranch] = useState('main');
   const [compareDetail, setCompareDetail] = useState<{ id: number; items: { classification: string; canonical_id: string; package_name: string; severity: string; base_version?: string; head_version?: string }[] } | null>(null);
@@ -229,15 +236,34 @@ export default function GlobalVulnerabilitiesPage() {
     void load();
   }, [load, router.isReady]);
 
+  useEffect(() => {
+    const item = repos.find((row) => String(row.id) === wizardRepo);
+    if (!item) return;
+    setWizardMode(item.collection_mode || 'hosted');
+    setWizardTeam(item.owner_team || '');
+    setWizardAlert(item.alert_min_severity || 'high');
+    setWizardSchedule(String(item.schedule_minutes || 0));
+    setWizardForks(Boolean(item.allow_fork_prs));
+    setWizardGate(Boolean(item.enforce_pr_gate));
+    setWizardExclusions(item.exclusions || '');
+  }, [repos, wizardRepo]);
+
+  const teams = useMemo(() => Array.from(new Set(services.map((item) => item.team).filter((item): item is string => Boolean(item)))), [services]);
+  const technologies = useMemo(() => Array.from(new Set(services.flatMap((item) => item.technologies || []))), [services]);
+
   const visibleServices = useMemo(() => {
     const q = search.trim().toLowerCase();
     return services.filter((item) => {
       if (severity === 'critical' && item.critical_findings <= 0) return false;
       if (severity === 'high' && item.high_findings <= 0) return false;
+      if (teamFilter && item.team !== teamFilter) return false;
+      if (techFilter && !(item.technologies || []).includes(techFilter)) return false;
+      if (patchFilter === 'fix_available' && !(item.patch_readiness || '').toLowerCase().includes('candidate')) return false;
+      if (patchFilter === 'no_known_fix' && !(item.patch_readiness || '').toLowerCase().includes('no action')) return false;
       if (!q) return true;
-      return `${item.service} ${item.repository} ${item.team || ''}`.toLowerCase().includes(q);
+      return `${item.service} ${item.repository} ${item.team || ''} ${(item.technologies || []).join(' ')}`.toLowerCase().includes(q);
     });
-  }, [search, services, severity]);
+  }, [patchFilter, search, services, severity, teamFilter, techFilter]);
 
   const visibleAdvisories = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -254,10 +280,13 @@ export default function GlobalVulnerabilitiesPage() {
     return findings.filter((item) => {
       if (severity && item.severity !== severity) return false;
       if (unassignedOnly && (item.owner || '').trim()) return false;
+      if (lifecycleFilter && item.lifecycle !== lifecycleFilter) return false;
+      if (patchFilter && item.patch_state !== patchFilter) return false;
+      if (teamFilter && !`${item.service || ''} ${item.repository}`.toLowerCase().includes(teamFilter.toLowerCase())) return false;
       if (!q) return true;
-      return `${item.canonical_id} ${item.package_name} ${item.repository} ${item.service || ''}`.toLowerCase().includes(q);
+      return `${item.canonical_id} ${item.package_name} ${item.repository} ${item.service || ''} ${item.owner || ''}`.toLowerCase().includes(q);
     });
-  }, [findings, search, severity, unassignedOnly]);
+  }, [findings, lifecycleFilter, patchFilter, search, severity, teamFilter, unassignedOnly]);
 
   async function scanSelected() {
     if (!selected.length) {
@@ -357,6 +386,7 @@ export default function GlobalVulnerabilitiesPage() {
       alert_min_severity: wizardAlert,
       schedule_minutes: Number(wizardSchedule) || 0,
       allow_fork_prs: wizardForks,
+      enforce_pr_gate: wizardGate,
       exclusions: wizardExclusions,
     });
     setBusy(false);
@@ -468,6 +498,7 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'sev', header: 'Severity', cell: (item) => <span className={severityBadge(item.severity)}>{severityLabel(item.severity)}</span> },
     { id: 'priority', header: 'Priority', cell: (item) => item.priority || 'review' },
     { id: 'fix', header: 'Fix', cell: (item) => item.patch_state === 'fix_available' ? <span className="sec-sev sec-sev--high">Fix available{item.first_fixed_version ? ` · ${item.first_fixed_version}` : ''}</span> : (item.first_fixed_version || patchLabel(item.patch_state)) },
+    { id: 'reach', header: 'Reachability', cell: (item) => reachabilityLabel(item.reachability) },
     { id: 'owner', header: 'Owner', cell: (item) => known(item.owner) },
     { id: 'due', header: 'Due', cell: (item) => (item.due_at ? formatOperationalTime(item.due_at) : 'None') },
     { id: 'seen', header: 'Last scan', cell: (item) => (item.last_seen_at ? formatOperationalTime(item.last_seen_at) : 'Unknown') },
@@ -526,16 +557,16 @@ export default function GlobalVulnerabilitiesPage() {
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
         <p className="ops-scores__meta">
-          <span>Last intelligence sync · {overview.intelligence_synced_at ? formatOperationalTime(overview.intelligence_synced_at) : 'Unknown'}</span>
+          <span>Last intelligence sync · {overview.intelligence_synced_at ? formatOperationalTime(overview.intelligence_synced_at) : 'Unknown'} · KEV matches {loading ? '…' : overview.kev_matches ?? 0} · Overdue {loading ? '…' : overview.overdue ?? 0}</span>
           <span>Hosted collector · {hosted ? 'Configured' : 'Offline'}</span>
         </p>
-        <section className="ops-minis" aria-label="Vulnerability scorecards">
+        <section className="ops-minis ops-minis--four" aria-label="Vulnerability scorecards">
           <article className="ops-mini ops-mini--peach">
             <span>Critical findings</span>
             <strong>{loading ? '…' : overview.critical_findings ?? 'Unknown'}</strong>
             <small>Confirmed repository occurrences</small>
           </article>
-          <article className="ops-mini">
+          <article className="ops-mini ops-mini--peach">
             <span>High findings</span>
             <strong>{loading ? '…' : overview.high_findings ?? 'Unknown'}</strong>
             <small>Confirmed repository occurrences</small>
@@ -577,7 +608,47 @@ export default function GlobalVulnerabilitiesPage() {
                 <option value="medium">Medium</option>
               </select>
             </label>
-            <button type="button" className="btn btn-secondary" onClick={() => { setSearch(''); setSeverity(''); setKevOnly(false); setUnassignedOnly(false); }}>Clear</button>
+            {tab === 'services' ? (
+              <label>
+                Team
+                <select className="input" value={teamFilter} onChange={(event) => setTeamFilter(event.target.value)}>
+                  <option value="">All teams</option>
+                  {teams.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+            ) : null}
+            {tab === 'services' ? (
+              <label>
+                Technology
+                <select className="input" value={techFilter} onChange={(event) => setTechFilter(event.target.value)}>
+                  <option value="">All technologies</option>
+                  {technologies.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+            ) : null}
+            <label>
+              Fix availability
+              <select className="input" value={patchFilter} onChange={(event) => setPatchFilter(event.target.value)}>
+                <option value="">All patch states</option>
+                <option value="fix_available">Fix available</option>
+                <option value="no_known_fix">No known fix</option>
+                <option value="pr_linked">PR linked</option>
+              </select>
+            </label>
+            {tab === 'findings' ? (
+              <label>
+                Lifecycle
+                <select className="input" value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
+                  <option value="">All states</option>
+                  <option value="open">Open</option>
+                  <option value="acknowledged">Acknowledged</option>
+                  <option value="in_remediation">In remediation</option>
+                  <option value="pending_verification">Pending verification</option>
+                  <option value="risk_accepted">Risk accepted</option>
+                </select>
+              </label>
+            ) : null}
+            <button type="button" className="btn btn-secondary" onClick={() => { setSearch(''); setSeverity(''); setKevOnly(false); setUnassignedOnly(false); setTeamFilter(''); setTechFilter(''); setPatchFilter(''); setLifecycleFilter(''); }}>Clear</button>
             {tab === 'advisories' ? <label className="label"><input type="checkbox" checked={kevOnly} onChange={(event) => setKevOnly(event.target.checked)} /> KEV only</label> : null}
             {tab === 'findings' ? <label className="label"><input type="checkbox" checked={unassignedOnly} onChange={(event) => setUnassignedOnly(event.target.checked)} /> Unassigned queue</label> : null}
           </form>
@@ -850,8 +921,9 @@ export default function GlobalVulnerabilitiesPage() {
               </form>
             ) : null}
             {bootstrap ? <p className="form-section__copy">Bootstrap token (shown once): {bootstrap}</p> : null}
+            <p className="form-section__copy">Run the private outbound agent from a runner that can read the repository. Put OPSTRELLIS_API_URL and VULN_BOOTSTRAP_TOKEN in workers/.env, then <code>python3 workers/vuln_agent.py</code>. Hosted scans use the API worker with GITHUB_TOKEN, GITLAB_TOKEN, or BITBUCKET_TOKEN. This agent uploads inventory only. It does not print tokens, pull images, or write findings itself.</p>
             <h3 className="portal-surface__title">CI / SBOM upload</h3>
-            <p className="form-section__copy">Upload a CycloneDX or SPDX document bound to a registered repository and commit. Images are not pulled from a Docker socket.</p>
+            <p className="form-section__copy">Upload a CycloneDX or SPDX document bound to a registered repository and commit. Images are not pulled from a Docker socket. CI can also run <code>python3 workers/vuln_agent.py --ci</code> with VULN_PORTAL_TOKEN and VULN_REPOSITORY_ID.</p>
             <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
               <label className="label">Repository
                 <select className="input" value={sbomRepo} onChange={(event) => setSbomRepo(event.target.value)}>
@@ -910,6 +982,7 @@ export default function GlobalVulnerabilitiesPage() {
                   <label className="label">Schedule minutes<input className="input" value={wizardSchedule} onChange={(event) => setWizardSchedule(event.target.value)} /></label>
                   <label className="label">Path exclusions<input className="input" value={wizardExclusions} onChange={(event) => setWizardExclusions(event.target.value)} /></label>
                   <label className="label"><input type="checkbox" checked={wizardForks} onChange={(event) => setWizardForks(event.target.checked)} /> Allow fork pull requests</label>
+                  <label className="label"><input type="checkbox" checked={wizardGate} onChange={(event) => setWizardGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
                 </>
               ) : null}
               {wizardStep === 4 ? (
@@ -923,7 +996,7 @@ export default function GlobalVulnerabilitiesPage() {
               ) : null}
               {wizardStep === 5 ? (
                 <p className="form-section__copy">
-                  Mode {wizardMode}. Team {wizardTeam || 'unchanged'}. Alerts from {wizardAlert}. Fork PRs {wizardForks ? 'allowed' : 'blocked'}. Hosted collector never executes package scripts.
+                  Mode {wizardMode}. Team {wizardTeam || 'unchanged'}. Alerts from {wizardAlert}. Fork PRs {wizardForks ? 'allowed' : 'blocked'}. Comparison gate {wizardGate ? 'enforced' : 'informational'}. Hosted collector never executes package scripts.
                 </p>
               ) : null}
               <div className="portal-form-actions">
@@ -933,7 +1006,7 @@ export default function GlobalVulnerabilitiesPage() {
             </form>
             <h3 className="portal-surface__title">Register a repository</h3>
             <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void registerRepo(); }}>
-              <label className="label">owner/name<input className="input" value={newRepo} onChange={(event) => setNewRepo(event.target.value)} placeholder="org/service" /></label>
+              <label className="label">Repository<input className="input" value={newRepo} onChange={(event) => setNewRepo(event.target.value)} placeholder="org/service or gitlab.com/group/service" /></label>
               <label className="label">Branch<input className="input" value={newRepoBranch} onChange={(event) => setNewRepoBranch(event.target.value)} /></label>
               <div className="portal-form-actions">
                 <button type="submit" className="btn btn-secondary" disabled={busy || !isManager}>Register</button>

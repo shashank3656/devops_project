@@ -10570,6 +10570,21 @@ body {
   .di-row__branch { grid-area: branch; }
 }
 
+.portal-page .ops-minis--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+html[data-theme='dark'] .devops-layout .ops-minis--four .ops-mini:not([class*='ops-mini--']) {
+  background: #192238;
+  color: #f5f7fc;
+}
+
+@media (max-width: 980px) {
+  .portal-page .ops-minis--four {
+    grid-template-columns: 1fr;
+  }
+}
+
 .sec-vuln-secondary {
   display: flex;
   flex-wrap: wrap;

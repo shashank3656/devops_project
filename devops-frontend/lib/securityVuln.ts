@@ -80,6 +80,17 @@ export function patchLabel(value: string): string {
   }
 }
 
+export function reachabilityLabel(value?: string): string {
+  switch ((value || '').toLowerCase()) {
+    case 'imported':
+      return 'Imported';
+    case 'not_imported':
+      return 'Not imported';
+    default:
+      return 'Unknown';
+  }
+}
+
 export function lifecycleLabel(value: string): string {
   switch ((value || '').toLowerCase()) {
     case 'open':

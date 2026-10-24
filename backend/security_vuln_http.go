@@ -182,7 +182,7 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 		agents, _ := listVulnAgents(userID)
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
 			"sources":               listVulnSources(),
-			"hosted_collector":      strings.TrimSpace(GitHubToken) != "",
+			"hosted_collector":      vulnHostedCollectorConfigured(),
 			"private_agents":        agents,
 			"status":                "ok",
 			"hosted_collector_note": hostedCollectorNote(),
@@ -237,12 +237,12 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 		if body.ProjectID > 0 && !ensureProjectVisible(w, r, userID, body.ProjectID) {
 			return
 		}
-		owner, name := parseGitHubRepo(body.Repository)
+		provider, owner, name := parseVulnRepo(body.Repository)
 		if owner == "" {
-			writeAPIError(w, r, http.StatusBadRequest, "repository must be owner/name", nil)
+			writeAPIError(w, r, http.StatusBadRequest, "repository must be owner/name or a GitHub, GitLab, or Bitbucket URL", nil)
 			return
 		}
-		id, err := ensureVulnRepository(body.ProjectID, owner, name, firstNonEmpty(body.Branch, "main"), body.OwnerTeam, userID)
+		id, err := ensureVulnRepository(body.ProjectID, provider, owner, name, firstNonEmpty(body.Branch, "main"), body.OwnerTeam, userID)
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "repository could not be registered", err)
 			return
@@ -364,13 +364,6 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 	default:
 		writeAPIError(w, r, http.StatusNotFound, "not found", nil)
 	}
-}
-
-func hostedCollectorNote() string {
-	if strings.TrimSpace(GitHubToken) != "" {
-		return "Hosted collector is configured on the API."
-	}
-	return "Hosted collector is offline until GITHUB_TOKEN is set on the API. That name is stored as a secret reference, not shown here."
 }
 
 func handleVulnFindingPatch(w http.ResponseWriter, r *http.Request, userID, id int, current *vulnFindingView) {
@@ -504,16 +497,16 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 			if !ok {
 				return
 			}
-			owner, name := parseGitHubRepo(item.Repo)
+			provider, owner, name := parseVulnRepo(item.Repo)
 			if owner == "" {
-				writeAPIError(w, r, http.StatusConflict, "Service "+item.Service+" has no GitHub repository mapping.", nil)
+				writeAPIError(w, r, http.StatusConflict, "Service "+item.Service+" has no source-control repository mapping.", nil)
 				return
 			}
 			projectID := 0
 			if item.ProjectID != nil {
 				projectID = *item.ProjectID
 			}
-			repoID, err := ensureVulnRepository(projectID, owner, name, firstNonEmpty(body.Branch, "main"), item.Team, userID)
+			repoID, err := ensureVulnRepository(projectID, provider, owner, name, firstNonEmpty(body.Branch, "main"), item.Team, userID)
 			if err != nil {
 				writeAPIError(w, r, http.StatusInternalServerError, "repository could not be registered", err)
 				return
@@ -531,7 +524,7 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 			jobIDs = append(jobIDs, jobID)
 		}
 	} else {
-		owner, name := parseGitHubRepo(body.Repository)
+		provider, owner, name := parseVulnRepo(body.Repository)
 		if owner == "" {
 			writeAPIError(w, r, http.StatusBadRequest, "Select at least one service or a repository.", nil)
 			return
@@ -539,7 +532,7 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 		if body.ProjectID > 0 && !ensureProjectVisible(w, r, userID, body.ProjectID) {
 			return
 		}
-		repoID, err := ensureVulnRepository(body.ProjectID, owner, name, firstNonEmpty(body.Branch, "main"), "", userID)
+		repoID, err := ensureVulnRepository(body.ProjectID, provider, owner, name, firstNonEmpty(body.Branch, "main"), "", userID)
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "repository could not be registered", err)
 			return
@@ -566,12 +559,8 @@ func enqueueVulnScanFromFinding(userID, findingID int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	owner, name := parseGitHubRepo(item.Repo)
-	if owner == "" {
-		return 0, fmt.Errorf("finding repository is missing")
-	}
 	var repoID int
-	if err := queryRowContext(`SELECT id FROM vuln_repositories WHERE owner=$1 AND name=$2`, owner, name).Scan(&repoID); err != nil {
+	if err := queryRowContext(`SELECT repo_id FROM vuln_findings WHERE id=$1`, findingID).Scan(&repoID); err != nil || repoID <= 0 {
 		return 0, fmt.Errorf("repository is not registered")
 	}
 	return enqueueVulnScan(repoID, item.ServiceID, item.ProjectID, userID, "verify", "")

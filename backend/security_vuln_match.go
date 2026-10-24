@@ -29,6 +29,10 @@ const (
 	vulnLifeMitigated = "mitigated"
 	vulnLifeWithdrawn = "withdrawn"
 
+	vulnReachImported    = "imported"
+	vulnReachNotImported = "not_imported"
+	vulnReachUnknown     = "unknown"
+
 	vulnPatchUnknown   = "unknown"
 	vulnPatchNone      = "no_known_fix"
 	vulnPatchAvailable = "fix_available"
@@ -65,6 +69,7 @@ type vulnComponent struct {
 	Resolved      bool   `json:"resolved"`
 	ParentPackage string `json:"parent_package,omitempty"`
 	Usage         string `json:"usage,omitempty"`
+	Reachability  string `json:"reachability,omitempty"`
 }
 
 type vulnCoverageGap struct {
