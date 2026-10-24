@@ -28,16 +28,24 @@ func runVulnScanJob(jobID int) {
 		return
 	}
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET state='running', stage='clone', started_at=COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id=$1`, jobID)
-	appendVulnScanLog(jobID, "clone", "Resolving the latest commit on the registered branch.")
 	provider, owner, name, branch, exclusions := vulnProviderGitHub, "", "", "main", ""
 	if err := queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github'), owner, name, branch, COALESCE(exclusions,'') FROM vuln_repositories WHERE id = $1`, repoID).Scan(&provider, &owner, &name, &branch, &exclusions); err != nil {
 		failVulnScan(jobID, "queued", "Repository registration was not found.")
 		return
 	}
-	commit, err := resolveVulnCommit(provider, owner, name, branch)
+	appendVulnScanLog(jobID, "clone", "Resolving the latest commit for "+owner+"/"+name+". Registered branch is "+branch+".")
+	commit, usedBranch, err := resolveVulnCommit(provider, owner, name, branch)
 	if err != nil {
 		failVulnScan(jobID, "clone", err.Error())
 		return
+	}
+	if usedBranch == "" {
+		usedBranch = branch
+	}
+	if usedBranch != branch {
+		appendVulnScanLog(jobID, "clone", "Registered branch "+branch+" was missing. Using "+usedBranch+" instead.")
+		persistVulnRepoBranch(repoID, usedBranch)
+		branch = usedBranch
 	}
 	appendVulnScanLog(jobID, "clone", "Latest commit "+commit+" on "+branch+".")
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='inventory', commit_sha=$2 WHERE id=$1`, jobID, commit)
@@ -174,24 +182,73 @@ func loadGitHubPRSHAs(owner, name string, prNumber int, allowFork bool) (string,
 	return baseSHA, headSHA, nil
 }
 
-func resolveGitHubVulnCommit(owner, name, branch string) (string, error) {
+func persistVulnRepoBranch(repoID int, branch string) {
+	branch = strings.TrimSpace(branch)
+	if repoID <= 0 || branch == "" {
+		return
+	}
+	_, _ = execContext(`UPDATE vuln_repositories SET branch=$2, updated_at=CURRENT_TIMESTAMP WHERE id=$1`, repoID, branch)
+}
+
+func githubStatusCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	if responseErr, ok := err.(*github.ErrorResponse); ok && responseErr.Response != nil {
+		return responseErr.Response.StatusCode
+	}
+	return 0
+}
+
+func resolveGitHubVulnCommit(owner, name, branch string) (string, string, error) {
 	client, err := vulnGitHubClient()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	ctx := context.Background()
-	ref, _, err := client.Git.GetRef(ctx, owner, name, "refs/heads/"+branch)
-	if err != nil {
-		return "", fmt.Errorf("The default branch could not be resolved. Check repository access.")
+	defaultBranch := ""
+	repo, resp, repoErr := client.Repositories.Get(ctx, owner, name)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
 	}
-	sha := ""
-	if ref != nil && ref.Object != nil {
-		sha = ref.Object.GetSHA()
+	if repoErr != nil {
+		switch status {
+		case 401, 403:
+			return "", "", fmt.Errorf("Repository %s/%s could not be read. Check repository access.", owner, name)
+		case 404:
+			return "", "", fmt.Errorf("Repository %s/%s was not found with this token. Private repos need GITHUB_TOKEN access.", owner, name)
+		}
+	} else if repo != nil {
+		defaultBranch = strings.TrimSpace(repo.GetDefaultBranch())
 	}
-	if sha == "" {
-		return "", fmt.Errorf("The commit SHA was empty.")
+	candidates := vulnBranchCandidates(branch, defaultBranch)
+	var lastErr error
+	for _, cand := range candidates {
+		ref, _, refErr := client.Git.GetRef(ctx, owner, name, "heads/"+cand)
+		if refErr != nil {
+			lastErr = refErr
+			continue
+		}
+		sha := ""
+		if ref != nil && ref.Object != nil {
+			sha = strings.TrimSpace(ref.Object.GetSHA())
+		}
+		if sha == "" {
+			lastErr = fmt.Errorf("The commit SHA was empty.")
+			continue
+		}
+		return sha, cand, nil
 	}
-	return sha, nil
+	if lastErr != nil {
+		switch githubStatusCode(lastErr) {
+		case 401, 403:
+			return "", "", fmt.Errorf("Repository %s/%s could not be read. Check repository access.", owner, name)
+		case 404:
+			return "", "", fmt.Errorf("No matching branch was found for %s/%s. Tried %s.", owner, name, strings.Join(candidates, ", "))
+		}
+	}
+	return "", "", fmt.Errorf("The latest commit could not be resolved. Check repository access.")
 }
 
 func listGitHubVulnRepoPaths(owner, name, sha string) ([]string, bool, error) {

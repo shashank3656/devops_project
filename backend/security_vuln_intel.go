@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -272,7 +273,7 @@ func runVulnIntelligenceSync(actorID int) (int, error) {
 		markSource("epss", "ok", time.Now().UTC().Format(time.RFC3339), "", epssCount)
 	}
 
-	enrichInventoryFromOSV(loadLatestStoredComponents(), false)
+	enrichInventoryFromOSV(loadLatestStoredComponents(), true)
 	repos, matched := reevaluateStoredInventories()
 	invalidateWithdrawnVulnFixes()
 	_, _ = execContext(`UPDATE vuln_intel_runs SET state='succeeded', fetched=$2, matched=$3, repos_assessed=$4, finished_at=CURRENT_TIMESTAMP WHERE id=$1`, runID, fetched, matched, repos)
@@ -562,12 +563,29 @@ func parseOSVQuery(body []byte, eco, pkg string) []vulnAdvisoryRecord {
 			}
 		}
 		sevLabel := vuln.DatabaseSpecific.Severity
-		if sevLabel == "" && len(vuln.Severity) > 0 {
-			sevLabel = vuln.Severity[0].Score
+		score := 0.0
+		vector := ""
+		for _, item := range vuln.Severity {
+			raw := strings.TrimSpace(item.Score)
+			if strings.HasPrefix(strings.ToUpper(raw), "CVSS:") {
+				vector = raw
+				if parsed := cvssScoreFromVector(raw); parsed > score {
+					score = parsed
+				}
+				continue
+			}
+			if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > score {
+				score = parsed
+				continue
+			}
+			if sevLabel == "" {
+				sevLabel = raw
+			}
 		}
 		out = append(out, vulnAdvisoryRecord{
 			CanonicalID: canonical, Aliases: aliases, Title: firstNonEmpty(vuln.Summary, canonical), Summary: vuln.Summary,
-			Severity: severityFromScore(0, sevLabel), FirstFixed: firstFixed, Ranges: ranges, Source: "osv",
+			Severity: severityFromScore(score, sevLabel), CVSSScore: score, CVSSVector: vector, CVSSProvider: "osv",
+			FirstFixed: firstFixed, Ranges: ranges, Source: "osv",
 			SourceURL: "https://osv.dev/vulnerability/" + vuln.ID, Withdrawn: strings.TrimSpace(vuln.Withdrawn) != "",
 		})
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -50,6 +51,20 @@ const (
 	vulnPriorityHigh      = "high"
 	vulnPriorityReview    = "review"
 )
+
+func isInternetAdvisoryMatch(source string) bool {
+	src := strings.ToLower(strings.TrimSpace(source))
+	return src == "" || src == vulnMatchScan || src == vulnMatchIntel
+}
+
+func isOpenVulnLifecycle(life string) bool {
+	switch strings.ToLower(strings.TrimSpace(life)) {
+	case vulnLifeFixed, vulnLifeFalsePos, vulnLifeWithdrawn:
+		return false
+	default:
+		return true
+	}
+}
 
 type vulnAffectedRange struct {
 	Ecosystem    string `json:"ecosystem"`
@@ -323,11 +338,13 @@ func parseVersionParts(raw string) [3]int {
 }
 
 func severityFromScore(score float64, label string) string {
-	text := strings.ToLower(strings.TrimSpace(label))
-	switch text {
-	case vulnSevCritical, vulnSevHigh, vulnSevMedium, vulnSevLow:
-		if score <= 0 {
-			return text
+	text := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(label), "_", " "))
+	if parsed, err := strconv.ParseFloat(text, 64); err == nil {
+		score = parsed
+	}
+	if score <= 0 {
+		if fromVector := cvssScoreFromVector(label); fromVector > 0 {
+			score = fromVector
 		}
 	}
 	switch {
@@ -339,11 +356,60 @@ func severityFromScore(score float64, label string) string {
 		return vulnSevMedium
 	case score > 0:
 		return vulnSevLow
-	case text != "":
-		return text
+	case strings.Contains(text, "crit"):
+		return vulnSevCritical
+	case text == "high" || text == "important":
+		return vulnSevHigh
+	case text == "medium" || text == "moderate" || text == "mod":
+		return vulnSevMedium
+	case text == "low" || text == "minor":
+		return vulnSevLow
 	default:
 		return vulnSevUnknown
 	}
+}
+
+func cvssScoreFromVector(raw string) float64 {
+	vector := strings.ToUpper(strings.TrimSpace(raw))
+	if !strings.Contains(vector, "CVSS:3") {
+		return 0
+	}
+	parts := map[string]string{}
+	for _, piece := range strings.Split(vector, "/") {
+		if strings.HasPrefix(piece, "CVSS:") {
+			continue
+		}
+		kv := strings.SplitN(piece, ":", 2)
+		if len(kv) == 2 {
+			parts[kv[0]] = kv[1]
+		}
+	}
+	av := map[string]float64{"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.2}[parts["AV"]]
+	ac := map[string]float64{"L": 0.77, "H": 0.44}[parts["AC"]]
+	prUnchanged := map[string]float64{"N": 0.85, "L": 0.62, "H": 0.27}
+	prChanged := map[string]float64{"N": 0.85, "L": 0.68, "H": 0.50}
+	pr := prUnchanged[parts["PR"]]
+	if parts["S"] == "C" {
+		pr = prChanged[parts["PR"]]
+	}
+	ui := map[string]float64{"N": 0.85, "R": 0.62}[parts["UI"]]
+	impact := map[string]float64{"H": 0.56, "L": 0.22, "N": 0}
+	iss := 1 - ((1 - impact[parts["C"]]) * (1 - impact[parts["I"]]) * (1 - impact[parts["A"]]))
+	impactScore := 6.42 * iss
+	if parts["S"] == "C" {
+		impactScore = 7.52*(iss-0.029) - 3.25*math.Pow(iss-0.02, 15)
+	}
+	if impactScore <= 0 || av == 0 || ac == 0 || pr == 0 || ui == 0 {
+		if impactScore <= 0 {
+			return 0
+		}
+	}
+	exploit := 8.22 * av * ac * pr * ui
+	base := math.Min(impactScore+exploit, 10)
+	if parts["S"] == "C" {
+		base = math.Min(1.08*(impactScore+exploit), 10)
+	}
+	return math.Ceil(base*10) / 10
 }
 
 func patchStateForFix(fixed string) string {

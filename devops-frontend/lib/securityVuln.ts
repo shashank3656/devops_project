@@ -31,8 +31,10 @@ export function severityBadge(value: string): string {
     case 'critical':
       return 'sec-sev sec-sev--critical';
     case 'high':
+    case 'important':
       return 'sec-sev sec-sev--high';
     case 'medium':
+    case 'moderate':
       return 'sec-sev sec-sev--medium';
     default:
       return 'sec-sev';
@@ -44,10 +46,13 @@ export function severityLabel(value: string): string {
     case 'critical':
       return 'Critical';
     case 'high':
+    case 'important':
       return 'High';
     case 'medium':
+    case 'moderate':
       return 'Medium';
     case 'low':
+    case 'minor':
       return 'Low';
     default:
       return 'Unknown';
@@ -75,6 +80,11 @@ export function patchLabel(value: string): string {
     default:
       return value ? value.replace(/_/g, ' ') : 'Unknown';
   }
+}
+
+export function isInternetAdvisoryMatch(value?: string): boolean {
+  const source = (value || 'scan').toLowerCase();
+  return source === 'intel' || source === 'scan';
 }
 
 export function matchSourceLabel(value?: string): string {

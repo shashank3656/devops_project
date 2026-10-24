@@ -438,10 +438,28 @@ func TestDueAtForPriority(t *testing.T) {
 	}
 }
 
+func TestSeverityFromOSVLabelsAndCVSS(t *testing.T) {
+	if severityFromScore(0, "MODERATE") != vulnSevMedium {
+		t.Fatal("moderate must map to medium")
+	}
+	if severityFromScore(0, "HIGH") != vulnSevHigh {
+		t.Fatal("HIGH must map to high")
+	}
+	if severityFromScore(0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N") != vulnSevHigh {
+		t.Fatalf("cvss vector = %s", severityFromScore(0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"))
+	}
+	if severityFromScore(9.8, "") != vulnSevCritical {
+		t.Fatal("9.8 must be critical")
+	}
+	if severityFromScore(0, "not-a-severity") != vulnSevUnknown {
+		t.Fatal("unknown labels stay unknown")
+	}
+}
+
 func TestParseOSVQueryKeepsNpmRangeAndSeverity(t *testing.T) {
-	body := []byte(`{"vulns":[{"id":"GHSA-DEMO-NODE","aliases":["CVE-2026-4242"],"summary":"express before 4.17.3","database_specific":{"severity":"HIGH"},"affected":[{"package":{"ecosystem":"npm","name":"express"},"ranges":[{"events":[{"introduced":"0"},{"fixed":"4.17.3"}]}]}]}]}`)
+	body := []byte(`{"vulns":[{"id":"GHSA-DEMO-NODE","aliases":["CVE-2026-4242"],"summary":"express before 4.17.3","database_specific":{"severity":"MODERATE"},"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}],"affected":[{"package":{"ecosystem":"npm","name":"express"},"ranges":[{"events":[{"introduced":"0"},{"fixed":"4.17.3"}]}]}]}]}`)
 	got := parseOSVQuery(body, "nodejs", "express")
-	if len(got) != 1 || got[0].CanonicalID == "" || got[0].Severity != "high" {
+	if len(got) != 1 || got[0].CanonicalID == "" || got[0].Severity != vulnSevHigh {
 		t.Fatalf("parsed = %+v", got)
 	}
 	if len(got[0].Ranges) != 1 || got[0].Ranges[0].Package != "express" || got[0].Ranges[0].Fixed != "4.17.3" {
@@ -516,6 +534,33 @@ func TestIntelMatchDetailDoesNotClaimRescan(t *testing.T) {
 	empty := intelMatchDetail("  ")
 	if !strings.Contains(empty, "stored inventory") || !strings.Contains(empty, "was not fetched again") {
 		t.Fatalf("empty = %q", empty)
+	}
+}
+
+func TestVulnBranchCandidatesPrefersDefault(t *testing.T) {
+	got := vulnBranchCandidates("main", "master")
+	if len(got) < 2 || got[0] != "main" || got[1] != "master" {
+		t.Fatalf("got = %v", got)
+	}
+	uniq := vulnBranchCandidates("main", "main")
+	if len(uniq) != 2 || uniq[0] != "main" || uniq[1] != "master" {
+		t.Fatalf("uniq = %v", uniq)
+	}
+	empty := vulnBranchCandidates("", "")
+	if len(empty) != 2 || empty[0] != "main" || empty[1] != "master" {
+		t.Fatalf("empty = %v", empty)
+	}
+}
+
+func TestInternetAdvisoryMatchIncludesScan(t *testing.T) {
+	if !isInternetAdvisoryMatch("scan") || !isInternetAdvisoryMatch("intel") || !isInternetAdvisoryMatch("") {
+		t.Fatal("scan and intel are internet package matches")
+	}
+	if isInternetAdvisoryMatch("manual") {
+		t.Fatal("unknown origin is not an internet match")
+	}
+	if !isOpenVulnLifecycle("open") || isOpenVulnLifecycle("fixed") {
+		t.Fatal("open findings count; fixed findings do not")
 	}
 }
 

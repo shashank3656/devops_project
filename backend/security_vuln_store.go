@@ -173,9 +173,13 @@ func upsertVulnAdvisory(item vulnAdvisoryRecord) error {
 		ON CONFLICT (canonical_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			summary = EXCLUDED.summary,
-			severity = EXCLUDED.severity,
-			cvss_score = EXCLUDED.cvss_score,
-			cvss_vector = EXCLUDED.cvss_vector,
+			severity = CASE
+				WHEN EXCLUDED.severity IN ('critical','high','medium','low') THEN EXCLUDED.severity
+				WHEN vuln_advisories.severity IN ('critical','high','medium','low') THEN vuln_advisories.severity
+				ELSE EXCLUDED.severity
+			END,
+			cvss_score = CASE WHEN EXCLUDED.cvss_score > 0 THEN EXCLUDED.cvss_score ELSE vuln_advisories.cvss_score END,
+			cvss_vector = CASE WHEN EXCLUDED.cvss_vector = '' THEN vuln_advisories.cvss_vector ELSE EXCLUDED.cvss_vector END,
 			affected_json = EXCLUDED.affected_json,
 			first_fixed_version = EXCLUDED.first_fixed_version,
 			source_url = EXCLUDED.source_url,
@@ -262,6 +266,7 @@ func listVulnAdvisories(severity string, kevOnly bool, limit, offset int) ([]vul
 		item.PublishedAt = nullTimePtr(published)
 		item.ModifiedAt = nullTimePtr(modified)
 		item.FetchedAt = nullTimePtr(fetched)
+		item.Severity = severityFromScore(item.CVSSScore, item.Severity)
 		item.Aliases = aliasesForAdvisory(item.ID)
 		item.Affected = countConfirmedForAdvisory(item.CanonicalID)
 		item.PublicLabel = "Public intelligence. This count is not organization exposure."
@@ -288,6 +293,7 @@ func getVulnAdvisory(id, userID int) (*vulnAdvisoryView, []vulnFindingView, erro
 	item.PublishedAt = nullTimePtr(published)
 	item.ModifiedAt = nullTimePtr(modified)
 	item.FetchedAt = nullTimePtr(fetched)
+	item.Severity = severityFromScore(item.CVSSScore, item.Severity)
 	item.Aliases = aliasesForAdvisory(item.ID)
 	item.Affected = countConfirmedForAdvisory(item.CanonicalID)
 	item.PublicLabel = "Public intelligence. This count is not organization exposure."
@@ -1031,6 +1037,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		}
 		item.DueAt = nullTimePtr(due)
 		item.LastSeenAt = nullTimePtr(seen)
+		item.Severity = severityFromScore(0, item.Severity)
 		out = append(out, item)
 	}
 	return out, nil
@@ -1205,6 +1212,7 @@ func listFindingsForScan(scanID int) []vulnScanFinding {
 	for rows.Next() {
 		var item vulnScanFinding
 		if rows.Scan(&item.ID, &item.Canonical, &item.Severity, &item.Package, &item.Installed, &item.Lifecycle, &item.Confidence) == nil {
+			item.Severity = severityFromScore(0, item.Severity)
 			out = append(out, item)
 		}
 	}
@@ -1321,7 +1329,7 @@ func vulnOverview(userID int) map[string]any {
 	}
 	intelOpen := 0
 	for _, item := range findings {
-		if item.MatchSource == vulnMatchIntel && item.Lifecycle != vulnLifeFixed && item.Lifecycle != vulnLifeFalsePos && item.Lifecycle != vulnLifeWithdrawn {
+		if isInternetAdvisoryMatch(item.MatchSource) && isOpenVulnLifecycle(item.Lifecycle) {
 			intelOpen++
 		}
 	}

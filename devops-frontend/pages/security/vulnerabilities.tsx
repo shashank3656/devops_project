@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CopyButton, DataTable, EmptyState, formatOperationalTime, Stepper, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { asRows, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
+import { asRows, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 const DEVOPS_USER_KEY = 'devops_user';
@@ -356,7 +356,7 @@ export default function GlobalVulnerabilitiesPage() {
     return findings.filter((item) => {
       if (severity && item.severity !== severity) return false;
       if (unassignedOnly && (item.owner || '').trim()) return false;
-      if (intelOnly && item.match_source !== 'intel') return false;
+      if (intelOnly && !isInternetAdvisoryMatch(item.match_source)) return false;
       if (lifecycleFilter && item.lifecycle !== lifecycleFilter) return false;
       if (patchFilter && item.patch_state !== patchFilter) return false;
       if (teamFilter && !`${item.service || ''} ${item.repository}`.toLowerCase().includes(teamFilter.toLowerCase())) return false;
@@ -364,6 +364,17 @@ export default function GlobalVulnerabilitiesPage() {
       return `${item.canonical_id} ${item.package_name} ${item.repository} ${item.service || ''} ${item.owner || ''}`.toLowerCase().includes(q);
     });
   }, [findings, intelOnly, lifecycleFilter, patchFilter, search, severity, teamFilter, unassignedOnly]);
+
+  function findingsEmptyBody() {
+    const latest = scans[0];
+    if (latest && latest.state === 'failed') {
+      return `Latest scan #${latest.id} for ${latest.repository} failed${latest.error ? `: ${latest.error}` : ''}. Internet advisory matches need a stored lockfile. Open History and read that job’s Scan log.`;
+    }
+    if (intelOnly) {
+      return 'A public advisory becomes a finding only after it matches a stored lockfile for a registered repository. Scan-origin package matches are included here.';
+    }
+    return 'A finished scan is not a clean bill of health. Open History for that job’s results and log.';
+  }
 
   async function scanSelected() {
     if (!selected.length) {
@@ -891,9 +902,11 @@ export default function GlobalVulnerabilitiesPage() {
             {scans[0] ? (
               <p className="form-section__copy">
                 Latest scan #{scans[0].id} for {scans[0].repository} is {scans[0].state}
-                {(scans[0].finding_count ?? 0) > 0
-                  ? ` and created ${scans[0].finding_count} package findings.`
-                  : '. It created no package findings. Open History and read that job’s Scan log — a failed clone, missing lockfile, or OSV miss all look empty here.'}
+                {scans[0].state === 'failed'
+                  ? `${scans[0].error ? ` (${scans[0].error})` : ''}. Clone must succeed before internet advisories can match this repo.`
+                  : (scans[0].finding_count ?? 0) > 0
+                    ? ` and created ${scans[0].finding_count} package findings.`
+                    : '. It created no package findings. Open History and read that job’s Scan log — a failed clone, missing lockfile, or OSV miss all look empty here.'}
               </p>
             ) : (
               <p className="form-section__copy">No scan has finished yet. Register a repository on Config or use Scan latest commit on History.</p>
@@ -903,7 +916,7 @@ export default function GlobalVulnerabilitiesPage() {
               columns={findingColumns}
               rows={visibleFindings}
               rowKey={(item) => String(item.id)}
-              empty={<EmptyState title={loading ? 'Loading findings' : intelOnly ? 'No internet advisory matches' : 'No package findings in this scope'} body={intelOnly ? 'A public advisory becomes a finding only after it matches a stored lockfile for a registered repository.' : 'A finished scan is not a clean bill of health. Open History for that job’s results and log.'} />}
+              empty={<EmptyState title={loading ? 'Loading findings' : intelOnly ? 'No internet advisory matches' : 'No package findings in this scope'} body={findingsEmptyBody()} />}
             />
           </section>
         ) : null}

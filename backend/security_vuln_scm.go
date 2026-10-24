@@ -128,7 +128,21 @@ func hostedCollectorNote() string {
 	return "Hosted collector is configured on the API for " + strings.Join(names, ", ") + "."
 }
 
-func resolveVulnCommit(provider, owner, name, branch string) (string, error) {
+func vulnBranchCandidates(requested, defaultBranch string) []string {
+	out := make([]string, 0, 4)
+	seen := map[string]bool{}
+	for _, item := range []string{requested, defaultBranch, "main", "master"} {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func resolveVulnCommit(provider, owner, name, branch string) (sha, used string, err error) {
 	switch normalizeVulnProvider(provider) {
 	case vulnProviderGitLab:
 		return resolveGitLabCommit(owner, name, branch)
@@ -165,20 +179,38 @@ func gitlabProjectPath(owner, name string) string {
 	return url.QueryEscape(strings.Trim(owner+"/"+name, "/"))
 }
 
-func resolveGitLabCommit(owner, name, branch string) (string, error) {
-	raw, err := gitlabDo(http.MethodGet, "/api/v4/projects/"+gitlabProjectPath(owner, name)+"/repository/branches/"+url.PathEscape(branch), nil)
+func gitlabDefaultBranch(owner, name string) string {
+	raw, err := gitlabDo(http.MethodGet, "/api/v4/projects/"+gitlabProjectPath(owner, name), nil)
 	if err != nil {
-		return "", fmt.Errorf("The default branch could not be resolved. Check repository access.")
+		return ""
 	}
 	var payload struct {
-		Commit struct {
-			ID string `json:"id"`
-		} `json:"commit"`
+		DefaultBranch string `json:"default_branch"`
 	}
-	if json.Unmarshal(raw, &payload) != nil || strings.TrimSpace(payload.Commit.ID) == "" {
-		return "", fmt.Errorf("The commit SHA was empty.")
+	if json.Unmarshal(raw, &payload) != nil {
+		return ""
 	}
-	return payload.Commit.ID, nil
+	return strings.TrimSpace(payload.DefaultBranch)
+}
+
+func resolveGitLabCommit(owner, name, branch string) (string, string, error) {
+	candidates := vulnBranchCandidates(branch, gitlabDefaultBranch(owner, name))
+	for _, cand := range candidates {
+		raw, err := gitlabDo(http.MethodGet, "/api/v4/projects/"+gitlabProjectPath(owner, name)+"/repository/branches/"+url.PathEscape(cand), nil)
+		if err != nil {
+			continue
+		}
+		var payload struct {
+			Commit struct {
+				ID string `json:"id"`
+			} `json:"commit"`
+		}
+		if json.Unmarshal(raw, &payload) != nil || strings.TrimSpace(payload.Commit.ID) == "" {
+			continue
+		}
+		return payload.Commit.ID, cand, nil
+	}
+	return "", "", fmt.Errorf("No matching branch was found for %s/%s. Tried %s.", owner, name, strings.Join(candidates, ", "))
 }
 
 func listGitLabRepoPaths(owner, name, sha string) ([]string, bool, error) {
@@ -250,20 +282,40 @@ func fetchGitLabRepoFile(owner, name, filePath, sha string) (string, bool, error
 	return content, true, nil
 }
 
-func resolveBitbucketCommit(owner, name, branch string) (string, error) {
-	raw, err := bitbucketDo(http.MethodGet, fmt.Sprintf("/2.0/repositories/%s/%s/refs/branches/%s", url.PathEscape(owner), url.PathEscape(name), url.PathEscape(branch)), nil)
+func bitbucketDefaultBranch(owner, name string) string {
+	raw, err := bitbucketDo(http.MethodGet, fmt.Sprintf("/2.0/repositories/%s/%s", url.PathEscape(owner), url.PathEscape(name)), nil)
 	if err != nil {
-		return "", fmt.Errorf("The default branch could not be resolved. Check repository access.")
+		return ""
 	}
 	var payload struct {
-		Target struct {
-			Hash string `json:"hash"`
-		} `json:"target"`
+		Mainbranch struct {
+			Name string `json:"name"`
+		} `json:"mainbranch"`
 	}
-	if json.Unmarshal(raw, &payload) != nil || strings.TrimSpace(payload.Target.Hash) == "" {
-		return "", fmt.Errorf("The commit SHA was empty.")
+	if json.Unmarshal(raw, &payload) != nil {
+		return ""
 	}
-	return payload.Target.Hash, nil
+	return strings.TrimSpace(payload.Mainbranch.Name)
+}
+
+func resolveBitbucketCommit(owner, name, branch string) (string, string, error) {
+	candidates := vulnBranchCandidates(branch, bitbucketDefaultBranch(owner, name))
+	for _, cand := range candidates {
+		raw, err := bitbucketDo(http.MethodGet, fmt.Sprintf("/2.0/repositories/%s/%s/refs/branches/%s", url.PathEscape(owner), url.PathEscape(name), url.PathEscape(cand)), nil)
+		if err != nil {
+			continue
+		}
+		var payload struct {
+			Target struct {
+				Hash string `json:"hash"`
+			} `json:"target"`
+		}
+		if json.Unmarshal(raw, &payload) != nil || strings.TrimSpace(payload.Target.Hash) == "" {
+			continue
+		}
+		return payload.Target.Hash, cand, nil
+	}
+	return "", "", fmt.Errorf("No matching branch was found for %s/%s. Tried %s.", owner, name, strings.Join(candidates, ", "))
 }
 
 func listBitbucketRepoPaths(owner, name, sha string) ([]string, bool, error) {
