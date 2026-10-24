@@ -177,8 +177,8 @@ export default function GlobalVulnerabilitiesPage() {
   }, []);
 
   const setTab = (next: VulnTab) => {
-    const query = { ...router.query, tab: next };
-    if (next === 'services') delete query.tab;
+    const { tab: _tab, ...rest } = router.query;
+    const query = next === 'services' ? rest : { ...rest, tab: next };
     void router.replace({ pathname: '/security/vulnerabilities', query }, undefined, { shallow: true });
   };
 
@@ -593,6 +593,7 @@ export default function GlobalVulnerabilitiesPage() {
             </div>
             {selected.length ? <p className="form-section__copy">{selected.length} services selected. Shared repositories are scanned once.</p> : null}
             <DataTable
+              label="Registered services"
               columns={serviceColumns}
               rows={visibleServices}
               rowKey={(item) => String(item.service_id)}
@@ -615,6 +616,7 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </div>
             <DataTable
+              label="Global advisories"
               columns={advisoryColumns}
               rows={visibleAdvisories}
               rowKey={(item) => String(item.id)}
@@ -632,6 +634,7 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </div>
             <DataTable
+              label="Repository findings"
               columns={findingColumns}
               rows={visibleFindings}
               rowKey={(item) => String(item.id)}
@@ -649,6 +652,7 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </div>
             <DataTable
+              label="Advisory campaigns"
               columns={[
                 { id: 'id', header: 'Advisory', cell: (item: CampaignRow) => item.canonical_id },
                 { id: 'title', header: 'Title', cell: (item: CampaignRow) => item.title || 'Unknown' },
@@ -672,6 +676,7 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </div>
             <DataTable
+              label="Patch plans"
               columns={planColumns}
               rows={plans}
               rowKey={(item) => String(item.id)}
@@ -689,6 +694,7 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </div>
             <DataTable
+              label="Scan history"
               columns={scanColumns}
               rows={scans}
               rowKey={(item) => String(item.id)}
@@ -718,6 +724,7 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </form>
             <DataTable
+              label="PR comparisons"
               columns={[
                 { id: 'pr', header: 'PR', cell: (item: ComparisonRow) => <button type="button" className="btn btn-secondary btn-sm" onClick={() => void openComparison(item.id)}>{item.repository}#{item.pr_number}</button> },
                 { id: 'state', header: 'State', cell: (item: ComparisonRow) => `${item.state} · ${item.coverage}` },
@@ -763,6 +770,7 @@ export default function GlobalVulnerabilitiesPage() {
               </div>
             </div>
             <DataTable
+              label="New dependencies"
               columns={[
                 { id: 'repo', header: 'Repository', cell: (item: NewDepRow) => item.repository },
                 { id: 'pkg', header: 'Package', cell: (item: NewDepRow) => `${item.ecosystem} ${item.package_name}@${item.version || 'Unknown'}` },

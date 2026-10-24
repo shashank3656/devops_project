@@ -209,6 +209,7 @@ export default function VulnServiceDetailPage() {
             {tab === 'vulnerabilities' ? (
               <section className="portal-surface">
                 <DataTable
+                  label="Service findings"
                   columns={findingColumns}
                   rows={findings}
                   rowKey={(item) => String(item.id)}
@@ -240,6 +241,7 @@ export default function VulnServiceDetailPage() {
             {tab === 'plan' ? (
               <section className="portal-surface">
                 <DataTable
+                  label="Service patch plans"
                   columns={[
                     { id: 'label', header: 'Plan', cell: (item: Plan) => item.label },
                     { id: 'pkg', header: 'Upgrade', cell: (item: Plan) => `${item.package_name} ${item.current_version} → ${item.target_version}` },
@@ -254,6 +256,7 @@ export default function VulnServiceDetailPage() {
             {tab === 'history' ? (
               <section className="portal-surface">
                 <DataTable
+                  label="Service scan history"
                   columns={[
                     { id: 'id', header: 'Job', cell: (item: Scan) => `#${item.id}` },
                     { id: 'state', header: 'State', cell: (item: Scan) => `${item.state} · ${item.stage}` },

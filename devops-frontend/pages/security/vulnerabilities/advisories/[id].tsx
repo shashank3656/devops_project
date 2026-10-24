@@ -104,6 +104,7 @@ export default function VulnAdvisoryDetailPage() {
                 </div>
               </div>
               <DataTable
+                label="Repository matches for this advisory"
                 columns={columns}
                 rows={findings}
                 rowKey={(item) => String(item.id)}
