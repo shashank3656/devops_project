@@ -194,6 +194,7 @@ export default function GlobalVulnerabilitiesPage() {
   const [wizardForks, setWizardForks] = useState(false);
   const [wizardGate, setWizardGate] = useState(false);
   const [wizardExclusions, setWizardExclusions] = useState('');
+  const [wizardBranch, setWizardBranch] = useState('main');
   const [kevOnly, setKevOnly] = useState(false);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [intelOnly, setIntelOnly] = useState(false);
@@ -233,7 +234,7 @@ export default function GlobalVulnerabilitiesPage() {
     if (projectId) params.set('project_id', projectId);
     if (serviceId) params.set('service_id', serviceId);
     const projectQuery = params.toString() ? `?${params.toString()}` : '';
-    const [overviewRes, serviceRes, advisoryRes, findingRes, scanRes, planRes, sourceRes, campaignRes, compareRes, depRes, repoRes] = await Promise.all([
+    const [overviewRes, serviceRes, advisoryRes, findingRes, scanRes, planRes, sourceRes, campaignRes, compareRes, depRes, repoRes, meRes] = await Promise.all([
       vulnRequest(apiUrl, '/api/devops/security/overview'),
       vulnRequest(apiUrl, `/api/devops/security/services${projectQuery}`),
       vulnRequest(apiUrl, '/api/devops/security/advisories?severity=all'),
@@ -245,6 +246,7 @@ export default function GlobalVulnerabilitiesPage() {
       vulnRequest(apiUrl, '/api/devops/security/pr-comparisons'),
       vulnRequest(apiUrl, '/api/devops/security/new-dependencies'),
       vulnRequest(apiUrl, '/api/devops/security/repositories'),
+      vulnRequest(apiUrl, '/api/devops/me'),
     ]);
     if (overviewRes.status !== 200) {
       setError(typeof overviewRes.body.error === 'string' ? overviewRes.body.error : 'This workspace could not be loaded.');
@@ -265,6 +267,9 @@ export default function GlobalVulnerabilitiesPage() {
     setRepos(asRows<RepoConfig>(repoRes.body.repositories));
     setHosted(Boolean(sourceRes.body.hosted_collector));
     setHostedNote(typeof sourceRes.body.hosted_collector_note === 'string' ? sourceRes.body.hosted_collector_note : '');
+    const profile = meRes.body.devops_profile as { is_manager?: boolean } | undefined;
+    const role = typeof meRes.body.role === 'string' ? meRes.body.role : '';
+    setIsManager(Boolean(profile?.is_manager) || role === 'admin');
     setLoading(false);
   }, [apiUrl, projectId, serviceId]);
 
@@ -321,6 +326,7 @@ export default function GlobalVulnerabilitiesPage() {
     setWizardForks(Boolean(item.allow_fork_prs));
     setWizardGate(Boolean(item.enforce_pr_gate));
     setWizardExclusions(item.exclusions || '');
+    setWizardBranch(item.branch || 'main');
   }, [repos, wizardRepo]);
 
   const showScorecards = tab === 'services' || tab === 'advisories' || tab === 'findings' || tab === 'remediation' || tab === 'campaigns';
@@ -495,7 +501,12 @@ export default function GlobalVulnerabilitiesPage() {
       setError('Select a registered repository.');
       return;
     }
+    if (!isManager) {
+      setError('Saving policy needs a manager role.');
+      return;
+    }
     setBusy(true);
+    setError('');
     const result = await vulnRequest(apiUrl, `/api/devops/security/repositories/${repoId}`, 'PATCH', {
       collection_mode: wizardMode,
       owner_team: wizardTeam,
@@ -504,14 +515,32 @@ export default function GlobalVulnerabilitiesPage() {
       allow_fork_prs: wizardForks,
       enforce_pr_gate: wizardGate,
       exclusions: wizardExclusions,
+      branch: wizardBranch.trim(),
     });
     setBusy(false);
     if (result.status !== 200) {
       setError(typeof result.body.error === 'string' ? result.body.error : 'Repository policy could not be saved.');
       return;
     }
-    setNotice('Repository policy saved. Tokens stay on the API as environment names.');
+    setNotice('Repository policy saved. Hosted tokens stay on the API.');
     void load();
+  }
+
+  function openPolicy(item: RepoConfig) {
+    setWizardRepo(String(item.id));
+    setWizardMode(item.collection_mode || 'hosted');
+    setWizardTeam(item.owner_team || '');
+    setWizardAlert(item.alert_min_severity || 'high');
+    setWizardSchedule(String(item.schedule_minutes || 0));
+    setWizardForks(Boolean(item.allow_fork_prs));
+    setWizardGate(Boolean(item.enforce_pr_gate));
+    setWizardExclusions(item.exclusions || '');
+    setWizardBranch(item.branch || 'main');
+    setWizardStep(5);
+    setError('');
+    window.requestAnimationFrame(() => {
+      document.getElementById('sec-vuln-policy')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   async function registerRepo() {
@@ -673,7 +702,7 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'edit', header: '', cell: (item) => (
       <span className="sec-vuln-row-actions">
         <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void scanRepositories([item.id])}>Scan now</button>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setWizardRepo(String(item.id)); setWizardStep(0); }}>Edit policy</button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => openPolicy(item)}>Edit policy</button>
       </span>
     ) },
   ], [apiUrl, busy, projectId]);
@@ -1264,11 +1293,11 @@ export default function GlobalVulnerabilitiesPage() {
                 empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then set policy below." />}
               />
             </section>
-            <section className="portal-surface sec-vuln-wizard">
+            <section className="portal-surface sec-vuln-wizard" id="sec-vuln-policy">
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Repository policy</h2>
-                  <p className="portal-surface__subtitle">Connection, ownership, schedule, and alerts. This form never displays secret values.</p>
+                  <p className="portal-surface__subtitle">{wizardRepo ? `Editing ${repos.find((item) => String(item.id) === wizardRepo)?.repository || 'the selected repository'}.` : 'Connection, ownership, schedule, and alerts. This form never displays secret values.'}</p>
                 </div>
               </div>
               <Stepper
@@ -1298,12 +1327,17 @@ export default function GlobalVulnerabilitiesPage() {
                   </label>
                 ) : null}
                 {wizardStep === 1 ? (
-                  <label className="label">Repository
-                    <select className="input" value={wizardRepo} onChange={(event) => setWizardRepo(event.target.value)}>
-                      <option value="">Select a registered repository</option>
-                      {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
-                    </select>
-                  </label>
+                  <>
+                    <label className="label">Repository
+                      <select className="input" value={wizardRepo} onChange={(event) => setWizardRepo(event.target.value)}>
+                        <option value="">Select a registered repository</option>
+                        {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
+                      </select>
+                    </label>
+                    <label className="label">Branch
+                      <input className="input" value={wizardBranch} onChange={(event) => setWizardBranch(event.target.value)} placeholder="main" />
+                    </label>
+                  </>
                 ) : null}
                 {wizardStep === 2 ? (
                   <label className="label">Owner team<input className="input" value={wizardTeam} onChange={(event) => setWizardTeam(event.target.value)} placeholder="Team that owns this repository" /></label>
@@ -1329,6 +1363,7 @@ export default function GlobalVulnerabilitiesPage() {
                   <dl className="sec-vuln-status">
                     <div><dt>Repository</dt><dd>{repos.find((item) => String(item.id) === wizardRepo)?.repository || 'Select a repository'}</dd></div>
                     <div><dt>Collection</dt><dd>{collectionModeLabel(wizardMode)}</dd></div>
+                    <div><dt>Branch</dt><dd>{wizardBranch || 'Unchanged'}</dd></div>
                     <div><dt>Owner team</dt><dd>{wizardTeam || 'Unchanged'}</dd></div>
                     <div><dt>Alerts from</dt><dd>{wizardAlert}</dd></div>
                     <div><dt>Fork PRs</dt><dd>{wizardForks ? 'Allowed' : 'Blocked'}</dd></div>

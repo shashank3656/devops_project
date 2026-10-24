@@ -282,10 +282,35 @@ func parseMixLock(filePath, module, content string) vulnParsedInventory {
 	return out
 }
 
+func npmDeclaredVersion(raw string) (string, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" || value == "*" || value == "latest" || strings.HasPrefix(value, "http") || strings.HasPrefix(value, "git") || strings.HasPrefix(value, "file:") || strings.HasPrefix(value, "workspace:") || strings.HasPrefix(value, "npm:") {
+		return "", false
+	}
+	for _, prefix := range []string{">=", "<=", ">", "<", "=", "^", "~"} {
+		if strings.HasPrefix(value, prefix) {
+			value = strings.TrimSpace(strings.TrimPrefix(value, prefix))
+			break
+		}
+	}
+	if i := strings.IndexAny(value, " |"); i >= 0 {
+		value = strings.TrimSpace(value[:i])
+	}
+	value = strings.TrimPrefix(value, "v")
+	if value == "" || strings.ContainsAny(value, "xX*") {
+		return "", false
+	}
+	parts := strings.Split(value, ".")
+	return value, len(parts) >= 2
+}
+
 func parsePackageJSONRuntime(filePath, module, content string) vulnParsedInventory {
 	out := vulnParsedInventory{Modules: []string{module}}
 	var doc struct {
-		Engines map[string]string `json:"engines"`
+		Engines              map[string]string `json:"engines"`
+		Dependencies         map[string]string `json:"dependencies"`
+		DevDependencies      map[string]string `json:"devDependencies"`
+		OptionalDependencies map[string]string `json:"optionalDependencies"`
 	}
 	if json.Unmarshal([]byte(content), &doc) != nil {
 		return out
@@ -298,6 +323,35 @@ func parsePackageJSONRuntime(filePath, module, content string) vulnParsedInvento
 		out.Coverage = append(out.Coverage, vulnCoverageGap{
 			Path: filePath, Adapter: "node",
 			Reason: "package.json engines.node is declared runtime evidence, not an observed production version.",
+		})
+	}
+	addDeclared := func(deps map[string]string, dev bool) {
+		for name, spec := range deps {
+			name = strings.TrimSpace(name)
+			version, resolved := npmDeclaredVersion(spec)
+			if name == "" || version == "" {
+				continue
+			}
+			out.Components = append(out.Components, vulnComponent{
+				Ecosystem:   "npm",
+				PackageName: normalizePackageName("npm", name),
+				Version:     version,
+				PURL:        "pkg:npm/" + normalizePackageName("npm", name) + "@" + version,
+				Path:        filePath,
+				ModulePath:  module,
+				Direct:      true,
+				Dev:         dev,
+				Resolved:    resolved,
+			})
+		}
+	}
+	addDeclared(doc.Dependencies, false)
+	addDeclared(doc.OptionalDependencies, false)
+	addDeclared(doc.DevDependencies, true)
+	if len(doc.Dependencies)+len(doc.DevDependencies)+len(doc.OptionalDependencies) > 0 {
+		out.Coverage = append(out.Coverage, vulnCoverageGap{
+			Path: filePath, Adapter: "npm",
+			Reason: "package.json declared versions were used because a lockfile was not preferred for this module. This is not an installed lockfile pin.",
 		})
 	}
 	return out

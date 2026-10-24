@@ -360,9 +360,7 @@ func updateVulnRepoConfig(id int, body map[string]any) error {
 		alert = "high"
 	}
 	branch, _ := body["branch"].(string)
-	if branch == "" {
-		branch = "main"
-	}
+	branch = strings.TrimSpace(branch)
 	schedule := 0
 	switch v := body["schedule_minutes"].(type) {
 	case float64:
@@ -379,7 +377,7 @@ func updateVulnRepoConfig(id int, body map[string]any) error {
 	_, err := execContext(`
 		UPDATE vuln_repositories
 		SET collection_mode=$2, owner_team=CASE WHEN $3='' THEN owner_team ELSE $3 END, exclusions=$4,
-		    alert_min_severity=$5, branch=$6, schedule_minutes=$7, allow_fork_prs=$8, enforce_pr_gate=$9, enabled=$10, updated_at=CURRENT_TIMESTAMP
+		    alert_min_severity=$5, branch=CASE WHEN $6='' THEN branch ELSE $6 END, schedule_minutes=$7, allow_fork_prs=$8, enforce_pr_gate=$9, enabled=$10, updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, id, mode, strings.TrimSpace(team), strings.TrimSpace(excl), alert, branch, schedule, allowFork, enforceGate, enabled)
 	return err

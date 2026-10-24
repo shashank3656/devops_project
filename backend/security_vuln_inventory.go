@@ -571,6 +571,35 @@ func mergeParsedInventories(items []vulnParsedInventory) vulnParsedInventory {
 			}
 		}
 	}
+	out.Components = preferResolvedLockfileComponents(out.Components)
+	return out
+}
+
+func preferResolvedLockfileComponents(components []vulnComponent) []vulnComponent {
+	locked := map[string]bool{}
+	for _, item := range components {
+		base := path.Base(item.Path)
+		if !item.Resolved || item.Usage == "declared_runtime" || item.Usage == "image_tag" {
+			continue
+		}
+		if base == "package.json" {
+			continue
+		}
+		locked[item.ModulePath+"|"+normalizeEcosystem(item.Ecosystem)+"|"+normalizePackageName(item.Ecosystem, item.PackageName)] = true
+	}
+	if len(locked) == 0 {
+		return components
+	}
+	out := make([]vulnComponent, 0, len(components))
+	for _, item := range components {
+		if path.Base(item.Path) == "package.json" && item.Usage != "declared_runtime" {
+			key := item.ModulePath + "|" + normalizeEcosystem(item.Ecosystem) + "|" + normalizePackageName(item.Ecosystem, item.PackageName)
+			if locked[key] {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
 	return out
 }
 

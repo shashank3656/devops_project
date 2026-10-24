@@ -266,7 +266,7 @@ func listVulnAdvisories(severity string, kevOnly bool, limit, offset int) ([]vul
 		item.PublishedAt = nullTimePtr(published)
 		item.ModifiedAt = nullTimePtr(modified)
 		item.FetchedAt = nullTimePtr(fetched)
-		item.Severity = severityFromScore(item.CVSSScore, item.Severity)
+		item.Severity = normalizeStoredSeverity(item.CVSSScore, item.Severity, item.CVSSVector)
 		item.Aliases = aliasesForAdvisory(item.ID)
 		item.Affected = countConfirmedForAdvisory(item.CanonicalID)
 		item.PublicLabel = "Public intelligence. This count is not organization exposure."
@@ -293,7 +293,7 @@ func getVulnAdvisory(id, userID int) (*vulnAdvisoryView, []vulnFindingView, erro
 	item.PublishedAt = nullTimePtr(published)
 	item.ModifiedAt = nullTimePtr(modified)
 	item.FetchedAt = nullTimePtr(fetched)
-	item.Severity = severityFromScore(item.CVSSScore, item.Severity)
+	item.Severity = normalizeStoredSeverity(item.CVSSScore, item.Severity, item.CVSSVector)
 	item.Aliases = aliasesForAdvisory(item.ID)
 	item.Affected = countConfirmedForAdvisory(item.CanonicalID)
 	item.PublicLabel = "Public intelligence. This count is not organization exposure."
@@ -1007,7 +1007,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 	}
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT f.id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), COALESCE(s.service,''), COALESCE(f.service_id,0), COALESCE(f.project_id,0),
-		       f.canonical_id, a.title, a.severity, f.priority, f.priority_reason, f.lifecycle, f.patch_state, f.confidence,
+		       f.canonical_id, a.title, a.severity, COALESCE(a.cvss_score,0), COALESCE(a.cvss_vector,''), f.priority, f.priority_reason, f.lifecycle, f.patch_state, f.confidence,
 		       f.ecosystem, f.package_name, f.installed_version, f.first_fixed_version, f.recommended_version, f.parent_package,
 		       f.module_path, f.path, f.owner, a.kev, f.pr_url, f.change_ref, f.due_at, f.last_seen_at, a.source_url,
 		       COALESCE((SELECT commit_sha FROM vuln_scan_jobs WHERE id = f.last_scan_id), ''), COALESCE(NULLIF(f.reachability,''),'unknown'),
@@ -1029,7 +1029,9 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 	for rows.Next() {
 		var item vulnFindingView
 		var due, seen sql.NullTime
-		if err := rows.Scan(&item.ID, &item.Repo, &item.Service, &item.ServiceID, &item.ProjectID, &item.CanonicalID, &item.Title, &item.Severity,
+		var cvssScore float64
+		var cvssVector string
+		if err := rows.Scan(&item.ID, &item.Repo, &item.Service, &item.ServiceID, &item.ProjectID, &item.CanonicalID, &item.Title, &item.Severity, &cvssScore, &cvssVector,
 			&item.Priority, &item.PriorityReason, &item.Lifecycle, &item.PatchState, &item.Confidence, &item.Ecosystem, &item.PackageName,
 			&item.Installed, &item.FirstFixed, &item.Recommended, &item.ParentPackage, &item.ModulePath, &item.Path, &item.Owner, &item.KEV,
 			&item.PRURL, &item.ChangeRef, &due, &seen, &item.SourceURL, &item.CommitSHA, &item.Reachability, &item.MatchSource); err != nil {
@@ -1037,7 +1039,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		}
 		item.DueAt = nullTimePtr(due)
 		item.LastSeenAt = nullTimePtr(seen)
-		item.Severity = severityFromScore(0, item.Severity)
+		item.Severity = normalizeStoredSeverity(cvssScore, item.Severity, cvssVector)
 		out = append(out, item)
 	}
 	return out, nil
@@ -1196,7 +1198,7 @@ func listFindingsForScan(scanID int) []vulnScanFinding {
 		return []vulnScanFinding{}
 	}
 	rows, cancel, err := queryRowsWithTimeout(`
-		SELECT f.id, f.canonical_id, a.severity, f.package_name, f.installed_version, f.lifecycle, f.confidence
+		SELECT f.id, f.canonical_id, a.severity, COALESCE(a.cvss_score,0), COALESCE(a.cvss_vector,''), f.package_name, f.installed_version, f.lifecycle, f.confidence
 		FROM vuln_findings f
 		JOIN vuln_advisories a ON a.id = f.advisory_id
 		WHERE f.last_scan_id = $1
@@ -1211,8 +1213,10 @@ func listFindingsForScan(scanID int) []vulnScanFinding {
 	out := []vulnScanFinding{}
 	for rows.Next() {
 		var item vulnScanFinding
-		if rows.Scan(&item.ID, &item.Canonical, &item.Severity, &item.Package, &item.Installed, &item.Lifecycle, &item.Confidence) == nil {
-			item.Severity = severityFromScore(0, item.Severity)
+		var cvssScore float64
+		var cvssVector string
+		if rows.Scan(&item.ID, &item.Canonical, &item.Severity, &cvssScore, &cvssVector, &item.Package, &item.Installed, &item.Lifecycle, &item.Confidence) == nil {
+			item.Severity = normalizeStoredSeverity(cvssScore, item.Severity, cvssVector)
 			out = append(out, item)
 		}
 	}

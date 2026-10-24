@@ -44,6 +44,16 @@ type githubAdvisoryPayload struct {
 		Score        float64 `json:"score"`
 		VectorString string  `json:"vector_string"`
 	} `json:"cvss"`
+	CvssSeverities *struct {
+		CvssV3 *struct {
+			Score        float64 `json:"score"`
+			VectorString string  `json:"vector_string"`
+		} `json:"cvss_v3"`
+		CvssV4 *struct {
+			Score        float64 `json:"score"`
+			VectorString string  `json:"vector_string"`
+		} `json:"cvss_v4"`
+	} `json:"cvss_severities"`
 	Vulnerabilities []struct {
 		Package struct {
 			Ecosystem string `json:"ecosystem"`
@@ -154,6 +164,16 @@ func parseGitHubAdvisories(body []byte) []vulnAdvisoryRecord {
 			score = row.CVSS.Score
 			vector = row.CVSS.VectorString
 		}
+		if row.CvssSeverities != nil {
+			if row.CvssSeverities.CvssV3 != nil && row.CvssSeverities.CvssV3.Score > score {
+				score = row.CvssSeverities.CvssV3.Score
+				vector = row.CvssSeverities.CvssV3.VectorString
+			}
+			if score <= 0 && row.CvssSeverities.CvssV4 != nil && row.CvssSeverities.CvssV4.Score > 0 {
+				score = row.CvssSeverities.CvssV4.Score
+				vector = row.CvssSeverities.CvssV4.VectorString
+			}
+		}
 		ranges := make([]vulnAffectedRange, 0, len(row.Vulnerabilities))
 		firstFixed := ""
 		eco, pkg := "", ""
@@ -180,7 +200,7 @@ func parseGitHubAdvisories(body []byte) []vulnAdvisoryRecord {
 			Aliases:      aliases,
 			Title:        firstNonEmpty(row.Summary, canonical),
 			Summary:      summary,
-			Severity:     severityFromScore(score, row.Severity),
+			Severity:     normalizeStoredSeverity(score, row.Severity, vector),
 			CVSSScore:    score,
 			CVSSVector:   vector,
 			CVSSProvider: "github",
@@ -584,7 +604,7 @@ func parseOSVQuery(body []byte, eco, pkg string) []vulnAdvisoryRecord {
 		}
 		out = append(out, vulnAdvisoryRecord{
 			CanonicalID: canonical, Aliases: aliases, Title: firstNonEmpty(vuln.Summary, canonical), Summary: vuln.Summary,
-			Severity: severityFromScore(score, sevLabel), CVSSScore: score, CVSSVector: vector, CVSSProvider: "osv",
+			Severity: normalizeStoredSeverity(score, sevLabel, vector), CVSSScore: score, CVSSVector: vector, CVSSProvider: "osv",
 			FirstFixed: firstFixed, Ranges: ranges, Source: "osv",
 			SourceURL: "https://osv.dev/vulnerability/" + vuln.ID, Withdrawn: strings.TrimSpace(vuln.Withdrawn) != "",
 		})
@@ -596,7 +616,20 @@ func enrichAdvisoriesFromNVD() (int, error) {
 	if DB == nil || !sourceEnabled("nvd") {
 		return 0, nil
 	}
-	rows, cancel, err := queryRowsWithTimeout(`SELECT canonical_id FROM vuln_advisories WHERE canonical_id LIKE 'CVE-%' ORDER BY fetched_at DESC LIMIT 20`)
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT DISTINCT cve_id FROM (
+			SELECT a.canonical_id AS cve_id FROM vuln_advisories a
+			WHERE a.canonical_id LIKE 'CVE-%'
+			  AND (LOWER(COALESCE(NULLIF(a.severity,''),'unknown')) NOT IN ('critical','high','medium','low') OR COALESCE(a.cvss_score,0) = 0)
+			UNION
+			SELECT x.alias AS cve_id FROM vuln_advisory_aliases x
+			JOIN vuln_advisories a ON a.id = x.advisory_id
+			WHERE x.alias LIKE 'CVE-%'
+			  AND (LOWER(COALESCE(NULLIF(a.severity,''),'unknown')) NOT IN ('critical','high','medium','low') OR COALESCE(a.cvss_score,0) = 0)
+		) unknown_cves
+		ORDER BY cve_id DESC
+		LIMIT 40
+	`)
 	if err != nil {
 		return 0, err
 	}
@@ -619,7 +652,8 @@ func enrichAdvisoriesFromNVD() (int, error) {
 		if score <= 0 && summary == "" {
 			continue
 		}
-		_, _ = execContext(`UPDATE vuln_advisories SET cvss_score = CASE WHEN $2>0 THEN $2 ELSE cvss_score END, cvss_vector = CASE WHEN $3='' THEN cvss_vector ELSE $3 END, cvss_provider='nvd', summary = CASE WHEN $4='' THEN summary ELSE $4 END, severity = CASE WHEN $2>=9 THEN 'critical' WHEN $2>=7 THEN 'high' WHEN $2>=4 THEN 'medium' WHEN $2>0 THEN 'low' ELSE severity END WHERE canonical_id=$1 OR id IN (SELECT advisory_id FROM vuln_advisory_aliases WHERE alias=$1)`, id, score, vector, summary)
+		sev := severityFromScore(score, "")
+		_, _ = execContext(`UPDATE vuln_advisories SET cvss_score = CASE WHEN $2>0 THEN $2 ELSE cvss_score END, cvss_vector = CASE WHEN $3='' THEN cvss_vector ELSE $3 END, cvss_provider='nvd', summary = CASE WHEN $4='' THEN summary ELSE $4 END, severity = CASE WHEN $5 IN ('critical','high','medium','low') THEN $5 ELSE severity END WHERE canonical_id=$1 OR id IN (SELECT advisory_id FROM vuln_advisory_aliases WHERE alias=$1)`, id, score, vector, summary, sev)
 		updated++
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -635,12 +669,10 @@ func parseNVD(body []byte) (float64, string, string) {
 					Value string `json:"value"`
 				} `json:"descriptions"`
 				Metrics struct {
-					CvssMetricV31 []struct {
-						CvssData struct {
-							BaseScore    float64 `json:"baseScore"`
-							VectorString string  `json:"vectorString"`
-						} `json:"cvssData"`
-					} `json:"cvssMetricV31"`
+					CvssMetricV40 []nvdCVSSMetric `json:"cvssMetricV40"`
+					CvssMetricV31 []nvdCVSSMetric `json:"cvssMetricV31"`
+					CvssMetricV30 []nvdCVSSMetric `json:"cvssMetricV30"`
+					CvssMetricV2  []nvdCVSSMetric `json:"cvssMetricV2"`
 				} `json:"metrics"`
 			} `json:"cve"`
 		} `json:"vulnerabilities"`
@@ -656,12 +688,28 @@ func parseNVD(body []byte) (float64, string, string) {
 			break
 		}
 	}
-	score, vector := 0.0, ""
-	if len(item.Metrics.CvssMetricV31) > 0 {
-		score = item.Metrics.CvssMetricV31[0].CvssData.BaseScore
-		vector = item.Metrics.CvssMetricV31[0].CvssData.VectorString
+	for _, group := range [][]nvdCVSSMetric{item.Metrics.CvssMetricV31, item.Metrics.CvssMetricV30, item.Metrics.CvssMetricV40, item.Metrics.CvssMetricV2} {
+		if len(group) == 0 {
+			continue
+		}
+		score := group[0].CvssData.BaseScore
+		vector := group[0].CvssData.VectorString
+		if score <= 0 {
+			score = cvssScoreFromVector(vector)
+		}
+		if score > 0 || vector != "" {
+			return score, vector, summary
+		}
 	}
-	return score, vector, summary
+	return 0, "", summary
+}
+
+type nvdCVSSMetric struct {
+	CvssData struct {
+		BaseScore    float64 `json:"baseScore"`
+		VectorString string  `json:"vectorString"`
+		BaseSeverity string  `json:"baseSeverity"`
+	} `json:"cvssData"`
 }
 
 func enrichAdvisoriesFromEPSS() (int, error) {

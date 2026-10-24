@@ -234,6 +234,71 @@ func TestSBOMImagePackageCanMatch(t *testing.T) {
 	}
 }
 
+func TestNpmDeclaredVersionAndPackageJSONDeps(t *testing.T) {
+	version, ok := npmDeclaredVersion("^4.17.1")
+	if !ok || version != "4.17.1" {
+		t.Fatalf("caret = %s %v", version, ok)
+	}
+	parsed := parseVulnArtifact("package.json", `{"dependencies":{"express":"^4.17.1"},"devDependencies":{"eslint":"8.0.0"},"engines":{"node":"20.11.0"}}`)
+	if len(parsed.Components) != 3 {
+		t.Fatalf("components = %+v", parsed.Components)
+	}
+	found := map[string]vulnComponent{}
+	for _, item := range parsed.Components {
+		found[item.PackageName] = item
+	}
+	if found["express"].Ecosystem != "npm" || found["express"].Version != "4.17.1" || !found["express"].Resolved {
+		t.Fatalf("express = %+v", found["express"])
+	}
+	if found["node"].Usage != "declared_runtime" {
+		t.Fatalf("node = %+v", found["node"])
+	}
+	if got := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-NODE", Severity: "critical",
+		Ranges: []vulnAffectedRange{{Ecosystem: "node", Package: "node", Introduced: "0", Fixed: "20.12.0"}},
+	}}); len(got) != 0 {
+		t.Fatalf("declared runtime matched: %+v", got)
+	}
+	if got := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-EXPRESS", Severity: "high",
+		Ranges: []vulnAffectedRange{{Ecosystem: "npm", Package: "express", Introduced: "0", Fixed: "4.17.3"}},
+	}}); len(got) != 1 {
+		t.Fatalf("express declared dep should match: %+v", got)
+	}
+}
+
+func TestLockfilePreferredOverPackageJSON(t *testing.T) {
+	merged := mergeParsedInventories([]vulnParsedInventory{
+		parseVulnArtifact("package.json", `{"dependencies":{"express":"4.17.1"}}`),
+		parseNPMLock("package-lock.json", "", `{"packages":{"node_modules/express":{"version":"4.18.2"}}}`),
+	})
+	if len(merged.Components) != 1 || merged.Components[0].Version != "4.18.2" || merged.Components[0].Path != "package-lock.json" {
+		t.Fatalf("merged = %+v", merged.Components)
+	}
+}
+
+func TestNormalizeStoredSeverityUsesScoreAndVector(t *testing.T) {
+	if normalizeStoredSeverity(7.5, "unknown", "") != vulnSevHigh {
+		t.Fatal("cvss score must map unknown labels")
+	}
+	if normalizeStoredSeverity(0, "unknown", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N") != vulnSevHigh {
+		t.Fatal("cvss vector must map unknown labels")
+	}
+}
+
+func TestParseNVDReadsV30AndV40(t *testing.T) {
+	v30 := []byte(`{"vulnerabilities":[{"cve":{"descriptions":[{"lang":"en","value":"go text"}],"metrics":{"cvssMetricV30":[{"cvssData":{"baseScore":7.5,"vectorString":"CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}}]}}}]}`)
+	score, vector, summary := parseNVD(v30)
+	if score != 7.5 || !strings.Contains(vector, "CVSS:3.0") || summary != "go text" {
+		t.Fatalf("v30 = %v %q %q", score, vector, summary)
+	}
+	v40 := []byte(`{"vulnerabilities":[{"cve":{"descriptions":[{"lang":"en","value":"go net"}],"metrics":{"cvssMetricV40":[{"cvssData":{"baseScore":9.1,"vectorString":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"}}]}}}]}`)
+	score, _, _ = parseNVD(v40)
+	if score != 9.1 {
+		t.Fatalf("v40 = %v", score)
+	}
+}
+
 func TestDeclaredRuntimeIsNotAFinding(t *testing.T) {
 	parsed := parseVulnArtifact("package.json", `{"engines":{"node":"20.11.0"}}`)
 	if len(parsed.Components) != 1 || parsed.Components[0].Usage != "declared_runtime" {

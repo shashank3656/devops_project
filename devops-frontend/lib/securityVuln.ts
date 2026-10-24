@@ -36,6 +36,9 @@ export function severityBadge(value: string): string {
     case 'medium':
     case 'moderate':
       return 'sec-sev sec-sev--medium';
+    case 'low':
+    case 'minor':
+      return 'sec-sev sec-sev--low';
     default:
       return 'sec-sev';
   }
@@ -54,6 +57,8 @@ export function severityLabel(value: string): string {
     case 'low':
     case 'minor':
       return 'Low';
+    case 'unknown':
+      return 'Unknown';
     default:
       return 'Unknown';
   }

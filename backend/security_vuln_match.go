@@ -337,6 +337,14 @@ func parseVersionParts(raw string) [3]int {
 	return out
 }
 
+func normalizeStoredSeverity(score float64, label, vector string) string {
+	sev := severityFromScore(score, label)
+	if sev != vulnSevUnknown {
+		return sev
+	}
+	return severityFromScore(0, vector)
+}
+
 func severityFromScore(score float64, label string) string {
 	text := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(label), "_", " "))
 	if parsed, err := strconv.ParseFloat(text, 64); err == nil {
