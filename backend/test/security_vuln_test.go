@@ -676,6 +676,19 @@ func TestBulkLifecycleForbidsFixed(t *testing.T) {
 	}
 }
 
+func TestScorecardsCountNormalizedCVSS(t *testing.T) {
+	crit, high := tallyConfirmedOpenSeverity([]vulnSeverityRow{
+		{Severity: "unknown", Score: 9.1, Lifecycle: vulnLifeOpen, Confidence: vulnConfidenceConfirmed},
+		{Severity: "unknown", Score: 7.5, Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", Lifecycle: vulnLifeOpen, Confidence: vulnConfidenceConfirmed},
+		{Severity: "high", Score: 0, Lifecycle: vulnLifeFixed, Confidence: vulnConfidenceConfirmed},
+		{Severity: "critical", Score: 0, Lifecycle: vulnLifeOpen, Confidence: vulnConfidencePotential},
+		{Severity: "medium", Score: 5, Lifecycle: vulnLifeOpen, Confidence: vulnConfidenceConfirmed},
+	})
+	if crit != 1 || high != 1 {
+		t.Fatalf("crit=%d high=%d", crit, high)
+	}
+}
+
 func TestProbeAccessWithoutTokenDoesNotLeakSecret(t *testing.T) {
 	prev := GitHubToken
 	GitHubToken = ""

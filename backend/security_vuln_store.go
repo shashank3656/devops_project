@@ -920,6 +920,9 @@ func listVulnServiceRows(userID, projectID int) ([]vulnServiceRow, error) {
 		if owner != "" {
 			_ = queryRowContext(`SELECT id FROM vuln_repositories WHERE COALESCE(NULLIF(provider,''),'github')=$1 AND owner=$2 AND name=$3`, normalizeVulnProvider(provider), owner, name).Scan(&row.RepoID)
 		}
+		if row.RepoID == 0 {
+			_ = queryRowContext(`SELECT repo_id FROM vuln_service_repos WHERE service_id=$1 ORDER BY id LIMIT 1`, item.ID).Scan(&row.RepoID)
+		}
 		if row.RepoID > 0 {
 			var last sql.NullTime
 			var coverageRaw string
@@ -929,12 +932,7 @@ func listVulnServiceRows(userID, projectID int) ([]vulnServiceRow, error) {
 				WHERE repo_id = $1 ORDER BY id DESC LIMIT 1
 			`, row.RepoID).Scan(&last, &coverageRaw, &state)
 			row.LastScanAt = nullTimePtr(last)
-			var crit, high int
-			_ = queryRowContext(`SELECT COUNT(*) FILTER (WHERE a.severity='critical'), COUNT(*) FILTER (WHERE a.severity='high')
-				FROM vuln_findings f JOIN vuln_advisories a ON a.id = f.advisory_id
-				WHERE f.repo_id=$1 AND f.confidence='confirmed' AND f.lifecycle NOT IN ('fixed','withdrawn','false_positive')`, row.RepoID).Scan(&crit, &high)
-			row.Critical = crit
-			row.High = high
+			row.Critical, row.High = countRepoOpenConfirmedSeverity(row.RepoID)
 			var techRaw []string
 			rows, cancel, techErr := queryRowsWithTimeout(`
 				SELECT DISTINCT ecosystem FROM vuln_components c
@@ -957,7 +955,7 @@ func listVulnServiceRows(userID, projectID int) ([]vulnServiceRow, error) {
 				row.Coverage = "Scan failed"
 			case state == "partial":
 				row.Coverage = "Partial scan"
-			case state == "succeeded" && crit+high == 0:
+			case state == "succeeded" && row.Critical+row.High == 0:
 				row.Coverage = "No matches in scanned scope"
 				row.PatchLabel = "No action identified"
 			case state == "succeeded":
@@ -1001,9 +999,9 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		args = append(args, serviceID)
 		where += fmt.Sprintf(" AND f.service_id = $%d", len(args))
 	}
-	if sev := strings.ToLower(strings.TrimSpace(severity)); sev != "" {
-		args = append(args, sev)
-		where += fmt.Sprintf(" AND a.severity = $%d", len(args))
+	wantSev := strings.ToLower(strings.TrimSpace(severity))
+	if wantSev == "all" {
+		wantSev = ""
 	}
 	if life := strings.ToLower(strings.TrimSpace(lifecycle)); life != "" {
 		args = append(args, life)
@@ -1048,6 +1046,9 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		item.DueAt = nullTimePtr(due)
 		item.LastSeenAt = nullTimePtr(seen)
 		item.Severity = normalizeStoredSeverity(cvssScore, item.Severity, cvssVector)
+		if wantSev != "" && item.Severity != wantSev {
+			continue
+		}
 		out = append(out, item)
 	}
 	return out, nil
@@ -1299,21 +1300,96 @@ func listVulnPlans(userID int) ([]vulnPlanView, error) {
 	return out, nil
 }
 
+func backfillVulnAdvisorySeverity() {
+	if DB == nil {
+		return
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT id, COALESCE(NULLIF(severity,''),'unknown'), COALESCE(cvss_score,0), COALESCE(cvss_vector,'')
+		FROM vuln_advisories
+		WHERE lower(COALESCE(NULLIF(severity,''),'unknown')) IN ('unknown','unassigned','none')
+		   OR (COALESCE(cvss_score,0) >= 7 AND lower(COALESCE(severity,'')) NOT IN ('critical','high'))
+		LIMIT 2000
+	`)
+	if err != nil {
+		return
+	}
+	defer cancel()
+	defer rows.Close()
+	type row struct {
+		ID       int
+		Severity string
+		Score    float64
+		Vector   string
+	}
+	items := []row{}
+	for rows.Next() {
+		var item row
+		if rows.Scan(&item.ID, &item.Severity, &item.Score, &item.Vector) == nil {
+			items = append(items, item)
+		}
+	}
+	for _, item := range items {
+		next := normalizeStoredSeverity(item.Score, item.Severity, item.Vector)
+		if next == "" || next == vulnSevUnknown || strings.EqualFold(next, item.Severity) {
+			continue
+		}
+		_, _ = execContext(`UPDATE vuln_advisories SET severity=$2 WHERE id=$1`, item.ID, next)
+	}
+}
+
+func countRepoOpenConfirmedSeverity(repoID int) (int, int) {
+	if DB == nil || repoID <= 0 {
+		return 0, 0
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT COALESCE(NULLIF(a.severity,''),'unknown'), COALESCE(a.cvss_score,0), COALESCE(a.cvss_vector,''), f.lifecycle, f.confidence
+		FROM vuln_findings f JOIN vuln_advisories a ON a.id = f.advisory_id
+		WHERE f.repo_id=$1
+	`, repoID)
+	if err != nil {
+		return 0, 0
+	}
+	defer cancel()
+	defer rows.Close()
+	items := []vulnSeverityRow{}
+	for rows.Next() {
+		var item vulnSeverityRow
+		if rows.Scan(&item.Severity, &item.Score, &item.Vector, &item.Lifecycle, &item.Confidence) == nil {
+			items = append(items, item)
+		}
+	}
+	return tallyConfirmedOpenSeverity(items)
+}
+
 func vulnOverview(userID int) map[string]any {
 	rows, _ := listVulnServiceRows(userID, 0)
 	findings, _ := listVulnFindings(userID, 0, 0, "", "", "")
 	crit, high, kev, overdue := 0, 0, 0, 0
 	affected := 0
-	scanned := 0
+	mapped := map[int]bool{}
 	for _, row := range rows {
 		if row.Critical+row.High > 0 {
 			affected++
 		}
-		if row.LastScanAt != nil {
-			scanned++
-		}
 		crit += row.Critical
 		high += row.High
+		if row.RepoID > 0 {
+			mapped[row.RepoID] = true
+		}
+	}
+	scanned := 0
+	for _, repo := range listVulnRepoConfigs(userID) {
+		if !mapped[repo.ID] {
+			extraCrit, extraHigh := countRepoOpenConfirmedSeverity(repo.ID)
+			crit += extraCrit
+			high += extraHigh
+		}
+		var inventories int
+		_ = queryRowContext(`SELECT COUNT(*) FROM vuln_inventories WHERE repo_id=$1`, repo.ID).Scan(&inventories)
+		if inventories > 0 {
+			scanned++
+		}
 	}
 	for _, item := range findings {
 		if item.KEV && item.Lifecycle != vulnLifeFixed {

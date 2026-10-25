@@ -148,7 +148,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/team': 'Team',
   '/credential-audit': 'Secrets',
   '/security/cloud-scan': 'Cloud scan',
-  '/security/code-scan': 'Code scan',
   '/security/findings': 'Findings',
   '/security/vulnerabilities': 'Vulnerabilities',
   '/security/vulnerabilities/advisories/[id]': 'Advisory',
@@ -700,13 +699,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/credential-audit', label: 'Secrets', Icon: IconShield },
         { href: '/security/vulnerabilities', label: 'Vulnerabilities', Icon: IconShield },
         { href: '/security/cloud-scan', label: 'Cloud scan', Icon: IconShield },
-        { href: '/security/code-scan', label: 'Code scan', Icon: IconShield },
         { href: '/security/findings', label: 'Findings', Icon: IconShield },
       ]
     : [
         { href: '/security/vulnerabilities', label: 'Vulnerabilities', Icon: IconShield },
         { href: '/security/cloud-scan', label: 'Cloud scan', Icon: IconShield },
-        { href: '/security/code-scan', label: 'Code scan', Icon: IconShield },
         { href: '/security/findings', label: 'Findings', Icon: IconShield },
       ];
   const recordsNavItems: NavItem[] = isManager || Boolean(user?.grants?.records)

@@ -337,6 +337,32 @@ func parseVersionParts(raw string) [3]int {
 	return out
 }
 
+type vulnSeverityRow struct {
+	Severity   string
+	Score      float64
+	Vector     string
+	Lifecycle  string
+	Confidence string
+}
+
+func tallyConfirmedOpenSeverity(rows []vulnSeverityRow) (crit, high int) {
+	for _, row := range rows {
+		if strings.ToLower(strings.TrimSpace(row.Confidence)) != vulnConfidenceConfirmed {
+			continue
+		}
+		if !isOpenVulnLifecycle(row.Lifecycle) {
+			continue
+		}
+		switch normalizeStoredSeverity(row.Score, row.Severity, row.Vector) {
+		case vulnSevCritical:
+			crit++
+		case vulnSevHigh:
+			high++
+		}
+	}
+	return crit, high
+}
+
 func normalizeStoredSeverity(score float64, label, vector string) string {
 	sev := severityFromScore(score, label)
 	if sev != vulnSevUnknown {

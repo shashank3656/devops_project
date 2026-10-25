@@ -89,7 +89,7 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/reports-automation', key: 'reports' },
   { prefix: '/security/vulnerabilities', key: 'vulnerabilities' },
   { prefix: '/security/cloud-scan', key: 'cloud-scan' },
-  { prefix: '/security/code-scan', key: 'code-scan' },
+  { prefix: '/security/code-scan', key: 'vulnerabilities' },
   { prefix: '/security/findings', key: 'findings' },
   { prefix: '/credential-audit', key: 'secrets' },
   { prefix: '/previews', key: 'previews' },
