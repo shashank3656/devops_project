@@ -32,14 +32,11 @@ export default function CostAnomaliesPage() {
   return (
     <DevOpsLayout>
       <Head><title>Cost anomalies</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Cost anomalies</h1>
-            <p className="portal-page__subtitle">
-              Like-for-like complete windows only. Incomplete coverage stays Unknown, never a drop to $0. Usage versus price stays Unknown without quantity.
-            </p>
+            <p className="cost-shell__hint">Like-for-like complete windows only. Incomplete stays Unknown, never a drop to $0.</p>
           </div>
         </div>
         <CostNav current="anomalies" />

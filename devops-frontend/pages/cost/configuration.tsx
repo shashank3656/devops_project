@@ -150,14 +150,11 @@ export default function CostConfigurationPage() {
   return (
     <DevOpsLayout>
       <Head><title>Cost configuration</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Cost configuration</h1>
-            <p className="portal-page__subtitle">
-              Enable Cost on an existing AWS account that already belongs to a project you can see. Cost visibility is project membership plus the Cost page grant. This page does not store billing credentials.
-            </p>
+            <p className="cost-shell__hint">Enable Cost on an existing AWS account in a project you can see. This page does not store billing credentials.</p>
           </div>
         </div>
         <CostNav current="configuration" />

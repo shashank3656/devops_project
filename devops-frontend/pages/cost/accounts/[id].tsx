@@ -34,11 +34,6 @@ export default function CostAccountDashboardPage() {
       .finally(() => setLoading(false));
   }, [apiUrl, router.isReady, id, basis, currency, from, to]);
 
-  const setBasis = (next: string) => {
-    if (!id) return;
-    void router.replace({ pathname: `/cost/accounts/${id}`, query: { ...router.query, basis: next, currency } }, undefined, { shallow: true });
-  };
-
   const title = data?.connection?.display_name || 'Account spend';
   const spendUnknown = !data?.spend || data.spend.display === 'Unknown';
   const mix = data?.service_mix || [];
@@ -47,21 +42,18 @@ export default function CostAccountDashboardPage() {
   return (
     <DevOpsLayout>
       <Head><title>{title}</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">
-              {data?.project?.name || 'Project'} · {data?.cloud || 'Cloud'} · {data?.environment || 'Unknown'}
-            </span>
             <h1 className="portal-page__title">{title}</h1>
-            <p className="portal-page__subtitle">
-              Spend, what can still be imported, and suggestions that never execute. Copilot never receives this account number, role names, or passwords.
+            <p className="cost-shell__hint">
+              {data?.project?.name || 'Project'} · {data?.cloud || 'Cloud'} · {data?.environment || 'Unknown'} · {data?.cost_role === 'operate' ? 'Operate' : 'View'}
             </p>
           </div>
           <div className="portal-page__actions">
-            {data?.project?.id ? <Link href={`/cost/projects/${data.project.id}`} className="btn btn-secondary">Project</Link> : null}
-            <Link href="/cost" className="btn btn-secondary">All projects</Link>
-            {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-secondary">Import</Link> : null}
+            {data?.project?.id ? <Link href={`/cost/projects/${data.project.id}`} className="btn btn-secondary btn-sm">Project</Link> : null}
+            <Link href="/cost" className="btn btn-secondary btn-sm">All projects</Link>
+            {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-secondary btn-sm">Import</Link> : null}
           </div>
         </div>
         <CostNav current="overview" />
@@ -71,11 +63,6 @@ export default function CostAccountDashboardPage() {
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => router.reload()}>Retry</button>
           </div>
         ) : null}
-        <div className="portal-pill-row">
-          <button type="button" className={`btn btn-sm ${basis === 'actual' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setBasis('actual')}>Actual</button>
-          <button type="button" className={`btn btn-sm ${basis === 'amortized' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setBasis('amortized')}>Amortized</button>
-          <span className="portal-pill">RBAC {data?.cost_role === 'operate' ? 'Operate' : 'View'}</span>
-        </div>
         {data?.stale_hint ? (
           <div className="alert alert-info" role="status">
             {data.stale_hint.note}{' '}
@@ -134,7 +121,7 @@ export default function CostAccountDashboardPage() {
                 </button>
               ) : null}
             </div>
-            <section className="cost-dash">
+            <section className="cost-dash cost-dash--split">
               <div className="cost-dash__graph">
                 <span className="portal-surface__eyebrow">Service mix</span>
                 <h2 className="portal-surface__title">Where spend sits</h2>

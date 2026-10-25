@@ -617,7 +617,7 @@ export default function GroupAccessPage() {
                   <div>
                     <h2 className="access-form__title">Cost{costDirty ? ' · Unsaved' : ''}</h2>
                     <p className="access-hint">
-                      View can see project spend and graphs. Operate can enable Cost, import billed lines, and accept or dismiss suggestions. The Cost page under Sections still has to be on. This never sends account numbers, passwords, or role names to Copilot.
+                      View can see project spend and graphs. Operate can enable Cost, import billed lines, and accept or dismiss suggestions. The Cost section still has to be on. This never sends account numbers, passwords, or role names to Copilot.
                     </p>
                   </div>
                   <button type="button" className="btn btn-primary" disabled={!costDirty || savingCost} onClick={() => void saveCostAccess()}>

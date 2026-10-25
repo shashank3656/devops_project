@@ -84,14 +84,11 @@ export default function CostBudgetsPage() {
   return (
     <DevOpsLayout>
       <Head><title>Cost budgets</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Cost budgets</h1>
-            <p className="portal-page__subtitle">
-              Remaining uses the same window, basis, and currency as Overview. Incomplete coverage stays Unknown, never $0. Budgets never stop workloads.
-            </p>
+            <p className="cost-shell__hint">Remaining uses this window. Incomplete stays Unknown, never $0. Budgets never stop workloads.</p>
           </div>
         </div>
         <CostNav current="budgets" />

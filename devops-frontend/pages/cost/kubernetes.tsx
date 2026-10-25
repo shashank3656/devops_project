@@ -189,22 +189,19 @@ export default function CostKubernetesPage() {
   return (
     <DevOpsLayout>
       <Head><title>Kubernetes cost</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Kubernetes cost</h1>
-            <p className="portal-page__subtitle">
-              Cluster spend is a breakdown of the cloud bill, never an extra line. List-price stays labelled Estimated. HPA, VPA, PDB, and managed-by stay visible even when Unknown. This product does not install OpenCost and cannot edit workloads.
-            </p>
+            <p className="cost-shell__hint">Breakdown of the cloud bill, never an extra line. List-price stays Estimated. This product does not install OpenCost.</p>
           </div>
           <div className="portal-page__actions">
             {selected ? (
-              <button type="button" className="btn btn-secondary" onClick={() => act(selected, 'sync')} disabled={acting === `${selected.id}-sync` || !canOperate}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(selected, 'sync')} disabled={acting === `${selected.id}-sync` || !canOperate}>
                 Refresh data
               </button>
             ) : null}
-            <Link href="/k8s" className="btn btn-secondary">Kubernetes workspace</Link>
+            <Link href="/k8s" className="btn btn-secondary btn-sm">Kubernetes workspace</Link>
           </div>
         </div>
         <CostNav current="kubernetes" />

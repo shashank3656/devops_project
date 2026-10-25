@@ -9,6 +9,7 @@ export type PortalGrants = {
   requests: boolean;
   daily: boolean;
   operations: boolean;
+  cost: boolean;
   infrastructure: boolean;
   security: boolean;
   records: boolean;
@@ -22,6 +23,7 @@ function allPortalGrants(): PortalGrants {
     requests: true,
     daily: true,
     operations: true,
+    cost: true,
     infrastructure: true,
     security: true,
     records: true,
@@ -39,6 +41,9 @@ export function portalGrants(user: PortalAccount | null | undefined): PortalGran
       requests: Boolean(user.grants.requests),
       daily: Boolean(user.grants.daily),
       operations: Boolean(user.grants.operations),
+      cost: Object.prototype.hasOwnProperty.call(user.grants, 'cost')
+        ? Boolean(user.grants.cost)
+        : Boolean(user.grants.operations) && user.grants.pages?.cost !== false,
       infrastructure: Boolean(user.grants.infrastructure),
       security: Boolean(user.grants.security),
       records: Boolean(user.grants.records),
@@ -53,6 +58,7 @@ export function portalGrants(user: PortalAccount | null | undefined): PortalGran
     requests: user?.user_type === 'portal_user',
     daily: devops,
     operations: devops,
+    cost: devops,
     infrastructure: devops,
     security: devops,
     records: manager,
@@ -127,8 +133,8 @@ export function pageAllowed(pathname: string, grants: PortalGrants): boolean {
 export function homeFor(grants: PortalGrants): string {
   if (grants.daily && pageAllowed('/dashboard', grants)) return '/dashboard';
   if (grants.requests && pageAllowed('/my-requests', grants)) return '/my-requests';
+  if (grants.cost && pageAllowed('/cost', grants)) return '/cost';
   if (grants.operations && pageAllowed('/on-call', grants)) return '/on-call';
-  if (grants.operations && pageAllowed('/cost', grants)) return '/cost';
   if (grants.infrastructure && pageAllowed('/iam', grants)) return '/iam';
   if (grants.infrastructure && pageAllowed('/k8s', grants)) return '/k8s';
   if (grants.security && pageAllowed('/security/vulnerabilities', grants)) return '/security/vulnerabilities';
@@ -168,10 +174,12 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'knowledge', true)) prefixes.push('/knowledge');
     if (pageOn(grants, 'services', true)) prefixes.push('/services');
   }
+  if (grants.cost) {
+    if (pageOn(grants, 'cost', true)) prefixes.push('/cost');
+  }
   if (grants.operations) {
     if (pageOn(grants, 'on-call', true)) prefixes.push('/on-call');
     if (pageOn(grants, 'certificates', true)) prefixes.push('/certificates');
-    if (pageOn(grants, 'cost', true)) prefixes.push('/cost');
     if (pageOn(grants, 'maintenance', true)) prefixes.push('/maintenance');
     if (pageOn(grants, 'reports', true)) prefixes.push('/reports-automation');
     if (pageOn(grants, 'webhooks', true)) prefixes.push('/operations/webhooks');

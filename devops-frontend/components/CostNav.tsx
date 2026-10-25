@@ -1,29 +1,53 @@
 import Link from 'next/link';
-import CostAskChips from './CostAskChips';
 import CostFilterBar from './CostFilterBar';
 import type { CostFilterOptions } from '../lib/cost';
+
+const TABS = [
+  { id: 'overview', href: '/cost', label: 'Analysis' },
+  { id: 'explorer', href: '/cost/explorer', label: 'Explorer' },
+  { id: 'optimization', href: '/cost/optimization', label: 'Optimization' },
+  { id: 'anomalies', href: '/cost/anomalies', label: 'Anomalies' },
+  { id: 'budgets', href: '/cost/budgets', label: 'Budgets' },
+  { id: 'savings', href: '/cost/savings', label: 'Savings' },
+  { id: 'kubernetes', href: '/cost/kubernetes', label: 'Kubernetes' },
+  { id: 'configuration', href: '/cost/configuration', label: 'Configuration' },
+] as const;
 
 export default function CostNav({
   current,
   analysis,
+  exporting,
+  onExport,
 }: {
-  current: 'overview' | 'explorer' | 'optimization' | 'anomalies' | 'budgets' | 'savings' | 'kubernetes' | 'configuration';
+  current: (typeof TABS)[number]['id'];
   analysis?: CostFilterOptions | null;
+  exporting?: boolean;
+  onExport?: () => void;
 }) {
   return (
-    <>
-      <div className="portal-tabs" role="tablist">
-        <Link href="/cost" className={`btn btn-sm ${current === 'overview' ? 'btn-primary' : 'btn-secondary'}`}>Analysis</Link>
-        <Link href="/cost/explorer" className={`btn btn-sm ${current === 'explorer' ? 'btn-primary' : 'btn-secondary'}`}>Explorer</Link>
-        <Link href="/cost/optimization" className={`btn btn-sm ${current === 'optimization' ? 'btn-primary' : 'btn-secondary'}`}>Optimization</Link>
-        <Link href="/cost/anomalies" className={`btn btn-sm ${current === 'anomalies' ? 'btn-primary' : 'btn-secondary'}`}>Anomalies</Link>
-        <Link href="/cost/budgets" className={`btn btn-sm ${current === 'budgets' ? 'btn-primary' : 'btn-secondary'}`}>Budgets</Link>
-        <Link href="/cost/savings" className={`btn btn-sm ${current === 'savings' ? 'btn-primary' : 'btn-secondary'}`}>Savings</Link>
-        <Link href="/cost/kubernetes" className={`btn btn-sm ${current === 'kubernetes' ? 'btn-primary' : 'btn-secondary'}`}>Kubernetes</Link>
-        <Link href="/cost/configuration" className={`btn btn-sm ${current === 'configuration' ? 'btn-primary' : 'btn-secondary'}`}>Configuration</Link>
+    <div className="cost-nav">
+      <div className="cost-tabs" role="tablist">
+        {TABS.map((tab) => (
+          <Link
+            key={tab.id}
+            href={tab.href}
+            role="tab"
+            aria-selected={current === tab.id}
+            className={`cost-tabs__link${current === tab.id ? ' is-active' : ''}`}
+          >
+            {tab.label}
+          </Link>
+        ))}
       </div>
-      {current !== 'configuration' ? <CostFilterBar showBasis={Boolean(analysis)} options={analysis} /> : null}
-      <CostAskChips />
-    </>
+      {current !== 'configuration' ? (
+        <CostFilterBar
+          showBasis
+          options={current === 'overview' ? analysis : undefined}
+          explorer={current === 'explorer'}
+          exporting={exporting}
+          onExport={onExport}
+        />
+      ) : null}
+    </div>
   );
 }

@@ -256,7 +256,7 @@ func loadTeamCostAccessPayload(teamID int) (map[string]any, error) {
 		"status":   "ok",
 		"links":    links,
 		"projects": projects,
-		"note":     "Cost view can see spend and graphs. Cost operate can enable, import, accept, or dismiss. The Cost page grant is still required.",
+		"note":     "Cost view can see spend and graphs. Cost operate can enable, import, accept, or dismiss. The Cost section is still required.",
 	}, nil
 }
 

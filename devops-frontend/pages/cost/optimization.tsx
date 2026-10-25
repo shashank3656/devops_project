@@ -75,14 +75,11 @@ export default function CostOptimizationPage() {
   return (
     <DevOpsLayout>
       <Head><title>Cost optimization</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Cost optimization</h1>
-            <p className="portal-page__subtitle">
-              Detected → review → accepted → change linked → verified or Inconclusive. Acceptance is not permission to execute. Missing metrics still block rightsizing.
-            </p>
+            <p className="cost-shell__hint">Detected → review → accepted → change linked → verified or Inconclusive. Acceptance is not permission to execute.</p>
           </div>
         </div>
         <CostNav current="optimization" />

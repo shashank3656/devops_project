@@ -40,19 +40,18 @@ export default function CostCloudAccountPage() {
   return (
     <DevOpsLayout>
       <Head><title>{title}</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">
-              {data?.project?.name || 'Project'} · {data?.cloud || 'Cloud'} · {data?.environment || 'Unknown'}
-            </span>
             <h1 className="portal-page__title">{title}</h1>
-            <p className="portal-page__subtitle">{data?.note || 'Cost billing is not imported yet. Spend stays Unknown.'}</p>
+            <p className="cost-shell__hint">
+              {data?.project?.name || 'Project'} · {data?.cloud || 'Cloud'} · {data?.environment || 'Unknown'}. {data?.note || 'Cost billing is not imported yet. Spend stays Unknown.'}
+            </p>
           </div>
           <div className="portal-page__actions">
-            {data?.project?.id ? <Link href={`/cost/projects/${data.project.id}`} className="btn btn-secondary">Project</Link> : null}
-            <Link href="/cost" className="btn btn-secondary">All projects</Link>
-            {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-primary">Enable Cost</Link> : null}
+            {data?.project?.id ? <Link href={`/cost/projects/${data.project.id}`} className="btn btn-secondary btn-sm">Project</Link> : null}
+            <Link href="/cost" className="btn btn-secondary btn-sm">All projects</Link>
+            {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-primary btn-sm">Enable Cost</Link> : null}
           </div>
         </div>
         <CostNav current="overview" />

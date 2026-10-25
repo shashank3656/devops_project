@@ -12,6 +12,7 @@ type sectionGrants struct {
 	Requests       bool            `json:"requests"`
 	Daily          bool            `json:"daily"`
 	Operations     bool            `json:"operations"`
+	Cost           bool            `json:"cost"`
 	Infrastructure bool            `json:"infrastructure"`
 	Security       bool            `json:"security"`
 	Records        bool            `json:"records"`
@@ -22,14 +23,14 @@ type sectionGrants struct {
 
 func allSectionGrants() sectionGrants {
 	return sectionGrants{
-		Requests: true, Daily: true, Operations: true, Infrastructure: true,
+		Requests: true, Daily: true, Operations: true, Cost: true, Infrastructure: true,
 		Security: true, Records: true, PortalAccess: true, Manager: true,
 	}
 }
 
 func defaultSectionGrants(teamType string) sectionGrants {
 	if strings.TrimSpace(teamType) == "devops" {
-		return sectionGrants{Daily: true, Operations: true, Infrastructure: true, Security: true}
+		return sectionGrants{Daily: true, Operations: true, Cost: true, Infrastructure: true, Security: true}
 	}
 	return sectionGrants{Requests: true}
 }
@@ -58,6 +59,7 @@ func (g sectionGrants) merge(other sectionGrants) sectionGrants {
 	g.Requests = g.Requests || other.Requests
 	g.Daily = g.Daily || other.Daily
 	g.Operations = g.Operations || other.Operations
+	g.Cost = g.Cost || other.Cost
 	g.Infrastructure = g.Infrastructure || other.Infrastructure
 	g.Security = g.Security || other.Security
 	g.Records = g.Records || other.Records
@@ -131,6 +133,8 @@ func (g sectionGrants) allows(section string) bool {
 		return g.Daily
 	case "operations":
 		return g.Operations
+	case "cost":
+		return g.Cost
 	case "infrastructure":
 		return g.Infrastructure
 	case "security":
@@ -153,7 +157,7 @@ func (g sectionGrants) allows(section string) bool {
 }
 
 func (g sectionGrants) opensDevopsAPI() bool {
-	return g.PortalAccess || g.Daily || g.Operations || g.Infrastructure || g.Security || g.Records
+	return g.PortalAccess || g.Daily || g.Operations || g.Cost || g.Infrastructure || g.Security || g.Records
 }
 
 func sectionForPath(path string) string {
@@ -176,7 +180,8 @@ func sectionForPath(path string) string {
 		path == "/ready",
 		strings.HasPrefix(path, "/api/security/agent/"),
 		strings.HasPrefix(path, "/api/security/webhooks/"),
-		strings.HasPrefix(path, "/api/expiry/collector/"):
+		strings.HasPrefix(path, "/api/expiry/collector/"),
+		strings.HasPrefix(path, "/api/cost/collector/"):
 		return ""
 	case strings.HasPrefix(path, "/api/admin/"), strings.HasPrefix(path, "/api/users/"):
 		return "portal"
@@ -204,9 +209,10 @@ func sectionForPath(path string) string {
 		strings.HasPrefix(path, "/api/devops/notification-settings"),
 		strings.HasPrefix(path, "/api/devops/approval-notification-analytics"),
 		strings.HasPrefix(path, "/api/devops/inbound-sources"),
-		strings.HasPrefix(path, "/api/reports/"),
-		strings.HasPrefix(path, "/api/cost/"):
+		strings.HasPrefix(path, "/api/reports/"):
 		return "operations"
+	case strings.HasPrefix(path, "/api/cost/"):
+		return "cost"
 	case strings.HasPrefix(path, "/api/devops/projects"):
 		return "projects"
 	case path == "/api/devops/environment-catalog":
@@ -296,6 +302,34 @@ func sectionGrantsForUser(user *User) sectionGrants {
 	return combined
 }
 
+func inheritCostSection(saved *sectionGrants, payload []byte) {
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &keys); err != nil {
+		return
+	}
+	if _, ok := keys["cost"]; ok {
+		return
+	}
+	pageOn := true
+	if saved.Pages != nil {
+		if allowed, exists := saved.Pages["cost"]; exists {
+			pageOn = allowed
+		}
+	}
+	saved.Cost = saved.Operations && pageOn
+}
+
+func decodeSectionGrants(payload []byte) (sectionGrants, error) {
+	var saved sectionGrants
+	if err := json.Unmarshal(payload, &saved); err != nil {
+		return sectionGrants{}, err
+	}
+	inheritCostSection(&saved, payload)
+	saved.PortalAccess = false
+	saved.Manager = false
+	return saved, nil
+}
+
 func grantsFromTeam(teamType string, raw sql.NullString, manager bool) sectionGrants {
 	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
 		grants := defaultSectionGrants(teamType)
@@ -304,23 +338,15 @@ func grantsFromTeam(teamType string, raw sql.NullString, manager bool) sectionGr
 		}
 		return grants
 	}
-	var saved sectionGrants
-	if err := json.Unmarshal([]byte(raw.String), &saved); err != nil {
+	saved, err := decodeSectionGrants([]byte(raw.String))
+	if err != nil {
 		return defaultSectionGrants(teamType)
 	}
-	saved.PortalAccess = false
-	saved.Manager = false
 	return saved
 }
 
 func parseSectionGrantBody(body []byte) (sectionGrants, error) {
-	var saved sectionGrants
-	if err := json.Unmarshal(body, &saved); err != nil {
-		return sectionGrants{}, err
-	}
-	saved.PortalAccess = false
-	saved.Manager = false
-	return saved, nil
+	return decodeSectionGrants(body)
 }
 
 func loadSavedSectionGrants() (map[int]sectionGrants, error) {
@@ -342,12 +368,10 @@ func loadSavedSectionGrants() (map[int]sectionGrants, error) {
 		if !raw.Valid || strings.TrimSpace(raw.String) == "" {
 			continue
 		}
-		var saved sectionGrants
-		if err := json.Unmarshal([]byte(raw.String), &saved); err != nil {
+		saved, decodeErr := decodeSectionGrants([]byte(raw.String))
+		if decodeErr != nil {
 			continue
 		}
-		saved.PortalAccess = false
-		saved.Manager = false
 		out[id] = saved
 	}
 	return out, nil

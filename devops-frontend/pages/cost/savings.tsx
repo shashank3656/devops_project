@@ -33,14 +33,11 @@ export default function CostSavingsPage() {
   return (
     <DevOpsLayout>
       <Head><title>Cost savings</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Cost savings</h1>
-            <p className="portal-page__subtitle">
-              Detected to verified, including Inconclusive. Acceptance is not permission to execute. Overlapping verified bill reductions on one resource count once.
-            </p>
+            <p className="cost-shell__hint">Detected to verified, including Inconclusive. Overlapping verified reductions on one resource count once.</p>
           </div>
         </div>
         <CostNav current="savings" />

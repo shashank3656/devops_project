@@ -61,11 +61,11 @@ export const supportArticles: SupportArticle[] = [
   },
   {
     id: 'operating-cost',
-    category: 'Operations',
+    category: 'Cost',
     title: 'Operating cost versus request estimates',
-    summary: 'Cost shows billed AWS spend on a Cost grant. Ticket Infracost figures stay on a separate card.',
+    summary: 'Cost is its own sidebar section. It shows billed AWS spend. Ticket Infracost figures stay on a separate card.',
     content:
-      'Open Cost under Operations to see the operating bill for onboarded AWS accounts. Enable Cost on an existing account, then import a fixture or later a CUR export. Incomplete windows stay Unknown, never zero. Actual and amortized are different columns. Explorer, budgets, anomalies, and CSV use the same window. Missing metrics block rightsizing. Overlapping savings are not summed. Budgets never stop workloads. Request estimates from tickets are not the invoice. Bind an existing Kubernetes cluster under Cost → Kubernetes. Inventory, metrics, allocation, and billing reconciled stay independent. This product does not install OpenCost. Cluster spend is a breakdown of the cloud bill, never an extra line.',
+      'Open Cost in the sidebar to see the operating bill for onboarded AWS accounts. Enable Cost on an existing account, then import a fixture or later a CUR export. Incomplete windows stay Unknown, never zero. Actual and amortized are different columns. Explorer, budgets, anomalies, and CSV use the same window. Missing metrics block rightsizing. Overlapping savings are not summed. Budgets never stop workloads. Request estimates from tickets are not the invoice. Bind an existing Kubernetes cluster under Cost → Kubernetes. Inventory, metrics, allocation, and billing reconciled stay independent. This product does not install OpenCost. Cluster spend is a breakdown of the cloud bill, never an extra line.',
     keywords: ['cost', 'bill', 'cur', 'infracost', 'operating spend'],
     routePrefixes: ['/cost'],
     actions: [

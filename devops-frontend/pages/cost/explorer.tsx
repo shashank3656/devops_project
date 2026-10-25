@@ -18,27 +18,12 @@ export default function CostExplorerPage() {
   const from = typeof router.query.from === 'string' ? router.query.from : '';
   const to = typeof router.query.to === 'string' ? router.query.to : '';
   const portalService = typeof router.query.portal_service === 'string' ? router.query.portal_service : '';
-  const [serviceInput, setServiceInput] = useState(service);
-  const [regionInput, setRegionInput] = useState(region);
-  const [accountInput, setAccountInput] = useState(account);
-  const [teamInput, setTeamInput] = useState(team);
-  const [fromInput, setFromInput] = useState(from);
-  const [toInput, setToInput] = useState(to);
   const [data, setData] = useState<CostExplorer | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   const filters = { service, region, account, team, from, to, portal_service: portalService };
-
-  useEffect(() => {
-    setServiceInput(service);
-    setRegionInput(region);
-    setAccountInput(account);
-    setTeamInput(team);
-    setFromInput(from);
-    setToInput(to);
-  }, [service, region, account, team, from, to]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -51,23 +36,6 @@ export default function CostExplorerPage() {
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [apiUrl, router.isReady, basis, currency, service, region, account, team, from, to, portalService]);
-
-  const applyFilters = () => {
-    void router.replace({
-      pathname: '/cost/explorer',
-      query: {
-        basis,
-        currency,
-        service: serviceInput,
-        region: regionInput,
-        account: accountInput,
-        team: teamInput,
-        from: fromInput,
-        to: toInput,
-        ...(portalService ? { portal_service: portalService } : {}),
-      },
-    }, undefined, { shallow: true });
-  };
 
   const exportCSV = async () => {
     setExporting(true);
@@ -85,52 +53,15 @@ export default function CostExplorerPage() {
   return (
     <DevOpsLayout>
       <Head><title>Cost explorer</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Cost explorer</h1>
-            <p className="portal-page__subtitle">
-              Same window, basis, and currency as Overview and CSV export. Actual and amortized stay on separate columns.
-            </p>
+            <p className="cost-shell__hint">Same window and basis as Analysis. Actual and amortized stay on separate columns. Press Enter to apply a text filter.</p>
           </div>
         </div>
-        <CostNav current="explorer" />
+        <CostNav current="explorer" exporting={exporting} onExport={() => void exportCSV()} />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <section className="portal-surface">
-          <div className="portal-form-grid">
-            <label className="label">Basis
-              <select className="input" value={basis} onChange={(event) => void router.replace({ pathname: '/cost/explorer', query: { ...router.query, basis: event.target.value } }, undefined, { shallow: true })}>
-                <option value="actual">Actual</option>
-                <option value="amortized">Amortized</option>
-              </select>
-            </label>
-            <label className="label">Product
-              <input className="input" value={serviceInput} onChange={(event) => setServiceInput(event.target.value)} placeholder="Amazon Elastic Compute Cloud" />
-            </label>
-            <label className="label">Account
-              <input className="input" value={accountInput} onChange={(event) => setAccountInput(event.target.value)} placeholder="123456789012" />
-            </label>
-            <label className="label">Team
-              <input className="input" value={teamInput} onChange={(event) => setTeamInput(event.target.value)} placeholder="platform-team" />
-            </label>
-            <label className="label">Region
-              <input className="input" value={regionInput} onChange={(event) => setRegionInput(event.target.value)} placeholder="us-east-1" />
-            </label>
-            <label className="label">Window start
-              <input className="input" type="date" value={fromInput} onChange={(event) => setFromInput(event.target.value)} />
-            </label>
-            <label className="label">Window end
-              <input className="input" type="date" value={toInput} onChange={(event) => setToInput(event.target.value)} />
-            </label>
-          </div>
-          <div className="portal-page__actions">
-            <button type="button" className="btn btn-primary" onClick={applyFilters}>Apply filters</button>
-            <button type="button" className="btn btn-secondary" disabled={exporting} onClick={() => void exportCSV()}>
-              {exporting ? 'Exporting…' : 'Export CSV'}
-            </button>
-          </div>
-        </section>
         {loading ? <div className="empty-state">Loading billed lines…</div> : null}
         {!loading && data?.empty ? (
           <div className="empty-state">No billed lines for this slice. Import a fixture on Configuration, or widen the filters. Coverage stays Unknown until a complete revision exists.</div>

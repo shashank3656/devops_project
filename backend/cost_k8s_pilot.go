@@ -70,10 +70,10 @@ func costK8sPilotRestart(item *costK8sBinding) map[string]any {
 func costK8sPilotAccess() map[string]any {
 	return map[string]any{
 		"page_grant":      "cost",
-		"section":         "operations",
+		"section":         "cost",
 		"worker_can_edit": false,
 		"k8s_write":       false,
-		"note":            "The Cost page grant is required. Kubernetes write is not permission to edit workloads from Cost.",
+		"note":            "The Cost section and page grant are required. Kubernetes write is not permission to edit workloads from Cost.",
 	}
 }
 

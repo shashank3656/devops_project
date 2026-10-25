@@ -41,31 +41,18 @@ export default function CostProjectDashboardPage() {
   return (
     <DevOpsLayout>
       <Head><title>{title}</title></Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="portal-page cost-analysis">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">{data?.project?.code || 'Project'}</span>
             <h1 className="portal-page__title">{title}</h1>
-            <p className="portal-page__subtitle">
-              Clouds and accounts in this project. Click an account for spend, import, and suggestions.
-            </p>
+            <p className="cost-shell__hint">{data?.project?.code || 'Project'} · Clouds and accounts in this project.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/cost" className="btn btn-secondary">All projects</Link>
+            <Link href="/cost" className="btn btn-secondary btn-sm">All projects</Link>
           </div>
         </div>
         <CostNav current="overview" />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <div className="portal-pill-row">
-          <button type="button" className={`btn btn-sm ${basis === 'actual' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => {
-            if (!id) return;
-            void router.replace({ pathname: `/cost/projects/${id}`, query: { ...router.query, basis: 'actual', currency } }, undefined, { shallow: true });
-          }}>Actual</button>
-          <button type="button" className={`btn btn-sm ${basis === 'amortized' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => {
-            if (!id) return;
-            void router.replace({ pathname: `/cost/projects/${id}`, query: { ...router.query, basis: 'amortized', currency } }, undefined, { shallow: true });
-          }}>Amortized</button>
-        </div>
         {loading ? <div className="empty-state">Loading project spend…</div> : null}
         {!loading && data ? (
           <>
@@ -97,7 +84,7 @@ export default function CostProjectDashboardPage() {
                 },
               ]}
             />
-            <section className="cost-dash">
+            <section className="cost-dash cost-dash--split">
               <div className="cost-dash__graph">
                 <span className="portal-surface__eyebrow">Service mix</span>
                 <h2 className="portal-surface__title">Where spend sits</h2>

@@ -683,16 +683,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { href: '/on-call/handovers', label: 'Handovers' },
         ] },
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
-        { href: '/cost', label: 'Cost', Icon: IconFileText, children: [
-          { href: '/cost', label: 'Overview' },
-          { href: '/cost/explorer', label: 'Explorer' },
-          { href: '/cost/optimization', label: 'Optimization' },
-          { href: '/cost/anomalies', label: 'Anomalies' },
-          { href: '/cost/budgets', label: 'Budgets' },
-          { href: '/cost/savings', label: 'Savings' },
-          { href: '/cost/kubernetes', label: 'Kubernetes' },
-          { href: '/cost/configuration', label: 'Configuration' },
-        ] },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
@@ -714,16 +704,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { href: '/on-call/handovers', label: 'Handovers' },
         ] },
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
-        { href: '/cost', label: 'Cost', Icon: IconFileText, children: [
-          { href: '/cost', label: 'Overview' },
-          { href: '/cost/explorer', label: 'Explorer' },
-          { href: '/cost/optimization', label: 'Optimization' },
-          { href: '/cost/anomalies', label: 'Anomalies' },
-          { href: '/cost/budgets', label: 'Budgets' },
-          { href: '/cost/savings', label: 'Savings' },
-          { href: '/cost/kubernetes', label: 'Kubernetes' },
-          { href: '/cost/configuration', label: 'Configuration' },
-        ] },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
@@ -742,6 +722,23 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       { href: '/iam/policy', label: 'Policy' },
     ],
   };
+  const costNavItems: NavItem[] = [
+    {
+      href: '/cost',
+      label: 'Analysis',
+      Icon: IconFileText,
+      children: [
+        { href: '/cost', label: 'Analysis' },
+        { href: '/cost/explorer', label: 'Explorer' },
+        { href: '/cost/optimization', label: 'Optimization' },
+        { href: '/cost/anomalies', label: 'Anomalies' },
+        { href: '/cost/budgets', label: 'Budgets' },
+        { href: '/cost/savings', label: 'Savings' },
+        { href: '/cost/kubernetes', label: 'Kubernetes' },
+        { href: '/cost/configuration', label: 'Configuration' },
+      ],
+    },
+  ];
   const infrastructureNavItems: NavItem[] = [
     { href: '/projects', label: 'Projects', Icon: IconProjects },
     { href: '/environments', label: 'Environments', Icon: IconK8s },
@@ -798,6 +795,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       items: [{ href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle }],
     });
   }
+  if (grants.cost) sidebarSections.push({ title: 'Cost', items: visibleNav(costNavItems) });
   if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
   if (grants.security) sidebarSections.push({ title: 'Security', items: visibleNav(securityNavItems) });
   if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });

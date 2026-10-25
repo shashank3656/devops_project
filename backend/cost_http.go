@@ -593,7 +593,7 @@ func serveCostConfiguration(w http.ResponseWriter, r *http.Request, userID int) 
 		"can_operate": userHasCostOperateAnywhere(userID),
 		"ai":          costAIPolicy(),
 		"ai_proof":    costAIProofSummary(listCostAIProofs(userID)),
-		"note":        "Enable Cost on an existing AWS account that already belongs to a project you can see. Cost visibility is project membership plus the Cost page grant. Import a labelled AWS CUR 2.0 export. Replay keeps one billed total. Demo inventory accounts are ignored. Allocation is applied at query time. Copilot never receives account IDs, passwords, or role names.",
+		"note":        "Enable Cost on an existing AWS account that already belongs to a project you can see. Cost visibility is project membership plus the Cost section. Import a labelled AWS CUR 2.0 export. Replay keeps one billed total. Demo inventory accounts are ignored. Allocation is applied at query time. Copilot never receives account IDs, passwords, or role names.",
 	})
 }
 

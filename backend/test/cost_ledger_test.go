@@ -258,12 +258,12 @@ func TestCostPageGrantMapsToOperations(t *testing.T) {
 	if pageForPath("/api/cost/connections/1/export") != "cost" || pageForPath("/api/cost/ai-proof") != "cost" {
 		t.Fatal("account CSV and AI proofs stay on the cost page grant")
 	}
-	if sectionForPath("/api/cost/explorer") != "operations" {
-		t.Fatal("cost APIs belong under operations")
+	if sectionForPath("/api/cost/explorer") != "cost" {
+		t.Fatal("cost APIs belong under Cost")
 	}
 	grants := defaultSectionGrants("devops")
-	if !grants.allows("operations") || !grants.allowsPage("cost") {
-		t.Fatal("devops groups keep Cost until the page is turned off")
+	if !grants.allows("cost") || !grants.allowsPage("cost") {
+		t.Fatal("devops groups keep Cost until the section or page is turned off")
 	}
 	grants.Pages = map[string]bool{"cost": false, "certificates": true}
 	if grants.allowsPage("cost") {
@@ -523,8 +523,8 @@ func TestCostKubernetesPageGrant(t *testing.T) {
 	if pageForPath("/api/cost/kubernetes/clusters") != "cost" {
 		t.Fatal("kubernetes cost APIs need the cost page grant")
 	}
-	if sectionForPath("/api/cost/kubernetes/clusters") != "operations" {
-		t.Fatal("kubernetes cost stays under operations")
+	if sectionForPath("/api/cost/kubernetes/clusters") != "cost" {
+		t.Fatal("kubernetes cost stays under Cost")
 	}
 	if pageForPath("/api/cost/collector/snapshots") != "cost" {
 		t.Fatal("collector upload stays on the cost grant")
@@ -942,7 +942,7 @@ func TestCostK8sPilotWorkerCannotEditOrRestart(t *testing.T) {
 	if restart["collector_health"] != "unknown" || restart["workloads_restarted"] != false {
 		t.Fatalf("restart check: %+v", restart)
 	}
-	if access["page_grant"] != "cost" || access["worker_can_edit"] != false {
+	if access["page_grant"] != "cost" || access["section"] != "cost" || access["worker_can_edit"] != false {
 		t.Fatalf("access check: %+v", access)
 	}
 	if pageForPath("/api/cost/kubernetes/clusters") != "cost" {

@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import CostKpiStrip from '../../components/CostKpiStrip';
+import CostHero from '../../components/CostHero';
 import CostMixChart from '../../components/CostMixChart';
 import CostNav from '../../components/CostNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
@@ -76,17 +76,14 @@ export default function CostOverviewPage() {
     <DevOpsLayout>
       <Head><title>Cost analysis</title></Head>
       <div className="portal-page cost-analysis">
-        <div className="portal-page__header">
+        <div className="cost-shell__head">
           <div>
-            <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Cost analysis</h1>
-            <p className="portal-page__subtitle">
-              Project, then cloud, then account. Filters change the list below. Operating bill is the billed window, not a filtered sum.
-            </p>
+            <p className="cost-shell__hint">Project → cloud → account. Filters change this list. The operating bill is the billed window, not a filtered sum.</p>
           </div>
           <div className="portal-page__actions">
-            {data?.can_operate !== false ? <Link href="/cost/configuration" className="btn btn-primary">Enable Cost</Link> : null}
-            <Link href="/cloud-accounts" className="btn btn-secondary">Cloud accounts</Link>
+            {data?.can_operate !== false ? <Link href="/cost/configuration" className="btn btn-primary btn-sm">Enable Cost</Link> : null}
+            <Link href="/cloud-accounts" className="btn btn-secondary btn-sm">Cloud accounts</Link>
           </div>
         </div>
         <CostNav current="overview" analysis={filterOptions} />
@@ -106,40 +103,37 @@ export default function CostOverviewPage() {
         ) : null}
         {!loading && !empty ? (
           <>
-            <CostKpiStrip
-              items={[
-                {
-                  label: 'Operating bill',
-                  value: billUnknown ? 'Unknown' : data?.operating_bill?.display || 'Unknown',
-                  hint: billUnknown ? 'Incomplete stays Unknown, never $0' : `${basis} billed window`,
-                  tone: costToneForDisplay(data?.operating_bill?.display),
-                },
+            <CostHero
+              bill={billUnknown ? 'Unknown' : data?.operating_bill?.display || 'Unknown'}
+              hint={billUnknown ? 'Incomplete stays Unknown, never $0' : `${basis} billed window`}
+              tone={costToneForDisplay(data?.operating_bill?.display)}
+              stats={[
                 {
                   label: 'Unallocated',
                   value: data?.unallocated?.display || 'Unknown',
-                  hint: 'Lines without a team yet',
+                  hint: 'No team yet',
                   tone: costToneForDisplay(data?.unallocated?.display),
                 },
                 {
                   label: 'Ownership',
                   value: data?.ownership?.display || 'Unknown',
-                  hint: 'Share with a team',
+                  hint: 'Assigned to a team',
                   tone: costToneForDisplay(data?.ownership?.display),
                 },
                 {
                   label: 'Kubernetes',
                   value: data?.kubernetes?.spend?.display || 'Unknown',
-                  hint: 'Breakdown of this bill, never extra',
+                  hint: 'Breakdown, never extra',
                   tone: 'k8s',
                 },
                 {
                   label: 'Waiting',
                   value: String(data?.waiting_count ?? 0),
-                  hint: 'Suggestions that never execute',
+                  hint: 'Suggestions only',
                   tone: (data?.waiting_count || 0) > 0 ? 'wait' : 'unknown',
                 },
                 {
-                  label: selectedProject ? 'Selected project' : 'Accounts in view',
+                  label: selectedProject ? 'Selected project' : 'Accounts',
                   value: selectedProject ? (selectedProject.spend?.display || 'Unknown') : `${visibleAccounts} of ${totalAccounts}`,
                   hint: selectedProject ? selectedProject.name : freshnessLabel(data?.freshness),
                   tone: selectedProject ? costToneForDisplay(selectedProject.spend?.display) : (data?.freshness === 'stale' ? 'stale' : 'billed'),
@@ -148,25 +142,16 @@ export default function CostOverviewPage() {
             />
             <section className="cost-dash">
               <div className="cost-dash__graph">
-                <span className="portal-surface__eyebrow">Service mix</span>
-                <h2 className="portal-surface__title">Where the bill sits</h2>
-                <CostMixChart mix={data?.service_mix || []} days={data?.daily || []} />
-              </div>
-              <div className="cost-dash__side">
-                <span className="portal-surface__eyebrow">Read this first</span>
-                <h2 className="portal-surface__title">How to scan the board</h2>
-                <ol className="cost-guide">
-                  <li>Teal is billed. Lavender is Unknown or missing.</li>
-                  <li>Set window and basis, then project, cloud, and environment.</li>
-                  <li>Click an account for spend, import, and suggestions.</li>
-                  <li>Kubernetes is a slice of the cloud bill, never a second total.</li>
-                </ol>
-                <div className="cost-legend">
-                  <span className="cost-legend__item cost-legend__item--compute">Compute</span>
-                  <span className="cost-legend__item cost-legend__item--database">Database</span>
-                  <span className="cost-legend__item cost-legend__item--storage">Storage</span>
-                  <span className="cost-legend__item cost-legend__item--other">Other</span>
+                <div className="cost-dash__head">
+                  <h2 className="portal-surface__title">Where the bill sits</h2>
+                  <div className="cost-legend">
+                    <span className="cost-legend__item cost-legend__item--compute">Compute</span>
+                    <span className="cost-legend__item cost-legend__item--database">Database</span>
+                    <span className="cost-legend__item cost-legend__item--storage">Storage</span>
+                    <span className="cost-legend__item cost-legend__item--other">Other</span>
+                  </div>
                 </div>
+                <CostMixChart mix={data?.service_mix || []} days={data?.daily || []} />
               </div>
             </section>
             {filteredEmpty ? (

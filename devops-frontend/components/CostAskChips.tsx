@@ -1,5 +1,11 @@
 import { COST_COPILOT_CHIPS } from '../lib/cost';
 
+const SHORT: Record<string, string> = {
+  'Why is this Unknown?': 'Unknown?',
+  'Explain CALC-COST IDs': 'CALC-COST',
+  'What does incomplete coverage mean?': 'Coverage',
+};
+
 export default function CostAskChips() {
   return (
     <div className="cost-ask" aria-label="Ask Copilot">
@@ -7,12 +13,13 @@ export default function CostAskChips() {
         <button
           key={question}
           type="button"
-          className="btn btn-sm btn-secondary"
+          className="cost-ask__link"
+          title={question}
           onClick={() => {
             window.dispatchEvent(new CustomEvent('opstrellis-cost-ask', { detail: { question } }));
           }}
         >
-          {question}
+          {SHORT[question] || question}
         </button>
       ))}
     </div>
