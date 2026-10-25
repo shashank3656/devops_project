@@ -108,6 +108,10 @@ func pageForPath(path string) string {
 		return "cloud-inventory"
 	case strings.HasPrefix(path, "/api/devops/security"), strings.HasPrefix(path, "/api/security/advisories"), strings.HasPrefix(path, "/api/security/vulnerabilities"):
 		return "vulnerabilities"
+	case strings.HasPrefix(path, "/api/expiry/"):
+		return "certificates"
+	case strings.HasPrefix(path, "/api/oncall/"):
+		return "on-call"
 	default:
 		return ""
 	}
@@ -190,6 +194,7 @@ func sectionForPath(path string) string {
 		return "desk-or-requests"
 	case strings.HasPrefix(path, "/api/oncall/"),
 		strings.HasPrefix(path, "/api/devops/oncall"),
+		strings.HasPrefix(path, "/api/expiry/"),
 		strings.HasPrefix(path, "/api/maintenance/"),
 		strings.HasPrefix(path, "/api/devops/freezes"),
 		strings.HasPrefix(path, "/api/devops/runbooks"),

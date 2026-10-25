@@ -331,7 +331,8 @@ export default function OnCallPage() {
             <p className="portal-page__subtitle">The project and environment at the top limit this page. Project and Team below only filter the roster you are looking at. Setup follows Project, then Teams, then People, then Review coverage.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/on-call/onboard" className="btn btn-primary">Onboard project</Link>
+            <Link href="/on-call/handovers" className="btn btn-primary">Handovers</Link>
+            <Link href="/on-call/onboard" className="btn btn-secondary">Onboard project</Link>
             <Link href="/on-call/projects" className="btn btn-secondary">Projects</Link>
           </div>
         </div>

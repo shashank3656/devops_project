@@ -84,6 +84,7 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/knowledge', key: 'knowledge' },
   { prefix: '/services', key: 'services' },
   { prefix: '/on-call', key: 'on-call' },
+  { prefix: '/certificates', key: 'certificates' },
   { prefix: '/operations/webhooks', key: 'webhooks' },
   { prefix: '/maintenance', key: 'maintenance' },
   { prefix: '/reports-automation', key: 'reports' },
@@ -167,6 +168,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
   }
   if (grants.operations) {
     if (pageOn(grants, 'on-call', true)) prefixes.push('/on-call');
+    if (pageOn(grants, 'certificates', true)) prefixes.push('/certificates');
     if (pageOn(grants, 'maintenance', true)) prefixes.push('/maintenance');
     if (pageOn(grants, 'reports', true)) prefixes.push('/reports-automation');
     if (pageOn(grants, 'webhooks', true)) prefixes.push('/operations/webhooks');

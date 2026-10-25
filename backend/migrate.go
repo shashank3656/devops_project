@@ -1550,6 +1550,8 @@ func MigrateDatabase() error {
 	migrateOncallCoverageSchema()
 	migrateOncallScheduleSchema()
 	migrateOncallDutySchema()
+	migrateOncallHandoverSchema()
+	migrateExpiryAssetSchema()
 	migrateMaintenanceNoticeSchema()
 	migrateMaintenanceWindowSchema()
 	migrateAPIIdempotencySchema()

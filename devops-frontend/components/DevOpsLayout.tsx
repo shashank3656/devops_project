@@ -84,6 +84,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/environments': 'Environments',
   '/reports-automation': 'Reports and automation',
   '/on-call': 'On-call',
+  '/on-call/handovers': 'Handovers',
+  '/certificates': 'Certificates & domains',
   '/operations/webhooks': 'Webhooks',
   '/maintenance': 'Maintenance',
   '/service-desk': 'Service desk',
@@ -651,7 +653,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   ];
   const operationsNavItems: NavItem[] = isManager
     ? [
-        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/on-call', label: 'On-call', Icon: IconBell, children: [
+          { href: '/on-call', label: 'Roster' },
+          { href: '/on-call/handovers', label: 'Handovers' },
+        ] },
+        { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
@@ -668,7 +674,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         },
       ]
     : [
-        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/on-call', label: 'On-call', Icon: IconBell, children: [
+          { href: '/on-call', label: 'Roster' },
+          { href: '/on-call/handovers', label: 'Handovers' },
+        ] },
+        { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },

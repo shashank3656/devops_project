@@ -740,6 +740,8 @@ func main() {
 		startSSOSyncScheduler()
 		startMonitorEvaluationWorker()
 		startVulnSecurityWorker()
+		startOncallHandoverWorker()
+		startExpiryAssetWorker()
 	}
 	InitRuntimeResilience()
 
@@ -868,6 +870,10 @@ func main() {
 	http.HandleFunc("/api/oncall/project-teams", oncallProjectTeamsHandler)
 	http.HandleFunc("/api/oncall/covers", oncallCoverHandler)
 	http.HandleFunc("/api/oncall/covers/", oncallCoverHandler)
+	http.HandleFunc("/api/oncall/handovers", oncallHandoverHandler)
+	http.HandleFunc("/api/oncall/handovers/", oncallHandoverHandler)
+	http.HandleFunc("/api/expiry/assets", expiryAssetsHandler)
+	http.HandleFunc("/api/expiry/assets/", expiryAssetsHandler)
 	http.HandleFunc("/api/maintenance/notices", maintenanceNoticeHandler)
 	http.HandleFunc("/api/maintenance/windows", maintenanceWindowsHandler)
 	http.HandleFunc("/api/maintenance/windows/", maintenanceWindowDetailHandler)
