@@ -446,13 +446,13 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The scan could not be queued.');
       return;
     }
-    const ids = scanJobIds(result.body);
-    setNotice(ids.length > 1
-      ? `${ids.length} scans queued. New matches are added; the same package and advisory is not duplicated.`
+    const jobIds = scanJobIds(result.body);
+    setNotice(jobIds.length > 1
+      ? `${jobIds.length} scans queued. New matches are added; the same package and advisory is not duplicated.`
       : 'Scan queued. History will stay on this job until it finishes, then Findings opens for that repository.');
-    if (ids.length) {
-      setSelectedScanId(ids[0]);
-      setWatchScanIds(ids);
+    if (jobIds.length) {
+      setSelectedScanId(jobIds[0]);
+      setWatchScanIds(jobIds);
     }
     setTab('history');
     void load();
