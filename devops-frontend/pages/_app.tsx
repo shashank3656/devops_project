@@ -1,6 +1,5 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
-import { JetBrains_Mono, Roboto } from 'next/font/google';
 import { useEffect } from 'react';
 import { applyTheme, ConfirmProvider, installApiUrlRewrite, PortalErrorBoundary } from '@infragate/ui';
 import { ApiUrlProvider } from '../context/ApiUrlContext';
@@ -15,24 +14,9 @@ import '../../shared-ui/theme.css';
 installApiUrlRewrite(process.env.NEXT_PUBLIC_API_URL);
 purgeUnsignedDevopsSession();
 
-const roboto = Roboto({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
-  display: 'swap',
-  variable: '--font-roboto',
-});
-
-const mono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  display: 'swap',
-  variable: '--font-mono',
-});
-
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
     applyTheme();
-    document.documentElement.classList.add(roboto.variable, mono.variable);
   }, []);
   return (
     <ApiUrlProvider>
@@ -46,7 +30,7 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       <ConfirmProvider>
         <PortalErrorBoundary>
-          <div className={`${roboto.variable} ${mono.variable} ot-fonts`}>
+          <div className="ot-fonts">
             <Component {...pageProps} />
           </div>
         </PortalErrorBoundary>
