@@ -2,33 +2,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BulkBar, CopyButton, DataTable, EmptyState, formatOperationalTime, Stepper, type DataTableColumn, type RowKey } from '@infragate/ui';
+import { BulkBar, CopyButton, DataTable, EmptyState, formatOperationalTime, type DataTableColumn, type RowKey } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { accessLabel, asRows, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
+import { accessLabel, asRows, collectionModeLabel, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 const DEVOPS_USER_KEY = 'devops_user';
-
-const WIZARD_STEPS = [
-  { id: 'connection', label: 'Connection' },
-  { id: 'repository', label: 'Repository' },
-  { id: 'ownership', label: 'Ownership' },
-  { id: 'policy', label: 'Policy' },
-  { id: 'alerts', label: 'Alerts' },
-  { id: 'review', label: 'Review' },
-];
-
-function collectionModeLabel(value: string): string {
-  switch (value) {
-    case 'agent':
-      return 'Private outbound agent';
-    case 'ci':
-      return 'CI inventory / SBOM upload';
-    default:
-      return 'Hosted collector';
-  }
-}
 
 type Overview = {
   critical_findings?: number;
@@ -192,16 +172,6 @@ export default function GlobalVulnerabilitiesPage() {
   const [sbomText, setSbomText] = useState('');
   const [prRepo, setPrRepo] = useState('');
   const [prNumber, setPrNumber] = useState('');
-  const [wizardStep, setWizardStep] = useState(0);
-  const [wizardRepo, setWizardRepo] = useState('');
-  const [wizardMode, setWizardMode] = useState('hosted');
-  const [wizardTeam, setWizardTeam] = useState('');
-  const [wizardAlert, setWizardAlert] = useState('high');
-  const [wizardSchedule, setWizardSchedule] = useState('0');
-  const [wizardForks, setWizardForks] = useState(false);
-  const [wizardGate, setWizardGate] = useState(false);
-  const [wizardExclusions, setWizardExclusions] = useState('');
-  const [wizardBranch, setWizardBranch] = useState('main');
   const [kevOnly, setKevOnly] = useState(false);
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [intelOnly, setIntelOnly] = useState(false);
@@ -355,19 +325,6 @@ export default function GlobalVulnerabilitiesPage() {
     if (scanTargetRepo || !repos.length) return;
     setScanTargetRepo(String(repos[repos.length - 1].id));
   }, [repos, scanTargetRepo]);
-
-  useEffect(() => {
-    const item = repos.find((row) => String(row.id) === wizardRepo);
-    if (!item) return;
-    setWizardMode(item.collection_mode || 'hosted');
-    setWizardTeam(item.owner_team || '');
-    setWizardAlert(item.alert_min_severity || 'high');
-    setWizardSchedule(String(item.schedule_minutes || 0));
-    setWizardForks(Boolean(item.allow_fork_prs));
-    setWizardGate(Boolean(item.enforce_pr_gate));
-    setWizardExclusions(item.exclusions || '');
-    setWizardBranch(item.branch || 'main');
-  }, [repos, wizardRepo]);
 
   const showScorecards = tab === 'services' || tab === 'advisories' || tab === 'findings' || tab === 'remediation' || tab === 'campaigns';
   const teams = useMemo(() => Array.from(new Set(services.map((item) => item.team).filter((item): item is string => Boolean(item)))), [services]);
@@ -549,54 +506,6 @@ export default function GlobalVulnerabilitiesPage() {
     }
     setNotice('Comparison stored against immutable base and head commits. Incomplete coverage is never a clean verdict.');
     void load();
-  }
-
-  async function saveWizard() {
-    const repoId = Number(wizardRepo);
-    if (!repoId) {
-      setError('Select a registered repository.');
-      return;
-    }
-    if (!isManager) {
-      setError('Saving policy needs a manager role.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    const result = await vulnRequest(apiUrl, `/api/devops/security/repositories/${repoId}`, 'PATCH', {
-      collection_mode: wizardMode,
-      owner_team: wizardTeam,
-      alert_min_severity: wizardAlert,
-      schedule_minutes: Number(wizardSchedule) || 0,
-      allow_fork_prs: wizardForks,
-      enforce_pr_gate: wizardGate,
-      exclusions: wizardExclusions,
-      branch: wizardBranch.trim(),
-    });
-    setBusy(false);
-    if (result.status !== 200) {
-      setError(typeof result.body.error === 'string' ? result.body.error : 'Repository policy could not be saved.');
-      return;
-    }
-    setNotice('Repository policy saved. Hosted tokens stay on the API.');
-    void load();
-  }
-
-  function openPolicy(item: RepoConfig) {
-    setWizardRepo(String(item.id));
-    setWizardMode(item.collection_mode || 'hosted');
-    setWizardTeam(item.owner_team || '');
-    setWizardAlert(item.alert_min_severity || 'high');
-    setWizardSchedule(String(item.schedule_minutes || 0));
-    setWizardForks(Boolean(item.allow_fork_prs));
-    setWizardGate(Boolean(item.enforce_pr_gate));
-    setWizardExclusions(item.exclusions || '');
-    setWizardBranch(item.branch || 'main');
-    setWizardStep(5);
-    setError('');
-    window.requestAnimationFrame(() => {
-      document.getElementById('sec-vuln-policy')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
   }
 
   async function registerRepo() {
@@ -852,7 +761,7 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'edit', header: '', cell: (item) => (
       <span className="sec-vuln-row-actions">
         <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void scanRepositories([item.id])}>Scan now</button>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => openPolicy(item)}>Edit policy</button>
+        <Link className="btn btn-secondary btn-sm" href={`/security/vulnerabilities/policy/${item.id}`}>Edit policy</Link>
       </span>
     ) },
   ], [apiUrl, busy, projectId]);
@@ -1051,43 +960,52 @@ export default function GlobalVulnerabilitiesPage() {
         ) : null}
 
         {tab === 'services' ? (
-          <section className="portal-surface">
-            <div className="portal-surface__header">
-              <div>
-                <h2 className="portal-surface__title">Services</h2>
-                <p className="portal-surface__subtitle">Empty coverage is not a clean bill of health. “No matches in scanned scope” only covers assessed modules.</p>
+          <div className="sec-vuln-workspace">
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Services</h2>
+                  <p className="portal-surface__subtitle">Empty coverage is not a clean bill of health. “No matches in scanned scope” only covers assessed modules.</p>
+                </div>
               </div>
-            </div>
-            {selected.length ? <p className="form-section__copy">{selected.length} services selected. Shared repositories are scanned once.</p> : null}
-            <DataTable
-              label="Registered services"
-              columns={serviceColumns}
-              rows={visibleServices}
-              rowKey={(item) => String(item.service_id)}
-              empty={(
-                <EmptyState
-                  title={loading ? 'Loading services' : 'No registered services in this scope'}
-                  body="Connect a repository on the service record, then scan. This page does not invent coverage."
-                />
-              )}
-            />
-            <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void bindDeployment(); }}>
-              <label className="label">Service
-                <select className="input" value={deployService} onChange={(event) => setDeployService(event.target.value)}>
-                  <option value="">Select a service</option>
-                  {services.map((item) => <option key={item.service_id} value={item.service_id}>{item.service || `Service ${item.service_id}`}</option>)}
-                </select>
-              </label>
-              <label className="label">Environment<input className="input" value={deployEnv} onChange={(event) => setDeployEnv(event.target.value)} /></label>
-              <label className="label">Image digest<input className="input" value={deployDigest} onChange={(event) => setDeployDigest(event.target.value)} placeholder="sha256:…" /></label>
-              <label className="label">Commit SHA<input className="input" value={deployCommitSha} onChange={(event) => setDeployCommitSha(event.target.value)} /></label>
-              <div className="portal-form-actions">
-                <button type="submit" className="btn btn-secondary" disabled={busy}>Record digest</button>
+              {selected.length ? <p className="form-section__copy">{selected.length} services selected. Shared repositories are scanned once.</p> : null}
+              <DataTable
+                label="Registered services"
+                columns={serviceColumns}
+                rows={visibleServices}
+                rowKey={(item) => String(item.service_id)}
+                empty={(
+                  <EmptyState
+                    title={loading ? 'Loading services' : 'No registered services in this scope'}
+                    body="Connect a repository on the service record, then scan. This page does not invent coverage."
+                  />
+                )}
+              />
+            </section>
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Runtime digest</h2>
+                  <p className="portal-surface__subtitle">Record an observed image digest and an optional SBOM. Images are not pulled. A digest without an SBOM cannot prove production is patched.</p>
+                </div>
               </div>
-              <label className="label">Optional SBOM JSON<textarea className="input" rows={4} value={deploySbom} onChange={(event) => setDeploySbom(event.target.value)} /></label>
-            </form>
-            <p className="form-section__copy">Images are not pulled. A digest without an SBOM cannot prove production is patched.</p>
-          </section>
+              <form className="sec-vuln-inline sec-vuln-inline--digest" onSubmit={(event) => { event.preventDefault(); void bindDeployment(); }}>
+                <label className="label">Service
+                  <select className="input" value={deployService} onChange={(event) => setDeployService(event.target.value)}>
+                    <option value="">Select a service</option>
+                    {services.map((item) => <option key={item.service_id} value={item.service_id}>{item.service || `Service ${item.service_id}`}</option>)}
+                  </select>
+                </label>
+                <label className="label">Environment<input className="input" value={deployEnv} onChange={(event) => setDeployEnv(event.target.value)} /></label>
+                <label className="label">Image digest<input className="input" value={deployDigest} onChange={(event) => setDeployDigest(event.target.value)} placeholder="sha256:…" /></label>
+                <label className="label">Commit SHA<input className="input" value={deployCommitSha} onChange={(event) => setDeployCommitSha(event.target.value)} /></label>
+                <label className="label">Optional SBOM JSON<textarea className="input" rows={6} value={deploySbom} onChange={(event) => setDeploySbom(event.target.value)} placeholder="CycloneDX or SPDX JSON" /></label>
+                <div className="portal-form-actions">
+                  <button type="submit" className="btn btn-secondary" disabled={busy}>Record digest</button>
+                </div>
+              </form>
+            </section>
+          </div>
         ) : null}
 
         {tab === 'advisories' ? (
@@ -1528,6 +1446,7 @@ export default function GlobalVulnerabilitiesPage() {
                   <h2 className="portal-surface__title">Repositories</h2>
                   <p className="portal-surface__subtitle">GitHub, GitLab, and Bitbucket URLs are accepted. Hosted tokens stay on the API. Record a runtime image digest on Services; images are not pulled.</p>
                 </div>
+                <Link className="btn btn-secondary" href="/security/vulnerabilities/policy">Repository policy</Link>
               </div>
               <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void registerRepo(); }}>
                 <label className="label">Repository<input className="input" value={newRepo} onChange={(event) => setNewRepo(event.target.value)} placeholder="org/service or gitlab.com/group/service" /></label>
@@ -1542,98 +1461,8 @@ export default function GlobalVulnerabilitiesPage() {
                 columns={repoColumns}
                 rows={repos}
                 rowKey={(item) => String(item.id)}
-                empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then set policy below." />}
+                empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then open Repository policy." />}
               />
-            </section>
-            <section className="portal-surface sec-vuln-wizard" id="sec-vuln-policy">
-              <div className="portal-surface__header">
-                <div>
-                  <h2 className="portal-surface__title">Repository policy</h2>
-                  <p className="portal-surface__subtitle">{wizardRepo ? `Editing ${repos.find((item) => String(item.id) === wizardRepo)?.repository || 'the selected repository'}.` : 'Connection, ownership, schedule, and alerts. This form never displays secret values.'}</p>
-                </div>
-              </div>
-              <Stepper
-                steps={WIZARD_STEPS}
-                current={WIZARD_STEPS[wizardStep]?.id || 'connection'}
-                onSelect={(id) => {
-                  const index = WIZARD_STEPS.findIndex((step) => step.id === id);
-                  if (index >= 0) setWizardStep(index);
-                }}
-              />
-              <form className="sec-vuln-inline sec-vuln-inline--policy" onSubmit={(event) => {
-                event.preventDefault();
-                if (wizardStep === 1 && !wizardRepo) {
-                  setError('Select a registered repository.');
-                  return;
-                }
-                if (wizardStep < 5) setWizardStep(wizardStep + 1);
-                else void saveWizard();
-              }}>
-                {wizardStep === 0 ? (
-                  <label className="label">Collection mode
-                    <select className="input" value={wizardMode} onChange={(event) => setWizardMode(event.target.value)}>
-                      <option value="hosted">Hosted collector</option>
-                      <option value="agent">Private outbound agent</option>
-                      <option value="ci">CI inventory / SBOM upload</option>
-                    </select>
-                  </label>
-                ) : null}
-                {wizardStep === 1 ? (
-                  <>
-                    <label className="label">Repository
-                      <select className="input" value={wizardRepo} onChange={(event) => setWizardRepo(event.target.value)}>
-                        <option value="">Select a registered repository</option>
-                        {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
-                      </select>
-                    </label>
-                    <label className="label">Branch
-                      <input className="input" value={wizardBranch} onChange={(event) => setWizardBranch(event.target.value)} placeholder="main" />
-                    </label>
-                  </>
-                ) : null}
-                {wizardStep === 2 ? (
-                  <label className="label">Owner team<input className="input" value={wizardTeam} onChange={(event) => setWizardTeam(event.target.value)} placeholder="Team that owns this repository" /></label>
-                ) : null}
-                {wizardStep === 3 ? (
-                  <>
-                    <label className="label">Schedule minutes<input className="input" value={wizardSchedule} onChange={(event) => setWizardSchedule(event.target.value)} /></label>
-                    <p className="form-section__copy">Hosted collector runs due jobs every five minutes when schedule is 15 or more. Agents and CI are not kicked from this schedule.</p>
-                    <label className="label">Path exclusions<input className="input" value={wizardExclusions} onChange={(event) => setWizardExclusions(event.target.value)} placeholder="docs/, vendor/" /></label>
-                    <label className="sec-vuln-check"><input type="checkbox" checked={wizardForks} onChange={(event) => setWizardForks(event.target.checked)} /> Allow fork pull requests</label>
-                    <label className="sec-vuln-check"><input type="checkbox" checked={wizardGate} onChange={(event) => setWizardGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
-                  </>
-                ) : null}
-                {wizardStep === 4 ? (
-                  <label className="label">Alert from severity
-                    <select className="input" value={wizardAlert} onChange={(event) => setWizardAlert(event.target.value)}>
-                      <option value="critical">Critical</option>
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                    </select>
-                  </label>
-                ) : null}
-                {wizardStep === 5 ? (
-                  <dl className="sec-vuln-status">
-                    <div><dt>Repository</dt><dd>{repos.find((item) => String(item.id) === wizardRepo)?.repository || 'Select a repository'}</dd></div>
-                    <div><dt>Collection</dt><dd>{collectionModeLabel(wizardMode)}</dd></div>
-                    <div><dt>Branch</dt><dd>{wizardBranch || 'Unchanged'}</dd></div>
-                    <div><dt>Owner team</dt><dd>{wizardTeam || 'Unchanged'}</dd></div>
-                    <div><dt>Alerts from</dt><dd>{wizardAlert}</dd></div>
-                    <div><dt>Schedule</dt><dd>{Number(wizardSchedule) >= 15 ? `Every ${wizardSchedule} minutes` : 'Off (hosted scans need 15 minutes or more)'}</dd></div>
-                    <div><dt>Last scheduled</dt><dd>{repos.find((item) => String(item.id) === wizardRepo)?.last_scheduled_at ? formatOperationalTime(repos.find((item) => String(item.id) === wizardRepo)?.last_scheduled_at || '') : 'Never'}</dd></div>
-                    <div><dt>Token</dt><dd>{accessLabel(repos.find((item) => String(item.id) === wizardRepo)?.access_state)}</dd></div>
-                    <div><dt>Fork PRs</dt><dd>{wizardForks ? 'Allowed' : 'Blocked'}</dd></div>
-                    <div><dt>Comparison gate</dt><dd>{wizardGate ? 'Enforced' : 'Informational'}</dd></div>
-                  </dl>
-                ) : null}
-                {wizardStep === 0 || wizardStep === 5 ? (
-                  <p className="form-section__copy">Hosted collector never executes package scripts. Saving policy needs a manager role.</p>
-                ) : null}
-                <div className="portal-form-actions">
-                  {wizardStep > 0 ? <button type="button" className="btn btn-secondary" onClick={() => setWizardStep(wizardStep - 1)}>Back</button> : null}
-                  <button type="submit" className="btn btn-primary" disabled={busy || (wizardStep === 5 && !isManager)}>{wizardStep < 5 ? 'Next' : 'Save policy'}</button>
-                </div>
-              </form>
             </section>
           </div>
         ) : null}

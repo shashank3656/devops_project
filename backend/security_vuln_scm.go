@@ -32,6 +32,15 @@ func normalizeVulnProvider(raw string) string {
 	}
 }
 
+func vulnReposMatch(left, right string) bool {
+	_, ownerA, nameA := parseVulnRepo(left)
+	_, ownerB, nameB := parseVulnRepo(right)
+	if ownerA != "" && nameA != "" && strings.EqualFold(ownerA, ownerB) && strings.EqualFold(nameA, nameB) {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right)) && strings.TrimSpace(left) != ""
+}
+
 func parseVulnRepo(raw string) (provider, owner, name string) {
 	value := strings.TrimSpace(raw)
 	value = strings.TrimSuffix(value, ".git")

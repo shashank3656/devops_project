@@ -87,6 +87,17 @@ export function patchLabel(value: string): string {
   }
 }
 
+export function collectionModeLabel(value?: string): string {
+  switch ((value || '').toLowerCase()) {
+    case 'agent':
+      return 'Private outbound agent';
+    case 'ci':
+      return 'CI inventory / SBOM upload';
+    default:
+      return 'Hosted collector';
+  }
+}
+
 export function accessLabel(value?: string): string {
   switch ((value || '').toLowerCase()) {
     case 'reachable':

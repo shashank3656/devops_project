@@ -152,6 +152,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/security/vulnerabilities': 'Vulnerabilities',
   '/security/vulnerabilities/advisories/[id]': 'Advisory',
   '/security/vulnerabilities/findings/[id]': 'Finding',
+  '/security/vulnerabilities/policy': 'Repository policy',
+  '/security/vulnerabilities/policy/[id]': 'Repository policy',
   '/security/vulnerabilities/services/[id]': 'Service security',
   '/profile': 'Profile',
   '/my-requests': 'My requests',

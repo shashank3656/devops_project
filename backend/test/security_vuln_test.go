@@ -676,6 +676,15 @@ func TestBulkLifecycleForbidsFixed(t *testing.T) {
 	}
 }
 
+func TestVulnReposMatchIgnoresHostPrefix(t *testing.T) {
+	if !vulnReposMatch("https://github.com/acme/api", "acme/api") {
+		t.Fatal("service map URLs must match stored owner/name")
+	}
+	if vulnReposMatch("acme/api", "acme/other") {
+		t.Fatal("different repositories must not match")
+	}
+}
+
 func TestScorecardsCountNormalizedCVSS(t *testing.T) {
 	crit, high := tallyConfirmedOpenSeverity([]vulnSeverityRow{
 		{Severity: "unknown", Score: 9.1, Lifecycle: vulnLifeOpen, Confidence: vulnConfidenceConfirmed},

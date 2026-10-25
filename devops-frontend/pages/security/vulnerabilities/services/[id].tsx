@@ -44,7 +44,7 @@ type Dep = {
 };
 
 type Plan = { id: number; label: string; package_name: string; current_version: string; target_version: string; status: string };
-type Scan = { id: number; state: string; stage: string; commit_sha?: string; created_at?: string; error?: string };
+type Scan = { id: number; state: string; stage: string; commit_sha?: string; created_at?: string; error?: string; finding_count?: number; coverage_note?: string };
 type Runtime = { kind: string; value: string; provenance: string; path?: string; note?: string };
 type Deployment = { id: number; environment: string; digest: string; commit_sha?: string; has_sbom: boolean; created_at?: string; note?: string };
 
@@ -259,18 +259,27 @@ export default function VulnServiceDetailPage() {
             ) : null}
             {tab === 'history' ? (
               <section className="portal-surface">
+                <div className="portal-surface__header">
+                  <div>
+                    <h2 className="portal-surface__title">Scan history</h2>
+                    <p className="portal-surface__subtitle">Jobs for this service’s repository, including hosted scans started from Config.</p>
+                  </div>
+                  <Link className="btn btn-secondary btn-sm" href="/security/vulnerabilities?tab=history">Open History</Link>
+                </div>
                 <DataTable
                   label="Service scan history"
                   columns={[
                     { id: 'id', header: 'Job', cell: (item: Scan) => `#${item.id}` },
                     { id: 'state', header: 'State', cell: (item: Scan) => `${item.state} · ${item.stage}` },
+                    { id: 'hits', header: 'Findings', cell: (item: Scan) => String(item.finding_count ?? 0) },
+                    { id: 'cov', header: 'Coverage', cell: (item: Scan) => item.coverage_note || 'No coverage notes' },
                     { id: 'commit', header: 'Commit', cell: (item: Scan) => item.commit_sha ? item.commit_sha.slice(0, 12) : 'Unknown' },
                     { id: 'when', header: 'Queued', cell: (item: Scan) => (item.created_at ? formatOperationalTime(item.created_at) : 'Unknown') },
                     { id: 'err', header: 'Error', cell: (item: Scan) => item.error || 'None recorded' },
                   ]}
                   rows={scans}
                   rowKey={(item) => String(item.id)}
-                  empty={<EmptyState title="No scans yet" body="Queue a scan from the services list." />}
+                  empty={<EmptyState title="No scans yet" body="Scan this service from the services list, or scan its repository on Config. Empty history is not a secure label." />}
                 />
               </section>
             ) : null}

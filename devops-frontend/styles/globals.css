@@ -10653,6 +10653,32 @@ html[data-theme='dark'] .devops-layout .ops-minis--four .ops-mini:not([class*='o
   flex: 1 1 100%;
 }
 
+.sec-vuln-inline--digest {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: 14px 16px;
+  margin: 0;
+}
+
+.sec-vuln-inline--digest .label {
+  min-width: 0;
+}
+
+.sec-vuln-inline--digest .label:has(textarea),
+.sec-vuln-inline--digest .portal-form-actions {
+  grid-column: 1 / -1;
+}
+
+.sec-vuln-inline--digest textarea.input {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.sec-vuln-inline--digest .portal-form-actions {
+  justify-content: flex-end;
+}
+
 .sec-vuln-inline--policy {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -10839,6 +10865,16 @@ html[data-theme='dark'] .devops-layout .ops-minis--four .ops-mini:not([class*='o
   }
 
   .sec-vuln-inline--policy {
+    grid-template-columns: 1fr;
+  }
+
+  .sec-vuln-inline--digest {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .sec-vuln-inline--digest {
     grid-template-columns: 1fr;
   }
 }

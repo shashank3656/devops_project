@@ -426,21 +426,21 @@ func serviceVulnDetail(userID, serviceID int) map[string]any {
 	if service == nil {
 		return nil
 	}
-	findings, _ := listVulnFindings(userID, 0, serviceID, "", "", "")
+	allFindings, _ := listVulnFindings(userID, 0, 0, "", "", "")
+	findings := []vulnFindingView{}
+	for _, item := range allFindings {
+		if item.ServiceID == serviceID || vulnReposMatch(item.Repo, service.Repo) {
+			findings = append(findings, item)
+		}
+	}
 	plans, _ := listVulnPlans(userID)
 	servicePlans := []vulnPlanView{}
 	for _, plan := range plans {
-		if plan.Repository == service.Repo {
+		if vulnReposMatch(plan.Repository, service.Repo) {
 			servicePlans = append(servicePlans, plan)
 		}
 	}
-	scans, _ := listVulnScans(userID)
-	serviceScans := []vulnScanView{}
-	for _, scan := range scans {
-		if scan.Repository == service.Repo {
-			serviceScans = append(serviceScans, scan)
-		}
-	}
+	serviceScans := listVulnScansForRepo(service.RepoID, service.Repo)
 	deps := []vulnComponent{}
 	if service.RepoID > 0 {
 		deps, _ = loadInventoryComponents(latestInventoryID(service.RepoID))

@@ -91,6 +91,7 @@ type vulnScanView struct {
 	ID                int               `json:"id"`
 	State             string            `json:"state"`
 	Stage             string            `json:"stage"`
+	RepoID            int               `json:"repo_id,omitempty"`
 	Repository        string            `json:"repository"`
 	CommitSHA         string            `json:"commit_sha,omitempty"`
 	Error             string            `json:"error,omitempty"`
@@ -1097,7 +1098,7 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 	args := []any{}
 	extra, args := vulnProjectFilter(seeAll, ids, "COALESCE(NULLIF(j.project_id,0), r.project_id)", args)
 	rows, cancel, err := queryRowsWithTimeout(`
-		SELECT j.id, j.state, j.stage, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
+		SELECT j.id, j.state, j.stage, j.repo_id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
 		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
 		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
 		FROM vuln_scan_jobs j
@@ -1115,7 +1116,7 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 		var item vulnScanView
 		var created, finished sql.NullTime
 		var raw string
-		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount); err != nil {
 			continue
 		}
 		_ = json.Unmarshal([]byte(raw), &item.Coverage)
@@ -1128,6 +1129,57 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+func listVulnScansForRepo(repoID int, repoName string) []vulnScanView {
+	if DB == nil {
+		return []vulnScanView{}
+	}
+	args := []any{}
+	where := ""
+	if repoID > 0 {
+		args = append(args, repoID)
+		where = " WHERE j.repo_id = $1"
+	} else {
+		_, owner, name := parseVulnRepo(repoName)
+		if owner == "" || name == "" {
+			return []vulnScanView{}
+		}
+		args = append(args, owner, name)
+		where = " WHERE r.owner = $1 AND r.name = $2"
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT j.id, j.state, j.stage, j.repo_id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
+		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
+		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
+		FROM vuln_scan_jobs j
+		JOIN vuln_repositories r ON r.id = j.repo_id
+		`+where+`
+		ORDER BY j.id DESC LIMIT 50
+	`, args...)
+	if err != nil {
+		return []vulnScanView{}
+	}
+	defer cancel()
+	defer rows.Close()
+	out := []vulnScanView{}
+	for rows.Next() {
+		var item vulnScanView
+		var created, finished sql.NullTime
+		var raw string
+		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount); err != nil {
+			continue
+		}
+		_ = json.Unmarshal([]byte(raw), &item.Coverage)
+		if item.Coverage == nil {
+			item.Coverage = []vulnCoverageGap{}
+		}
+		item.CreatedAt = nullTimePtr(created)
+		item.FinishedAt = nullTimePtr(finished)
+		item.CoverageNote = summarizeVulnCoverage(item.Coverage)
+		out = append(out, item)
+	}
+	return out
 }
 
 func getVulnScan(id int) (*vulnScanView, error) {
@@ -1147,11 +1199,11 @@ func getVulnScan(id int) (*vulnScanView, error) {
 	var created, finished sql.NullTime
 	var raw string
 	err = queryRowContext(`
-		SELECT j.id, j.state, j.stage, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
+		SELECT j.id, j.state, j.stage, j.repo_id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
 		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
 		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
 		FROM vuln_scan_jobs j JOIN vuln_repositories r ON r.id = j.repo_id WHERE j.id = $1
-	`, id).Scan(&item.ID, &item.State, &item.Stage, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount)
+	`, id).Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount)
 	if err != nil {
 		return nil, fmt.Errorf("not found")
 	}
