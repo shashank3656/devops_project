@@ -310,7 +310,7 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 			"note": "This bootstrap token is shown once. The API stores only a hash.",
 		})
 	case path == "inventories" && r.Method == http.MethodPost:
-		raw, _ := io.ReadAll(io.LimitReader(r.Body, 2<<20))
+		raw, _ := io.ReadAll(io.LimitReader(r.Body, 8<<20))
 		handleVulnInventoryUpload(w, r, userID, 0, 0, raw)
 	case parts[0] == "repositories" && len(parts) == 3 && parts[2] == "inventory" && r.Method == http.MethodGet:
 		id, _ := strconv.Atoi(parts[1])
@@ -959,8 +959,11 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 	}
 	statusURL := "/api/devops/security/scans/" + strconv.Itoa(jobIDs[0])
 	kickVulnScanWorker()
+	mode := "hosted"
+	_ = queryRowContext(`SELECT COALESCE(NULLIF(collection_mode,''),'hosted') FROM vuln_scan_jobs WHERE id=$1`, jobIDs[0]).Scan(&mode)
 	_ = writeJSONResponse(w, http.StatusAccepted, map[string]any{
 		"job_id": jobIDs[0], "job_ids": jobIDs, "status_url": statusURL, "status": "accepted",
+		"collection_mode": mode, "note": vulnScanNextStep(mode),
 	})
 }
 

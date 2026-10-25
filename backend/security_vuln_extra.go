@@ -126,10 +126,36 @@ func classifyPRFinding(class, coverage string) string {
 }
 
 func vulnAgentOwnsJob(agentProjectID, jobProjectID int) bool {
-	if agentProjectID == 0 {
-		return jobProjectID == 0
+	return vulnAgentCanClaim(agentProjectID, jobProjectID, 0)
+}
+
+func vulnEffectiveJobProject(jobProjectID, repoProjectID int) int {
+	if jobProjectID > 0 {
+		return jobProjectID
 	}
-	return agentProjectID == jobProjectID
+	if repoProjectID > 0 {
+		return repoProjectID
+	}
+	return 0
+}
+
+func vulnAgentCanClaim(agentProjectID, jobProjectID, repoProjectID int) bool {
+	jobProject := vulnEffectiveJobProject(jobProjectID, repoProjectID)
+	if agentProjectID == 0 {
+		return jobProject == 0
+	}
+	return agentProjectID == jobProject
+}
+
+func vulnScanNextStep(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "agent":
+		return "Queued for a private agent. Hosted collector will not clone this repository. Start the agent from Sources, or upload a lockfile there."
+	case "ci":
+		return "Queued for CI inventory. Upload a lockfile, SBOM, or SARIF on Sources to finish this job. Hosted collector will not clone this repository."
+	default:
+		return "Scan queued. Hosted collector will read the latest commit on the registered branch."
+	}
 }
 
 func inventoryAtCommit(provider, owner, name, sha string) ([]vulnComponent, []vulnCoverageGap, error) {

@@ -108,6 +108,7 @@ type vulnScanView struct {
 	DiscoveredModules int               `json:"discovered_modules"`
 	AssessedModules   int               `json:"assessed_modules"`
 	FindingCount      int               `json:"finding_count"`
+	CollectionMode    string            `json:"collection_mode,omitempty"`
 	Coverage          []vulnCoverageGap `json:"coverage"`
 	CoverageNote      string            `json:"coverage_note,omitempty"`
 	CreatedAt         *string           `json:"created_at,omitempty"`
@@ -1236,7 +1237,7 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT j.id, j.state, j.stage, j.repo_id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
 		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
-		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
+		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id), COALESCE(NULLIF(j.collection_mode,''),'hosted')
 		FROM vuln_scan_jobs j
 		JOIN vuln_repositories r ON r.id = j.repo_id
 		WHERE 1=1 `+extra+`
@@ -1252,7 +1253,7 @@ func listVulnScans(userID int) ([]vulnScanView, error) {
 		var item vulnScanView
 		var created, finished sql.NullTime
 		var raw string
-		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount, &item.CollectionMode); err != nil {
 			continue
 		}
 		_ = json.Unmarshal([]byte(raw), &item.Coverage)
@@ -1287,7 +1288,7 @@ func listVulnScansForRepo(repoID int, repoName string) []vulnScanView {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT j.id, j.state, j.stage, j.repo_id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
 		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
-		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
+		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id), COALESCE(NULLIF(j.collection_mode,''),'hosted')
 		FROM vuln_scan_jobs j
 		JOIN vuln_repositories r ON r.id = j.repo_id
 		`+where+`
@@ -1303,7 +1304,7 @@ func listVulnScansForRepo(repoID int, repoName string) []vulnScanView {
 		var item vulnScanView
 		var created, finished sql.NullTime
 		var raw string
-		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount, &item.CollectionMode); err != nil {
 			continue
 		}
 		_ = json.Unmarshal([]byte(raw), &item.Coverage)
@@ -1337,9 +1338,9 @@ func getVulnScan(id int) (*vulnScanView, error) {
 	err = queryRowContext(`
 		SELECT j.id, j.state, j.stage, j.repo_id, COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), j.commit_sha, j.error,
 		       j.discovered_modules, j.assessed_modules, j.coverage_json, j.created_at, j.finished_at,
-		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id)
+		       (SELECT COUNT(*) FROM vuln_findings f WHERE f.last_scan_id = j.id), COALESCE(NULLIF(j.collection_mode,''),'hosted')
 		FROM vuln_scan_jobs j JOIN vuln_repositories r ON r.id = j.repo_id WHERE j.id = $1
-	`, id).Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount)
+	`, id).Scan(&item.ID, &item.State, &item.Stage, &item.RepoID, &item.Repository, &item.CommitSHA, &item.Error, &item.DiscoveredModules, &item.AssessedModules, &raw, &created, &finished, &item.FindingCount, &item.CollectionMode)
 	if err != nil {
 		return nil, fmt.Errorf("not found")
 	}

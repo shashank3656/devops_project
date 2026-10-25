@@ -342,6 +342,37 @@ func TestAgentCannotClaimOtherTenantJob(t *testing.T) {
 	if vulnAgentOwnsJob(0, 5) {
 		t.Fatal("unscoped agent must not claim a project job")
 	}
+	if !vulnAgentCanClaim(5, 0, 5) {
+		t.Fatal("agent must claim a job whose repository belongs to the same project")
+	}
+	if vulnAgentCanClaim(0, 0, 5) {
+		t.Fatal("unscoped agent must not claim a project repository job")
+	}
+}
+
+func TestVulnScanNextStepForAgentAndCI(t *testing.T) {
+	if !strings.Contains(vulnScanNextStep("agent"), "private agent") {
+		t.Fatal("agent next step")
+	}
+	if !strings.Contains(vulnScanNextStep("ci"), "CI") {
+		t.Fatal("ci next step")
+	}
+}
+
+func TestLooksLikeNpmLockAndCommitResolved(t *testing.T) {
+	if !looksLikeNpmLock([]byte(`{"lockfileVersion":3,"packages":{"":{}}}`)) {
+		t.Fatal("npm lock should be detected")
+	}
+	if looksLikeNpmLock([]byte(`{"bomFormat":"CycloneDX"}`)) {
+		t.Fatal("SBOM is not an npm lock")
+	}
+	if !vulnCommitLooksResolved("abcdef0") || vulnCommitLooksResolved("main") || vulnCommitLooksResolved("unspecified") {
+		t.Fatal("commit resolution heuristic")
+	}
+	parsed := parseVulnArtifact("package-lock.json", `{"lockfileVersion":3,"packages":{"node_modules/left-pad":{"version":"1.3.0"}}}`)
+	if len(parsed.Components) != 1 || parsed.Components[0].PackageName != "left-pad" {
+		t.Fatalf("lockfile upload parse = %+v", parsed.Components)
+	}
 }
 
 func TestAgentTokenHashNeverEqualsRaw(t *testing.T) {

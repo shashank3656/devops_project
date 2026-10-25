@@ -117,7 +117,11 @@ export default function VulnPolicyDetailPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'Repository policy could not be saved.');
       return;
     }
-    setNotice('Repository policy saved. Hosted tokens stay on the API.');
+    setNotice(mode === 'agent'
+      ? 'Policy saved. Open Sources, create a bootstrap token, and run the agent from the repository checkout. Scan now queues a job for that agent.'
+      : mode === 'ci'
+        ? 'Policy saved. Open Sources and upload a lockfile, SBOM, or SARIF. Scan now waits for that upload.'
+        : 'Repository policy saved. Hosted tokens stay on the API.');
     await load();
   }
 
@@ -197,10 +201,18 @@ export default function VulnPolicyDetailPage() {
                 <label className="label">Path exclusions<input className="input" value={exclusions} onChange={(event) => setExclusions(event.target.value)} placeholder="docs/, vendor/" /></label>
                 <label className="sec-vuln-check"><input type="checkbox" checked={forks} onChange={(event) => setForks(event.target.checked)} /> Allow fork pull requests</label>
                 <label className="sec-vuln-check"><input type="checkbox" checked={gate} onChange={(event) => setGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
-                <p className="form-section__copy">Hosted collector runs due jobs every five minutes when schedule is 15 or more. Pause leaves history and open findings in place. Agents and CI are not kicked from this schedule. Stale inventory stays Unknown; it is not a Secure label.</p>
+                <p className="form-section__copy">
+                  {mode === 'agent'
+                    ? 'Private agents upload lockfiles from a checkout or GitHub token. After save, open Sources, create a bootstrap token, and run python3 workers/vuln_agent.py. Scan now queues a job for that agent.'
+                    : mode === 'ci'
+                      ? 'CI inventory does not clone. After save, open Sources and upload a lockfile, SBOM, or SARIF. Scan now waits for that upload and then correlates like a hosted scan.'
+                      : 'Hosted collector runs due jobs every five minutes when schedule is 15 or more. Pause leaves history and open findings in place. Agents and CI are not kicked from this schedule.'}
+                  {' '}Stale inventory stays Unknown; it is not a Secure label.
+                </p>
                 <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={busy || !isManager}>Save policy</button>
                   <button type="button" className="btn btn-secondary" disabled={busy || !isManager} onClick={() => void toggleEnabled(repo.enabled === false)}>{repo.enabled === false ? 'Enable scheduled scans' : 'Pause scheduled scans'}</button>
+                  {(mode === 'agent' || mode === 'ci') ? <Link className="btn btn-secondary" href="/security/vulnerabilities?tab=sources">Open Sources</Link> : null}
                   <Link className="btn btn-secondary" href="/security/vulnerabilities/policy">Choose another repository</Link>
                 </div>
               </form>

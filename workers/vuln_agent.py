@@ -98,6 +98,18 @@ def claim_job(api: str, token: str) -> dict | None:
     return job if isinstance(job, dict) else None
 
 
+def default_repo_dir(explicit: str) -> str:
+    if explicit:
+        return explicit
+    env = env_text("VULN_REPO_DIR")
+    if env:
+        return env
+    cwd = Path.cwd()
+    if (cwd / ".git").exists() or any((cwd / name).exists() for name in LOCK_NAMES):
+        return str(cwd)
+    return ""
+
+
 def git_commit(repo_dir: Path) -> str:
     head = repo_dir / ".git" / "HEAD"
     if not head.is_file():
@@ -395,7 +407,7 @@ def run_claimed_job(api: str, token: str, job: dict, repo_dir: str, github_token
     elif github_token:
         commit, components, coverage, sbom = collect_github(owner, name, branch, github_token)
     else:
-        raise RuntimeError("Set VULN_REPO_DIR for a local checkout, or GITHUB_TOKEN to read lockfiles. Images are not pulled.")
+        raise RuntimeError("Run the agent from a git checkout (or set VULN_REPO_DIR), or set GITHUB_TOKEN to read lockfiles. Images are not pulled.")
     if not commit:
         raise RuntimeError("commit_sha is required. Use a git checkout or a resolved GitHub ref.")
     upload_agent(api, token, job_id, repo_id, commit, components, coverage, sbom)
@@ -415,7 +427,7 @@ def main() -> int:
     load_worker_env(args.env_file)
 
     api = (args.api or env_text("OPSTRELLIS_API_URL", default="http://localhost:8080")).rstrip("/")
-    repo_dir = args.repo_dir or env_text("VULN_REPO_DIR")
+    repo_dir = default_repo_dir(args.repo_dir)
     poll = env_int("VULN_POLL_SECONDS") or 15
     github_token = env_text("GITHUB_TOKEN")
     bootstrap = env_text("VULN_BOOTSTRAP_TOKEN")
@@ -438,7 +450,7 @@ def main() -> int:
             components, coverage, sbom = collect_local(Path(repo_dir).expanduser())
             commit = commit or git_commit(Path(repo_dir).expanduser())
         else:
-            print("CI upload needs --sbom or VULN_REPO_DIR.", file=sys.stderr)
+            print("CI upload needs --sbom, --repo-dir, or a checkout in the current directory.", file=sys.stderr)
             return 1
         if not commit:
             print("CI upload needs a commit SHA.", file=sys.stderr)

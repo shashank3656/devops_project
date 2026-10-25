@@ -92,11 +92,13 @@ type ScanRow = {
   state: string;
   stage: string;
   repository: string;
+  repo_id?: number;
   commit_sha?: string;
   error?: string;
   discovered_modules: number;
   assessed_modules: number;
   finding_count?: number;
+  collection_mode?: string;
   coverage?: { path?: string; reason?: string }[];
   coverage_note?: string;
   created_at?: string;
@@ -204,6 +206,7 @@ export default function GlobalVulnerabilitiesPage() {
   const [sbomRepo, setSbomRepo] = useState('');
   const [sbomCommit, setSbomCommit] = useState('');
   const [sbomText, setSbomText] = useState('');
+  const [sbomFilename, setSbomFilename] = useState('');
   const [prRepo, setPrRepo] = useState('');
   const [prNumber, setPrNumber] = useState('');
   const [kevOnly, setKevOnly] = useState(false);
@@ -414,6 +417,12 @@ export default function GlobalVulnerabilitiesPage() {
     setScanTargetRepo(String(repos[repos.length - 1].id));
   }, [repos, scanTargetRepo]);
 
+  useEffect(() => {
+    if (sbomRepo || !repos.length) return;
+    const ciRepo = repos.find((item) => item.collection_mode === 'ci') || repos.find((item) => item.collection_mode === 'agent') || repos[0];
+    if (ciRepo) setSbomRepo(String(ciRepo.id));
+  }, [repos, sbomRepo]);
+
   const showScorecards = tab === 'services' || tab === 'advisories' || tab === 'findings' || tab === 'remediation' || tab === 'campaigns';
   const teams = useMemo(() => Array.from(new Set(services.map((item) => item.team).filter((item): item is string => Boolean(item)))), [services]);
   const technologies = useMemo(() => Array.from(new Set(services.flatMap((item) => item.technologies || []))), [services]);
@@ -493,17 +502,8 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The scan could not be queued.');
       return;
     }
-    const ids = scanJobIds(result.body);
-    setNotice(ids.length > 1
-      ? `${ids.length} scans queued for different repositories. History stays on these jobs until they finish, then Findings lists every open match.`
-      : 'Scan queued. History will stay on this job until it finishes.');
     setSelected([]);
-    if (ids.length) {
-      setSelectedScanId(ids[0]);
-      setWatchScanIds(ids);
-    }
-    setTab('history');
-    void load();
+    finishQueuedScan(result.body, []);
   }
 
   async function scanRepositories(ids: number[]) {
@@ -524,15 +524,34 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The scan could not be queued.');
       return;
     }
-    const jobIds = scanJobIds(result.body);
-    setNotice(jobIds.length > 1
-      ? `${jobIds.length} scans queued. New matches are added; the same package and advisory is not duplicated.`
-      : 'Scan queued. History will stay on this job until it finishes, then Findings opens for that repository.');
+    finishQueuedScan(result.body, repoIds);
+  }
+
+  function finishQueuedScan(body: Record<string, unknown>, repoIds: number[]) {
+    const jobIds = scanJobIds(body);
+    const mode = String(body.collection_mode || '').toLowerCase();
+    const note = typeof body.note === 'string' ? body.note : '';
     if (jobIds.length) {
       setSelectedScanId(jobIds[0]);
       setWatchScanIds(jobIds);
     }
+    if (mode === 'ci') {
+      if (repoIds[0]) setSbomRepo(String(repoIds[0]));
+      setTab('sources');
+      setNotice(note || 'This repository uses CI upload. Choose a lockfile, SBOM, or SARIF below to finish the scan.');
+      void load();
+      return;
+    }
+    if (mode === 'agent') {
+      setTab('sources');
+      setNotice(note || 'Queued for a private agent. Start the agent from this page. Hosted collector will not clone this repository.');
+      void load();
+      return;
+    }
     setTab('history');
+    setNotice(note || (jobIds.length > 1
+      ? `${jobIds.length} scans queued. New matches are added; the same package and advisory is not duplicated.`
+      : 'Scan queued. History will stay on this job until it finishes, then Findings opens for that repository.'));
     void load();
   }
 
@@ -554,7 +573,10 @@ export default function GlobalVulnerabilitiesPage() {
       return;
     }
     setBusy(true);
-    const result = await vulnRequest(apiUrl, '/api/devops/security/agents', 'POST', { name: agentName.trim() });
+    const result = await vulnRequest(apiUrl, '/api/devops/security/agents', 'POST', {
+      name: agentName.trim(),
+      ...(projectId ? { project_id: Number(projectId) } : {}),
+    });
     setBusy(false);
     if (result.status !== 201) {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The agent could not be enrolled.');
@@ -568,23 +590,49 @@ export default function GlobalVulnerabilitiesPage() {
 
   async function uploadSbom() {
     const repoId = Number(sbomRepo);
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(sbomText);
-    } catch {
-      setError('SBOM must be JSON.');
+    if (!repoId) {
+      setError('Select a registered repository.');
       return;
     }
+    const text = sbomText.trim();
+    if (!text) {
+      setError('Choose a lockfile, SBOM, or SARIF file.');
+      return;
+    }
+    const payload: Record<string, unknown> = { repository_id: repoId };
+    if (sbomCommit.trim()) payload.commit_sha = sbomCommit.trim();
+    if (sbomFilename.trim()) payload.filename = sbomFilename.trim();
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.runs)) {
+        payload.sarif = parsed;
+      } else if (parsed && typeof parsed === 'object' && (parsed.bomFormat || parsed.spdxVersion)) {
+        payload.sbom = parsed;
+      } else {
+        payload.filename = sbomFilename.trim() || 'package-lock.json';
+        payload.content = text;
+      }
+    } catch {
+      payload.filename = sbomFilename.trim() || 'requirements.txt';
+      payload.content = text;
+    }
     setBusy(true);
-    const result = await vulnRequest(apiUrl, '/api/devops/security/inventories', 'POST', {
-      repository_id: repoId, commit_sha: sbomCommit.trim(), sbom: parsed,
-    });
+    setError('');
+    const result = await vulnRequest(apiUrl, '/api/devops/security/inventories', 'POST', payload);
     setBusy(false);
     if (result.status !== 202) {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The inventory could not be accepted.');
       return;
     }
-    setNotice('Inventory accepted. CycloneDX, SPDX, and SARIF with package identity correlate like a hosted scan. Results without a package are skipped. Images are not pulled.');
+    const jobId = Number(result.body.job_id) || 0;
+    if (jobId) {
+      setSelectedScanId(jobId);
+      setWatchScanIds([jobId]);
+    }
+    setSbomText('');
+    setSbomFilename('');
+    setTab('history');
+    setNotice(typeof result.body.note === 'string' ? result.body.note : 'Inventory accepted. Findings are stored after correlation. Images are not pulled.');
     void load();
   }
 
@@ -925,7 +973,14 @@ export default function GlobalVulnerabilitiesPage() {
       <button type="button" className={item.id === selectedScanId ? 'btn btn-secondary btn-sm is-current' : 'btn btn-secondary btn-sm'} onClick={() => setSelectedScanId(item.id)}>#{item.id}</button>
     ) },
     { id: 'repo', header: 'Repository', cell: (item) => known(item.repository) },
-    { id: 'state', header: 'State', cell: (item) => `${item.state} · ${item.stage}` },
+    { id: 'state', header: 'State', cell: (item) => (
+      item.state === 'queued' && item.collection_mode === 'ci'
+        ? 'queued · waiting for upload'
+        : item.state === 'queued' && item.collection_mode === 'agent'
+          ? 'queued · waiting for agent'
+          : `${item.state} · ${item.stage}`
+    ) },
+    { id: 'collector', header: 'Collector', cell: (item) => collectionModeLabel(item.collection_mode) },
     { id: 'mods', header: 'Modules', cell: (item) => `${item.assessed_modules} assessed / ${item.discovered_modules} discovered` },
     { id: 'hits', header: 'Findings', cell: (item) => String(item.finding_count ?? 0) },
     { id: 'cov', header: 'Coverage', cell: (item) => item.coverage_note || ((item.coverage || []).length ? `${item.coverage?.length} notes` : 'No coverage notes') },
@@ -1445,7 +1500,7 @@ export default function GlobalVulnerabilitiesPage() {
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Scan history</h2>
-                  <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules. Queued scans can be cancelled; running scans keep going.</p>
+                  <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules. Agent and CI jobs wait on Sources until inventory arrives. Queued scans can be cancelled; running scans keep going.</p>
                 </div>
                 {scans.some((item) => item.state === 'queued') ? (
                   <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void cancelQueuedScans()}>Cancel queued</button>
@@ -1714,7 +1769,7 @@ export default function GlobalVulnerabilitiesPage() {
                 <div className="portal-surface__header">
                   <div>
                     <h2 className="portal-surface__title">Private agents</h2>
-                    <p className="portal-surface__subtitle">Workers upload inventory only. They do not print tokens or write findings.</p>
+                    <p className="portal-surface__subtitle">Create a token, run the worker from a checkout of the repository, then use Scan now. Hosted collector will not clone agent repositories.</p>
                   </div>
                 </div>
                 <DataTable
@@ -1722,11 +1777,12 @@ export default function GlobalVulnerabilitiesPage() {
                   columns={agentColumns}
                   rows={agents}
                   rowKey={(item) => String(item.id)}
-                  empty={<EmptyState title={loading ? 'Loading agents' : 'None enrolled'} body="Create a bootstrap token, then run the worker from a runner that can read the repository." />}
+                  empty={<EmptyState title={loading ? 'Loading agents' : 'None enrolled'} body="Create a bootstrap token, run the worker from the repository checkout, then Scan now." />}
                 />
                 {isManager ? (
                   <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void enrollAgent(); }}>
                     <label className="label">Agent name<input className="input" value={agentName} onChange={(event) => setAgentName(event.target.value)} placeholder="build-runner-1" /></label>
+                    {!projectId ? <p className="form-section__copy">Select a workspace project so this agent can claim that project’s jobs.</p> : null}
                     <div className="portal-form-actions">
                       <button type="submit" className="btn btn-primary" disabled={busy}>Create bootstrap token</button>
                     </div>
@@ -1734,36 +1790,56 @@ export default function GlobalVulnerabilitiesPage() {
                 ) : <p className="form-section__copy">Enrolling an agent needs a manager role.</p>}
                 {bootstrap ? (
                   <div className="alert alert-success sec-vuln-token" role="status">
-                    <span>Shown once. Put this in workers/.env as VULN_BOOTSTRAP_TOKEN.</span>
+                    <span>Shown once. Save this as VULN_BOOTSTRAP_TOKEN. The API stores only a hash.</span>
                     <code>{bootstrap}</code>
                     <CopyButton value={bootstrap} label="bootstrap token" />
                   </div>
                 ) : null}
-                <p className="form-section__copy">Set OPSTRELLIS_API_URL and VULN_BOOTSTRAP_TOKEN in workers/.env, then run:</p>
-                <pre className="sec-vuln-run">python3 workers/vuln_agent.py</pre>
+                <p className="form-section__copy">From the repository checkout (or set VULN_REPO_DIR). The worker does not print tokens.</p>
+                <pre className="sec-vuln-run">{`OPSTRELLIS_API_URL=${apiUrl || 'http://localhost:8080'}
+VULN_BOOTSTRAP_TOKEN=${bootstrap || 'ost_enroll_…'}
+python3 workers/vuln_agent.py`}</pre>
+                <CopyButton value={`OPSTRELLIS_API_URL=${apiUrl || 'http://localhost:8080'}\nVULN_BOOTSTRAP_TOKEN=${bootstrap || 'ost_enroll_…'}\npython3 workers/vuln_agent.py`} label="agent command" />
               </section>
             </div>
             <section className="portal-surface">
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">CI / SBOM upload</h2>
-                  <p className="portal-surface__subtitle">Bind a CycloneDX, SPDX, or SARIF document to a registered repository and commit. SARIF results without package identity are skipped. Images are not pulled from a Docker socket.</p>
+                  <p className="portal-surface__subtitle">Pick a registered repository and a lockfile, CycloneDX, SPDX, or SARIF file. Commit SHA is optional. SARIF results without package identity are skipped. Images are not pulled.</p>
                 </div>
               </div>
               <form className="sec-vuln-inline sec-vuln-inline--ci" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
                 <label className="label">Repository
-                  <select className="input" value={sbomRepo} onChange={(event) => setSbomRepo(event.target.value)}>
+                  <select className="input" value={sbomRepo} onChange={(event) => {
+                    const next = event.target.value;
+                    setSbomRepo(next);
+                    const selectedRepo = repos.find((item) => String(item.id) === next);
+                    const latest = scans.find((item) => item.repository === selectedRepo?.repository && item.commit_sha);
+                    if (latest?.commit_sha && !sbomCommit.trim()) setSbomCommit(latest.commit_sha);
+                  }}>
                     <option value="">Select a registered repository</option>
-                    {repos.map((item) => <option key={item.id} value={item.id}>{item.repository}</option>)}
+                    {repos.map((item) => <option key={item.id} value={item.id}>{item.repository} · {collectionModeLabel(item.collection_mode)}</option>)}
                   </select>
                 </label>
-                <label className="label">Commit SHA<input className="input" value={sbomCommit} onChange={(event) => setSbomCommit(event.target.value)} placeholder="Immutable commit" /></label>
+                <label className="label">Commit SHA (optional)<input className="input" value={sbomCommit} onChange={(event) => setSbomCommit(event.target.value)} placeholder="Filled from the last scan when known" /></label>
+                <label className="label">Lockfile or SBOM
+                  <input className="input" type="file" accept=".json,.lock,.txt,.xml,.sarif,application/json,text/plain" onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    setSbomFilename(file.name);
+                    void file.text().then((text) => setSbomText(text));
+                  }} />
+                </label>
                 <div className="portal-form-actions">
-                  <button type="submit" className="btn btn-primary" disabled={busy}>Upload inventory</button>
+                  <button type="submit" className="btn btn-primary" disabled={busy || !sbomRepo || !sbomText.trim()}>Upload inventory</button>
                 </div>
-                <label className="label">SBOM or SARIF JSON<textarea className="input" rows={5} value={sbomText} onChange={(event) => setSbomText(event.target.value)} /></label>
+                {sbomFilename ? <p className="form-section__copy">Selected {sbomFilename}. Paste is still accepted below if you prefer.</p> : null}
+                <label className="label">Or paste JSON / lockfile text<textarea className="input" rows={5} value={sbomText} onChange={(event) => setSbomText(event.target.value)} placeholder="package-lock.json, CycloneDX, SPDX, or SARIF" /></label>
               </form>
-              <p className="form-section__copy">CI can also run <code>python3 workers/vuln_agent.py --ci</code> with VULN_PORTAL_TOKEN and VULN_REPOSITORY_ID.</p>
+              <p className="form-section__copy">From CI, set VULN_PORTAL_TOKEN in workers/.env (never in tickets) and run:</p>
+              <pre className="sec-vuln-run">{`python3 workers/vuln_agent.py --ci --repository-id ${sbomRepo || 'ID'} --repo-dir .`}</pre>
+              <CopyButton value={`python3 workers/vuln_agent.py --ci --repository-id ${sbomRepo || 'ID'} --repo-dir .`} label="CI command" />
             </section>
           </div>
         ) : null}
