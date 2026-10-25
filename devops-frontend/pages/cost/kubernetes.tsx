@@ -120,6 +120,7 @@ export default function CostKubernetesPage() {
   }, [apiUrl, queryId, loading, distributeIdle, group]);
 
   const selected = (data?.clusters || []).find((row) => String(row.id) === queryId) || null;
+  const canOperate = data?.can_operate !== false;
 
   const bind = async () => {
     setActing('bind');
@@ -199,7 +200,7 @@ export default function CostKubernetesPage() {
           </div>
           <div className="portal-page__actions">
             {selected ? (
-              <button type="button" className="btn btn-secondary" onClick={() => act(selected, 'sync')} disabled={acting === `${selected.id}-sync` || data?.can_operate === false}>
+              <button type="button" className="btn btn-secondary" onClick={() => act(selected, 'sync')} disabled={acting === `${selected.id}-sync` || !canOperate}>
                 Refresh data
               </button>
             ) : null}
@@ -259,7 +260,7 @@ export default function CostKubernetesPage() {
                   </p>
                 </div>
               </div>
-              {(data?.eligible || []).length && data?.can_operate !== false ? (
+              {(data?.eligible || []).length && canOperate ? (
                 <div className="portal-pill-row">
                   <label>
                     Cluster
@@ -280,13 +281,13 @@ export default function CostKubernetesPage() {
                       ))}
                     </select>
                   </label>
-                  <button type="button" className="btn btn-primary" onClick={bind} disabled={!connectionId || acting === 'bind' || data?.can_operate === false}>
+                  <button type="button" className="btn btn-primary" onClick={bind} disabled={!connectionId || acting === 'bind'}>
                     Connect cluster
                   </button>
                 </div>
               ) : (
                 <p className="sre-meta__empty">
-                  {data?.can_operate === false
+                  {!canOperate
                     ? 'You can view cluster spend. Cost operate is required to bind a cluster or upload a snapshot.'
                     : (data?.clusters || []).length
                       ? 'The Kubernetes Cost pilot is limited to one nonproduction cluster. Production stays out.'
@@ -330,13 +331,13 @@ export default function CostKubernetesPage() {
                           <td>
                             <div className="portal-page__actions">
                               <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'validate')} disabled={acting === `${row.id}-validate`}>Validate</button>
-                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'fixture')} disabled={acting === `${row.id}-fixture` || data?.can_operate === false}>Least-privilege fixture</button>
-                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'sync')} disabled={acting === `${row.id}-sync` || data?.can_operate === false}>Refresh data</button>
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'fixture')} disabled={acting === `${row.id}-fixture` || !canOperate}>Least-privilege fixture</button>
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'sync')} disabled={acting === `${row.id}-sync` || !canOperate}>Refresh data</button>
                               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpenYaml(openYaml === row.id ? 0 : row.id)}>RBAC</button>
                             </div>
                             {(row.capability_gaps || []).length ? (
                               <ul className="portal-surface__subtitle">
-                                {row.capability_gaps.map((gap) => <li key={gap}>{gap}</li>)}
+                                {(row.capability_gaps || []).map((gap) => <li key={gap}>{gap}</li>)}
                               </ul>
                             ) : null}
                             {openYaml === row.id ? <pre className="code-block">{row.rbac_yaml || data?.rbac_yaml}</pre> : null}
@@ -662,7 +663,7 @@ export default function CostKubernetesPage() {
               </div>
               {queryId ? (
                 <>
-                  <button type="button" className="btn btn-primary" onClick={importSnapshot} disabled={acting === 'snapshot' || data?.can_operate === false}>
+                  <button type="button" className="btn btn-primary" onClick={importSnapshot} disabled={acting === 'snapshot' || !canOperate}>
                     Upload snapshot
                   </button>
                   <textarea className="input" rows={12} value={snapshotJSON} onChange={(event) => setSnapshotJSON(event.target.value)} />
