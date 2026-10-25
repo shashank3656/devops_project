@@ -56,7 +56,9 @@ func drainVulnScanJobs() {
 			SET state = 'running', started_at = COALESCE(started_at, CURRENT_TIMESTAMP)
 			WHERE id = (
 				SELECT id FROM vuln_scan_jobs
-				WHERE state = 'queued' AND COALESCE(collection_mode,'hosted') IN ('hosted','')
+				WHERE state = 'queued'
+				  AND COALESCE(collection_mode,'hosted') IN ('hosted','','ci','agent')
+				  AND COALESCE(NULLIF(stage,''),'queued') = 'queued'
 				  AND repo_id NOT IN (SELECT repo_id FROM vuln_scan_jobs WHERE state = 'running')
 				ORDER BY id
 				LIMIT 1

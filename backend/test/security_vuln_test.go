@@ -351,11 +351,17 @@ func TestAgentCannotClaimOtherTenantJob(t *testing.T) {
 }
 
 func TestVulnScanNextStepForAgentAndCI(t *testing.T) {
-	if !strings.Contains(vulnScanNextStep("agent"), "private agent") {
+	if !strings.Contains(vulnScanNextStep("agent"), "automatically") || !strings.Contains(vulnScanNextStep("agent"), "private agent") {
 		t.Fatal("agent next step")
 	}
-	if !strings.Contains(vulnScanNextStep("ci"), "CI") {
+	if !strings.Contains(vulnScanNextStep("ci"), "automatically") {
 		t.Fatal("ci next step")
+	}
+	if !vulnScanAutoCollects("ci") || !vulnScanAutoCollects("agent") || !vulnScanAutoCollects("hosted") {
+		t.Fatal("scan now must auto-collect lockfiles for hosted, agent, and CI")
+	}
+	if vulnScanParkStage("ci") != "awaiting_upload" || vulnScanParkStage("agent") != "awaiting_agent" || vulnScanParkStage("hosted") != "" {
+		t.Fatal("fallback park stages")
 	}
 }
 
@@ -577,11 +583,11 @@ func TestVulnScanQueueNote(t *testing.T) {
 	if !strings.Contains(hosted, "latest commit") {
 		t.Fatalf("hosted = %q", hosted)
 	}
-	if !strings.Contains(vulnScanQueueNote("agent"), "private agent") {
-		t.Fatal("agent jobs must not claim a hosted clone")
+	if !strings.Contains(vulnScanQueueNote("agent"), "automatically") {
+		t.Fatal("agent jobs collect lockfiles automatically")
 	}
-	if !strings.Contains(vulnScanQueueNote("ci"), "CI") {
-		t.Fatal("ci jobs must wait for upload")
+	if !strings.Contains(vulnScanQueueNote("ci"), "automatically") {
+		t.Fatal("ci jobs collect lockfiles automatically")
 	}
 }
 
@@ -594,6 +600,10 @@ func TestDiscoverLockfilesSkipsNodeModules(t *testing.T) {
 	})
 	if len(got) != 2 || got[0] != "apps/api/package-lock.json" || got[1] != "backend/pom.xml" {
 		t.Fatalf("discovered = %v", got)
+	}
+	sboms := discoverVulnLockfiles([]string{"services/api/sbom.json", "docs/bom.json", "node_modules/pkg/sbom.json"})
+	if len(sboms) != 2 || sboms[0] != "services/api/sbom.json" || sboms[1] != "docs/bom.json" {
+		t.Fatalf("sboms = %v", sboms)
 	}
 }
 

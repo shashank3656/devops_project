@@ -150,12 +150,53 @@ func vulnAgentCanClaim(agentProjectID, jobProjectID, repoProjectID int) bool {
 func vulnScanNextStep(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "agent":
-		return "Queued for a private agent. Hosted collector will not clone this repository. Start the agent from Sources, or upload a lockfile there."
+		return "Scan queued. Lockfiles and SBOMs on the registered branch are collected automatically. A private agent is used only if the API cannot read the repository."
 	case "ci":
-		return "Queued for CI inventory. Upload a lockfile, SBOM, or SARIF on Sources to finish this job. Hosted collector will not clone this repository."
+		return "Scan queued. Lockfiles and SBOMs on the registered branch are collected automatically. A manual upload is only needed if the API cannot read the repository."
 	default:
 		return "Scan queued. Hosted collector will read the latest commit on the registered branch."
 	}
+}
+
+func vulnScanAutoCollects(mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "hosted", "ci", "agent":
+		return true
+	default:
+		return false
+	}
+}
+
+func vulnScanParkStage(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "agent":
+		return "awaiting_agent"
+	case "ci":
+		return "awaiting_upload"
+	default:
+		return ""
+	}
+}
+
+func parkVulnScanForFallback(jobID int, mode, reason string) bool {
+	stage := vulnScanParkStage(mode)
+	if jobID <= 0 || stage == "" {
+		return false
+	}
+	detail := "Automatic collection could not read the repository. Upload a lockfile or SBOM on Sources to finish this job."
+	if stage == "awaiting_agent" {
+		detail = "Automatic collection could not read the repository. A private agent can still claim this job, or upload a lockfile on Sources."
+	}
+	_, _ = execContext(`
+		UPDATE vuln_scan_jobs
+		SET state='queued', stage=$2, started_at=NULL, error=$3
+		WHERE id=$1 AND state IN ('queued','running')
+	`, jobID, stage, strings.TrimSpace(reason))
+	appendVulnScanLog(jobID, stage, detail)
+	if strings.TrimSpace(reason) != "" {
+		appendVulnScanLog(jobID, stage, reason)
+	}
+	return true
 }
 
 func inventoryAtCommit(provider, owner, name, sha string) ([]vulnComponent, []vulnCoverageGap, error) {

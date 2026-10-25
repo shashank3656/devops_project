@@ -118,9 +118,9 @@ export default function VulnPolicyDetailPage() {
       return;
     }
     setNotice(mode === 'agent'
-      ? 'Policy saved. Open Sources, create a bootstrap token, and run the agent from the repository checkout. Scan now queues a job for that agent.'
+      ? 'Policy saved. Scan now collects lockfiles and SBOMs automatically. A private agent is only needed if the API cannot read the repository.'
       : mode === 'ci'
-        ? 'Policy saved. Open Sources and upload a lockfile, SBOM, or SARIF. Scan now waits for that upload.'
+        ? 'Policy saved. Scan now collects lockfiles and SBOMs automatically. Manual upload is only a fallback.'
         : 'Repository policy saved. Hosted tokens stay on the API.');
     await load();
   }
@@ -203,9 +203,9 @@ export default function VulnPolicyDetailPage() {
                 <label className="sec-vuln-check"><input type="checkbox" checked={gate} onChange={(event) => setGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
                 <p className="form-section__copy">
                   {mode === 'agent'
-                    ? 'Private agents upload lockfiles from a checkout or GitHub token. After save, open Sources, create a bootstrap token, and run python3 workers/vuln_agent.py. Scan now queues a job for that agent.'
+                    ? 'Scan now collects lockfiles and SBOMs from the registered branch automatically. Enroll a private agent only if the API cannot read the repository.'
                     : mode === 'ci'
-                      ? 'CI inventory does not clone. After save, open Sources and upload a lockfile, SBOM, or SARIF. Scan now waits for that upload and then correlates like a hosted scan.'
+                      ? 'Scan now collects lockfiles and SBOMs from the registered branch automatically, including bom.json and CycloneDX files. Manual upload on Sources is only a fallback.'
                       : 'Hosted collector runs due jobs every five minutes when schedule is 15 or more. Pause leaves history and open findings in place. Agents and CI are not kicked from this schedule.'}
                   {' '}Stale inventory stays Unknown; it is not a Secure label.
                 </p>

@@ -31,6 +31,8 @@ var vulnLockfileNames = map[string]string{
 	".node-version":      "node",
 	"Dockerfile":         "image",
 	"bom.json":           "sbom",
+	"sbom.json":          "sbom",
+	"cyclonedx.json":     "sbom",
 }
 
 var vulnSkipPathParts = []string{
@@ -242,7 +244,7 @@ func parseVulnArtifact(filePath, content string) vulnParsedInventory {
 		return parsePackageJSONRuntime(filePath, module, content)
 	case ".nvmrc", ".node-version":
 		return parseNodeVersionFile(filePath, module, content)
-	case "bom.json":
+	case "bom.json", "sbom.json", "cyclonedx.json":
 		return parseSBOM(filePath, module, content)
 	default:
 		lower := strings.ToLower(base)

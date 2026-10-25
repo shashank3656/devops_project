@@ -20,8 +20,8 @@ func runVulnScanJob(jobID int) {
 		return
 	}
 	var repoID int
-	var state string
-	if err := queryRowContext(`SELECT repo_id, state FROM vuln_scan_jobs WHERE id = $1`, jobID).Scan(&repoID, &state); err != nil {
+	var state, mode string
+	if err := queryRowContext(`SELECT repo_id, state, COALESCE(NULLIF(collection_mode,''),'hosted') FROM vuln_scan_jobs WHERE id = $1`, jobID).Scan(&repoID, &state, &mode); err != nil {
 		return
 	}
 	if state != "queued" && state != "running" {
@@ -33,24 +33,27 @@ func runVulnScanJob(jobID int) {
 		failVulnScan(jobID, "queued", "Repository registration was not found.")
 		return
 	}
-	appendVulnScanLog(jobID, "clone", "Resolving the latest commit for "+owner+"/"+name+". Registered branch is "+branch+".")
+	appendVulnScanLog(jobID, "clone", "Collecting lockfiles and SBOMs automatically for "+owner+"/"+name+". Registered branch is "+branch+".")
 	commit, usedBranch, err := resolveVulnCommit(provider, owner, name, branch)
 	if err != nil {
 		detail := err.Error()
-		state := "unknown"
+		access := "unknown"
 		switch {
 		case strings.Contains(detail, "not found with this token"), strings.Contains(detail, "No matching branch"):
-			state = "not_found"
+			access = "not_found"
 		case strings.Contains(detail, "could not be read"):
-			state = "denied"
+			access = "denied"
 		case strings.Contains(detail, "GITHUB_TOKEN"), strings.Contains(detail, "GITLAB_TOKEN"), strings.Contains(detail, "BITBUCKET_TOKEN"):
-			state = "no_token"
+			access = "no_token"
 		}
-		persistVulnRepoAccess(repoID, state, detail)
+		persistVulnRepoAccess(repoID, access, detail)
+		if parkVulnScanForFallback(jobID, mode, detail) {
+			return
+		}
 		failVulnScan(jobID, "clone", detail)
 		return
 	}
-	persistVulnRepoAccess(repoID, "reachable", "Hosted collector resolved the latest commit.")
+	persistVulnRepoAccess(repoID, "reachable", "Collector resolved the latest commit and will pick lockfiles and SBOMs automatically.")
 	if usedBranch == "" {
 		usedBranch = branch
 	}
@@ -63,6 +66,9 @@ func runVulnScanJob(jobID int) {
 	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='inventory', commit_sha=$2 WHERE id=$1`, jobID, commit)
 	paths, truncated, err := listVulnRepoPaths(provider, owner, name, commit)
 	if err != nil {
+		if parkVulnScanForFallback(jobID, mode, err.Error()) {
+			return
+		}
 		failVulnScan(jobID, "inventory", err.Error())
 		return
 	}

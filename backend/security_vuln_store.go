@@ -439,6 +439,10 @@ func enqueueVulnScan(repoID, serviceID, projectID, actorID int, trigger, idempot
 	var existing int
 	_ = queryRowContext(`SELECT id FROM vuln_scan_jobs WHERE repo_id = $1 AND state IN ('queued','running') ORDER BY id DESC LIMIT 1`, repoID).Scan(&existing)
 	if existing > 0 {
+		_, _ = execContext(`
+			UPDATE vuln_scan_jobs SET stage='queued', error=''
+			WHERE id=$1 AND state='queued' AND stage IN ('awaiting_upload','awaiting_agent')
+		`, existing)
 		return existing, nil
 	}
 	if strings.TrimSpace(idempotency) != "" {
@@ -473,9 +477,9 @@ func enqueueVulnScan(repoID, serviceID, projectID, actorID int, trigger, idempot
 func vulnScanQueueNote(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case "agent":
-		return "Queued for a private agent. Hosted collector will not clone this repository."
+		return "Scan queued. Lockfiles and SBOMs on the registered branch are collected automatically. A private agent is used only if the API cannot read the repository."
 	case "ci":
-		return "Queued for CI inventory upload. Hosted collector will not clone this repository."
+		return "Scan queued. Lockfiles and SBOMs on the registered branch are collected automatically. A manual upload is only needed if the API cannot read the repository."
 	default:
 		return "Scan queued. Hosted collector will read the latest commit on the registered branch."
 	}

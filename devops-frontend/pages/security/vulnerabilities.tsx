@@ -529,29 +529,16 @@ export default function GlobalVulnerabilitiesPage() {
 
   function finishQueuedScan(body: Record<string, unknown>, repoIds: number[]) {
     const jobIds = scanJobIds(body);
-    const mode = String(body.collection_mode || '').toLowerCase();
     const note = typeof body.note === 'string' ? body.note : '';
+    if (repoIds[0]) setSbomRepo(String(repoIds[0]));
     if (jobIds.length) {
       setSelectedScanId(jobIds[0]);
       setWatchScanIds(jobIds);
     }
-    if (mode === 'ci') {
-      if (repoIds[0]) setSbomRepo(String(repoIds[0]));
-      setTab('sources');
-      setNotice(note || 'This repository uses CI upload. Choose a lockfile, SBOM, or SARIF below to finish the scan.');
-      void load();
-      return;
-    }
-    if (mode === 'agent') {
-      setTab('sources');
-      setNotice(note || 'Queued for a private agent. Start the agent from this page. Hosted collector will not clone this repository.');
-      void load();
-      return;
-    }
     setTab('history');
     setNotice(note || (jobIds.length > 1
-      ? `${jobIds.length} scans queued. New matches are added; the same package and advisory is not duplicated.`
-      : 'Scan queued. History will stay on this job until it finishes, then Findings opens for that repository.'));
+      ? `${jobIds.length} scans queued. Lockfiles and SBOMs are collected automatically.`
+      : 'Scan queued. Lockfiles and SBOMs on the registered branch are collected automatically.'));
     void load();
   }
 
@@ -974,11 +961,13 @@ export default function GlobalVulnerabilitiesPage() {
     ) },
     { id: 'repo', header: 'Repository', cell: (item) => known(item.repository) },
     { id: 'state', header: 'State', cell: (item) => (
-      item.state === 'queued' && item.collection_mode === 'ci'
-        ? 'queued · waiting for upload'
-        : item.state === 'queued' && item.collection_mode === 'agent'
+      item.stage === 'awaiting_upload'
+        ? 'queued · upload fallback'
+        : item.stage === 'awaiting_agent'
           ? 'queued · waiting for agent'
-          : `${item.state} · ${item.stage}`
+          : item.state === 'queued'
+            ? 'queued · collecting automatically'
+            : `${item.state} · ${item.stage}`
     ) },
     { id: 'collector', header: 'Collector', cell: (item) => collectionModeLabel(item.collection_mode) },
     { id: 'mods', header: 'Modules', cell: (item) => `${item.assessed_modules} assessed / ${item.discovered_modules} discovered` },
@@ -1500,7 +1489,7 @@ export default function GlobalVulnerabilitiesPage() {
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Scan history</h2>
-                  <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules. Agent and CI jobs wait on Sources until inventory arrives. Queued scans can be cancelled; running scans keep going.</p>
+                  <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules. Agent and CI Scan now collect lockfiles and SBOMs automatically. Queued scans can be cancelled; running scans keep going.</p>
                 </div>
                 {scans.some((item) => item.state === 'queued') ? (
                   <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void cancelQueuedScans()}>Cancel queued</button>
@@ -1549,6 +1538,10 @@ export default function GlobalVulnerabilitiesPage() {
                   {scanDetail.coverage_note ? <p className="form-section__copy">Coverage: {scanDetail.coverage_note}</p> : null}
                   {scanDetail.state === 'cancelled' ? (
                     <p className="form-section__copy">This job was cancelled before the collector started. History and open findings were kept. This is not Fixed.</p>
+                  ) : scanDetail.stage === 'awaiting_upload' ? (
+                    <p className="form-section__copy">Automatic collection could not read the repository. Upload a lockfile or SBOM on Sources, or Scan now again after access is fixed.</p>
+                  ) : scanDetail.stage === 'awaiting_agent' ? (
+                    <p className="form-section__copy">Automatic collection could not read the repository. Start a private agent or upload a lockfile on Sources.</p>
                   ) : scanDetail.state !== 'queued' && scanDetail.state !== 'running' && (scanDetail.finding_count ?? scanFindings.length) === 0 ? (
                     <p className="form-section__copy">This job did not create package findings. The Scan log records whether lockfiles were found and whether OSV answered. An empty Findings tab is not proof the collector skipped the repo.</p>
                   ) : null}
@@ -1769,7 +1762,7 @@ export default function GlobalVulnerabilitiesPage() {
                 <div className="portal-surface__header">
                   <div>
                     <h2 className="portal-surface__title">Private agents</h2>
-                    <p className="portal-surface__subtitle">Create a token, run the worker from a checkout of the repository, then use Scan now. Hosted collector will not clone agent repositories.</p>
+                    <p className="portal-surface__subtitle">Scan now collects lockfiles and SBOMs automatically when the API can read the repository. Run the worker only for private checkouts the API cannot reach.</p>
                   </div>
                 </div>
                 <DataTable
@@ -1777,7 +1770,7 @@ export default function GlobalVulnerabilitiesPage() {
                   columns={agentColumns}
                   rows={agents}
                   rowKey={(item) => String(item.id)}
-                  empty={<EmptyState title={loading ? 'Loading agents' : 'None enrolled'} body="Create a bootstrap token, run the worker from the repository checkout, then Scan now." />}
+                  empty={<EmptyState title={loading ? 'Loading agents' : 'None enrolled'} body="Optional. Scan now already collects lockfiles automatically. Enroll an agent only when the API cannot read the repository." />}
                 />
                 {isManager ? (
                   <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void enrollAgent(); }}>
@@ -1805,8 +1798,8 @@ python3 workers/vuln_agent.py`}</pre>
             <section className="portal-surface">
               <div className="portal-surface__header">
                 <div>
-                  <h2 className="portal-surface__title">CI / SBOM upload</h2>
-                  <p className="portal-surface__subtitle">Pick a registered repository and a lockfile, CycloneDX, SPDX, or SARIF file. Commit SHA is optional. SARIF results without package identity are skipped. Images are not pulled.</p>
+                  <h2 className="portal-surface__title">Optional inventory upload</h2>
+                  <p className="portal-surface__subtitle">Scan now already picks lockfiles and SBOMs from the registered branch. Use this only for a pipeline SBOM, or if automatic collection could not read the repository. Images are not pulled.</p>
                 </div>
               </div>
               <form className="sec-vuln-inline sec-vuln-inline--ci" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
