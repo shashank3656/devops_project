@@ -148,6 +148,30 @@ export function reachabilityLabel(value?: string): string {
   }
 }
 
+export function findingIsClosed(value?: string): boolean {
+  switch ((value || '').toLowerCase()) {
+    case 'fixed':
+    case 'false_positive':
+    case 'withdrawn':
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function scanJobIds(body: Record<string, unknown>): number[] {
+  const ids: number[] = [];
+  if (Array.isArray(body.job_ids)) {
+    body.job_ids.forEach((value) => {
+      const id = Number(value);
+      if (id > 0 && !ids.includes(id)) ids.push(id);
+    });
+  }
+  const first = Number(body.job_id) || 0;
+  if (first > 0 && !ids.includes(first)) ids.unshift(first);
+  return ids;
+}
+
 export function lifecycleLabel(value: string): string {
   switch ((value || '').toLowerCase()) {
     case 'open':

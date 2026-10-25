@@ -476,12 +476,8 @@ func saveInventoryAndCorrelate(jobID, repoID int, commit string, parsed vulnPars
 	if DB == nil {
 		return fmt.Errorf("database is not configured")
 	}
-	var newer int
-	_ = queryRowContext(`SELECT COUNT(*) FROM vuln_scan_jobs WHERE repo_id=$1 AND id>$2 AND state IN ('succeeded','partial') AND finished_at IS NOT NULL`, repoID, jobID).Scan(&newer)
-	if newer > 0 {
-		appendVulnScanLog(jobID, "correlation", "A newer successful scan already stored inventory for this repository. This job did not replace findings.")
-		return nil
-	}
+	var trigger string
+	_ = queryRowContext(`SELECT COALESCE(NULLIF(trigger,''),'manual') FROM vuln_scan_jobs WHERE id=$1`, jobID).Scan(&trigger)
 	var inventoryID int
 	err := queryRowContext(`
 		INSERT INTO vuln_inventories (repo_id, scan_id, commit_sha, coverage_json, component_count, fresh)
@@ -522,10 +518,10 @@ func saveInventoryAndCorrelate(jobID, repoID int, commit string, parsed vulnPars
 	for _, item := range parsed.Components {
 		assessed[item.ModulePath+"|"+item.Ecosystem] = true
 	}
-	created := upsertVulnMatches(repoID, jobID, commit, matches, assessed, vulnMatchScan)
+	created := upsertVulnMatches(repoID, jobID, commit, matches, assessed, vulnMatchScan, trigger)
 	persistPatchPlans(repoID, matches)
 	appendVulnScanLog(jobID, "correlation", fmt.Sprintf(
-		"Package match: %d findings from %d lockfile packages. Advisory catalog %d. %s",
+		"Package match: %d new findings from %d lockfile packages. Existing open findings were kept. Advisory catalog %d. %s",
 		created, len(parsed.Components), len(catalog), osv.Note,
 	))
 	return nil
@@ -539,7 +535,34 @@ func intelMatchDetail(commit string) string {
 	return "Public advisory matched the stored inventory at commit " + sha + ". The lockfile was not fetched again."
 }
 
-func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, assessed map[string]bool, origin string) int {
+func ensureVulnAdvisoryForMatch(match vulnMatch) int {
+	canonical := strings.TrimSpace(match.CanonicalID)
+	if canonical == "" {
+		return 0
+	}
+	var id int
+	_ = queryRowContext(`SELECT id FROM vuln_advisories WHERE canonical_id = $1`, canonical).Scan(&id)
+	if id > 0 {
+		return id
+	}
+	_ = upsertVulnAdvisory(vulnAdvisoryRecord{
+		CanonicalID: canonical,
+		Title:       firstNonEmpty(match.Title, canonical),
+		Severity:    match.Severity,
+		FirstFixed:  match.FirstFixed,
+		KEV:         match.KEV,
+		Source:      "scan",
+		Ranges: []vulnAffectedRange{{
+			Ecosystem: match.Component.Ecosystem,
+			Package:   match.Component.PackageName,
+			Fixed:     match.FirstFixed,
+		}},
+	})
+	_ = queryRowContext(`SELECT id FROM vuln_advisories WHERE canonical_id = $1`, canonical).Scan(&id)
+	return id
+}
+
+func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, assessed map[string]bool, origin, trigger string) int {
 	var projectID int
 	var branch, ownerTeam string
 	_ = queryRowContext(`SELECT COALESCE(project_id,0), branch, owner_team FROM vuln_repositories WHERE id = $1`, repoID).Scan(&projectID, &branch, &ownerTeam)
@@ -551,8 +574,7 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 	created := 0
 	for _, match := range matches {
 		canonical := match.CanonicalID
-		var advisoryID int
-		_ = queryRowContext(`SELECT id FROM vuln_advisories WHERE canonical_id = $1`, canonical).Scan(&advisoryID)
+		advisoryID := ensureVulnAdvisoryForMatch(match)
 		if advisoryID == 0 {
 			continue
 		}
@@ -569,6 +591,7 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 					module_path, path, branch, confidence, lifecycle, patch_state, first_fixed_version, recommended_version,
 					parent_package, priority, priority_reason, owner, last_scan_id, due_at, reachability, match_source, direct, dev
 				) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open',$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+				ON CONFLICT (repo_id, branch, module_path, ecosystem, package_name, canonical_id) DO NOTHING
 				RETURNING id
 			`, repoID, nullIfZero(projectID), nullIfZero(serviceID), advisoryID, canonical, match.Component.Ecosystem, match.Component.PackageName,
 				match.Component.Version, match.Component.ModulePath, match.Component.Path, branch, match.Confidence, match.PatchState,
@@ -583,8 +606,15 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 				if match.Confidence == vulnConfidenceConfirmed {
 					notifyVulnFinding(existingID, projectID, match, origin)
 				}
+				continue
 			}
-			continue
+			_ = queryRowContext(`
+				SELECT id, lifecycle FROM vuln_findings
+				WHERE repo_id=$1 AND branch=$2 AND module_path=$3 AND ecosystem=$4 AND package_name=$5 AND canonical_id=$6
+			`, repoID, branch, match.Component.ModulePath, match.Component.Ecosystem, match.Component.PackageName, canonical).Scan(&existingID, &lifecycle)
+			if existingID == 0 {
+				continue
+			}
 		}
 		nextLife := lifecycle
 		if lifecycle == vulnLifeFixed && match.Confidence == vulnConfidenceConfirmed {
@@ -616,7 +646,9 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 			notifyVulnFixAvailable(existingID, projectID, match)
 		}
 	}
-	closeVerifiedFindings(repoID, branch, matches, assessed, commit)
+	if strings.EqualFold(strings.TrimSpace(trigger), "verify") {
+		closeVerifiedFindings(repoID, branch, matches, assessed, commit)
+	}
 	return created
 }
 
@@ -650,6 +682,9 @@ func closeVerifiedFindings(repoID int, branch string, matches []vulnMatch, asses
 		}
 	}
 	for _, item := range items {
+		if item.Life != vulnLifePending {
+			continue
+		}
 		if !assessed[item.Module+"|"+item.Eco] {
 			continue
 		}
@@ -719,7 +754,7 @@ func reevaluateStoredInventories() (repos, created int) {
 		for _, comp := range comps {
 			assessed[comp.ModulePath+"|"+comp.Ecosystem] = true
 		}
-		created += upsertVulnMatches(item.RepoID, item.ScanID, item.SHA, matches, assessed, vulnMatchIntel)
+		created += upsertVulnMatches(item.RepoID, item.ScanID, item.SHA, matches, assessed, vulnMatchIntel, "intel")
 		persistPatchPlans(item.RepoID, matches)
 	}
 	return len(items), created
@@ -1004,7 +1039,11 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 	if wantSev == "all" {
 		wantSev = ""
 	}
-	if life := strings.ToLower(strings.TrimSpace(lifecycle)); life != "" {
+	switch life := strings.ToLower(strings.TrimSpace(lifecycle)); life {
+	case "all":
+	case "":
+		where += " AND f.lifecycle NOT IN ('fixed','withdrawn','false_positive')"
+	default:
 		args = append(args, life)
 		where += fmt.Sprintf(" AND f.lifecycle = $%d", len(args))
 	}
@@ -1056,7 +1095,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 }
 
 func getVulnFinding(userID, id int) (*vulnFindingView, []map[string]any, error) {
-	items, err := listVulnFindings(userID, 0, 0, "", "", "")
+	items, err := listVulnFindings(userID, 0, 0, "", "all", "")
 	if err != nil {
 		return nil, nil, err
 	}

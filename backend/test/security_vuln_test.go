@@ -676,6 +676,15 @@ func TestBulkLifecycleForbidsFixed(t *testing.T) {
 	}
 }
 
+func TestOpenFindingsStayUntilClosed(t *testing.T) {
+	if findingIsClosed(vulnLifeOpen) || findingIsClosed(vulnLifeAcked) || findingIsClosed(vulnLifeRemediate) {
+		t.Fatal("open and in-progress findings must stay on Findings and Campaigns")
+	}
+	if !findingIsClosed(vulnLifeFixed) || !findingIsClosed(vulnLifeFalsePos) || !findingIsClosed(vulnLifeWithdrawn) {
+		t.Fatal("closed findings must leave the open Findings and Campaigns lists")
+	}
+}
+
 func TestVulnReposMatchIgnoresHostPrefix(t *testing.T) {
 	if !vulnReposMatch("https://github.com/acme/api", "acme/api") {
 		t.Fatal("service map URLs must match stored owner/name")

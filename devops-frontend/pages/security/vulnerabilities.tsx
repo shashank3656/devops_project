@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BulkBar, CopyButton, DataTable, EmptyState, formatOperationalTime, type DataTableColumn, type RowKey } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { accessLabel, asRows, collectionModeLabel, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
+import { accessLabel, asRows, collectionModeLabel, findingIsClosed, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, scanJobIds, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 const DEVOPS_USER_KEY = 'devops_user';
@@ -191,7 +191,7 @@ export default function GlobalVulnerabilitiesPage() {
   const [latestScanOnly, setLatestScanOnly] = useState(false);
   const [hideDevDeps, setHideDevDeps] = useState(false);
   const [reachFilter, setReachFilter] = useState('');
-  const [watchScanId, setWatchScanId] = useState(0);
+  const [watchScanIds, setWatchScanIds] = useState<number[]>([]);
   const [findingSelected, setFindingSelected] = useState<Set<RowKey>>(new Set());
   const [assignOwner, setAssignOwner] = useState('');
   const [assignDue, setAssignDue] = useState('');
@@ -226,12 +226,15 @@ export default function GlobalVulnerabilitiesPage() {
     if (projectId) params.set('project_id', projectId);
     if (serviceId) params.set('service_id', serviceId);
     const projectQuery = params.toString() ? `?${params.toString()}` : '';
+    const findingParams = new URLSearchParams(params);
+    if (lifecycleFilter) findingParams.set('lifecycle', lifecycleFilter);
+    const findingQuery = findingParams.toString() ? `?${findingParams.toString()}` : '';
     const probe = tab === 'configuration' || tab === 'sources' ? '?probe=1' : '';
     const [overviewRes, serviceRes, advisoryRes, findingRes, scanRes, planRes, sourceRes, campaignRes, compareRes, depRes, repoRes, meRes] = await Promise.all([
       vulnRequest(apiUrl, '/api/devops/security/overview'),
       vulnRequest(apiUrl, `/api/devops/security/services${projectQuery}`),
       vulnRequest(apiUrl, '/api/devops/security/advisories?severity=all'),
-      vulnRequest(apiUrl, `/api/devops/security/findings${projectQuery}`),
+      vulnRequest(apiUrl, `/api/devops/security/findings${findingQuery}`),
       vulnRequest(apiUrl, '/api/devops/security/scans'),
       vulnRequest(apiUrl, '/api/devops/security/plans'),
       vulnRequest(apiUrl, `/api/devops/security/sources${probe}`),
@@ -265,7 +268,7 @@ export default function GlobalVulnerabilitiesPage() {
     const role = typeof meRes.body.role === 'string' ? meRes.body.role : '';
     setIsManager(Boolean(profile?.is_manager) || role === 'admin');
     setLoading(false);
-  }, [apiUrl, projectId, serviceId, tab]);
+  }, [apiUrl, lifecycleFilter, projectId, serviceId, tab]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -298,28 +301,36 @@ export default function GlobalVulnerabilitiesPage() {
   }, [loadScanDetail, scans, selectedScanId, tab]);
 
   useEffect(() => {
-    const active = scans.some((item) => item.state === 'queued' || item.state === 'running') || watchScanId > 0;
+    const active = scans.some((item) => item.state === 'queued' || item.state === 'running') || watchScanIds.length > 0;
     if (!active) return;
-    if (tab !== 'history' && watchScanId <= 0) return;
+    if (tab !== 'history' && watchScanIds.length === 0) return;
     const timer = window.setInterval(() => { void load(); }, 4000);
     return () => window.clearInterval(timer);
-  }, [load, scans, tab, watchScanId]);
+  }, [load, scans, tab, watchScanIds]);
 
   useEffect(() => {
-    if (!watchScanId) return;
-    const job = scans.find((item) => item.id === watchScanId);
-    if (!job || job.state === 'queued' || job.state === 'running') return;
-    if (job.state === 'failed') {
-      setWatchScanId(0);
-      setNotice(`Scan #${job.id} failed${job.error ? `: ${job.error}` : ''}. Stay on History for the log.`);
+    if (!watchScanIds.length) return;
+    const watched = watchScanIds.map((id) => scans.find((item) => item.id === id)).filter((item): item is ScanRow => Boolean(item));
+    if (!watched.length) return;
+    if (watched.some((item) => item.state === 'queued' || item.state === 'running')) return;
+    const failed = watched.filter((item) => item.state === 'failed');
+    const ok = watched.filter((item) => item.state !== 'failed');
+    const repos = Array.from(new Set(ok.map((item) => item.repository).filter(Boolean)));
+    setWatchScanIds([]);
+    setLatestScanOnly(false);
+    if (!ok.length) {
+      setNotice(failed[0] ? `Scan #${failed[0].id} failed${failed[0].error ? `: ${failed[0].error}` : ''}. Stay on History for the log.` : 'Queued scans finished without stored findings.');
       return;
     }
-    setRepoFilter(job.repository);
-    setLatestScanOnly(true);
-    setWatchScanId(0);
+    if (repos.length === 1) setRepoFilter(repos[0]);
+    else setRepoFilter('');
     setTab('findings');
-    setNotice(`Scan #${job.id} for ${job.repository} finished (${job.state}). Showing that repository’s findings.`);
-  }, [scans, watchScanId]);
+    setNotice(
+      repos.length > 1
+        ? `${ok.length} scans finished. Open findings from those repositories are listed together; closed findings stay off this list.`
+        : `Scan for ${repos[0]} finished. New matches were added; open findings were kept.`,
+    );
+  }, [scans, watchScanIds]);
 
   useEffect(() => {
     if (scanTargetRepo || !repos.length) return;
@@ -365,6 +376,7 @@ export default function GlobalVulnerabilitiesPage() {
       if (latestScanOnly && focusScanId && item.last_scan_id !== focusScanId) return false;
       if (hideDevDeps && item.dev) return false;
       if (reachFilter && (item.reachability || 'unknown') !== reachFilter) return false;
+      if (!lifecycleFilter && findingIsClosed(item.lifecycle)) return false;
       if (lifecycleFilter && item.lifecycle !== lifecycleFilter) return false;
       if (patchFilter && item.patch_state !== patchFilter) return false;
       if (teamFilter && !`${item.service || ''} ${item.repository}`.toLowerCase().includes(teamFilter.toLowerCase())) return false;
@@ -386,7 +398,7 @@ export default function GlobalVulnerabilitiesPage() {
     if (intelOnly) {
       return 'A public advisory becomes a finding only after it matches a stored lockfile for a registered repository. Scan-origin package matches are included here.';
     }
-    return 'A finished scan is not a clean bill of health. Open History for that job’s results and log.';
+    return 'Open findings stay listed until they are closed. A finished scan is not a clean bill of health. Open History for that job’s results and log.';
   }
 
   async function scanSelected() {
@@ -403,12 +415,14 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The scan could not be queued.');
       return;
     }
-    const jobId = Number(result.body.job_id) || 0;
-    setNotice('Scan queued. History will stay on this job until it finishes.');
+    const ids = scanJobIds(result.body);
+    setNotice(ids.length > 1
+      ? `${ids.length} scans queued for different repositories. History stays on these jobs until they finish, then Findings lists every open match.`
+      : 'Scan queued. History will stay on this job until it finishes.');
     setSelected([]);
-    if (jobId) {
-      setSelectedScanId(jobId);
-      setWatchScanId(jobId);
+    if (ids.length) {
+      setSelectedScanId(ids[0]);
+      setWatchScanIds(ids);
     }
     setTab('history');
     void load();
@@ -432,11 +446,13 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The scan could not be queued.');
       return;
     }
-    const jobId = Number(result.body.job_id) || 0;
-    setNotice('Scan queued. History will stay on this job until it finishes, then Findings opens for that repository.');
-    if (jobId) {
-      setSelectedScanId(jobId);
-      setWatchScanId(jobId);
+    const ids = scanJobIds(result.body);
+    setNotice(ids.length > 1
+      ? `${ids.length} scans queued. New matches are added; the same package and advisory is not duplicated.`
+      : 'Scan queued. History will stay on this job until it finishes, then Findings opens for that repository.');
+    if (ids.length) {
+      setSelectedScanId(ids[0]);
+      setWatchScanIds(ids);
     }
     setTab('history');
     void load();
@@ -520,12 +536,12 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'Repository could not be registered.');
       return;
     }
-    const jobId = Number(result.body.job_id) || 0;
+    const ids = scanJobIds(result.body);
     const repoId = Number(result.body.repository_id) || 0;
     if (repoId) setScanTargetRepo(String(repoId));
-    if (jobId) {
-      setSelectedScanId(jobId);
-      setWatchScanId(jobId);
+    if (ids.length) {
+      setSelectedScanId(ids[0]);
+      setWatchScanIds(ids);
       setNotice('Repository registered and a hosted scan was queued. History stays on this job until it finishes.');
       setTab('history');
     } else {
@@ -921,12 +937,15 @@ export default function GlobalVulnerabilitiesPage() {
               <label>
                 Lifecycle
                 <select className="input" value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
-                  <option value="">All states</option>
+                  <option value="">Open findings</option>
                   <option value="open">Open</option>
                   <option value="acknowledged">Acknowledged</option>
                   <option value="in_remediation">In remediation</option>
                   <option value="pending_verification">Pending verification</option>
                   <option value="risk_accepted">Risk accepted</option>
+                  <option value="fixed">Fixed</option>
+                  <option value="false_positive">False positive</option>
+                  <option value="withdrawn">Withdrawn</option>
                 </select>
               </label>
             ) : null}
@@ -1031,7 +1050,7 @@ export default function GlobalVulnerabilitiesPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Repository findings</h2>
-                <p className="portal-surface__subtitle">Confirmed and potential dependency matches, including internet advisories that hit a stored lockfile. Production exposure stays Unknown until a deployment mapping exists.</p>
+                <p className="portal-surface__subtitle">Confirmed and potential dependency matches stay here until a finding is closed. A second scan of the same repository adds newly identified packages instead of duplicating existing rows. Production exposure stays Unknown until a deployment mapping exists.</p>
               </div>
             </div>
             {scans[0] ? (
@@ -1075,7 +1094,7 @@ export default function GlobalVulnerabilitiesPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Campaigns</h2>
-                <p className="portal-surface__subtitle">Open findings grouped by canonical advisory, including internet advisories matched to stored lockfiles. Unknown coverage is not listed as unaffected.</p>
+                <p className="portal-surface__subtitle">Open findings grouped by canonical advisory, including internet advisories matched to stored lockfiles. Closed findings leave this list. Unknown coverage is not listed as unaffected.</p>
               </div>
             </div>
             <DataTable

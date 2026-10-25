@@ -34,11 +34,18 @@ func startVulnSecurityWorker() {
 	}()
 }
 
+var vulnHostedScanSlots = make(chan struct{}, 4)
+
 func drainVulnScanJobs() {
 	if DB == nil {
 		return
 	}
 	for i := 0; i < 4; i++ {
+		select {
+		case vulnHostedScanSlots <- struct{}{}:
+		default:
+			return
+		}
 		var jobID int
 		err := queryRowContext(`
 			UPDATE vuln_scan_jobs
@@ -46,15 +53,20 @@ func drainVulnScanJobs() {
 			WHERE id = (
 				SELECT id FROM vuln_scan_jobs
 				WHERE state = 'queued' AND COALESCE(collection_mode,'hosted') IN ('hosted','')
+				  AND repo_id NOT IN (SELECT repo_id FROM vuln_scan_jobs WHERE state = 'running')
 				ORDER BY id
 				LIMIT 1
 			) AND state = 'queued'
 			RETURNING id
 		`).Scan(&jobID)
 		if err != nil || jobID <= 0 {
+			<-vulnHostedScanSlots
 			return
 		}
-		runVulnScanJob(jobID)
+		go func(id int) {
+			defer func() { <-vulnHostedScanSlots }()
+			runVulnScanJob(id)
+		}(jobID)
 	}
 }
 

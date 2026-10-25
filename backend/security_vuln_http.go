@@ -732,6 +732,15 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 		}
 		jobIDs = append(jobIDs, jobID)
 	}
+	seenJobs := map[int]bool{}
+	uniqueJobs := make([]int, 0, len(jobIDs))
+	for _, id := range jobIDs {
+		if id > 0 && !seenJobs[id] {
+			seenJobs[id] = true
+			uniqueJobs = append(uniqueJobs, id)
+		}
+	}
+	jobIDs = uniqueJobs
 	if len(jobIDs) == 0 {
 		writeAPIError(w, r, http.StatusConflict, "No scan was queued.", nil)
 		return

@@ -617,6 +617,15 @@ func decodeAffectedJSON(raw string) []vulnAffectedRange {
 	return out
 }
 
+func findingIsClosed(lifecycle string) bool {
+	switch strings.ToLower(strings.TrimSpace(lifecycle)) {
+	case vulnLifeFixed, vulnLifeFalsePos, vulnLifeWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
 func findingKey(repoID int, branch, module, eco, pkg, canonical string) string {
 	return fmt.Sprintf("%d|%s|%s|%s|%s|%s", repoID, branch, module, eco, pkg, canonical)
 }

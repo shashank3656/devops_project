@@ -227,7 +227,7 @@ func listVulnCampaigns(userID int) []map[string]any {
 	groups := map[string]map[string]any{}
 	order := []string{}
 	for _, item := range findings {
-		if item.Lifecycle == vulnLifeFixed || item.Lifecycle == vulnLifeFalsePos || item.Lifecycle == vulnLifeWithdrawn {
+		if findingIsClosed(item.Lifecycle) {
 			continue
 		}
 		g, ok := groups[item.CanonicalID]

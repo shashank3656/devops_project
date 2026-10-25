@@ -252,6 +252,18 @@ func migrateSecurityVulnSchema() {
 	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS direct BOOLEAN NOT NULL DEFAULT TRUE`)
 	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS dev BOOLEAN NOT NULL DEFAULT FALSE`)
 	_, _ = DB.Exec(`
+		DELETE FROM vuln_findings a
+		USING vuln_findings b
+		WHERE a.id > b.id
+		  AND a.repo_id = b.repo_id
+		  AND a.branch = b.branch
+		  AND a.module_path = b.module_path
+		  AND a.ecosystem = b.ecosystem
+		  AND a.package_name = b.package_name
+		  AND a.canonical_id = b.canonical_id
+	`)
+	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vuln_findings_identity ON vuln_findings (repo_id, branch, module_path, ecosystem, package_name, canonical_id)`)
+	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS vuln_scan_events (
 			id SERIAL PRIMARY KEY,
 			scan_id INTEGER NOT NULL REFERENCES vuln_scan_jobs(id) ON DELETE CASCADE,
