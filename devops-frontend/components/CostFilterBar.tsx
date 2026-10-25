@@ -6,8 +6,10 @@ import {
   costLastMonth,
   costThisMonth,
   costWindowPreset,
+  formatCostWindowRange,
   freshnessLabel,
   importableLabel,
+  resolvedCostWindow,
 } from '../lib/cost';
 
 type CostFilterBarProps = {
@@ -16,6 +18,8 @@ type CostFilterBarProps = {
   explorer?: boolean;
   exporting?: boolean;
   onExport?: () => void;
+  visibleAccounts?: number;
+  totalAccounts?: number;
 };
 
 function DraftField({
@@ -60,6 +64,8 @@ export default function CostFilterBar({
   explorer = false,
   exporting = false,
   onExport,
+  visibleAccounts,
+  totalAccounts,
 }: CostFilterBarProps) {
   const router = useRouter();
   const from = typeof router.query.from === 'string' ? router.query.from : '';
@@ -74,10 +80,12 @@ export default function CostFilterBar({
   const region = typeof router.query.region === 'string' ? router.query.region : '';
   const team = typeof router.query.team === 'string' ? router.query.team : '';
   const account = typeof router.query.account === 'string' ? router.query.account : '';
+  const family = typeof router.query.family === 'string' ? router.query.family : '';
   const preset = costWindowPreset(from, to);
   const thisMonth = costThisMonth();
   const lastMonth = costLastMonth();
-  const extraOn = Boolean(project || cloud || environment || freshness || importStatus || service || region || team || account);
+  const window = resolvedCostWindow(from, to);
+  const extraOn = Boolean(project || cloud || environment || freshness || importStatus || service || region || team || account || family);
 
   const patch = (next: Record<string, string | undefined>) => {
     const query = { ...router.query };
@@ -98,132 +106,170 @@ export default function CostFilterBar({
     else applyWindow(thisMonth.from, thisMonth.to);
   };
 
+  const projectName = options?.projects.find((item) => String(item.id) === project)?.name || project;
+  const chips = [
+    project ? { key: 'project', label: `Project ${projectName}` } : null,
+    cloud ? { key: 'cloud', label: `Cloud ${cloud}` } : null,
+    environment ? { key: 'environment', label: `Env ${environment}` } : null,
+    freshness ? { key: 'freshness', label: freshnessLabel(freshness) } : null,
+    importStatus ? { key: 'import', label: importableLabel(importStatus) } : null,
+    family ? { key: 'family', label: `Family ${family}` } : null,
+    service ? { key: 'service', label: `Product ${service}` } : null,
+    team ? { key: 'team', label: team.toLowerCase() === 'unallocated' ? 'No team' : `Team ${team}` } : null,
+    region ? { key: 'region', label: `Region ${region}` } : null,
+    account ? { key: 'account', label: 'Account filter' } : null,
+  ].filter(Boolean) as { key: string; label: string }[];
+
   return (
-    <section className="cost-toolbar" aria-label="Cost filters">
-      <label className="cost-toolbar__field">
-        <span>Window</span>
-        <select className="input" value={preset === 'all' ? 'this' : preset} onChange={(event) => setPreset(event.target.value)}>
-          <option value="this">This month</option>
-          <option value="last">Last month</option>
-          <option value="custom">Custom</option>
-        </select>
-      </label>
-      {preset === 'custom' ? (
-        <>
-          <label className="cost-toolbar__field">
-            <span>From</span>
-            <input className="input" type="date" value={from} onChange={(event) => applyWindow(event.target.value, to)} />
-          </label>
-          <label className="cost-toolbar__field">
-            <span>To</span>
-            <input className="input" type="date" value={to} onChange={(event) => applyWindow(from, event.target.value)} />
-          </label>
-        </>
-      ) : null}
-      {showBasis ? (
+    <div className="cost-toolbar-wrap">
+      <section className="cost-toolbar" aria-label="Cost filters">
         <label className="cost-toolbar__field">
-          <span>Basis</span>
-          <select className="input" value={basis} onChange={(event) => patch({ basis: event.target.value })}>
-            <option value="actual">Actual</option>
-            <option value="amortized">Amortized</option>
+          <span>Window</span>
+          <select className="input" value={preset === 'all' ? 'this' : preset} onChange={(event) => setPreset(event.target.value)}>
+            <option value="this">This month</option>
+            <option value="last">Last month</option>
+            <option value="custom">Custom</option>
           </select>
         </label>
-      ) : null}
-      {options ? (
-        <>
+        <span className="cost-toolbar__dates">{formatCostWindowRange(window.from, window.to)}</span>
+        {preset === 'custom' ? (
+          <>
+            <label className="cost-toolbar__field">
+              <span>From</span>
+              <input className="input" type="date" value={from} onChange={(event) => applyWindow(event.target.value, to)} />
+            </label>
+            <label className="cost-toolbar__field">
+              <span>To</span>
+              <input className="input" type="date" value={to} onChange={(event) => applyWindow(from, event.target.value)} />
+            </label>
+          </>
+        ) : null}
+        {showBasis ? (
           <label className="cost-toolbar__field">
-            <span>Project</span>
-            <select className="input" value={project} onChange={(event) => patch({ project: event.target.value || undefined })}>
-              <option value="">All projects</option>
-              {options.projects.map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
-              ))}
+            <span>Basis</span>
+            <select className="input" value={basis} onChange={(event) => patch({ basis: event.target.value })}>
+              <option value="actual">Actual</option>
+              <option value="amortized">Amortized</option>
             </select>
           </label>
-          <label className="cost-toolbar__field">
-            <span>Cloud</span>
-            <select className="input" value={cloud} onChange={(event) => patch({ cloud: event.target.value || undefined })}>
-              <option value="">All clouds</option>
-              {options.clouds.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-          <label className="cost-toolbar__field">
-            <span>Environment</span>
-            <select className="input" value={environment} onChange={(event) => patch({ environment: event.target.value || undefined })}>
-              <option value="">All environments</option>
-              {options.environments.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </select>
-          </label>
-        </>
+        ) : null}
+        {options ? (
+          <>
+            <label className="cost-toolbar__field">
+              <span>Project</span>
+              <select className="input" value={project} onChange={(event) => patch({ project: event.target.value || undefined })}>
+                <option value="">All projects</option>
+                {options.projects.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="cost-toolbar__field">
+              <span>Cloud</span>
+              <select className="input" value={cloud} onChange={(event) => patch({ cloud: event.target.value || undefined })}>
+                <option value="">All clouds</option>
+                {options.clouds.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label className="cost-toolbar__field">
+              <span>Environment</span>
+              <select className="input" value={environment} onChange={(event) => patch({ environment: event.target.value || undefined })}>
+                <option value="">All environments</option>
+                {options.environments.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
+        {explorer ? (
+          <>
+            <DraftField label="Product" value={service} placeholder="Product" onCommit={(next) => patch({ service: next || undefined })} />
+            <DraftField label="Team" value={team} placeholder="Team" onCommit={(next) => patch({ team: next || undefined })} />
+            <DraftField label="Region" value={region} placeholder="Region" onCommit={(next) => patch({ region: next || undefined })} />
+          </>
+        ) : null}
+        {options || explorer ? (
+          <details className="cost-toolbar__more">
+            <summary>More</summary>
+            <div className="cost-toolbar__more-panel">
+              {options ? (
+                <>
+                  <label className="cost-toolbar__field">
+                    <span>Freshness</span>
+                    <select className="input" value={freshness} onChange={(event) => patch({ freshness: event.target.value || undefined })}>
+                      <option value="">Any freshness</option>
+                      {options.freshness.map((item) => (
+                        <option key={item} value={item}>{freshnessLabel(item)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="cost-toolbar__field">
+                    <span>Import</span>
+                    <select className="input" value={importStatus} onChange={(event) => patch({ import: event.target.value || undefined })}>
+                      <option value="">Any import</option>
+                      {options.imports.map((item) => (
+                        <option key={item} value={item}>{importableLabel(item)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+              {explorer ? (
+                <DraftField label="Account" value={account} placeholder="Account" onCommit={(next) => patch({ account: next || undefined })} />
+              ) : null}
+            </div>
+          </details>
+        ) : null}
+        {extraOn ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-secondary"
+            onClick={() => patch({
+              project: undefined,
+              cloud: undefined,
+              environment: undefined,
+              freshness: undefined,
+              import: undefined,
+              service: undefined,
+              region: undefined,
+              team: undefined,
+              account: undefined,
+              family: undefined,
+            })}
+          >
+            Clear
+          </button>
+        ) : null}
+        {onExport ? (
+          <button type="button" className="btn btn-sm btn-secondary" disabled={exporting} onClick={onExport}>
+            {exporting ? 'Exporting…' : 'CSV'}
+          </button>
+        ) : null}
+        <CostAskChips />
+      </section>
+      {chips.length || typeof visibleAccounts === 'number' ? (
+        <div className="cost-chips" aria-label="Active filters">
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              className="cost-chips__chip"
+              onClick={() => patch({ [chip.key]: undefined })}
+            >
+              {chip.label} ×
+            </button>
+          ))}
+          {typeof visibleAccounts === 'number' && typeof totalAccounts === 'number' ? (
+            <span className="cost-chips__count">{visibleAccounts} of {totalAccounts} accounts</span>
+          ) : null}
+          {extraOn && options ? (
+            <span className="cost-chips__note">Operating bill is the billed window, not this list.</span>
+          ) : null}
+        </div>
       ) : null}
-      {explorer ? (
-        <>
-          <DraftField label="Product" value={service} placeholder="Product" onCommit={(next) => patch({ service: next || undefined })} />
-          <DraftField label="Team" value={team} placeholder="Team" onCommit={(next) => patch({ team: next || undefined })} />
-          <DraftField label="Region" value={region} placeholder="Region" onCommit={(next) => patch({ region: next || undefined })} />
-        </>
-      ) : null}
-      {options || explorer ? (
-        <details className="cost-toolbar__more">
-          <summary>More</summary>
-          <div className="cost-toolbar__more-panel">
-            {options ? (
-              <>
-                <label className="cost-toolbar__field">
-                  <span>Freshness</span>
-                  <select className="input" value={freshness} onChange={(event) => patch({ freshness: event.target.value || undefined })}>
-                    <option value="">Any freshness</option>
-                    {options.freshness.map((item) => (
-                      <option key={item} value={item}>{freshnessLabel(item)}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="cost-toolbar__field">
-                  <span>Import</span>
-                  <select className="input" value={importStatus} onChange={(event) => patch({ import: event.target.value || undefined })}>
-                    <option value="">Any import</option>
-                    {options.imports.map((item) => (
-                      <option key={item} value={item}>{importableLabel(item)}</option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : null}
-            {explorer ? (
-              <DraftField label="Account" value={account} placeholder="Account" onCommit={(next) => patch({ account: next || undefined })} />
-            ) : null}
-          </div>
-        </details>
-      ) : null}
-      {extraOn ? (
-        <button
-          type="button"
-          className="btn btn-sm btn-secondary"
-          onClick={() => patch({
-            project: undefined,
-            cloud: undefined,
-            environment: undefined,
-            freshness: undefined,
-            import: undefined,
-            service: undefined,
-            region: undefined,
-            team: undefined,
-            account: undefined,
-          })}
-        >
-          Clear
-        </button>
-      ) : null}
-      {onExport ? (
-        <button type="button" className="btn btn-sm btn-secondary" disabled={exporting} onClick={onExport}>
-          {exporting ? 'Exporting…' : 'CSV'}
-        </button>
-      ) : null}
-      <CostAskChips />
-    </section>
+    </div>
   );
 }

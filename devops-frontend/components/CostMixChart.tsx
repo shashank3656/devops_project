@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { CostGraphBar, costFamilyTone } from '../lib/cost';
 
 function MixRing({ mix }: { mix: CostGraphBar[] }) {
@@ -30,10 +31,12 @@ function MixRing({ mix }: { mix: CostGraphBar[] }) {
 export default function CostMixChart({
   mix,
   days,
+  familyHref,
   emptyNote = 'Graph stays empty until a complete billed window exists.',
 }: {
   mix: CostGraphBar[];
   days: CostGraphBar[];
+  familyHref?: (family: string) => string;
   emptyNote?: string;
 }) {
   return (
@@ -42,18 +45,28 @@ export default function CostMixChart({
         {mix.length ? <MixRing mix={mix} /> : null}
         {mix.length ? (
           <div className="cost-mix" aria-label="Service mix">
-            {mix.map((row) => (
-              <div key={row.label} className="cost-mix__row">
-                <span className="cost-mix__label">{row.label}</span>
-                <div className="cost-mix__track">
-                  <span
-                    className={`cost-mix__fill cost-mix__fill--${costFamilyTone(row.label)}`}
-                    style={{ width: `${Math.max(row.percent, 0)}%` }}
-                  />
-                </div>
-                <span className="cost-mix__value">{row.display}</span>
-              </div>
-            ))}
+            {mix.map((row) => {
+              const body = (
+                <>
+                  <span className="cost-mix__label">{row.label}</span>
+                  <div className="cost-mix__track">
+                    <span
+                      className={`cost-mix__fill cost-mix__fill--${costFamilyTone(row.label)}`}
+                      style={{ width: `${Math.max(row.percent, 0)}%` }}
+                    />
+                  </div>
+                  <span className="cost-mix__value">{row.display}</span>
+                </>
+              );
+              if (familyHref) {
+                return (
+                  <Link key={row.label} href={familyHref(row.label)} className="cost-mix__row is-link">
+                    {body}
+                  </Link>
+                );
+              }
+              return <div key={row.label} className="cost-mix__row">{body}</div>;
+            })}
           </div>
         ) : (
           <p className="cost-dash__empty">{emptyNote}</p>

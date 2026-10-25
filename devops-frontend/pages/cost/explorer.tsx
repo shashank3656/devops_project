@@ -18,12 +18,13 @@ export default function CostExplorerPage() {
   const from = typeof router.query.from === 'string' ? router.query.from : '';
   const to = typeof router.query.to === 'string' ? router.query.to : '';
   const portalService = typeof router.query.portal_service === 'string' ? router.query.portal_service : '';
+  const family = typeof router.query.family === 'string' ? router.query.family : '';
   const [data, setData] = useState<CostExplorer | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  const filters = { service, region, account, team, from, to, portal_service: portalService };
+  const filters = { service, region, account, team, from, to, portal_service: portalService, family };
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -35,7 +36,7 @@ export default function CostExplorerPage() {
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [apiUrl, router.isReady, basis, currency, service, region, account, team, from, to, portalService]);
+  }, [apiUrl, router.isReady, basis, currency, service, region, account, team, from, to, portalService, family]);
 
   const exportCSV = async () => {
     setExporting(true);
@@ -76,6 +77,7 @@ export default function CostExplorerPage() {
               <span className="portal-pill">Currency {data.currency}</span>
               {data.window_start ? <span className="portal-pill">{data.window_start} to {data.window_end}</span> : null}
               {portalService ? <span className="portal-pill">Portal service {portalService}</span> : null}
+              {family ? <span className="portal-pill">Family {family}</span> : null}
             </div>
             <table className="portal-table">
               <thead>

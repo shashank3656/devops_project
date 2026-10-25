@@ -7,7 +7,7 @@ import CostMixChart from '../../../components/CostMixChart';
 import CostNav from '../../../components/CostNav';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { CostAccountDashboard, budgetAlertLabel, costQuery, costToneForDisplay, downloadCostCSV, fetchCostCSV, fetchCostJson, freshnessLabel, importableLabel } from '../../../lib/cost';
+import { CostAccountDashboard, budgetAlertLabel, costQuery, costToneForDisplay, costUnknownReason, downloadCostCSV, fetchCostCSV, fetchCostJson, importableLabel } from '../../../lib/cost';
 
 export default function CostAccountDashboardPage() {
   const apiUrl = useApiUrl();
@@ -56,7 +56,15 @@ export default function CostAccountDashboardPage() {
             {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-secondary btn-sm">Import</Link> : null}
           </div>
         </div>
-        <CostNav current="overview" />
+        <CostNav
+          current="overview"
+          compact
+          crumbs={[
+            { href: '/cost', label: 'Cost' },
+            data?.project?.id ? { href: `/cost/projects/${data.project.id}`, label: data.project.name || 'Project' } : { href: '/cost', label: 'Project' },
+            { label: title },
+          ]}
+        />
         {error ? (
           <div className="alert alert-error" role="alert">
             {error}{' '}
@@ -73,30 +81,47 @@ export default function CostAccountDashboardPage() {
         {!loading && data ? (
           <>
             <CostKpiStrip
+              canOperate={data.can_operate}
               items={[
                 {
                   label: 'This account',
                   value: spendUnknown ? 'Unknown' : data.spend?.display || 'Unknown',
                   hint: spendUnknown ? 'Incomplete stays Unknown, never $0' : `${basis} billed window`,
                   tone: costToneForDisplay(data.spend?.display),
+                  unknown: costUnknownReason({
+                    display: data.spend?.display,
+                    coverage: data.spend?.coverage || data.coverage,
+                    importStatus: data.import_status,
+                    freshness: data.freshness,
+                    stale: Boolean(data.stale_hint),
+                  }),
                 },
                 {
                   label: 'Prior window',
                   value: data.compare?.prior?.display || 'Unknown',
                   hint: data.compare?.like_for_like ? 'Like-for-like' : 'Needs two complete windows',
                   tone: costToneForDisplay(data.compare?.prior?.display),
+                  unknown: costUnknownReason({
+                    display: data.compare?.prior?.display,
+                    coverage: data.compare?.prior?.coverage || data.compare?.prior_coverage,
+                  }),
                 },
                 {
                   label: 'Delta',
                   value: data.compare?.delta?.display || 'Unknown',
                   hint: 'Incomplete stays Unknown, never $0',
                   tone: costToneForDisplay(data.compare?.delta?.display),
+                  unknown: costUnknownReason({
+                    display: data.compare?.delta?.display,
+                    coverage: data.compare?.delta?.coverage,
+                  }),
                 },
                 {
                   label: 'Kubernetes',
                   value: data.kubernetes?.bound ? 'Bound' : 'Not bound',
                   hint: 'Breakdown of this bill, never extra',
                   tone: data.kubernetes?.bound ? 'k8s' : 'unknown',
+                  href: data.kubernetes?.href || '/cost/kubernetes',
                 },
               ]}
             />
@@ -125,7 +150,11 @@ export default function CostAccountDashboardPage() {
               <div className="cost-dash__graph">
                 <span className="portal-surface__eyebrow">Service mix</span>
                 <h2 className="portal-surface__title">Where spend sits</h2>
-                <CostMixChart mix={mix} days={days} />
+                <CostMixChart
+                  mix={mix}
+                  days={days}
+                  familyHref={(family) => `/cost/explorer${costQuery(basis, currency, { from: data.window_start || from, to: data.window_end || to, family })}`}
+                />
               </div>
               <div className="cost-dash__side">
                 <span className="portal-surface__eyebrow">Import</span>

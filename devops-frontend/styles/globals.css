@@ -11113,19 +11113,41 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   background: #192238;
   color: #f5f7fc;
   text-decoration: none;
-  transition: border-color 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease;
 }
 .cost-tree__account:hover {
   border-color: #6d4aff;
   text-decoration: none;
-  transform: translateY(-1px);
 }
+.cost-tree__account-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.cost-tree__account-main:hover {
+  text-decoration: none;
+  color: inherit;
+}
+.cost-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 999px;
+  background: #c4b5fd;
+}
+.cost-dot--billed { background: #2dd4bf; }
+.cost-dot--stale { background: #6d4aff; }
+.cost-dot--not_imported { background: #c4b5fd; }
+.cost-dot--unknown { background: #58677f; }
 .cost-tree__account-name {
   display: block;
   font-weight: 650;
@@ -11182,6 +11204,14 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   grid-template-columns: 88px minmax(0, 1fr) 108px;
   gap: 12px;
   align-items: center;
+  color: inherit;
+  text-decoration: none;
+}
+.cost-mix__row.is-link:hover {
+  text-decoration: none;
+}
+.cost-mix__row.is-link:hover .cost-mix__label {
+  color: #2dd4bf;
 }
 .cost-mix__label,
 .cost-mix__value {
@@ -11293,9 +11323,66 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   max-width: 62ch;
 }
 .cost-nav {
+  position: sticky;
+  top: -8px;
+  z-index: 12;
   display: grid;
   gap: 8px;
-  margin: 0 0 16px;
+  margin: 0 -8px 16px;
+  padding: 8px 8px 10px;
+  background: #101525;
+}
+.cost-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: #c4b5fd;
+}
+.cost-crumbs a {
+  color: #c4b5fd;
+}
+.cost-crumbs a:hover {
+  color: #f5f7fc;
+}
+.cost-crumbs__sep {
+  color: #58677f;
+}
+.cost-toolbar-wrap {
+  display: grid;
+  gap: 8px;
+}
+.cost-toolbar__dates {
+  align-self: flex-end;
+  padding-bottom: 8px;
+  font-size: 12px;
+  color: #c4b5fd;
+  white-space: nowrap;
+}
+.cost-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.cost-chips__chip {
+  border: 1px solid rgba(196, 181, 253, 0.28);
+  background: transparent;
+  color: #c4b5fd;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cost-chips__chip:hover {
+  color: #f5f7fc;
+  border-color: #6d4aff;
+}
+.cost-chips__count,
+.cost-chips__note {
+  font-size: 12px;
+  color: #58677f;
 }
 .cost-tabs {
   display: flex;
@@ -11495,6 +11582,14 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   display: grid;
   gap: 2px;
   min-width: 0;
+  text-decoration: none;
+  color: inherit;
+}
+.cost-hero__stat.is-link:hover {
+  text-decoration: none;
+}
+.cost-hero__stat.is-link:hover dd {
+  color: #2dd4bf;
 }
 .cost-hero__stat dd {
   margin: 0;
@@ -11524,6 +11619,12 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-top-width: 3px;
   animation: cost-rise 420ms ease both;
+  color: inherit;
+  text-decoration: none;
+}
+.cost-kpi__tile.is-link:hover {
+  text-decoration: none;
+  border-color: #6d4aff;
 }
 .cost-kpi__tile--billed { border-top-color: #2dd4bf; }
 .cost-kpi__tile--unknown { border-top-color: #c4b5fd; }
@@ -11647,6 +11748,119 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   border-left: 3px solid #6d4aff;
 }
 
+.cost-budget__track {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: #101525;
+  overflow: hidden;
+}
+.cost-budget__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2dd4bf;
+}
+.cost-budget--over .cost-budget__fill { background: #6d4aff; }
+.cost-budget--warn .cost-budget__fill { background: #c4b5fd; }
+.cost-budget__track.is-unknown {
+  display: flex;
+  align-items: center;
+  background: transparent;
+  height: auto;
+}
+.cost-budget__unknown {
+  font-size: 11px;
+  color: #c4b5fd;
+}
+
+.cost-unknown__value {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: #c4b5fd;
+  text-underline-offset: 3px;
+}
+.cost-unknown {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 21, 37, 0.72);
+}
+.cost-unknown__panel {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #192238;
+  border: 1px solid rgba(196, 181, 253, 0.28);
+}
+.cost-unknown__panel h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.cost-unknown__panel p {
+  margin: 0;
+  color: #c4b5fd;
+  font-size: 13px;
+}
+
+.cost-first-run {
+  padding: 20px;
+  border-radius: 14px;
+  background: #192238;
+  border: 1px solid rgba(196, 181, 253, 0.18);
+}
+.cost-first-run h2 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+.cost-first-run__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 14px;
+}
+.cost-first-run__steps li {
+  display: grid;
+  gap: 4px;
+  padding-left: 28px;
+  position: relative;
+}
+.cost-first-run__steps li::before {
+  content: counter(step);
+  counter-increment: step;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #6d4aff;
+  color: #f5f7fc;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.cost-first-run__steps {
+  counter-reset: step;
+}
+.cost-first-run__steps span {
+  color: #58677f;
+  font-size: 13px;
+}
+
 .cost-budget-board {
   margin: 0 0 28px;
 }
@@ -11700,9 +11914,17 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
 [data-theme="light"] .cost-toolbar__more-panel,
 [data-theme="light"] .cost-hero,
 [data-theme="light"] .cost-kpi__tile,
-[data-theme="light"] .cost-budget {
+[data-theme="light"] .cost-budget,
+[data-theme="light"] .cost-unknown__panel,
+[data-theme="light"] .cost-first-run {
   background: #f5f7fc;
   border-color: #d5d9e4;
+}
+[data-theme="light"] .cost-nav {
+  background: #f5f7fc;
+}
+[data-theme="light"] .cost-budget__track {
+  background: #e8ecf5;
 }
 [data-theme="light"] .cost-kpi__value,
 [data-theme="light"] .cost-guide,

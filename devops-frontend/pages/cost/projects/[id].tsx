@@ -5,9 +5,10 @@ import { useEffect, useState } from 'react';
 import CostKpiStrip from '../../../components/CostKpiStrip';
 import CostMixChart from '../../../components/CostMixChart';
 import CostNav from '../../../components/CostNav';
+import CostUnknown from '../../../components/CostUnknown';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { CostProjectDashboard, budgetAlertLabel, costQuery, costToneForDisplay, fetchCostJson, freshnessLabel, importableLabel } from '../../../lib/cost';
+import { CostProjectDashboard, budgetAlertLabel, costAccountStatus, costAccountStatusLabel, costQuery, costToneForDisplay, costUnknownReason, fetchCostJson, freshnessLabel, sortCostTreeBySpend } from '../../../lib/cost';
 
 export default function CostProjectDashboardPage() {
   const apiUrl = useApiUrl();
@@ -51,24 +52,38 @@ export default function CostProjectDashboardPage() {
             <Link href="/cost" className="btn btn-secondary btn-sm">All projects</Link>
           </div>
         </div>
-        <CostNav current="overview" />
+        <CostNav
+          current="overview"
+          compact
+          crumbs={[
+            { href: '/cost', label: 'Cost' },
+            { label: title },
+          ]}
+        />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {loading ? <div className="empty-state">Loading project spend…</div> : null}
         {!loading && data ? (
           <>
             <CostKpiStrip
+              canOperate={data.can_operate}
               items={[
                 {
                   label: 'Project spend',
                   value: spendUnknown ? 'Unknown' : data.spend?.display || 'Unknown',
                   hint: spendUnknown ? 'Incomplete stays Unknown, never $0' : `${basis} billed window`,
                   tone: costToneForDisplay(data.spend?.display),
+                  unknown: costUnknownReason({
+                    display: data.spend?.display,
+                    coverage: data.spend?.coverage || data.coverage,
+                    freshness: data.freshness,
+                  }),
                 },
                 {
                   label: 'Waiting',
                   value: String(data.waiting_count ?? 0),
                   hint: 'Suggestions that never execute',
                   tone: (data.waiting_count || 0) > 0 ? 'wait' : 'unknown',
+                  href: '/cost/optimization',
                 },
                 {
                   label: 'Freshness',
@@ -88,25 +103,42 @@ export default function CostProjectDashboardPage() {
               <div className="cost-dash__graph">
                 <span className="portal-surface__eyebrow">Service mix</span>
                 <h2 className="portal-surface__title">Where spend sits</h2>
-                <CostMixChart mix={mix} days={days} />
+                <CostMixChart
+                  mix={mix}
+                  days={days}
+                  familyHref={(family) => `/cost/explorer${costQuery(basis, currency, { from: data.window_start || from, to: data.window_end || to, family })}`}
+                />
               </div>
               <div className="cost-dash__side">
                 <span className="portal-surface__eyebrow">Accounts</span>
                 <h2 className="portal-surface__title">Clouds in this project</h2>
-                {(data.project?.clouds || []).map((cloud) => (
+                {(sortCostTreeBySpend(data.project ? [data.project] : [])[0]?.clouds || []).map((cloud) => (
                   <div key={cloud.provider} className="cost-tree__cloud">
                     <div className="cost-tree__cloud-label">{cloud.provider}</div>
-                    {(cloud.accounts || []).map((account) => (
-                      <Link key={`${account.id}-${account.cloud_account_id}`} href={account.href} className="cost-tree__account">
-                        <span>
-                          <span className="cost-tree__account-name">{account.display_name}</span>
-                          <span className="cost-tree__account-meta">
-                            {account.environment || 'Unknown'} · {importableLabel(account.import_status)}
+                    {(cloud.accounts || []).map((account) => {
+                      const status = costAccountStatus(account);
+                      const reason = costUnknownReason({
+                        display: account.spend?.display,
+                        coverage: account.spend?.coverage,
+                        importStatus: account.import_status,
+                        freshness: account.freshness,
+                        stale: Boolean(account.stale_hint),
+                      });
+                      return (
+                        <div key={`${account.id}-${account.cloud_account_id}`} className={`cost-tree__account${status === 'not_imported' ? ' is-missing' : ''}${status === 'stale' ? ' is-stale' : ''}`}>
+                          <Link href={account.href} className="cost-tree__account-main">
+                            <span className={`cost-dot cost-dot--${status}`} title={costAccountStatusLabel(status)} />
+                            <span>
+                              <span className="cost-tree__account-name">{account.display_name}</span>
+                              <span className="cost-tree__account-meta">{account.environment || 'Unknown'}</span>
+                            </span>
+                          </Link>
+                          <span className="cost-tree__spend">
+                            {reason ? <CostUnknown reason={reason} canOperate={data.can_operate} /> : (account.spend?.display || 'Unknown')}
                           </span>
-                        </span>
-                        <span className="cost-tree__spend">{account.spend?.display || 'Unknown'}</span>
-                      </Link>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 ))}
               </div>

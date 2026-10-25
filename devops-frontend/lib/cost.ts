@@ -968,6 +968,141 @@ export function budgetAlertLabel(value: string | undefined) {
   return 'Unknown';
 }
 
+export type CostUnknownReason = {
+  code: 'not_imported' | 'incomplete' | 'stale' | 'none' | 'empty';
+  title: string;
+  detail: string;
+};
+
+export function costUnknownReason(input: {
+  display?: string | null;
+  coverage?: string;
+  importStatus?: string;
+  freshness?: string;
+  stale?: boolean;
+  lineCount?: number;
+}): CostUnknownReason | null {
+  if (input.display && input.display !== 'Unknown') return null;
+  const imported = (input.importStatus || '').toLowerCase();
+  const coverage = (input.coverage || '').toLowerCase();
+  const freshness = (input.freshness || '').toLowerCase();
+  if (imported === 'not_imported') {
+    return {
+      code: 'not_imported',
+      title: 'Not imported',
+      detail: 'Cost is not imported for this account. Enable Cost, then import billed lines. Spend stays Unknown until a complete revision exists.',
+    };
+  }
+  if (coverage === 'none' || (input.lineCount === 0 && coverage !== 'complete' && coverage !== 'incomplete')) {
+    return {
+      code: 'none',
+      title: 'No billed revision',
+      detail: 'No complete billed revision exists for this window. Coverage stays Unknown, never $0.',
+    };
+  }
+  if (coverage === 'incomplete') {
+    return {
+      code: 'incomplete',
+      title: 'Incomplete coverage',
+      detail: 'This window is incomplete. Incomplete stays Unknown, never $0. Import a complete revision to show the billed amount.',
+    };
+  }
+  if (freshness === 'stale' || input.stale) {
+    return {
+      code: 'stale',
+      title: 'Stale window',
+      detail: 'The billed window is stale. Import a newer complete revision. Do not treat a missing refresh as $0.',
+    };
+  }
+  return {
+    code: 'empty',
+    title: 'No billed lines',
+    detail: 'No billed lines for this slice. Widen the filters or import billed lines. Coverage stays Unknown until a complete revision exists.',
+  };
+}
+
+export type CostAccountStatus = 'billed' | 'unknown' | 'not_imported' | 'stale';
+
+export function costAccountStatus(account: CostTreeAccount): CostAccountStatus {
+  if ((account.import_status || '').toLowerCase() === 'not_imported') return 'not_imported';
+  if (account.stale_hint || (account.freshness || '').toLowerCase() === 'stale') return 'stale';
+  if (!account.spend || account.spend.display === 'Unknown') return 'unknown';
+  return 'billed';
+}
+
+export function costAccountStatusLabel(status: CostAccountStatus) {
+  if (status === 'billed') return 'Billed';
+  if (status === 'not_imported') return 'Not imported';
+  if (status === 'stale') return 'Stale';
+  return 'Unknown';
+}
+
+function costSpendRank(money?: CostMoney | null, importStatus?: string) {
+  if ((importStatus || '').toLowerCase() === 'not_imported') return { bucket: 2, amount: '' };
+  if (!money || money.display === 'Unknown' || !money.amount) return { bucket: 1, amount: '' };
+  return { bucket: 0, amount: money.amount };
+}
+
+function compareCostSpend(
+  left: { bucket: number; amount: string },
+  right: { bucket: number; amount: string },
+) {
+  if (left.bucket !== right.bucket) return left.bucket - right.bucket;
+  return right.amount.localeCompare(left.amount, undefined, { numeric: true });
+}
+
+export function sortCostTreeBySpend(projects: CostTreeProject[]): CostTreeProject[] {
+  return (projects || []).map((project) => ({
+    ...project,
+    clouds: (project.clouds || []).map((cloud) => ({
+      ...cloud,
+      accounts: [...(cloud.accounts || [])].sort((a, b) => compareCostSpend(
+        costSpendRank(a.spend, a.import_status),
+        costSpendRank(b.spend, b.import_status),
+      )),
+    })).sort((a, b) => compareCostSpend(costSpendRank(a.spend), costSpendRank(b.spend))),
+  })).sort((a, b) => compareCostSpend(costSpendRank(a.spend), costSpendRank(b.spend)));
+}
+
+const COST_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatCostWindowRange(from: string, to: string) {
+  if (!from || !to) return '';
+  const parse = (value: string) => {
+    const [year, month, day] = value.split('-').map((part) => Number(part));
+    return { year, month, day, label: COST_MONTHS[(month || 1) - 1] || '' };
+  };
+  const start = parse(from);
+  const end = parse(to);
+  if (start.month === end.month && start.year === end.year) {
+    return `${start.day}–${end.day} ${end.label}`;
+  }
+  if (start.year === end.year) {
+    return `${start.day} ${start.label} – ${end.day} ${end.label}`;
+  }
+  return `${start.day} ${start.label} ${start.year} – ${end.day} ${end.label} ${end.year}`;
+}
+
+export function resolvedCostWindow(from: string, to: string) {
+  if (from && to) return { from, to };
+  const thisMonth = costThisMonth();
+  if (from) return { from, to: thisMonth.to };
+  if (to) return { from: thisMonth.from, to };
+  return thisMonth;
+}
+
+export function budgetBarPercent(row: CostBudgetStatus): number | null {
+  if (row.spent?.display === 'Unknown' || row.remaining?.display === 'Unknown') return null;
+  if ((row.spent?.coverage || '') !== 'complete' || (row.remaining?.coverage || '') !== 'complete') return null;
+  const spent = Number(row.spent?.amount);
+  const limit = Number(row.amount);
+  if (!Number.isFinite(spent) || !Number.isFinite(limit) || limit <= 0) return null;
+  const pct = Math.round((spent / limit) * 100);
+  if (pct < 0) return 0;
+  if (pct > 100) return 100;
+  return pct;
+}
+
 export async function fetchCostCSV(apiUrl: string, path: string): Promise<string> {
   const token = typeof window === 'undefined' ? '' : localStorage.getItem(COST_TOKEN_KEY) || '';
   const res = await fetch(`${apiUrl}${path}`, {

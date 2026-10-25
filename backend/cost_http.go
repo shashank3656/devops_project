@@ -78,6 +78,7 @@ func costQueryFromRequest(r *http.Request) (basis, currency, fromRaw, toRaw stri
 		Region:        q.Get("region"),
 		Account:       q.Get("account"),
 		Team:          q.Get("team"),
+		Family:        q.Get("family"),
 		PortalService: q.Get("portal_service"),
 	}
 }

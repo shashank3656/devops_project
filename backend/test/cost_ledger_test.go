@@ -1216,3 +1216,19 @@ func TestCostAccountExportHrefOmitsAccountNumber(t *testing.T) {
 		t.Fatal("CSV export stays on the cost page grant")
 	}
 }
+
+func TestFilterAllocatedCostLinesFamilyAndUnallocated(t *testing.T) {
+	lines := []costLineRow{
+		{Service: "Amazon Elastic Compute Cloud", TeamSlug: "platform-team", Actual: "10.000000"},
+		{Service: "Amazon Simple Storage Service", TeamSlug: "", Actual: "4.000000"},
+		{Service: "Amazon Relational Database Service", TeamSlug: "data-team", Actual: "8.000000"},
+	}
+	compute := filterAllocatedCostLines(lines, costLineQuery{Family: "Compute"})
+	if len(compute) != 1 || compute[0].Service != "Amazon Elastic Compute Cloud" {
+		t.Fatalf("compute family = %+v", compute)
+	}
+	unallocated := filterAllocatedCostLines(lines, costLineQuery{Team: "unallocated"})
+	if len(unallocated) != 1 || strings.TrimSpace(unallocated[0].TeamSlug) != "" {
+		t.Fatalf("unallocated = %+v", unallocated)
+	}
+}

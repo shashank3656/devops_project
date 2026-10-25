@@ -54,7 +54,15 @@ export default function CostCloudAccountPage() {
             {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-primary btn-sm">Enable Cost</Link> : null}
           </div>
         </div>
-        <CostNav current="overview" />
+        <CostNav
+          current="overview"
+          compact
+          crumbs={[
+            { href: '/cost', label: 'Cost' },
+            data?.project?.id ? { href: `/cost/projects/${data.project.id}`, label: data.project.name || 'Project' } : { href: '/cost', label: 'Project' },
+            { label: title },
+          ]}
+        />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {loading ? <div className="empty-state">Loading account…</div> : null}
         {!loading && data ? (

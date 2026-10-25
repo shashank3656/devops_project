@@ -20,6 +20,7 @@ type costLineQuery struct {
 	Region        string
 	Account       string
 	Team          string
+	Family        string
 	PortalService string
 }
 
@@ -101,18 +102,38 @@ func applyCostAllocation(lines []costLineRow, rules []costAllocationRule, accoun
 	return out
 }
 
+func costFamilyMatches(service, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	if want == "" {
+		return true
+	}
+	got := costFindingFamily(service)
+	return want == got || want == strings.ToLower(costFamilyLabel(got))
+}
+
 func filterAllocatedCostLines(lines []costLineRow, query costLineQuery) []costLineRow {
-	if strings.TrimSpace(query.Team) == "" && strings.TrimSpace(query.PortalService) == "" {
+	team := strings.TrimSpace(query.Team)
+	portal := strings.TrimSpace(query.PortalService)
+	family := strings.TrimSpace(query.Family)
+	if team == "" && portal == "" && family == "" {
 		return lines
 	}
 	out := []costLineRow{}
-	team := strings.TrimSpace(query.Team)
-	portal := strings.TrimSpace(query.PortalService)
 	for _, line := range lines {
-		if team != "" && !strings.EqualFold(line.TeamSlug, team) {
-			continue
+		if team != "" {
+			wantUnallocated := strings.EqualFold(team, "unallocated")
+			if wantUnallocated {
+				if strings.TrimSpace(line.TeamSlug) != "" {
+					continue
+				}
+			} else if !strings.EqualFold(line.TeamSlug, team) {
+				continue
+			}
 		}
 		if portal != "" && !strings.EqualFold(line.AllocatedService, portal) && !strings.Contains(strings.ToLower(line.ResourceID), strings.ToLower(portal)) {
+			continue
+		}
+		if family != "" && !costFamilyMatches(line.Service, family) {
 			continue
 		}
 		out = append(out, line)
