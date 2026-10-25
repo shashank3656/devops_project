@@ -43,3 +43,6 @@ yarn-error.log*
 *.tmp
 *.temp
 *.cache
+
+__pycache__/
+*.pyc
