@@ -79,16 +79,16 @@ func collectHandoverSnapshot(handoverID, teamID, projectID int, visible map[int]
 		return nil
 	}
 
-	if err := collectHandoverIncidents(handoverID, projects, now); err != nil {
+	if err := collectHandoverIncidents(handoverID, projects, now, nil); err != nil {
 		missing = append(missing, "Open incidents could not be read.")
 	}
-	if err := collectHandoverFindings(handoverID, projects, now); err != nil {
+	if err := collectHandoverFindings(handoverID, projects, now, nil); err != nil {
 		missing = append(missing, "Actionable findings could not be read.")
 	}
-	if err := collectHandoverChanges(handoverID, projects, now); err != nil {
+	if err := collectHandoverChanges(handoverID, projects, now, nil); err != nil {
 		missing = append(missing, "Upcoming changes could not be read.")
 	}
-	if err := collectHandoverMaintenance(handoverID, projects, now); err != nil {
+	if err := collectHandoverMaintenance(handoverID, projects, now, nil); err != nil {
 		missing = append(missing, "Maintenance windows could not be read.")
 	}
 
@@ -100,7 +100,7 @@ func collectHandoverSnapshot(handoverID, teamID, projectID int, visible map[int]
 	return err
 }
 
-func collectHandoverIncidents(handoverID int, projects []int, now time.Time) error {
+func collectHandoverIncidents(handoverID int, projects []int, now time.Time, dest *[]handoverCollectItem) error {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT i.id, COALESCE(i.project_id, 0), COALESCE(i.severity, ''), COALESCE(i.status, ''),
 		       COALESCE(i.summary, ''), COALESCE(u.username, ''), COALESCE(i.major, FALSE), i.updated_at
@@ -142,14 +142,17 @@ func collectHandoverIncidents(handoverID int, projects []int, now time.Time) err
 			Critical:   critical,
 			Section:    "open_work",
 		}
-		if err := insertHandoverItem(handoverID, item, now); err != nil {
-			return err
+		appendHandoverCollect(dest, item)
+		if handoverID > 0 {
+			if err := insertHandoverItem(handoverID, item, now); err != nil {
+				return err
+			}
 		}
 	}
 	return rows.Err()
 }
 
-func collectHandoverFindings(handoverID int, projects []int, now time.Time) error {
+func collectHandoverFindings(handoverID int, projects []int, now time.Time, dest *[]handoverCollectItem) error {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT f.id, COALESCE(r.project_id, 0), COALESCE(a.canonical_id, ''), COALESCE(a.title, ''),
 		       COALESCE(a.severity, ''), COALESCE(f.package_name, ''), COALESCE(f.lifecycle, ''), f.due_at
@@ -194,14 +197,17 @@ func collectHandoverFindings(handoverID int, projects []int, now time.Time) erro
 			Critical:   strings.EqualFold(severity, "critical") || strings.EqualFold(severity, "high"),
 			Section:    "open_work",
 		}
-		if err := insertHandoverItem(handoverID, item, now); err != nil {
-			return err
+		appendHandoverCollect(dest, item)
+		if handoverID > 0 {
+			if err := insertHandoverItem(handoverID, item, now); err != nil {
+				return err
+			}
 		}
 	}
 	return rows.Err()
 }
 
-func collectHandoverChanges(handoverID int, projects []int, now time.Time) error {
+func collectHandoverChanges(handoverID int, projects []int, now time.Time, dest *[]handoverCollectItem) error {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT c.id, COALESCE(c.project_id, 0), COALESCE(c.change_number, ''), COALESCE(c.title, ''),
 		       COALESCE(c.status, ''), COALESCE(c.service, ''), COALESCE(u.username, ''), c.cab_window_start
@@ -248,14 +254,17 @@ func collectHandoverChanges(handoverID int, projects []int, now time.Time) error
 			Href:       fmt.Sprintf("/changes/%d", id),
 			Section:    "upcoming_risk",
 		}
-		if err := insertHandoverItem(handoverID, item, now); err != nil {
-			return err
+		appendHandoverCollect(dest, item)
+		if handoverID > 0 {
+			if err := insertHandoverItem(handoverID, item, now); err != nil {
+				return err
+			}
 		}
 	}
 	return rows.Err()
 }
 
-func collectHandoverMaintenance(handoverID int, projects []int, now time.Time) error {
+func collectHandoverMaintenance(handoverID int, projects []int, now time.Time, dest *[]handoverCollectItem) error {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT id, project_id, COALESCE(service, ''), COALESCE(status, ''), COALESCE(owner_name, ''), starts_at, ends_at
 		FROM maintenance_windows
@@ -295,11 +304,21 @@ func collectHandoverMaintenance(handoverID int, projects []int, now time.Time) e
 			Href:       fmt.Sprintf("/maintenance/%d", id),
 			Section:    "upcoming_risk",
 		}
-		if err := insertHandoverItem(handoverID, item, now); err != nil {
-			return err
+		appendHandoverCollect(dest, item)
+		if handoverID > 0 {
+			if err := insertHandoverItem(handoverID, item, now); err != nil {
+				return err
+			}
 		}
 	}
 	return rows.Err()
+}
+
+func appendHandoverCollect(dest *[]handoverCollectItem, item handoverCollectItem) {
+	if dest == nil {
+		return
+	}
+	*dest = append(*dest, item)
 }
 
 func carryForwardHandoverActions(handoverID, teamID int, shiftEnd time.Time) error {

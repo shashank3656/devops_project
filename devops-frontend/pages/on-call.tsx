@@ -1,5 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -152,6 +153,7 @@ function todayKey(timeZone: string): string {
 
 export default function OnCallPage() {
   const apiUrl = useApiUrl();
+  const router = useRouter();
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [month, setMonth] = useState(currentMonth('Asia/Kolkata'));
   const [projects, setProjects] = useState<RosterProject[]>([]);
@@ -287,6 +289,40 @@ export default function OnCallPage() {
       setRefresh((value) => value + 1);
     } catch {
       setError('The cover request could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openHandover = async (row: RosterRow) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch(`${apiUrl}/api/oncall/handovers/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          team_id: row.shift.team_id,
+          project_id: row.project.id,
+          shift_date: row.day.date,
+          timezone,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'The handover could not be opened.');
+        return;
+      }
+      const id = Number(data.handover?.id);
+      if (id > 0) {
+        await router.push(`/on-call/handovers/${id}`);
+        return;
+      }
+      setError('The handover could not be opened.');
+    } catch {
+      setError('The handover could not be opened.');
     } finally {
       setSaving(false);
     }
@@ -507,6 +543,9 @@ export default function OnCallPage() {
                               {people.length ? people.map((person) => person.name).join(', ') : 'No one on this team'}
                             </td>
                             <td>
+                              <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void openHandover(row)}>
+                                Open handover
+                              </button>
                               {canRequest(row) ? (
                                 <button
                                   type="button"

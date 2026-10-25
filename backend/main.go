@@ -874,6 +874,8 @@ func main() {
 	http.HandleFunc("/api/oncall/handovers/", oncallHandoverHandler)
 	http.HandleFunc("/api/expiry/assets", expiryAssetsHandler)
 	http.HandleFunc("/api/expiry/assets/", expiryAssetsHandler)
+	http.HandleFunc("/api/expiry/collectors", expiryCollectorsRoute)
+	http.HandleFunc("/api/expiry/collector/", expiryCollectorAgentHandler)
 	http.HandleFunc("/api/maintenance/notices", maintenanceNoticeHandler)
 	http.HandleFunc("/api/maintenance/windows", maintenanceWindowsHandler)
 	http.HandleFunc("/api/maintenance/windows/", maintenanceWindowDetailHandler)

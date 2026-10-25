@@ -32,21 +32,27 @@ type oncallScheduleDay struct {
 }
 
 type oncallSchedule struct {
-	ID          int                 `json:"id"`
-	TeamID      int                 `json:"team_id"`
-	TeamName    string              `json:"team_name"`
-	ProjectID   int                 `json:"project_id"`
-	ProjectName string              `json:"project_name"`
-	Timezone    string              `json:"timezone"`
-	Today       string              `json:"today"`
-	Days        []oncallScheduleDay `json:"days"`
+	ID                      int                 `json:"id"`
+	TeamID                  int                 `json:"team_id"`
+	TeamName                string              `json:"team_name"`
+	ProjectID               int                 `json:"project_id"`
+	ProjectName             string              `json:"project_name"`
+	Timezone                string              `json:"timezone"`
+	Today                   string              `json:"today"`
+	Days                    []oncallScheduleDay `json:"days"`
+	HandoverRemindMinutes   int                 `json:"handover_remind_minutes"`
+	HandoverEscalateMinutes int                 `json:"handover_escalate_minutes"`
+	ReassignIncidentsOnAck  bool                `json:"reassign_incidents_on_ack"`
 }
 
 type oncallScheduleInput struct {
-	TeamID    int            `json:"team_id"`
-	ProjectID int            `json:"project_id"`
-	Timezone  string         `json:"timezone"`
-	Days      map[string]int `json:"days"`
+	TeamID                  int            `json:"team_id"`
+	ProjectID               int            `json:"project_id"`
+	Timezone                string         `json:"timezone"`
+	Days                    map[string]int `json:"days"`
+	HandoverRemindMinutes   int            `json:"handover_remind_minutes"`
+	HandoverEscalateMinutes int            `json:"handover_escalate_minutes"`
+	ReassignIncidentsOnAck  bool           `json:"reassign_incidents_on_ack"`
 }
 
 func migrateOncallScheduleSchema() {
@@ -64,6 +70,30 @@ func migrateOncallScheduleSchema() {
 			UNIQUE (team_id, project_id)
 		)
 	`)
+	_, _ = DB.Exec(`ALTER TABLE oncall_schedules ADD COLUMN IF NOT EXISTS handover_remind_minutes INTEGER NOT NULL DEFAULT 30`)
+	_, _ = DB.Exec(`ALTER TABLE oncall_schedules ADD COLUMN IF NOT EXISTS handover_escalate_minutes INTEGER NOT NULL DEFAULT 15`)
+	_, _ = DB.Exec(`ALTER TABLE oncall_schedules ADD COLUMN IF NOT EXISTS reassign_incidents_on_ack BOOLEAN NOT NULL DEFAULT FALSE`)
+}
+
+func clampHandoverMinutes(value, fallback, min, max int) int {
+	if value <= 0 {
+		return fallback
+	}
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func handoverRemindMinutes(value int) int {
+	return clampHandoverMinutes(value, 30, 5, 120)
+}
+
+func handoverEscalateMinutes(value int) int {
+	return clampHandoverMinutes(value, 15, 5, 120)
 }
 
 func oncallTimezoneAllowed(value string) bool {
@@ -155,7 +185,8 @@ func listOncallSchedules() ([]oncallSchedule, error) {
 		return []oncallSchedule{}, nil
 	}
 	rows, err := DB.Query(`
-		SELECT s.id, s.team_id, COALESCE(t.name, ''), s.project_id, COALESCE(p.name, ''), s.timezone, s.days
+		SELECT s.id, s.team_id, COALESCE(t.name, ''), s.project_id, COALESCE(p.name, ''), s.timezone, s.days,
+		       COALESCE(s.handover_remind_minutes, 30), COALESCE(s.handover_escalate_minutes, 15), COALESCE(s.reassign_incidents_on_ack, FALSE)
 		FROM oncall_schedules s
 		LEFT JOIN teams t ON t.id = s.team_id
 		LEFT JOIN projects p ON p.id = s.project_id
@@ -176,9 +207,11 @@ func listOncallSchedules() ([]oncallSchedule, error) {
 	ids := []int{}
 	for rows.Next() {
 		var row rawSchedule
-		if err := rows.Scan(&row.item.ID, &row.item.TeamID, &row.item.TeamName, &row.item.ProjectID, &row.item.ProjectName, &row.item.Timezone, &row.days); err != nil {
+		if err := rows.Scan(&row.item.ID, &row.item.TeamID, &row.item.TeamName, &row.item.ProjectID, &row.item.ProjectName, &row.item.Timezone, &row.days, &row.item.HandoverRemindMinutes, &row.item.HandoverEscalateMinutes, &row.item.ReassignIncidentsOnAck); err != nil {
 			return nil, err
 		}
+		row.item.HandoverRemindMinutes = handoverRemindMinutes(row.item.HandoverRemindMinutes)
+		row.item.HandoverEscalateMinutes = handoverEscalateMinutes(row.item.HandoverEscalateMinutes)
 		if row.item.TeamName == "" {
 			row.item.TeamName = "Unknown"
 		}
@@ -252,6 +285,8 @@ func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int
 	if input.TeamID <= 0 || input.ProjectID <= 0 || !oncallTimezoneAllowed(input.Timezone) {
 		return nil, 0, errOncallInvalid
 	}
+	remind := handoverRemindMinutes(input.HandoverRemindMinutes)
+	escalate := handoverEscalateMinutes(input.HandoverEscalateMinutes)
 	if _, err := GetTeamByID(input.TeamID); err != nil || input.TeamID == 0 {
 		return nil, 0, errOncallInvalid
 	}
@@ -270,9 +305,9 @@ func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int
 	if id > 0 {
 		result, err := DB.Exec(`
 			UPDATE oncall_schedules
-			SET team_id = $2, project_id = $3, timezone = $4, days = $5, updated_at = CURRENT_TIMESTAMP
+			SET team_id = $2, project_id = $3, timezone = $4, days = $5, handover_remind_minutes = $6, handover_escalate_minutes = $7, reassign_incidents_on_ack = $8, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
-		`, id, input.TeamID, input.ProjectID, input.Timezone, days)
+		`, id, input.TeamID, input.ProjectID, input.Timezone, days, remind, escalate, input.ReassignIncidentsOnAck)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -285,10 +320,10 @@ func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int
 	}
 	var created int
 	if err := DB.QueryRow(`
-		INSERT INTO oncall_schedules (team_id, project_id, timezone, days)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO oncall_schedules (team_id, project_id, timezone, days, handover_remind_minutes, handover_escalate_minutes, reassign_incidents_on_ack)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
-	`, input.TeamID, input.ProjectID, input.Timezone, days).Scan(&created); err != nil {
+	`, input.TeamID, input.ProjectID, input.Timezone, days, remind, escalate, input.ReassignIncidentsOnAck).Scan(&created); err != nil {
 		return nil, existingID, err
 	}
 	item, err := getOncallSchedule(created)

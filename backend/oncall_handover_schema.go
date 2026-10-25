@@ -88,4 +88,7 @@ func migrateOncallHandoverSchema() {
 		)
 	`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_oncall_handover_actions_status ON oncall_handover_actions(handover_id, status)`)
+	_, _ = DB.Exec(`ALTER TABLE ops_notification_settings ADD COLUMN IF NOT EXISTS notify_handovers BOOLEAN NOT NULL DEFAULT TRUE`)
+	_, _ = DB.Exec(`ALTER TABLE oncall_handovers ADD COLUMN IF NOT EXISTS incidents_reassigned INTEGER NOT NULL DEFAULT 0`)
+	_, _ = DB.Exec(`ALTER TABLE oncall_handovers ADD COLUMN IF NOT EXISTS incident_reassign_note TEXT NOT NULL DEFAULT ''`)
 }

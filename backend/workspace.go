@@ -208,6 +208,9 @@ func workspaceNeedsYou(portal, projectID string, viewerID int) []workspaceQueueI
 		items = append(items, workspaceApprovalQueue(portal, projectID)...)
 	}
 	items = append(items, workspaceIncidentQueue(portal, projectID, viewerID)...)
+	if portal != "user" {
+		items = append(items, workspaceHandoverQueue(projectID, viewerID)...)
+	}
 	items = append(items, workspaceChangeQueue(portal, projectID, viewerID, false)...)
 	if portal != "user" {
 		items = append(items, workspaceRiskyPRQueue(portal, false)...)

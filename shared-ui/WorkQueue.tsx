@@ -14,6 +14,7 @@ const KIND_LABELS: Record<string, string> = {
   change: 'Change',
   failed: 'Failed',
   blocked: 'Blocked',
+  handover: 'Handover',
 };
 
 const KIND_TONES: Record<string, Tone> = {
@@ -27,6 +28,7 @@ const KIND_TONES: Record<string, Tone> = {
   change: 'medium',
   failed: 'danger',
   blocked: 'danger',
+  handover: 'medium',
 };
 
 function badgeTone(item: QueueItem): Tone {

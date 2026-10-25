@@ -10,26 +10,27 @@ import (
 )
 
 type opsNotificationSettings struct {
-	InAppEnabled                bool       `json:"in_app_enabled"`
-	EmailEnabled                bool       `json:"email_enabled"`
-	SlackEnabled                bool       `json:"slack_enabled"`
-	SlackWebhookURL             string     `json:"slack_webhook_url,omitempty"`
-	SlackConfigured             bool       `json:"slack_configured"`
-	SlackUsingEnvironment       bool       `json:"slack_using_environment"`
-	TeamsEnabled                bool       `json:"teams_enabled"`
-	TeamsWebhookURL             string     `json:"teams_webhook_url,omitempty"`
-	TeamsConfigured             bool       `json:"teams_configured"`
-	TeamsUsingEnvironment       bool       `json:"teams_using_environment"`
-	WebhookEnabled              bool       `json:"webhook_enabled"`
-	WebhookURL                  string     `json:"webhook_url,omitempty"`
-	WebhookConfigured           bool       `json:"webhook_configured"`
-	WebhookUsingEnvironment     bool       `json:"webhook_using_environment"`
-	NotifyExpiringAssets        bool       `json:"notify_expiring_assets"`
-	NotifyBlockedPromotions     bool       `json:"notify_blocked_promotions"`
-	NotifyGateApprovalExpiring  bool       `json:"notify_gate_approval_expiring"`
-	UpdatedAt                   *time.Time `json:"updated_at,omitempty"`
-	UpdatedBy                   *int       `json:"updated_by,omitempty"`
-	UpdatedByUsername           string     `json:"updated_by_username,omitempty"`
+	InAppEnabled               bool       `json:"in_app_enabled"`
+	EmailEnabled               bool       `json:"email_enabled"`
+	SlackEnabled               bool       `json:"slack_enabled"`
+	SlackWebhookURL            string     `json:"slack_webhook_url,omitempty"`
+	SlackConfigured            bool       `json:"slack_configured"`
+	SlackUsingEnvironment      bool       `json:"slack_using_environment"`
+	TeamsEnabled               bool       `json:"teams_enabled"`
+	TeamsWebhookURL            string     `json:"teams_webhook_url,omitempty"`
+	TeamsConfigured            bool       `json:"teams_configured"`
+	TeamsUsingEnvironment      bool       `json:"teams_using_environment"`
+	WebhookEnabled             bool       `json:"webhook_enabled"`
+	WebhookURL                 string     `json:"webhook_url,omitempty"`
+	WebhookConfigured          bool       `json:"webhook_configured"`
+	WebhookUsingEnvironment    bool       `json:"webhook_using_environment"`
+	NotifyExpiringAssets       bool       `json:"notify_expiring_assets"`
+	NotifyHandovers            bool       `json:"notify_handovers"`
+	NotifyBlockedPromotions    bool       `json:"notify_blocked_promotions"`
+	NotifyGateApprovalExpiring bool       `json:"notify_gate_approval_expiring"`
+	UpdatedAt                  *time.Time `json:"updated_at,omitempty"`
+	UpdatedBy                  *int       `json:"updated_by,omitempty"`
+	UpdatedByUsername          string     `json:"updated_by_username,omitempty"`
 }
 
 func defaultOpsNotificationSettings() opsNotificationSettings {
@@ -40,6 +41,7 @@ func defaultOpsNotificationSettings() opsNotificationSettings {
 		TeamsEnabled:               strings.TrimSpace(TeamsWebhookURL) != "",
 		WebhookEnabled:             strings.TrimSpace(OpsNotificationWebhookURL) != "",
 		NotifyExpiringAssets:       true,
+		NotifyHandovers:            true,
 		NotifyBlockedPromotions:    true,
 		NotifyGateApprovalExpiring: true,
 	}
@@ -106,6 +108,7 @@ func loadOpsNotificationSettings() (opsNotificationSettings, error) {
 		       webhook_enabled,
 		       COALESCE(webhook_url, ''),
 		       notify_expiring_assets,
+		       COALESCE(notify_handovers, TRUE),
 		       notify_blocked_promotions,
 		       notify_gate_approval_expiring,
 		       updated_at,
@@ -124,6 +127,7 @@ func loadOpsNotificationSettings() (opsNotificationSettings, error) {
 		&settings.WebhookEnabled,
 		&settings.WebhookURL,
 		&settings.NotifyExpiringAssets,
+		&settings.NotifyHandovers,
 		&settings.NotifyBlockedPromotions,
 		&settings.NotifyGateApprovalExpiring,
 		&updatedAt,
@@ -165,12 +169,13 @@ func upsertOpsNotificationSettings(managerID int, settings opsNotificationSettin
 			webhook_enabled,
 			webhook_url,
 			notify_expiring_assets,
+			notify_handovers,
 			notify_blocked_promotions,
 			notify_gate_approval_expiring,
 			updated_by,
 			updated_at
 		) VALUES (
-			1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP
+			1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP
 		)
 		ON CONFLICT (id) DO UPDATE SET
 			in_app_enabled = EXCLUDED.in_app_enabled,
@@ -182,6 +187,7 @@ func upsertOpsNotificationSettings(managerID int, settings opsNotificationSettin
 			webhook_enabled = EXCLUDED.webhook_enabled,
 			webhook_url = EXCLUDED.webhook_url,
 			notify_expiring_assets = EXCLUDED.notify_expiring_assets,
+			notify_handovers = EXCLUDED.notify_handovers,
 			notify_blocked_promotions = EXCLUDED.notify_blocked_promotions,
 			notify_gate_approval_expiring = EXCLUDED.notify_gate_approval_expiring,
 			updated_by = EXCLUDED.updated_by,
@@ -196,6 +202,7 @@ func upsertOpsNotificationSettings(managerID int, settings opsNotificationSettin
 		settings.WebhookEnabled,
 		settings.WebhookURL,
 		settings.NotifyExpiringAssets,
+		settings.NotifyHandovers,
 		settings.NotifyBlockedPromotions,
 		settings.NotifyGateApprovalExpiring,
 		managerID,
@@ -209,6 +216,8 @@ func isOpsNotificationCategoryEnabled(settings opsNotificationSettings, category
 	switch strings.TrimSpace(strings.ToLower(category)) {
 	case "expiry_tracker_alert":
 		return settings.NotifyExpiringAssets
+	case "oncall_handover_submitted", "oncall_handover_acknowledged", "oncall_handover_escalated", "oncall_handover_revised", "oncall_handover_reminder":
+		return settings.NotifyHandovers
 	case "blocked_promotion":
 		return settings.NotifyBlockedPromotions
 	case "gate_approval_expiring":

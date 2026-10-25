@@ -52,6 +52,7 @@ export default function OnCallHandoversPage() {
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [teamId, setTeamId] = useState('');
   const [state, setState] = useState('');
+  const [waiting, setWaiting] = useState(false);
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
@@ -76,6 +77,7 @@ export default function OnCallHandoversPage() {
     const params = new URLSearchParams();
     if (teamId) params.set('team_id', teamId);
     if (state) params.set('state', state);
+    if (waiting) params.set('waiting', 'me');
     fetch(`${apiUrl}/api/oncall/handovers${params.toString() ? `?${params}` : ''}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -94,7 +96,7 @@ export default function OnCallHandoversPage() {
       })
       .catch(() => setError('Handovers could not be loaded.'))
       .finally(() => setLoading(false));
-  }, [apiUrl, teamId, state, refresh]);
+  }, [apiUrl, teamId, state, waiting, refresh]);
 
   const visible = useMemo(() => items, [items]);
 
@@ -133,7 +135,7 @@ export default function OnCallHandoversPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Handovers</h1>
-            <p className="portal-page__subtitle">Incoming responders get a reviewed snapshot of open work. Acknowledgement does not reassign incidents. Empty collection is Partial, never “nothing to hand over.”</p>
+            <p className="portal-page__subtitle">Incoming responders get a reviewed snapshot of open work. Acknowledgement can reassign open incidents when that option is on. Empty collection is Partial, never “nothing to hand over.”</p>
           </div>
           <div className="portal-page__actions">
             <Link href="/on-call" className="btn btn-secondary">Roster</Link>
@@ -172,6 +174,13 @@ export default function OnCallHandoversPage() {
                 <option value="draft">Draft</option>
                 <option value="submitted">Submitted</option>
                 <option value="acknowledged">Acknowledged</option>
+              </select>
+            </label>
+            <label>
+              Waiting for me
+              <select className="input" value={waiting ? 'me' : ''} onChange={(event) => setWaiting(event.target.value === 'me')}>
+                <option value="">Everyone</option>
+                <option value="me">Waiting for me</option>
               </select>
             </label>
             <label>

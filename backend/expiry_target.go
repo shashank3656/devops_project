@@ -72,6 +72,53 @@ func expiryPortAllowed(port int) bool {
 	return expiryAllowedPorts[port]
 }
 
+func normalizeExpiryCollector(raw string) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return "hosted", nil
+	}
+	if value != "hosted" && value != "private" {
+		return "", errOncallInvalid
+	}
+	return value, nil
+}
+
+func expiryCollectorIsPrivate(raw string) bool {
+	return strings.EqualFold(strings.TrimSpace(raw), "private")
+}
+
+func expiryHostNeedsPrivateCollector(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	if host == "internal.example.com" || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !ipIsPublicForProbe(ip)
+	}
+	return false
+}
+
+func expiryCoverageCopy(collector string) string {
+	if expiryCollectorIsPrivate(collector) {
+		return "Private collector. One observation point does not prove every region. Hosted checks do not reach this target."
+	}
+	return "Hosted collector. One observation point does not prove every region."
+}
+
+func expiryWaitingPrivateObservation() expiryObservation {
+	return expiryObservation{
+		Source:           "collector",
+		ObservedAt:       time.Now().UTC(),
+		ObservationPoint: "private",
+		Assessment:       "unknown",
+		ErrorClass:       "waiting",
+		Detail:           "Waiting for a private collector observation. Hosted checks do not reach this target.",
+	}
+}
+
 func ipIsPublicForProbe(ip net.IP) bool {
 	if ip == nil {
 		return false

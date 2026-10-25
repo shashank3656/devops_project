@@ -30,6 +30,15 @@ type Action = {
   source_ref: string;
 };
 
+type Person = { user_id: number; name: string };
+
+type Delta = {
+  added: Item[];
+  removed: Item[];
+  changed: { source_ref: string; title: string; before: string; after: string }[];
+  note: string;
+};
+
 type Handover = {
   id: number;
   team_name: string;
@@ -45,13 +54,19 @@ type Handover = {
   missing_sections: string[];
   freshness: string;
   incident_assignment: string;
+  reassign_incidents_on_ack?: boolean;
+  incidents_reassigned?: number;
+  incident_reassign_note?: string;
   items: Item[];
   actions: Action[];
   revisions: { revision: number; state: string; created_at: string }[];
+  people: Person[];
+  delta?: Delta;
   can_edit: boolean;
   can_submit: boolean;
   can_acknowledge: boolean;
   can_cancel: boolean;
+  can_reassign: boolean;
 };
 
 function known(value: string | undefined): string {
@@ -72,6 +87,9 @@ export default function HandoverDetailPage() {
   const [reviewed, setReviewed] = useState<Record<number, boolean>>({});
   const [reasons, setReasons] = useState<Record<number, string>>({});
   const [actionTitle, setActionTitle] = useState('');
+  const [incomingUserId, setIncomingUserId] = useState('');
+  const [reassignReason, setReassignReason] = useState('');
+  const [reassignIncidents, setReassignIncidents] = useState(false);
 
   const load = () => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -86,6 +104,8 @@ export default function HandoverDetailPage() {
         const next = data.handover as Handover;
         setItem(next);
         setNotes(next.notes || '');
+        setIncomingUserId(next.incoming_user_id ? String(next.incoming_user_id) : '');
+        setReassignIncidents(Boolean(next.reassign_incidents_on_ack));
         setError('');
       })
       .catch(() => setError('That handover is not available.'));
@@ -115,7 +135,12 @@ export default function HandoverDetailPage() {
       }
       setItem(data.handover);
       setNotes(data.handover?.notes || notes);
-      setNote(success);
+      if (data.handover?.incoming_user_id) setIncomingUserId(String(data.handover.incoming_user_id));
+      const delta = data.handover?.delta;
+      const live = (delta?.added?.length || 0) + (delta?.removed?.length || 0) + (delta?.changed?.length || 0);
+      setNote((path === 'submit' || path === 'acknowledge') && live > 0
+        ? `${success} ${live} live changes since collection. The snapshot is unchanged.`
+        : success);
     } catch {
       setError(success);
     } finally {
@@ -125,7 +150,7 @@ export default function HandoverDetailPage() {
 
   const saveDraft = (event: FormEvent) => {
     event.preventDefault();
-    void post('draft', { notes }, 'Draft saved. Collected facts were not rewritten.');
+    void post('draft', { notes, incoming_user_id: Number(incomingUserId) || 0 }, 'Draft saved. Collected facts were not rewritten.');
   };
 
   const ItemList = ({ rows, empty }: { rows: Item[]; empty: string }) => (
@@ -175,15 +200,16 @@ export default function HandoverDetailPage() {
               <span className="portal-pill">{item.collection_status === 'partial' ? 'Partial collection' : 'Collection complete'}</span>
             </div>
             <p className="access-hint">{item.incident_assignment}</p>
+            {item.incident_reassign_note ? <p className="access-hint">{item.incident_reassign_note}</p> : null}
             {item.missing_sections?.length ? (
               <div className="alert alert-error" role="status">
                 Partial: {item.missing_sections.join(' ')}
               </div>
             ) : null}
             <div className="portal-tabs" role="tablist">
-              {['summary', 'open', 'risk', 'actions', 'history'].map((key) => (
+              {['summary', 'open', 'risk', 'actions', 'changed', 'history'].map((key) => (
                 <button key={key} type="button" className={`btn btn-sm ${tab === key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab(key)}>
-                  {key === 'open' ? 'Open work' : key === 'risk' ? 'Upcoming risk' : key[0].toUpperCase() + key.slice(1)}
+                  {key === 'open' ? 'Open work' : key === 'risk' ? 'Upcoming risk' : key === 'changed' ? 'What changed' : key[0].toUpperCase() + key.slice(1)}
                 </button>
               ))}
             </div>
@@ -198,22 +224,52 @@ export default function HandoverDetailPage() {
                 </section>
                 <aside className="portal-surface">
                   <p>Outgoing: {known(item.outgoing_name)}</p>
-                  <p>Incoming: {known(item.incoming_name)}</p>
+                  {item.can_edit ? (
+                    <label className="label">Incoming
+                      <select className="input" value={incomingUserId} onChange={(event) => setIncomingUserId(event.target.value)}>
+                        <option value="">Select from the roster</option>
+                        {(item.people || []).map((person) => (
+                          <option key={person.user_id} value={person.user_id}>{known(person.name)}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : <p>Incoming: {known(item.incoming_name)}</p>}
                   <p>Collection: {item.collection_status === 'partial' ? 'Partial' : 'Complete'}</p>
+                  {item.can_reassign ? (
+                    <form onSubmit={(event) => { event.preventDefault(); void post('reassign', { incoming_user_id: Number(incomingUserId) || 0, reason: reassignReason }, 'Incoming person reassigned. Incidents move only if this acknowledgement reassigns them.'); setReassignReason(''); }}>
+                      <label className="label">Lead reassign
+                        <select className="input" value={incomingUserId} onChange={(event) => setIncomingUserId(event.target.value)}>
+                          {(item.people || []).map((person) => (
+                            <option key={person.user_id} value={person.user_id}>{known(person.name)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <input className="input" value={reassignReason} onChange={(event) => setReassignReason(event.target.value)} placeholder="Reason" required />
+                      <button type="submit" className="btn btn-secondary" disabled={saving || !reassignReason.trim()}>Reassign incoming</button>
+                    </form>
+                  ) : null}
+                  <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void post('notify', {}, 'Shift notice sent to the incoming and outgoing people. Emails stay off the page.')}>Notify this shift</button>
                   {item.can_submit ? <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void post('submit', {}, 'Submitted. Incoming acknowledgement is now required.')}>Submit</button> : null}
                   {item.can_acknowledge ? (
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={saving}
-                      onClick={() => void post('acknowledge', {
-                        expected_revision: item.revision,
-                        reviewed_item_ids: Object.entries(reviewed).filter(([, value]) => value).map(([key]) => Number(key)),
-                        reasons: Object.fromEntries(Object.entries(reasons).map(([key, value]) => [key, value])),
-                      }, 'Acknowledged. Incident assignment is unchanged.')}
-                    >
-                      Acknowledge revision {item.revision}
-                    </button>
+                    <>
+                      <label className="catalog-editor__toggle-label">
+                        <input type="checkbox" checked={reassignIncidents} onChange={(event) => setReassignIncidents(event.target.checked)} />
+                        <span>Reassign open incidents on this handover to {known(item.incoming_name)}. Status is not changed to Fixed.</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={saving}
+                        onClick={() => void post('acknowledge', {
+                          expected_revision: item.revision,
+                          reviewed_item_ids: Object.entries(reviewed).filter(([, value]) => value).map(([key]) => Number(key)),
+                          reasons: Object.fromEntries(Object.entries(reasons).map(([key, value]) => [key, value])),
+                          reassign_incidents: reassignIncidents,
+                        }, reassignIncidents ? 'Acknowledged. Open incidents were reassigned. Status was not changed to Fixed.' : 'Acknowledged. Incident assignment is unchanged.')}
+                      >
+                        Acknowledge revision {item.revision}
+                      </button>
+                    </>
                   ) : null}
                   {item.can_cancel ? (
                     <form onSubmit={(event) => { event.preventDefault(); void post('cancel', { reason: cancelReason }, 'Cancelled. Source work was kept.'); }}>
@@ -244,6 +300,23 @@ export default function HandoverDetailPage() {
                     <input className="input" value={actionTitle} onChange={(event) => setActionTitle(event.target.value)} placeholder="Next action" />
                     <button type="submit" className="btn btn-secondary" disabled={saving || !actionTitle.trim()}>Add action</button>
                   </form>
+                ) : null}
+              </section>
+            ) : null}
+            {tab === 'changed' ? (
+              <section className="portal-surface">
+                <p>{item.delta?.note || 'Live changes since collection. The snapshot is unchanged.'}</p>
+                {(item.delta?.added || []).map((row) => (
+                  <p key={`added-${row.source_ref}`}>Added: {known(row.source_ref)} · {known(row.title)}</p>
+                ))}
+                {(item.delta?.removed || []).map((row) => (
+                  <p key={`removed-${row.source_ref}`}>No longer open: {known(row.source_ref)} · {known(row.title)}</p>
+                ))}
+                {(item.delta?.changed || []).map((row) => (
+                  <p key={`changed-${row.source_ref}`}>Changed: {known(row.source_ref)} · {known(row.before)} → {known(row.after)}</p>
+                ))}
+                {!item.delta?.added?.length && !item.delta?.removed?.length && !item.delta?.changed?.length ? (
+                  <p>No live changes since collection.</p>
                 ) : null}
               </section>
             ) : null}

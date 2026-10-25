@@ -84,6 +84,53 @@ function readTeams(data: { teams?: unknown; owner_teams?: unknown }): OwnerTeam[
     .filter((item) => item.id > 0 && item.name);
 }
 
+function ServiceCertificates({
+  serviceName,
+  projectId,
+  environment,
+  apiUrl,
+  token,
+}: {
+  serviceName: string;
+  projectId?: number;
+  environment?: string;
+  apiUrl: string;
+  token: string;
+}) {
+  const [rows, setRows] = useState<{ id: number; display_name: string; assessment: string; remaining_days?: number | null }[]>([]);
+  useEffect(() => {
+    if (!token || !serviceName) return;
+    const params = new URLSearchParams({ service: serviceName });
+    fetch(`${apiUrl}/api/expiry/assets?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => setRows(Array.isArray(data?.assets) ? data.assets : []))
+      .catch(() => setRows([]));
+  }, [apiUrl, serviceName, token]);
+  const registerHref = `/certificates/new?service=${encodeURIComponent(serviceName)}${projectId ? `&project_id=${projectId}` : ''}${environment ? `&environment=${encodeURIComponent(environment)}` : ''}`;
+  return (
+    <section className="portal-surface">
+      <div className="portal-surface__header">
+        <div>
+          <h2 className="portal-surface__title">Certificates and domains</h2>
+          <p className="portal-surface__subtitle">Register a public endpoint or domain for this service. Hosted checks never collect private keys.</p>
+        </div>
+        <Link href={registerHref} className="btn btn-secondary">Register asset</Link>
+      </div>
+      {rows.length ? (
+        <ul>
+          {rows.map((row) => (
+            <li key={row.id}>
+              <Link href={`/certificates/${row.id}`}>{row.display_name}</Link>
+              {' · '}{row.assessment || 'Unknown'}
+              {typeof row.remaining_days === 'number' ? ` · ${row.remaining_days} days` : ''}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="sre-meta__empty">No certificate or domain is registered for this service.</p>}
+    </section>
+  );
+}
+
 export default function ServiceDetailPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -491,6 +538,7 @@ export default function ServiceDetailPage() {
                       </div>
                       {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <p className="sre-meta__empty">Grafana {known(item.grafana_uid)}</p>}
                     </section>
+                    <ServiceCertificates serviceName={item.service} projectId={item.project_id} environment={item.environment} apiUrl={apiUrl} token={sessionToken} />
                     <section className="portal-surface">
                       <div className="portal-surface__header">
                         <div>

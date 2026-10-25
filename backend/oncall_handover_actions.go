@@ -87,7 +87,7 @@ func criticalHandoverItems(items []handoverItemView) []handoverItemView {
 	return out
 }
 
-func acknowledgeHandover(id, userID, expectedRevision int, reviewed []int, reasons map[string]string) (handoverView, error) {
+func acknowledgeHandover(id, userID, expectedRevision int, reviewed []int, reasons map[string]string, reassignIncidents *bool) (handoverView, error) {
 	row, err := getHandover(id, userID)
 	if err != nil {
 		return handoverView{}, err
@@ -125,9 +125,18 @@ func acknowledgeHandover(id, userID, expectedRevision int, reviewed []int, reaso
 	if n, _ := res.RowsAffected(); n == 0 {
 		return handoverView{}, errHandoverConflict
 	}
+	moved := 0
+	summary := "Incident assignment is unchanged."
+	if handoverShouldReassignIncidents(reassignIncidents, row.TeamID, row.ProjectID) {
+		moved, summary = reassignHandoverIncidents(row)
+		if strings.TrimSpace(summary) == "" {
+			summary = "Incident assignment is unchanged."
+		}
+	}
 	notifyHandover(row, "oncall_handover_acknowledged", "Handover acknowledged",
-		fmt.Sprintf("%s acknowledged the %s handover. Incident assignment is unchanged.", row.IncomingName, row.TeamName),
+		fmt.Sprintf("%s acknowledged the %s handover. %s", row.IncomingName, row.TeamName, summary),
 		[]int{row.OutgoingUserID})
+	_ = moved
 	return getHandover(id, userID)
 }
 
@@ -217,6 +226,58 @@ func reopenHandoverAfterEdit(id, userID int, notes string) (handoverView, error)
 	return getHandover(id, userID)
 }
 
+func reassignHandover(id, userID, incomingUserID int, reason string) (handoverView, error) {
+	row, err := getHandover(id, userID)
+	if err != nil {
+		return handoverView{}, err
+	}
+	if !row.CanReassign {
+		return handoverView{}, errHandoverDenied
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" || incomingUserID <= 0 {
+		return handoverView{}, errOncallInvalid
+	}
+	allowed := false
+	for _, person := range row.People {
+		if person.UserID == incomingUserID {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return handoverView{}, errOncallInvalid
+	}
+	names := oncallUserNames([]int{incomingUserID})
+	incomingName := oncallKnownName(names, incomingUserID)
+	nextRevision := row.Revision
+	nextState := row.State
+	if row.State == "submitted" {
+		nextRevision = row.Revision + 1
+		nextState = "submitted"
+	}
+	res, err := execContext(`
+		UPDATE oncall_handovers
+		SET incoming_user_id = $2, incoming_name = $3, revision = $4, state = $5,
+		    acknowledged_at = NULL, acknowledged_by = 0, notes = CASE WHEN $6 <> '' THEN notes || E'\n' || $6 ELSE notes END,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1 AND revision = $7 AND state IN ('draft', 'submitted')
+	`, id, incomingUserID, incomingName, nextRevision, nextState, "Reassigned: "+reason, row.Revision)
+	if err != nil {
+		return handoverView{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return handoverView{}, errHandoverConflict
+	}
+	row.IncomingUserID = incomingUserID
+	row.IncomingName = incomingName
+	row.Revision = nextRevision
+	notifyHandover(row, "oncall_handover_revised", "Handover incoming person reassigned",
+		fmt.Sprintf("A lead reassigned the %s handover to %s. Acknowledgement does not reassign incidents. Reason: %s", row.TeamName, incomingName, reason),
+		[]int{incomingUserID, row.OutgoingUserID})
+	return getHandover(id, userID)
+}
+
 func notifyHandover(row handoverView, category, title, message string, recipients []int) {
 	if row.IncomingUserID > 0 {
 		recipients = append(recipients, row.IncomingUserID)
@@ -242,24 +303,115 @@ func notifyHandover(row handoverView, category, title, message string, recipient
 	})
 }
 
-func escalateOverdueHandovers(now time.Time) int {
+func pingHandoverShift(id, userID int) (handoverView, error) {
+	row, err := getHandover(id, userID)
+	if err != nil {
+		return handoverView{}, err
+	}
+	if !(row.CanEdit || row.CanSubmit || row.CanAcknowledge || row.CanReassign || userID == row.OutgoingUserID || userID == row.IncomingUserID) {
+		return handoverView{}, errHandoverDenied
+	}
+	recipients := []int{row.IncomingUserID, row.OutgoingUserID}
+	var projectPtr *int
+	if row.ProjectID > 0 {
+		projectPtr = &row.ProjectID
+	}
+	if team, teamErr := GetTeamByID(row.TeamID); teamErr == nil && team != nil {
+		if leads, leadErr := GetPortalManagerUserIDsByTeamNameOrSlug(team.Name); leadErr == nil {
+			recipients = append(recipients, leads...)
+		}
+	}
+	_ = dispatchOpsNotification(
+		fmt.Sprintf("handover:shift:%d:%d", row.ID, time.Now().UTC().Unix()),
+		"oncall_handover_reminder",
+		"Handover for this shift",
+		fmt.Sprintf("%s handover for %s is ready. %s to %s. Acknowledgement does not reassign incidents.", row.TeamName, row.ShiftDate, row.OutgoingName, row.IncomingName),
+		nil,
+		projectPtr,
+		recipients,
+		map[string]any{"handover_id": row.ID, "team_id": row.TeamID, "revision": row.Revision, "state": row.State},
+	)
+	return row, nil
+}
+
+func remindHandoverDraft(row handoverView) {
+	if row.ID <= 0 || !strings.EqualFold(row.State, "draft") {
+		return
+	}
+	notifyHandover(row, "oncall_handover_reminder", "Handover draft is ready",
+		fmt.Sprintf("Complete the %s handover before the shift ends. Acknowledgement does not reassign incidents.", row.TeamName),
+		[]int{row.OutgoingUserID})
+}
+
+func remindDueHandoverDrafts(now time.Time) int {
 	if DB == nil {
 		return 0
 	}
 	rows, cancel, err := queryRowsWithTimeout(`
-		SELECT id, team_id, team_name, project_id, incoming_user_id, incoming_name, outgoing_user_id, outgoing_name, revision, shift_end_at
-		FROM oncall_handovers
-		WHERE state = 'submitted' AND acknowledged_at IS NULL AND escalated_at IS NULL AND shift_end_at <= $1
-	`, now.Add(-15*time.Minute))
+		SELECT h.id, h.shift_end_at, COALESCE(s.handover_remind_minutes, 30)
+		FROM oncall_handovers h
+		LEFT JOIN oncall_schedules s ON s.team_id = h.team_id AND (h.project_id = 0 OR s.project_id = h.project_id)
+		WHERE h.state = 'draft' AND h.shift_end_at > $1
+	`, now)
 	if err != nil {
 		return 0
 	}
 	defer cancel()
 	defer rows.Close()
+	seen := map[int]bool{}
+	count := 0
+	for rows.Next() {
+		var id, remind int
+		var endAt time.Time
+		if err := rows.Scan(&id, &endAt, &remind); err != nil {
+			continue
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if endAt.After(now.Add(time.Duration(handoverRemindMinutes(remind)) * time.Minute)) {
+			continue
+		}
+		row, getErr := getHandover(id, 0)
+		if getErr != nil {
+			continue
+		}
+		remindHandoverDraft(row)
+		count++
+	}
+	return count
+}
+
+func escalateOverdueHandovers(now time.Time) int {
+	if DB == nil {
+		return 0
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT h.id, h.team_id, h.team_name, h.project_id, h.incoming_user_id, h.incoming_name, h.outgoing_user_id, h.outgoing_name, h.revision, h.shift_end_at,
+		       COALESCE(s.handover_escalate_minutes, 15)
+		FROM oncall_handovers h
+		LEFT JOIN oncall_schedules s ON s.team_id = h.team_id AND (h.project_id = 0 OR s.project_id = h.project_id)
+		WHERE h.state = 'submitted' AND h.acknowledged_at IS NULL AND h.escalated_at IS NULL
+	`)
+	if err != nil {
+		return 0
+	}
+	defer cancel()
+	defer rows.Close()
+	seen := map[int]bool{}
 	count := 0
 	for rows.Next() {
 		var row handoverView
-		if err := rows.Scan(&row.ID, &row.TeamID, &row.TeamName, &row.ProjectID, &row.IncomingUserID, &row.IncomingName, &row.OutgoingUserID, &row.OutgoingName, &row.Revision, &row.ShiftEndAt); err != nil {
+		var escalate int
+		if err := rows.Scan(&row.ID, &row.TeamID, &row.TeamName, &row.ProjectID, &row.IncomingUserID, &row.IncomingName, &row.OutgoingUserID, &row.OutgoingName, &row.Revision, &row.ShiftEndAt, &escalate); err != nil {
+			continue
+		}
+		if seen[row.ID] {
+			continue
+		}
+		seen[row.ID] = true
+		if now.Before(row.ShiftEndAt.Add(time.Duration(handoverEscalateMinutes(escalate)) * time.Minute)) {
 			continue
 		}
 		_, _ = execContext(`UPDATE oncall_handovers SET escalated_at = CURRENT_TIMESTAMP WHERE id = $1 AND escalated_at IS NULL`, row.ID)
@@ -276,7 +428,8 @@ func generateDueHandoverDrafts(now time.Time) int {
 		return 0
 	}
 	rows, cancel, err := queryRowsWithTimeout(`
-		SELECT DISTINCT t.id, COALESCE(p.project_id, 0), COALESCE(s.timezone, 'Asia/Kolkata')
+		SELECT DISTINCT t.id, COALESCE(p.project_id, 0), COALESCE(s.timezone, 'Asia/Kolkata'),
+		       COALESCE(s.handover_remind_minutes, 30), COALESCE(s.handover_escalate_minutes, 15)
 		FROM oncall_roster r
 		INNER JOIN teams t ON t.id = r.team_id
 		LEFT JOIN project_oncall_teams p ON p.team_id = t.id
@@ -290,9 +443,9 @@ func generateDueHandoverDrafts(now time.Time) int {
 	count := 0
 	seen := map[string]bool{}
 	for rows.Next() {
-		var teamID, projectID int
+		var teamID, projectID, remind, escalate int
 		var timezone string
-		if err := rows.Scan(&teamID, &projectID, &timezone); err != nil {
+		if err := rows.Scan(&teamID, &projectID, &timezone, &remind, &escalate); err != nil {
 			continue
 		}
 		if !oncallTimezoneAllowed(timezone) {
@@ -301,7 +454,7 @@ func generateDueHandoverDrafts(now time.Time) int {
 		loc := handoverLocation(timezone)
 		local := now.In(loc)
 		boundary := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
-		if local.Before(boundary.Add(-30*time.Minute)) || local.After(boundary.Add(15*time.Minute)) {
+		if local.Before(boundary.Add(-time.Duration(handoverRemindMinutes(remind))*time.Minute)) || local.After(boundary.Add(time.Duration(handoverEscalateMinutes(escalate))*time.Minute)) {
 			continue
 		}
 		shiftDate := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc).Format("2006-01-02")

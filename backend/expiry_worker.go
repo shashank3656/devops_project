@@ -26,7 +26,14 @@ func runExpiryCheckJob(jobID, assetID int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	var obs expiryObservation
-	if row.AssetType == "domain" {
+	if expiryCollectorIsPrivate(row.Collector) {
+		attachLatestObservation(&row)
+		if row.Latest != nil && (row.Latest.NotAfter != nil || row.Latest.RegistrarExpires != nil) {
+			_, _ = execContext(`UPDATE expiry_check_jobs SET state = 'succeeded', finished_at = CURRENT_TIMESTAMP WHERE id = $1`, jobID)
+			return
+		}
+		obs = expiryWaitingPrivateObservation()
+	} else if row.AssetType == "domain" {
 		obs = lookupExpiryRDAP(ctx, row.RegisteredDomain)
 	} else {
 		obs = observeExpiryTLS(ctx, row.Hostname, row.Port)
@@ -70,7 +77,7 @@ func scheduleExpiryChecks(now time.Time) {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT id, asset_type, check_every_minutes, last_checked_at
 		FROM expiry_assets
-		WHERE state <> 'archived'
+		WHERE state <> 'archived' AND COALESCE(paused, FALSE) = FALSE AND LOWER(COALESCE(collector, 'hosted')) <> 'private'
 	`)
 	if err != nil {
 		return
@@ -98,63 +105,6 @@ func scheduleExpiryChecks(now time.Time) {
 	}
 }
 
-func notifyExpiryThreshold(asset expiryAssetView, obs expiryObservation) {
-	deadline := obs.NotAfter
-	if asset.AssetType == "domain" {
-		deadline = earliestTime(obs.RegistrarExpires, obs.RegistryExpires)
-	}
-	key := obs.Assessment
-	if deadline != nil && (obs.Assessment == "expiring" || obs.Assessment == "expired") {
-		days := remainingExpiryDays(deadline, time.Now().UTC())
-		if days != nil {
-			matched := 0
-			for _, warn := range asset.WarnDays {
-				if *days <= warn && warn > matched {
-					matched = warn
-				}
-			}
-			if matched > 0 {
-				key = fmt.Sprintf("%s:%d", obs.Assessment, matched)
-			}
-		}
-	}
-	var last time.Time
-	err := queryRowContext(`SELECT last_sent_at FROM expiry_alert_episodes WHERE asset_id = $1 AND threshold_key = $2`, asset.ID, key).Scan(&last)
-	if err == nil && time.Since(last) < 20*time.Hour {
-		return
-	}
-	_, _ = execContext(`
-		INSERT INTO expiry_alert_episodes (asset_id, threshold_key, last_sent_at)
-		VALUES ($1,$2,CURRENT_TIMESTAMP)
-		ON CONFLICT (asset_id, threshold_key) DO UPDATE SET last_sent_at = CURRENT_TIMESTAMP
-	`, asset.ID, key)
-	title := "Certificate or domain needs review"
-	if asset.AssetType == "domain" {
-		title = "Domain expiry needs review"
-	} else {
-		title = "Certificate expiry needs review"
-	}
-	name := asset.DisplayName
-	message := fmt.Sprintf("%s is %s. Auto-renew is not proof of completed renewal. A valid TCP connection is not proof of TLS validity.", name, obs.Assessment)
-	if strings.EqualFold(obs.Assessment, "unknown") || strings.EqualFold(obs.Assessment, "stale") {
-		message = fmt.Sprintf("%s coverage is %s. Missing telemetry stays Unknown.", name, obs.Assessment)
-	}
-	var projectPtr *int
-	if asset.ProjectID > 0 {
-		projectPtr = &asset.ProjectID
-	}
-	_ = dispatchOpsNotification(
-		fmt.Sprintf("expiry-asset:%d:%s", asset.ID, key),
-		"expiry_tracker_alert",
-		title,
-		message,
-		nil,
-		projectPtr,
-		nil,
-		map[string]any{"asset_id": asset.ID, "asset_type": asset.AssetType, "assessment": obs.Assessment},
-	)
-}
-
 func createExpiryRenewalCase(assetID, userID int, changeRef, note, state string) (expiryAssetView, error) {
 	if _, err := getExpiryAsset(assetID, userID, true); err != nil {
 		return expiryAssetView{}, err
@@ -163,7 +113,7 @@ func createExpiryRenewalCase(assetID, userID int, changeRef, note, state string)
 	if state == "" {
 		state = "assigned"
 	}
-	allowed := map[string]bool{"open": true, "assigned": true, "renewal_in_progress": true, "awaiting_verification": true}
+	allowed := map[string]bool{"open": true, "assigned": true, "renewal_in_progress": true, "awaiting_verification": true, "auto_renew_reported": true}
 	if !allowed[state] {
 		return expiryAssetView{}, errOncallInvalid
 	}

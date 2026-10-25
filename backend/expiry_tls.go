@@ -14,25 +14,25 @@ import (
 )
 
 type expiryObservation struct {
-	Source           string
-	ObservedAt       time.Time
-	ObservationPoint string
-	LeafFingerprint  string
-	Issuer           string
-	SANs             string
-	NotBefore        *time.Time
-	NotAfter         *time.Time
-	ChainNotAfter    *time.Time
-	HostnameOK       bool
-	ChainOK          bool
-	Assessment       string
-	ErrorClass       string
-	Detail           string
-	RegistrarExpires *time.Time
-	RegistryExpires  *time.Time
-	AutoRenew        *bool
-	Manual           bool
-	RawSummary       string
+	Source           string     `json:"source"`
+	ObservedAt       time.Time  `json:"observed_at"`
+	ObservationPoint string     `json:"observation_point"`
+	LeafFingerprint  string     `json:"leaf_fingerprint,omitempty"`
+	Issuer           string     `json:"issuer,omitempty"`
+	SANs             string     `json:"sans,omitempty"`
+	NotBefore        *time.Time `json:"not_before,omitempty"`
+	NotAfter         *time.Time `json:"not_after,omitempty"`
+	ChainNotAfter    *time.Time `json:"chain_not_after,omitempty"`
+	HostnameOK       bool       `json:"hostname_ok"`
+	ChainOK          bool       `json:"chain_ok"`
+	Assessment       string     `json:"assessment"`
+	ErrorClass       string     `json:"error_class,omitempty"`
+	Detail           string     `json:"detail,omitempty"`
+	RegistrarExpires *time.Time `json:"registrar_expires_at,omitempty"`
+	RegistryExpires  *time.Time `json:"registry_expires_at,omitempty"`
+	AutoRenew        *bool      `json:"auto_renew,omitempty"`
+	Manual           bool       `json:"manual,omitempty"`
+	RawSummary       string     `json:"raw_summary,omitempty"`
 }
 
 var observeExpiryTLS = probeExpiryTLS

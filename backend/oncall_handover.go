@@ -57,38 +57,64 @@ type handoverRevisionView struct {
 }
 
 type handoverView struct {
-	ID                 int                    `json:"id"`
-	TeamID             int                    `json:"team_id"`
-	TeamName           string                 `json:"team_name"`
-	ProjectID          int                    `json:"project_id"`
-	Timezone           string                 `json:"timezone"`
-	ShiftDate          string                 `json:"shift_date"`
-	ShiftEndAt         time.Time              `json:"shift_end_at"`
-	OutgoingUserID     int                    `json:"outgoing_user_id"`
-	IncomingUserID     int                    `json:"incoming_user_id"`
-	OutgoingName       string                 `json:"outgoing_name"`
-	IncomingName       string                 `json:"incoming_name"`
-	State              string                 `json:"state"`
-	Revision           int                    `json:"revision"`
-	Notes              string                 `json:"notes"`
-	CollectionStatus   string                 `json:"collection_status"`
-	MissingSections    []string               `json:"missing_sections"`
-	CancelReason       string                 `json:"cancel_reason,omitempty"`
-	CollectedAt        *time.Time             `json:"collected_at,omitempty"`
-	SubmittedAt        *time.Time             `json:"submitted_at,omitempty"`
-	AcknowledgedAt     *time.Time             `json:"acknowledged_at,omitempty"`
-	EscalatedAt        *time.Time             `json:"escalated_at,omitempty"`
-	CriticalCount      int                    `json:"critical_count"`
-	OpenItemCount      int                    `json:"open_item_count"`
-	Freshness          string                 `json:"freshness"`
-	Items              []handoverItemView     `json:"items,omitempty"`
-	Actions            []handoverActionView   `json:"actions,omitempty"`
-	Revisions          []handoverRevisionView `json:"revisions,omitempty"`
-	CanEdit            bool                   `json:"can_edit"`
-	CanSubmit          bool                   `json:"can_submit"`
-	CanAcknowledge     bool                   `json:"can_acknowledge"`
-	CanCancel          bool                   `json:"can_cancel"`
-	IncidentAssignment string                 `json:"incident_assignment"`
+	ID                     int                    `json:"id"`
+	TeamID                 int                    `json:"team_id"`
+	TeamName               string                 `json:"team_name"`
+	ProjectID              int                    `json:"project_id"`
+	Timezone               string                 `json:"timezone"`
+	ShiftDate              string                 `json:"shift_date"`
+	ShiftEndAt             time.Time              `json:"shift_end_at"`
+	OutgoingUserID         int                    `json:"outgoing_user_id"`
+	IncomingUserID         int                    `json:"incoming_user_id"`
+	OutgoingName           string                 `json:"outgoing_name"`
+	IncomingName           string                 `json:"incoming_name"`
+	State                  string                 `json:"state"`
+	Revision               int                    `json:"revision"`
+	Notes                  string                 `json:"notes"`
+	CollectionStatus       string                 `json:"collection_status"`
+	MissingSections        []string               `json:"missing_sections"`
+	CancelReason           string                 `json:"cancel_reason,omitempty"`
+	CollectedAt            *time.Time             `json:"collected_at,omitempty"`
+	SubmittedAt            *time.Time             `json:"submitted_at,omitempty"`
+	AcknowledgedAt         *time.Time             `json:"acknowledged_at,omitempty"`
+	EscalatedAt            *time.Time             `json:"escalated_at,omitempty"`
+	CriticalCount          int                    `json:"critical_count"`
+	OpenItemCount          int                    `json:"open_item_count"`
+	Freshness              string                 `json:"freshness"`
+	Items                  []handoverItemView     `json:"items,omitempty"`
+	Actions                []handoverActionView   `json:"actions,omitempty"`
+	Revisions              []handoverRevisionView `json:"revisions,omitempty"`
+	CanEdit                bool                   `json:"can_edit"`
+	CanSubmit              bool                   `json:"can_submit"`
+	CanAcknowledge         bool                   `json:"can_acknowledge"`
+	CanCancel              bool                   `json:"can_cancel"`
+	CanReassign            bool                   `json:"can_reassign"`
+	People                 []handoverPerson       `json:"people,omitempty"`
+	Delta                  *handoverDeltaView     `json:"delta,omitempty"`
+	IncidentAssignment     string                 `json:"incident_assignment"`
+	ReassignIncidentsOnAck bool                   `json:"reassign_incidents_on_ack"`
+	IncidentsReassigned    int                    `json:"incidents_reassigned,omitempty"`
+	IncidentReassignNote   string                 `json:"incident_reassign_note,omitempty"`
+}
+
+type handoverPerson struct {
+	UserID int    `json:"user_id"`
+	Name   string `json:"name"`
+}
+
+type handoverDeltaChange struct {
+	SourceRef string `json:"source_ref"`
+	Title     string `json:"title"`
+	Before    string `json:"before"`
+	After     string `json:"after"`
+}
+
+type handoverDeltaView struct {
+	Added       []handoverItemView    `json:"added"`
+	Removed     []handoverItemView    `json:"removed"`
+	Changed     []handoverDeltaChange `json:"changed"`
+	CollectedAt *time.Time            `json:"collected_at,omitempty"`
+	Note        string                `json:"note"`
 }
 
 type handoverSummary struct {
@@ -258,6 +284,7 @@ func scanHandover(scanner interface {
 		&row.ID, &row.TeamID, &row.TeamName, &row.ProjectID, &row.Timezone, &shiftDate, &row.ShiftEndAt,
 		&row.OutgoingUserID, &row.IncomingUserID, &row.OutgoingName, &row.IncomingName, &row.State, &row.Revision,
 		&row.Notes, &row.CollectionStatus, &missing, &row.CancelReason, &collected, &submitted, &acked, &escalated,
+		&row.IncidentsReassigned, &row.IncidentReassignNote,
 	)
 	if err != nil {
 		return handoverView{}, err
@@ -279,7 +306,8 @@ func scanHandover(scanner interface {
 		row.EscalatedAt = &escalated.Time
 	}
 	row.Freshness = handoverFreshness(row.CollectedAt, time.Now().UTC())
-	row.IncidentAssignment = "Acknowledgement transfers handover responsibility only. Incident assignment is unchanged."
+	row.ReassignIncidentsOnAck = handoverReassignIncidentsEnabled(row.TeamID, row.ProjectID)
+	row.IncidentAssignment = handoverIncidentAssignmentCopy(row)
 	return row, nil
 }
 
@@ -287,7 +315,8 @@ const handoverSelect = `
 	SELECT id, team_id, team_name, project_id, timezone, shift_date, shift_end_at,
 	       outgoing_user_id, incoming_user_id, outgoing_name, incoming_name, state, revision,
 	       notes, collection_status, missing_sections, cancel_reason, collected_at, submitted_at,
-	       acknowledged_at, escalated_at
+	       acknowledged_at, escalated_at,
+	       COALESCE(incidents_reassigned, 0), COALESCE(incident_reassign_note, '')
 	FROM oncall_handovers
 `
 
@@ -361,6 +390,7 @@ func decorateHandover(row *handoverView, userID int, visible map[int]struct{}, u
 	row.CanSubmit = row.State == "draft" && (userID == row.OutgoingUserID || canManageHandoverTeam(userID, row.TeamID))
 	row.CanAcknowledge = row.State == "submitted" && (userID == row.IncomingUserID || canManageHandoverTeam(userID, row.TeamID))
 	row.CanCancel = (row.State == "draft" || row.State == "submitted") && (userID == row.OutgoingUserID || canManageHandoverTeam(userID, row.TeamID))
+	row.CanReassign = canManageHandoverTeam(userID, row.TeamID) && (row.State == "draft" || row.State == "submitted")
 }
 
 func getHandover(id, userID int) (handoverView, error) {
@@ -411,16 +441,23 @@ func getHandover(id, userID int) (handoverView, error) {
 		unscoped = true
 	}
 	decorateHandover(&row, userID, visible, unscoped)
+	row.People = handoverPeople(row.TeamID)
+	delta := liveHandoverDelta(row, visible)
+	row.Delta = &delta
 	return row, nil
 }
 
-func listHandovers(userID int, teamID, projectID int, state, shiftDate string) ([]handoverView, handoverSummary, error) {
+func listHandovers(userID int, teamID, projectID int, state, shiftDate string, waitingForMe bool) ([]handoverView, handoverSummary, error) {
 	summary := handoverSummary{}
 	if DB == nil {
 		return []handoverView{}, summary, nil
 	}
 	query := handoverSelect + ` WHERE state <> 'cancelled'`
 	args := []any{}
+	if waitingForMe {
+		query = handoverSelect + ` WHERE ((state = 'draft' AND outgoing_user_id = $1) OR (state = 'submitted' AND incoming_user_id = $1))`
+		args = append(args, userID)
+	}
 	if teamID > 0 {
 		args = append(args, teamID)
 		query += fmt.Sprintf(` AND team_id = $%d`, len(args))
@@ -549,9 +586,33 @@ func generateHandover(userID, teamID, projectID int, timezone, shiftDate, notes 
 		}
 	}
 	var existingID int
-	err = queryRowContext(`SELECT id FROM oncall_handovers WHERE team_id = $1 AND shift_end_at = $2`, teamID, endAt).Scan(&existingID)
+	var existingState string
+	err = queryRowContext(`SELECT id, state FROM oncall_handovers WHERE team_id = $1 AND shift_end_at = $2`, teamID, endAt).Scan(&existingID, &existingState)
 	if err == nil && existingID > 0 {
-		return getHandover(existingID, userID)
+		if !strings.EqualFold(existingState, "cancelled") {
+			return getHandover(existingID, userID)
+		}
+		_, err = execContext(`
+			UPDATE oncall_handovers
+			SET state = 'draft', cancel_reason = '', collected_at = NULL, collection_status = 'pending',
+			    notes = CASE WHEN $2 <> '' THEN $2 ELSE notes END,
+			    outgoing_user_id = $3, incoming_user_id = $4, outgoing_name = $5, incoming_name = $6,
+			    submitted_at = NULL, submitted_by = 0, acknowledged_at = NULL, acknowledged_by = 0,
+			    escalated_at = NULL, updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1 AND state = 'cancelled'
+		`, existingID, strings.TrimSpace(notes), outgoing.UserID, incoming.UserID, outgoing.Name, incoming.Name)
+		if err != nil {
+			return handoverView{}, err
+		}
+		if collectErr := collectHandoverSnapshot(existingID, teamID, projectID, visible); collectErr != nil {
+			_, _ = execContext(`UPDATE oncall_handovers SET collection_status = 'partial', missing_sections = $2, collected_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, existingID, encodeJSONStringList([]string{collectErr.Error()}))
+		}
+		_ = carryForwardHandoverActions(existingID, teamID, endAt)
+		row, getErr := getHandover(existingID, userID)
+		if getErr == nil {
+			remindHandoverDraft(row)
+		}
+		return row, getErr
 	}
 	var id int
 	err = queryRowContext(`
@@ -574,7 +635,11 @@ func generateHandover(userID, teamID, projectID int, timezone, shiftDate, notes 
 		}
 		_ = carryForwardHandoverActions(id, teamID, endAt)
 	}
-	return getHandover(id, userID)
+	row, getErr := getHandover(id, userID)
+	if getErr == nil && row.State == "draft" && row.CollectedAt != nil {
+		remindHandoverDraft(row)
+	}
+	return row, getErr
 }
 
 func generateHandoversForVisibleTeams(userID int, timezone, shiftDate string) ([]handoverView, error) {

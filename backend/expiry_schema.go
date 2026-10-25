@@ -33,8 +33,12 @@ func migrateExpiryAssetSchema() {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
+	_, _ = DB.Exec(`ALTER TABLE expiry_assets ADD COLUMN IF NOT EXISTS owner_user_id INTEGER NOT NULL DEFAULT 0`)
+	_, _ = DB.Exec(`ALTER TABLE expiry_assets ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`ALTER TABLE expiry_assets ADD COLUMN IF NOT EXISTS paused_reason TEXT NOT NULL DEFAULT ''`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_expiry_assets_type ON expiry_assets(asset_type, assessment, state)`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_expiry_assets_project ON expiry_assets(project_id, environment)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_expiry_assets_owner ON expiry_assets(owner_user_id, team_id)`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS expiry_observations (
 			id SERIAL PRIMARY KEY,
@@ -94,4 +98,35 @@ func migrateExpiryAssetSchema() {
 			PRIMARY KEY (asset_id, threshold_key)
 		)
 	`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS expiry_collectors (
+			id SERIAL PRIMARY KEY,
+			name TEXT NOT NULL,
+			project_id INTEGER NOT NULL DEFAULT 0,
+			token_hash TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			last_seen_at TIMESTAMP,
+			last_error TEXT NOT NULL DEFAULT '',
+			created_by INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_expiry_collectors_token ON expiry_collectors(token_hash)`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_expiry_collectors_project ON expiry_collectors(project_id, status)`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS expiry_dns_proposals (
+			id SERIAL PRIMARY KEY,
+			asset_id INTEGER NOT NULL REFERENCES expiry_assets(id) ON DELETE CASCADE,
+			records_json TEXT NOT NULL DEFAULT '[]',
+			change_ref TEXT NOT NULL DEFAULT '',
+			state TEXT NOT NULL DEFAULT 'proposed',
+			note TEXT NOT NULL DEFAULT '',
+			live_write BOOLEAN NOT NULL DEFAULT FALSE,
+			created_by INTEGER NOT NULL DEFAULT 0,
+			confirmed_by INTEGER NOT NULL DEFAULT 0,
+			confirmed_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_expiry_dns_proposals_asset ON expiry_dns_proposals(asset_id, created_at DESC)`)
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,5 +63,76 @@ func TestFilterHandoverItemsHidesUnauthorizedProjects(t *testing.T) {
 	got := filterHandoverItems(items, map[int]struct{}{4: {}}, false)
 	if len(got) != 1 || got[0].Title != "visible" {
 		t.Fatalf("filtered = %+v", got)
+	}
+}
+
+func TestHandoverItemKeyPrefersSourceID(t *testing.T) {
+	if got := handoverItemKey("incident", 12, "INC0000012"); got != "incident:12" {
+		t.Fatalf("key = %s", got)
+	}
+	if got := handoverItemKey("change", 0, "CHG1"); got != "change:CHG1" {
+		t.Fatalf("ref key = %s", got)
+	}
+}
+
+func TestHandoverIncidentIDsSkipClosedItems(t *testing.T) {
+	ids := handoverIncidentIDs([]handoverItemView{
+		{SourceType: "incident", SourceID: 4, State: "open"},
+		{SourceType: "incident", SourceID: 5, State: "resolved"},
+		{SourceType: "change", SourceID: 9, State: "open"},
+		{SourceType: "incident", SourceID: 4, State: "investigating"},
+	})
+	if len(ids) != 1 || ids[0] != 4 {
+		t.Fatalf("ids = %v", ids)
+	}
+}
+
+func TestHandoverShouldReassignHonorsExplicitChoice(t *testing.T) {
+	on := true
+	off := false
+	if !handoverShouldReassignIncidents(&on, 0, 0) {
+		t.Fatal("explicit true must reassign")
+	}
+	if handoverShouldReassignIncidents(&off, 0, 0) {
+		t.Fatal("explicit false must leave assignment unchanged")
+	}
+	if handoverShouldReassignIncidents(nil, 0, 0) {
+		t.Fatal("missing schedule policy must not reassign")
+	}
+}
+
+func TestIncidentReassignmentNoteKeepsStatusUnchanged(t *testing.T) {
+	got := incidentReassignmentNote("Ada", "Lin", 12)
+	if !strings.Contains(got, "status was not changed") {
+		t.Fatalf("note = %s", got)
+	}
+}
+
+func TestHandoverPolicyClampsTeamWindows(t *testing.T) {
+	if got := handoverRemindMinutes(0); got != 30 {
+		t.Fatalf("default remind = %d", got)
+	}
+	if got := handoverEscalateMinutes(0); got != 15 {
+		t.Fatalf("default escalate = %d", got)
+	}
+	if got := handoverRemindMinutes(5); got != 5 {
+		t.Fatalf("min remind = %d", got)
+	}
+	if got := handoverRemindMinutes(200); got != 120 {
+		t.Fatalf("max remind = %d", got)
+	}
+	if got := handoverEscalateMinutes(45); got != 45 {
+		t.Fatalf("custom escalate = %d", got)
+	}
+}
+
+func TestHandoverReminderHonorsAlertToggle(t *testing.T) {
+	settings := defaultOpsNotificationSettings()
+	if !isOpsNotificationCategoryEnabled(settings, "oncall_handover_reminder") {
+		t.Fatal("handover reminders default on")
+	}
+	settings.NotifyHandovers = false
+	if isOpsNotificationCategoryEnabled(settings, "oncall_handover_reminder") {
+		t.Fatal("handover reminder toggle must suppress draft emails")
 	}
 }

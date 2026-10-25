@@ -26,6 +26,7 @@ interface NotificationSettings {
   webhook_configured: boolean;
   webhook_using_environment: boolean;
   notify_expiring_assets: boolean;
+  notify_handovers: boolean;
   notify_blocked_promotions: boolean;
   notify_gate_approval_expiring: boolean;
   updated_at?: string;
@@ -48,6 +49,7 @@ const defaultSettings: NotificationSettings = {
   webhook_configured: false,
   webhook_using_environment: false,
   notify_expiring_assets: true,
+  notify_handovers: true,
   notify_blocked_promotions: true,
   notify_gate_approval_expiring: true,
 };
@@ -133,6 +135,7 @@ export default function NotificationSettingsPage() {
           webhook_enabled: settings.webhook_enabled,
           webhook_url: settings.webhook_url || '',
           notify_expiring_assets: settings.notify_expiring_assets,
+          notify_handovers: settings.notify_handovers,
           notify_blocked_promotions: settings.notify_blocked_promotions,
           notify_gate_approval_expiring: settings.notify_gate_approval_expiring,
         }),
@@ -235,7 +238,11 @@ export default function NotificationSettingsPage() {
                 </label>
                 <label className="alert-switch-row">
                   <span className="alert-switch">Expiring certificates<input type="checkbox" checked={settings.notify_expiring_assets} onChange={(event) => updateField('notify_expiring_assets', event.target.checked)} /></span>
-                  <p className="alert-hint">When a certificate moves into the warning window. Secret values are never included.</p>
+                  <p className="alert-hint">Owner emails at 30, 14, 7, 3, and 1 days before expiry, then once when it expires. Auto-renew is not proof. Secret values are never included.</p>
+                </label>
+                <label className="alert-switch-row">
+                  <span className="alert-switch">On-call handovers<input type="checkbox" checked={settings.notify_handovers} onChange={(event) => updateField('notify_handovers', event.target.checked)} /></span>
+                  <p className="alert-hint">When a handover is submitted, acknowledged, revised, or overdue. Incident reassignment is a separate choice on acknowledgement.</p>
                 </label>
               </div>
             </section>

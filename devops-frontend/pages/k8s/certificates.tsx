@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, EmptyState, type DataTableColumn } from '@infragate/ui';
@@ -17,7 +18,15 @@ function certificateTone(status: string) {
   return 'neutral';
 }
 
-const CERTIFICATE_COLUMNS: DataTableColumn<CertificateRow>[] = [
+function firstCertificateHost(hosts: string): string {
+  return (hosts || '')
+    .split(',')
+    .map((item) => item.trim())
+    .find((item) => item && !item.startsWith('*')) || '';
+}
+
+function certificateColumns(projectId: string): DataTableColumn<CertificateRow>[] {
+  return [
   {
     id: 'certificate',
     header: 'Certificate',
@@ -44,7 +53,22 @@ const CERTIFICATE_COLUMNS: DataTableColumn<CertificateRow>[] = [
   { id: 'days_left', header: 'Days left', align: 'right', className: 'ig-cell-num', cell: (item) => item.days_remaining },
   { id: 'namespace', header: 'Namespace', cell: (item) => item.namespace },
   { id: 'cluster', header: 'Cluster', cell: (item) => item.cluster_name },
+  {
+    id: 'expiry',
+    header: 'Expiry tracking',
+    cell: (item) => {
+      const host = firstCertificateHost(item.hosts);
+      if (!host) return 'Issued in cluster is not served-endpoint proof';
+      const collector = host.endsWith('.local') || host.endsWith('.internal') || host === 'internal.example.com' ? '&collector=private' : '';
+      return (
+        <Link href={`/certificates/new?hostname=${encodeURIComponent(host)}&project_id=${encodeURIComponent(projectId)}${collector}`}>
+          Register served endpoint
+        </Link>
+      );
+    },
+  },
 ];
+}
 
 export default function DevOpsK8sCertificatesPage() {
   const apiUrl = useApiUrl();
@@ -154,7 +178,7 @@ export default function DevOpsK8sCertificatesPage() {
                 <span className="portal-surface__eyebrow">TLS posture</span>
                 <h2 className="portal-surface__title">Certificate watchlist</h2>
                 <p className="portal-surface__subtitle">
-                  This view surfaces certificate health directly in the K8s workspace so expiration risk is visible before it becomes an incident.
+                  Cluster issued certificates are not proof the currently served endpoint was observed. Register the served hostname separately.
                 </p>
               </div>
             </div>
@@ -262,7 +286,7 @@ export default function DevOpsK8sCertificatesPage() {
             <div className="ig-legacy-table">
               <DataTable<CertificateRow>
                 label="Certificate watchlist"
-                columns={CERTIFICATE_COLUMNS}
+                columns={certificateColumns(projectId)}
                 rows={visibleRows}
                 rowKey={(item) => `${item.cluster_name}-${item.namespace}-${item.name}`}
                 loading={loading}

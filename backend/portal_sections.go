@@ -173,7 +173,8 @@ func sectionForPath(path string) string {
 		path == "/health",
 		path == "/ready",
 		strings.HasPrefix(path, "/api/security/agent/"),
-		strings.HasPrefix(path, "/api/security/webhooks/"):
+		strings.HasPrefix(path, "/api/security/webhooks/"),
+		strings.HasPrefix(path, "/api/expiry/collector/"):
 		return ""
 	case strings.HasPrefix(path, "/api/admin/"), strings.HasPrefix(path, "/api/users/"):
 		return "portal"

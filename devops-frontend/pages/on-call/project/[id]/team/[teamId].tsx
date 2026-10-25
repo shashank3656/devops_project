@@ -22,6 +22,9 @@ interface SchedulePreview {
   id: number;
   timezone: string;
   days: ScheduleDay[];
+  remindMinutes: number;
+  escalateMinutes: number;
+  reassignIncidents: boolean;
 }
 
 function dayLabel(day: string): string {
@@ -120,6 +123,9 @@ export default function OnCallTeamUsersPage() {
           setSchedule({
             id: Number(found.id) || 0,
             timezone: typeof found.timezone === 'string' && found.timezone ? found.timezone : 'Unknown',
+            remindMinutes: Number(found.handover_remind_minutes) || 30,
+            escalateMinutes: Number(found.handover_escalate_minutes) || 15,
+            reassignIncidents: Boolean(found.reassign_incidents_on_ack),
             days: days.map((item) => {
               const day = asRecord(item);
               return {
@@ -190,7 +196,7 @@ export default function OnCallTeamUsersPage() {
           <p className="portal-page__subtitle">Monday through Sunday is the order. The timezone is when each day starts. Handover for one day is requested on the On-call roster.</p>
           {schedule ? (
             <>
-              <p className="access-hint">Timezone: {schedule.timezone}</p>
+              <p className="access-hint">Timezone: {schedule.timezone}. Handover reminder {schedule.remindMinutes} minutes before shift end, overdue after {schedule.escalateMinutes} minutes. {schedule.reassignIncidents ? 'Acknowledgement reassigns open incidents to the incoming person. Status is not changed to Fixed.' : 'Acknowledgement leaves incident assignment unchanged unless the incoming person opts in on that handover.'}</p>
               <ul>
                 {schedule.days.map((day) => (
                   <li key={day.day}>{dayLabel(day.day)}: {day.user_id ? known(day.name) : 'Uncovered'}</li>

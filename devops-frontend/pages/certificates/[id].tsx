@@ -34,12 +34,21 @@ type Asset = {
   service_name: string;
   environment: string;
   owner_name: string;
+  owner_user_id?: number;
+  team_id?: number;
+  remaining_days?: number | null;
+  paused?: boolean;
+  paused_reason?: string;
+  shared_count?: number;
+  shared_asset_ids?: number[];
   assessment: string;
   renewal_state: string;
   coverage: string;
+  collector?: string;
   latest?: Observation;
   observations?: Observation[];
   renewal_cases?: { id: number; state: string; change_ref: string; note: string }[];
+  dns_proposals?: { id: number; change_ref: string; state: string; note: string; live_write: boolean; records?: { type: string; name: string; value: string; ttl: number; note: string }[] }[];
 };
 
 function known(value: string | undefined): string {
@@ -59,6 +68,12 @@ export default function CertificateAssetDetailPage() {
   const [manualNote, setManualNote] = useState('');
   const [changeRef, setChangeRef] = useState('');
   const [archiveReason, setArchiveReason] = useState('');
+  const [pauseReason, setPauseReason] = useState('');
+  const [dnsNote, setDnsNote] = useState('');
+  const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
+  const [members, setMembers] = useState<{ user_id: number; name: string }[]>([]);
+  const [teamId, setTeamId] = useState('');
+  const [ownerUserId, setOwnerUserId] = useState('');
 
   const load = () => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -71,12 +86,41 @@ export default function CertificateAssetDetailPage() {
           return;
         }
         setItem(data.asset);
+        setTeamId(data.asset?.team_id ? String(data.asset.team_id) : '');
+        setOwnerUserId(data.asset?.owner_user_id ? String(data.asset.owner_user_id) : '');
         setError('');
       })
       .catch(() => setError('That asset is not available.'));
   };
 
   useEffect(() => { load(); }, [apiUrl, id]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/devops/my-teams`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        const rows = Array.isArray(data?.teams) ? data.teams : [];
+        setTeams(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: { id: number }) => row.id > 0));
+      })
+      .catch(() => undefined);
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token || !teamId) {
+      setMembers([]);
+      return;
+    }
+    fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        const rows = Array.isArray(data?.members) ? data.members : [];
+        setMembers(rows.map((row: { user_id?: number; name?: string }) => ({ user_id: Number(row.user_id) || 0, name: String(row.name || 'Unknown') })).filter((row: { user_id: number }) => row.user_id > 0));
+      })
+      .catch(() => setMembers([]));
+  }, [apiUrl, teamId]);
 
   const post = async (path: string, body: Record<string, unknown>, success: string, method = 'POST') => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -106,6 +150,32 @@ export default function CertificateAssetDetailPage() {
     }
   };
 
+  const saveOwner = async (event: FormEvent) => {
+    event.preventDefault();
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token || !id) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch(`${apiUrl}/api/expiry/assets/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ team_id: Number(teamId) || 0, owner_user_id: Number(ownerUserId) || 0 }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof data.error === 'string' ? data.error : 'The owner could not be saved.');
+        return;
+      }
+      if (data.asset) setItem(data.asset);
+      setNote('Owner saved. Reminder emails go to that person at 30, 14, 7, 3, and 1 days.');
+    } catch {
+      setError('The owner could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <DevOpsLayout>
       <Head><title>{item ? item.display_name : 'Certificate or domain'}</title></Head>
@@ -126,6 +196,8 @@ export default function CertificateAssetDetailPage() {
               <span className="portal-pill">{known(item.assessment)}</span>
               <span className="portal-pill">Renewal {known(item.renewal_state)}</span>
               <span className="portal-pill">{known(item.owner_name)}</span>
+              {item.paused ? <span className="portal-pill">Paused</span> : null}
+              {item.shared_count && item.shared_count > 1 ? <span className="portal-pill">Shared cert on {item.shared_count} endpoints</span> : null}
             </div>
             <p className="access-hint">{item.coverage}</p>
             <div className="portal-tabs">
@@ -150,7 +222,42 @@ export default function CertificateAssetDetailPage() {
                     <p>Auto-renew {item.latest?.auto_renew ? 'Reported. Not verified.' : 'Unknown'}</p>
                   </>
                 )}
+                {item.shared_count && item.shared_count > 1 ? (
+                  <p>
+                    Same fingerprint on {(item.shared_asset_ids || []).map((assetId) => (
+                      <span key={assetId}><Link href={`/certificates/${assetId}`}>{assetId}</Link>{' '}</span>
+                    ))}
+                    A failing host stays its own row.
+                  </p>
+                ) : null}
+                <p>{known(item.coverage)}</p>
+                {item.collector === 'private' ? <p>Private collector target. Check now does not probe from hosted. Coverage stays Unknown until the collector posts an observation.</p> : null}
+                {typeof item.remaining_days === 'number' ? <p>{item.remaining_days} days remaining. Owner emails go out at 30, 14, 7, 3, and 1 days.</p> : <p>Remaining days are Unknown until a check stores expiry evidence.</p>}
+                <form onSubmit={saveOwner}>
+                  <label className="label">Team
+                    <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }}>
+                      <option value="">No team</option>
+                      {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="label">Owner
+                    <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)}>
+                      <option value="">Unknown</option>
+                      {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
+                    </select>
+                  </label>
+                  <button type="submit" className="btn btn-secondary" disabled={saving}>Save owner</button>
+                </form>
                 <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void post('check', {}, 'Check queued. The page will refresh from saved evidence.')}>Check now</button>
+                {item.paused ? (
+                  <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void post('pause', { paused: false }, 'Scheduled checks resumed. Check now still works while paused.')}>Resume scheduled checks</button>
+                ) : (
+                  <form onSubmit={(event) => { event.preventDefault(); void post('pause', { paused: true, reason: pauseReason }, 'Scheduled checks paused. History stays. Check now still works.'); }}>
+                    <input className="input" value={pauseReason} onChange={(event) => setPauseReason(event.target.value)} placeholder="Pause reason" required />
+                    <button type="submit" className="btn btn-secondary" disabled={saving}>Pause scheduled checks</button>
+                  </form>
+                )}
+                {item.paused && item.paused_reason ? <p>Paused: {item.paused_reason}</p> : null}
               </section>
             ) : null}
             {tab === 'evidence' ? (
@@ -181,6 +288,24 @@ export default function CertificateAssetDetailPage() {
                   </label>
                   <button type="submit" className="btn btn-secondary" disabled={saving}>Await verification</button>
                 </form>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void post('auto-renew', {}, 'Auto-renew is now tracked. It is not treated as completed renewal.')}>Track registrar auto-renew</button>
+                <p className="access-hint">This portal does not renew the certificate and does not write DNS. Auto-renew stays unverified until a fresh served observation proves it.</p>
+                <h3>DNS records</h3>
+                {(item.dns_proposals || []).map((row) => (
+                  <div key={row.id}>
+                    <p>{known(row.state)} · {known(row.change_ref)} · {known(row.note)}{row.live_write ? '' : ' · no live DNS write'}</p>
+                    {(row.records || []).map((record, index) => (
+                      <p key={`${row.id}-${index}`}>{record.type} {record.name} {record.value} ttl {record.ttl}</p>
+                    ))}
+                    {row.state === 'proposed' ? (
+                      <button type="button" className="btn btn-secondary" disabled={saving || !dnsNote.trim()} onClick={() => void post('dns-confirm', { proposal_id: row.id, note: dnsNote, live_write: false }, 'Recorded that DNS was applied outside this portal.')}>Confirm applied in DNS</button>
+                    ) : null}
+                  </div>
+                ))}
+                <label className="label">DNS confirmation note
+                  <input className="input" value={dnsNote} onChange={(event) => setDnsNote(event.target.value)} placeholder="Applied CAA in the registrar" />
+                </label>
+                <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void post('dns-proposals', { note: dnsNote, live_write: false }, 'DNS records proposed. Nothing was written to DNS.')}>Propose DNS records</button>
                 <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void post('verify', {}, 'Verified from the latest non-manual observation.')}>Verify from latest observation</button>
                 <form onSubmit={(event) => { event.preventDefault(); void post('archive', { reason: archiveReason }, 'Archived. This is not Renewed.'); }}>
                   <input className="input" value={archiveReason} onChange={(event) => setArchiveReason(event.target.value)} placeholder="Archive reason" />

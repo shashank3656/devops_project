@@ -19,7 +19,12 @@ type expiryAssetView struct {
 	ServiceName        string              `json:"service_name"`
 	Environment        string              `json:"environment"`
 	TeamID             int                 `json:"team_id"`
+	OwnerUserID        int                 `json:"owner_user_id,omitempty"`
 	OwnerName          string              `json:"owner_name"`
+	Paused             bool                `json:"paused"`
+	PausedReason       string              `json:"paused_reason,omitempty"`
+	SharedCount        int                 `json:"shared_count,omitempty"`
+	SharedAssetIDs     []int               `json:"shared_asset_ids,omitempty"`
 	RunbookURL         string              `json:"runbook_url,omitempty"`
 	WarnDays           []int               `json:"warn_days"`
 	CheckEveryMinutes  int                 `json:"check_every_minutes"`
@@ -40,6 +45,7 @@ type expiryAssetView struct {
 	Latest             *expiryObservation  `json:"latest,omitempty"`
 	Observations       []expiryObservation `json:"observations,omitempty"`
 	RenewalCases       []expiryRenewalCase `json:"renewal_cases,omitempty"`
+	DNSProposals       []expiryDNSProposal `json:"dns_proposals,omitempty"`
 }
 
 type expiryRenewalCase struct {
@@ -74,8 +80,9 @@ func scanExpiryAsset(scanner interface{ Scan(dest ...any) error }) (expiryAssetV
 	var last sql.NullTime
 	err := scanner.Scan(
 		&row.ID, &row.AssetType, &row.DisplayName, &row.Hostname, &row.Port, &row.RegisteredDomain, &row.OriginalInput,
-		&row.ProjectID, &row.ServiceName, &row.Environment, &row.TeamID, &row.OwnerName, &row.RunbookURL, &warn,
+		&row.ProjectID, &row.ServiceName, &row.Environment, &row.TeamID, &row.OwnerUserID, &row.OwnerName, &row.RunbookURL, &warn,
 		&row.CheckEveryMinutes, &row.Collector, &row.State, &row.Assessment, &row.RenewalState, &row.Version, &last,
+		&row.Paused, &row.PausedReason,
 	)
 	if err != nil {
 		return expiryAssetView{}, err
@@ -87,14 +94,15 @@ func scanExpiryAsset(scanner interface{ Scan(dest ...any) error }) (expiryAssetV
 	if strings.TrimSpace(row.OwnerName) == "" {
 		row.OwnerName = "Unknown"
 	}
-	row.Coverage = "Hosted collector. One observation point does not prove every region."
+	row.Coverage = expiryCoverageCopy(row.Collector)
 	return row, nil
 }
 
 const expiryAssetSelect = `
 	SELECT id, asset_type, display_name, hostname, port, registered_domain, original_input,
-	       project_id, service_name, environment, team_id, owner_name, runbook_url, warn_days,
-	       check_every_minutes, collector, state, assessment, renewal_state, version, last_checked_at
+	       project_id, service_name, environment, team_id, COALESCE(owner_user_id, 0), owner_name, runbook_url, warn_days,
+	       check_every_minutes, collector, state, assessment, renewal_state, version, last_checked_at,
+	       COALESCE(paused, FALSE), COALESCE(paused_reason, '')
 	FROM expiry_assets
 `
 
@@ -202,7 +210,7 @@ func scanExpiryObservation(scanner interface{ Scan(dest ...any) error }) (expiry
 	return obs, nil
 }
 
-func listExpiryAssets(userID int, assetType, assessment string) ([]expiryAssetView, expirySummary, error) {
+func listExpiryAssets(userID int, assetType, assessment, service string) ([]expiryAssetView, expirySummary, error) {
 	summary := expirySummary{}
 	if DB == nil {
 		return []expiryAssetView{}, summary, nil
@@ -216,6 +224,10 @@ func listExpiryAssets(userID int, assetType, assessment string) ([]expiryAssetVi
 	if strings.TrimSpace(assessment) != "" {
 		args = append(args, strings.TrimSpace(assessment))
 		query += fmt.Sprintf(` AND assessment = $%d`, len(args))
+	}
+	if svc := strings.TrimSpace(service); svc != "" {
+		args = append(args, strings.ToLower(svc))
+		query += fmt.Sprintf(` AND LOWER(service_name) = $%d`, len(args))
 	}
 	query += ` ORDER BY CASE assessment WHEN 'expired' THEN 0 WHEN 'invalid' THEN 1 WHEN 'expiring' THEN 2 WHEN 'stale' THEN 3 WHEN 'unknown' THEN 4 ELSE 5 END, id DESC LIMIT 300`
 	rows, cancel, err := queryRowsWithTimeout(query, args...)
@@ -248,12 +260,65 @@ func listExpiryAssets(userID int, assetType, assessment string) ([]expiryAssetVi
 		case "unknown", "stale":
 			summary.UnknownStale++
 		}
-		if strings.EqualFold(row.OwnerName, "Unknown") {
+		if row.OwnerUserID <= 0 && strings.EqualFold(row.OwnerName, "Unknown") {
 			summary.Unassigned++
 		}
 		out = append(out, row)
 	}
+	attachSharedFingerprints(out)
 	return out, summary, rows.Err()
+}
+
+func attachSharedForAsset(row *expiryAssetView) {
+	if row == nil || strings.TrimSpace(row.Fingerprint) == "" || DB == nil {
+		return
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT a.id
+		FROM expiry_assets a
+		INNER JOIN LATERAL (
+			SELECT leaf_fingerprint FROM expiry_observations WHERE asset_id = a.id ORDER BY observed_at DESC, id DESC LIMIT 1
+		) latest ON TRUE
+		WHERE a.state <> 'archived' AND latest.leaf_fingerprint = $1
+		ORDER BY a.id
+	`, row.Fingerprint)
+	if err != nil {
+		return
+	}
+	defer cancel()
+	defer rows.Close()
+	ids := []int{}
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) < 2 {
+		return
+	}
+	row.SharedCount = len(ids)
+	row.SharedAssetIDs = ids
+}
+
+func attachSharedFingerprints(items []expiryAssetView) {
+	groups := map[string][]int{}
+	for _, item := range items {
+		fp := strings.TrimSpace(item.Fingerprint)
+		if fp == "" {
+			continue
+		}
+		groups[fp] = append(groups[fp], item.ID)
+	}
+	for i := range items {
+		fp := strings.TrimSpace(items[i].Fingerprint)
+		ids := groups[fp]
+		if len(ids) < 2 {
+			continue
+		}
+		items[i].SharedCount = len(ids)
+		items[i].SharedAssetIDs = ids
+	}
 }
 
 func getExpiryAsset(id, userID int, includeHistory bool) (expiryAssetView, error) {
@@ -272,11 +337,14 @@ func getExpiryAsset(id, userID int, includeHistory bool) (expiryAssetView, error
 		return expiryAssetView{}, errHandoverDenied
 	}
 	attachLatestObservation(&row)
+	attachSharedForAsset(&row)
 	if includeHistory {
 		hist, _ := listExpiryObservations(id)
 		row.Observations = hist
 		cases, _ := listExpiryRenewalCases(id)
 		row.RenewalCases = cases
+		dns, _ := listExpiryDNSProposals(id)
+		row.DNSProposals = dns
 	}
 	return row, nil
 }
@@ -324,7 +392,21 @@ func listExpiryRenewalCases(assetID int) ([]expiryRenewalCase, error) {
 	return out, rows.Err()
 }
 
-func createExpiryAsset(userID int, assetType, input, service, env, owner, runbook string, projectID, teamID, port int, warn []int, every int) (expiryAssetView, error) {
+func resolveExpiryOwner(teamID, ownerUserID int) (int, string, error) {
+	if ownerUserID <= 0 {
+		return 0, "Unknown", nil
+	}
+	if teamID > 0 {
+		allowed, err := teamMemberIDs(teamID)
+		if err == nil && len(allowed) > 0 && !allowed[ownerUserID] {
+			return 0, "", errOncallInvalid
+		}
+	}
+	names := oncallUserNames([]int{ownerUserID})
+	return ownerUserID, oncallKnownName(names, ownerUserID), nil
+}
+
+func createExpiryAsset(userID int, assetType, input, service, env, runbook, collector string, projectID, teamID, ownerUserID, port int, warn []int, every int) (expiryAssetView, error) {
 	assetType = strings.ToLower(strings.TrimSpace(assetType))
 	if assetType != "certificate" && assetType != "domain" {
 		return expiryAssetView{}, errOncallInvalid
@@ -364,8 +446,16 @@ func createExpiryAsset(userID int, assetType, input, service, env, owner, runboo
 	if every < 60 {
 		every = 60
 	}
-	if owner == "" {
-		owner = "Unknown"
+	collector, err := normalizeExpiryCollector(collector)
+	if err != nil {
+		return expiryAssetView{}, err
+	}
+	if expiryCollectorIsPrivate(collector) && assetType != "certificate" {
+		return expiryAssetView{}, errOncallInvalid
+	}
+	ownerUserID, owner, err := resolveExpiryOwner(teamID, ownerUserID)
+	if err != nil {
+		return expiryAssetView{}, err
 	}
 	warnRaw := "30,14,7,3,1"
 	if len(warn) > 0 {
@@ -384,19 +474,136 @@ func createExpiryAsset(userID int, assetType, input, service, env, owner, runboo
 		name = domain
 	}
 	var id int
-	err := queryRowContext(`
+	err = queryRowContext(`
 		INSERT INTO expiry_assets (
 			asset_type, display_name, hostname, port, registered_domain, original_input, project_id, service_name,
-			environment, team_id, owner_name, runbook_url, warn_days, check_every_minutes, created_by
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			environment, team_id, owner_user_id, owner_name, runbook_url, warn_days, check_every_minutes, collector, created_by
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 		RETURNING id
-	`, assetType, name, host, port, domain, original, projectID, service, env, teamID, owner, runbook, warnRaw, every, userID).Scan(&id)
+	`, assetType, name, host, port, domain, original, projectID, service, env, teamID, ownerUserID, owner, runbook, warnRaw, every, collector, userID).Scan(&id)
 	if err != nil {
 		return expiryAssetView{}, err
 	}
-	_, _ = queueExpiryCheck(id)
-	go drainExpiryCheckJobs()
+	if !expiryCollectorIsPrivate(collector) {
+		_, _ = queueExpiryCheck(id)
+		go drainExpiryCheckJobs()
+	}
 	return getExpiryAsset(id, userID, false)
+}
+
+func pauseExpiryAsset(assetID, userID int, paused bool, reason string) (expiryAssetView, error) {
+	if _, err := getExpiryAsset(assetID, userID, false); err != nil {
+		return expiryAssetView{}, err
+	}
+	reason = strings.TrimSpace(reason)
+	if paused && reason == "" {
+		return expiryAssetView{}, errOncallInvalid
+	}
+	if !paused {
+		reason = ""
+	}
+	_, err := execContext(`
+		UPDATE expiry_assets
+		SET paused = $2, paused_reason = $3, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1 AND state <> 'archived'
+	`, assetID, paused, reason)
+	if err != nil {
+		return expiryAssetView{}, err
+	}
+	return getExpiryAsset(assetID, userID, true)
+}
+
+func updateExpiryOwner(assetID, userID, teamID, ownerUserID int) (expiryAssetView, error) {
+	asset, err := getExpiryAsset(assetID, userID, false)
+	if err != nil {
+		return expiryAssetView{}, err
+	}
+	if teamID <= 0 {
+		teamID = asset.TeamID
+	}
+	ownerUserID, owner, err := resolveExpiryOwner(teamID, ownerUserID)
+	if err != nil {
+		return expiryAssetView{}, err
+	}
+	_, err = execContext(`
+		UPDATE expiry_assets
+		SET team_id = $2, owner_user_id = $3, owner_name = $4, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1 AND state <> 'archived'
+	`, assetID, teamID, ownerUserID, owner)
+	if err != nil {
+		return expiryAssetView{}, err
+	}
+	return getExpiryAsset(assetID, userID, true)
+}
+
+type expiryHistoryRow struct {
+	expiryObservation
+	AssetID     int    `json:"asset_id"`
+	DisplayName string `json:"display_name"`
+	AssetType   string `json:"asset_type"`
+	Hostname    string `json:"hostname,omitempty"`
+}
+
+func listExpiryHistory(userID int) ([]expiryHistoryRow, error) {
+	if DB == nil {
+		return []expiryHistoryRow{}, nil
+	}
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT o.asset_id, a.asset_type, a.display_name, a.hostname, a.project_id,
+		       o.source, o.observed_at, o.observation_point, o.leaf_fingerprint, o.issuer, o.sans,
+		       o.not_before, o.not_after, o.chain_not_after, o.hostname_ok, o.chain_ok, o.assessment, o.error_class, o.detail,
+		       o.registrar_expires_at, o.registry_expires_at, o.auto_renew, o.manual, o.raw_summary
+		FROM expiry_observations o
+		INNER JOIN expiry_assets a ON a.id = o.asset_id
+		WHERE a.state <> 'archived'
+		ORDER BY o.observed_at DESC, o.id DESC
+		LIMIT 200
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	defer rows.Close()
+	visible := projectIDSet(visibleProjectIDsForUser(userID))
+	out := []expiryHistoryRow{}
+	for rows.Next() {
+		var row expiryHistoryRow
+		var projectID int
+		var notBefore, notAfter, chain, registrar, registry sql.NullTime
+		var auto sql.NullBool
+		if err := rows.Scan(
+			&row.AssetID, &row.AssetType, &row.DisplayName, &row.Hostname, &projectID,
+			&row.Source, &row.ObservedAt, &row.ObservationPoint, &row.LeafFingerprint, &row.Issuer, &row.SANs,
+			&notBefore, &notAfter, &chain, &row.HostnameOK, &row.ChainOK, &row.Assessment, &row.ErrorClass, &row.Detail,
+			&registrar, &registry, &auto, &row.Manual, &row.RawSummary,
+		); err != nil {
+			return nil, err
+		}
+		if !expiryAssetVisible(projectID, userID, visible) {
+			continue
+		}
+		if notBefore.Valid {
+			row.NotBefore = &notBefore.Time
+		}
+		if notAfter.Valid {
+			row.NotAfter = &notAfter.Time
+		}
+		if chain.Valid {
+			row.ChainNotAfter = &chain.Time
+		}
+		if registrar.Valid {
+			row.RegistrarExpires = &registrar.Time
+		}
+		if registry.Valid {
+			row.RegistryExpires = &registry.Time
+		}
+		if auto.Valid {
+			value := auto.Bool
+			row.AutoRenew = &value
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 func queueExpiryCheck(assetID int) (int, error) {
@@ -445,6 +652,7 @@ func applyExpiryObservation(asset expiryAssetView, obs expiryObservation) {
 	_, _ = insertExpiryObservation(asset.ID, obs)
 	_, _ = execContext(`UPDATE expiry_assets SET assessment = $2, last_checked_at = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, asset.ID, obs.Assessment, obs.ObservedAt)
 	notifyExpiryThreshold(asset, obs)
+	maybeOpenAutoRenewCase(asset, obs)
 }
 
 func addManualExpiryEvidence(assetID, userID int, expiresAt time.Time, source, note string) error {

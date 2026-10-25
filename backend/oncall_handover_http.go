@@ -24,7 +24,8 @@ func oncallHandoverHandler(w http.ResponseWriter, r *http.Request) {
 		case http.MethodGet:
 			teamID, _ := strconv.Atoi(r.URL.Query().Get("team_id"))
 			projectID, _ := strconv.Atoi(r.URL.Query().Get("project_id"))
-			items, summary, err := listHandovers(userID, teamID, projectID, r.URL.Query().Get("state"), r.URL.Query().Get("shift_date"))
+			waiting := strings.EqualFold(r.URL.Query().Get("waiting"), "me")
+			items, summary, err := listHandovers(userID, teamID, projectID, r.URL.Query().Get("state"), r.URL.Query().Get("shift_date"), waiting)
 			if err != nil {
 				writeAPIError(w, r, http.StatusInternalServerError, "Handovers could not be loaded.", err)
 				return
@@ -113,15 +114,16 @@ func oncallHandoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeHandoverMutation(w, r, item, subErr, "The handover could not be submitted.")
 	case action == "acknowledge" && r.Method == http.MethodPost:
 		var body struct {
-			ExpectedRevision int               `json:"expected_revision"`
-			ReviewedItemIDs  []int             `json:"reviewed_item_ids"`
-			Reasons          map[string]string `json:"reasons"`
+			ExpectedRevision  int               `json:"expected_revision"`
+			ReviewedItemIDs   []int             `json:"reviewed_item_ids"`
+			Reasons           map[string]string `json:"reasons"`
+			ReassignIncidents *bool             `json:"reassign_incidents"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
-		item, ackErr := acknowledgeHandover(id, userID, body.ExpectedRevision, body.ReviewedItemIDs, body.Reasons)
+		item, ackErr := acknowledgeHandover(id, userID, body.ExpectedRevision, body.ReviewedItemIDs, body.Reasons, body.ReassignIncidents)
 		writeHandoverMutation(w, r, item, ackErr, "The handover could not be acknowledged.")
 	case action == "cancel" && r.Method == http.MethodPost:
 		var body struct {
@@ -133,6 +135,20 @@ func oncallHandoverHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		item, cancelErr := cancelHandover(id, userID, body.Reason)
 		writeHandoverMutation(w, r, item, cancelErr, "The handover could not be cancelled.")
+	case action == "notify" && r.Method == http.MethodPost:
+		item, pingErr := pingHandoverShift(id, userID)
+		writeHandoverMutation(w, r, item, pingErr, "The shift notice could not be sent.")
+	case action == "reassign" && r.Method == http.MethodPost:
+		var body struct {
+			IncomingUserID int    `json:"incoming_user_id"`
+			Reason         string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
+			return
+		}
+		item, reassignErr := reassignHandover(id, userID, body.IncomingUserID, body.Reason)
+		writeHandoverMutation(w, r, item, reassignErr, "The incoming person could not be reassigned.")
 	case action == "revise" && r.Method == http.MethodPost:
 		var body struct {
 			Notes string `json:"notes"`
@@ -196,9 +212,11 @@ func startOncallHandoverWorker() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		generateDueHandoverDrafts(time.Now().UTC())
+		remindDueHandoverDrafts(time.Now().UTC())
 		escalateOverdueHandovers(time.Now().UTC())
 		for range ticker.C {
 			generateDueHandoverDrafts(time.Now().UTC())
+			remindDueHandoverDrafts(time.Now().UTC())
 			escalateOverdueHandovers(time.Now().UTC())
 		}
 	}()

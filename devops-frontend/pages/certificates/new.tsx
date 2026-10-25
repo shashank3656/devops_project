@@ -9,6 +9,17 @@ const TOKEN_KEY = 'devops_token';
 
 type ProjectOption = { id: number; name: string };
 type TeamOption = { id: number; name: string };
+type MemberOption = { user_id: number; name: string };
+type Suggestion = {
+  hostname: string;
+  registered: boolean;
+  source?: string;
+  cluster?: string;
+  namespace?: string;
+  issued_not_served?: boolean;
+  collector_hint?: string;
+  note?: string;
+};
 
 export default function NewCertificateAssetPage() {
   const apiUrl = useApiUrl();
@@ -21,12 +32,26 @@ export default function NewCertificateAssetPage() {
   const [teamId, setTeamId] = useState('');
   const [service, setService] = useState('');
   const [environment, setEnvironment] = useState('');
-  const [owner, setOwner] = useState('');
+  const [ownerUserId, setOwnerUserId] = useState('');
   const [runbook, setRunbook] = useState('');
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [members, setMembers] = useState<MemberOption[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [warnPolicy, setWarnPolicy] = useState('standard');
+  const [collector, setCollector] = useState('hosted');
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const query = router.query;
+    if (typeof query.hostname === 'string' && query.hostname) setInput(query.hostname);
+    if (typeof query.project_id === 'string' && query.project_id) setProjectId(query.project_id);
+    if (typeof query.service === 'string' && query.service) setService(query.service);
+    if (typeof query.environment === 'string' && query.environment) setEnvironment(query.environment);
+    if (typeof query.collector === 'string' && query.collector) setCollector(query.collector);
+  }, [router.isReady, router.query]);
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -41,6 +66,34 @@ export default function NewCertificateAssetPage() {
       setTeams(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: TeamOption) => row.id > 0));
     }).catch(() => undefined);
   }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token || !teamId) {
+      setMembers([]);
+      return;
+    }
+    fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        const rows = Array.isArray(data?.members) ? data.members : [];
+        setMembers(rows.map((row: { user_id?: number; name?: string }) => ({ user_id: Number(row.user_id) || 0, name: String(row.name || 'Unknown') })).filter((row: MemberOption) => row.user_id > 0));
+      })
+      .catch(() => setMembers([]));
+  }, [apiUrl, teamId]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token || assetType !== 'certificate') {
+      setSuggestions([]);
+      return;
+    }
+    const params = projectId ? `?project_id=${projectId}` : '';
+    fetch(`${apiUrl}/api/expiry/assets/suggestions${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => setSuggestions(Array.isArray(data?.suggestions) ? data.suggestions : []))
+      .catch(() => setSuggestions([]));
+  }, [apiUrl, assetType, projectId]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -60,8 +113,10 @@ export default function NewCertificateAssetPage() {
           team_id: Number(teamId) || 0,
           service_name: service,
           environment,
-          owner_name: owner,
+          owner_user_id: Number(ownerUserId) || 0,
           runbook_url: runbook,
+          collector: assetType === 'certificate' ? collector : 'hosted',
+          warn_days: warnPolicy === 'short' ? [7, 3, 1] : [30, 14, 7, 3, 1],
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -90,7 +145,7 @@ export default function NewCertificateAssetPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Register asset</h1>
-            <p className="portal-page__subtitle">Hosted checks reach approved public targets only. There is no private-key upload. Internal names need a private collector later.</p>
+            <p className="portal-page__subtitle">Hosted checks reach approved public targets only. Internal names use a private collector. There is no private-key upload. Issued inventory is not a served-endpoint observation.</p>
           </div>
           <Link href="/certificates" className="btn btn-secondary">Back</Link>
         </div>
@@ -108,6 +163,33 @@ export default function NewCertificateAssetPage() {
               <label className="label">{assetType === 'certificate' ? 'Hostname' : 'Domain'}
                 <input className="input" value={input} onChange={(event) => setInput(event.target.value)} placeholder={assetType === 'certificate' ? 'app.example.com' : 'example.com'} required />
               </label>
+              {assetType === 'certificate' && suggestions.length ? (
+                <div>
+                  <p className="access-hint">Suggested from Kubernetes ingress, cert-manager, and certificate-manager inventory. Registering is still a choice. Issued is not served.</p>
+                  <ul>
+                    {suggestions.slice(0, 16).map((row) => (
+                      <li key={`${row.source || 'host'}-${row.hostname}`}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            setInput(row.hostname);
+                            if (row.collector_hint === 'private') setCollector('private');
+                          }}
+                        >
+                          {row.hostname}
+                        </button>
+                        {row.registered ? ' · already registered' : ''}
+                        {row.source === 'certificate_manager' ? ' · cert-manager issued' : ''}
+                        {row.source === 'cloud_certificate_manager' ? ' · cloud issued inventory' : ''}
+                        {row.issued_not_served ? ' · issued ≠ served' : ''}
+                        {row.collector_hint === 'private' ? ' · private collector' : ''}
+                        {row.namespace ? ` · ${row.namespace}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               {assetType === 'certificate' ? (
                 <label className="label">Port
                   <select className="input" value={port} onChange={(event) => setPort(event.target.value)}>
@@ -134,22 +216,46 @@ export default function NewCertificateAssetPage() {
           {step === 2 ? (
             <>
               <h2 className="portal-surface__title">Ownership and policy</h2>
-              <label className="label">Owner
-                <input className="input" value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Displayed name only" />
-              </label>
               <label className="label">Team
-                <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
+                <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }}>
                   <option value="">No team</option>
                   {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+              </label>
+              <label className="label">Owner
+                <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)}>
+                  <option value="">Unknown</option>
+                  {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
+                </select>
+              </label>
+              <p className="access-hint">Owner is a team member name only. Emails are not shown.</p>
+              <label className="label">Reminder windows
+                <select className="input" value={warnPolicy} onChange={(event) => setWarnPolicy(event.target.value)}>
+                  <option value="standard">Standard: 30, 14, 7, 3, and 1 days</option>
+                  <option value="short">Short-lived certificate: 7, 3, and 1 days</option>
                 </select>
               </label>
               <label className="label">Renewal runbook URL
                 <input className="input" value={runbook} onChange={(event) => setRunbook(event.target.value)} />
               </label>
-              <p className="access-hint">Hosted collector: public {assetType === 'certificate' ? `${input || 'hostname'}:${port}` : input || 'domain'}. Private ranges are rejected.</p>
+              {assetType === 'certificate' ? (
+                <label className="label">Collector
+                  <select className="input" value={collector} onChange={(event) => setCollector(event.target.value)}>
+                    <option value="hosted">Hosted collector (public endpoints)</option>
+                    <option value="private">Private collector (internal names)</option>
+                  </select>
+                </label>
+              ) : null}
+              <p className="access-hint">
+                {collector === 'private'
+                  ? `Private collector: ${input || 'hostname'}:${port}. Hosted checks will not reach this target. Coverage stays Unknown until the collector posts an observation. Private keys are not accepted.`
+                  : `Hosted collector: public ${assetType === 'certificate' ? `${input || 'hostname'}:${port}` : input || 'domain'}. Private ranges are rejected.`}
+              </p>
               <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
               {' '}
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Registering…' : 'Register and check'}</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Registering…' : collector === 'private' ? 'Register for private collector' : 'Register and check'}
+              </button>
             </>
           ) : null}
         </form>
