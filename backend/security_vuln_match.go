@@ -36,6 +36,7 @@ const (
 
 	vulnMatchScan  = "scan"
 	vulnMatchIntel = "intel"
+	vulnMatchCI    = "ci"
 
 	vulnPatchUnknown   = "unknown"
 	vulnPatchNone      = "no_known_fix"

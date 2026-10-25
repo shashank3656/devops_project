@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVulnAlertKeysStayDeduped(t *testing.T) {
@@ -674,6 +675,10 @@ func TestBulkLifecycleForbidsFixed(t *testing.T) {
 	if next != vulnLifeRemediate || problem != "" {
 		t.Fatalf("remediate = %s %s", next, problem)
 	}
+	next, problem = nextLifecycle(vulnLifeOpen, vulnLifeFalsePos, "not in the lockfile")
+	if next != vulnLifeFalsePos || problem != "" {
+		t.Fatalf("false positive with reason = %s %s", next, problem)
+	}
 }
 
 func TestOpenFindingsStayUntilClosed(t *testing.T) {
@@ -717,5 +722,171 @@ func TestProbeAccessWithoutTokenDoesNotLeakSecret(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(detail), "github_pat") || strings.Contains(detail, "ghp_") {
 		t.Fatalf("token leaked: %s", detail)
+	}
+}
+
+func TestClassifyScanDiff(t *testing.T) {
+	started := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	added := started.Add(time.Minute)
+	older := started.Add(-time.Hour)
+	if got := classifyScanDiff(12, 12, 8, added, started, vulnLifeOpen); got != "added" {
+		t.Fatalf("added = %q", got)
+	}
+	if got := classifyScanDiff(12, 12, 8, older, started, vulnLifeOpen); got != "still_open" {
+		t.Fatalf("still_open = %q", got)
+	}
+	if got := classifyScanDiff(8, 12, 8, older, started, vulnLifeOpen); got != "gone" {
+		t.Fatalf("gone = %q", got)
+	}
+	if got := classifyScanDiff(8, 12, 8, older, started, vulnLifeFixed); got != "" {
+		t.Fatalf("closed gone = %q", got)
+	}
+	if got := classifyScanDiff(12, 0, 8, added, started, vulnLifeOpen); got != "" {
+		t.Fatalf("no current scan = %q", got)
+	}
+}
+
+func TestVulnRepoStaleReason(t *testing.T) {
+	stale, reason := vulnRepoStaleReason(false, 0, "", 14)
+	if !stale || !strings.Contains(reason, "Unknown") {
+		t.Fatalf("no inventory = %v %q", stale, reason)
+	}
+	stale, reason = vulnRepoStaleReason(true, 2, "failed", 14)
+	if !stale || !strings.Contains(strings.ToLower(reason), "failed") {
+		t.Fatalf("failed scan = %v %q", stale, reason)
+	}
+	stale, reason = vulnRepoStaleReason(true, 14, "succeeded", 14)
+	if !stale || !strings.Contains(reason, "Unknown") {
+		t.Fatalf("aged inventory = %v %q", stale, reason)
+	}
+	stale, reason = vulnRepoStaleReason(true, 3, "succeeded", 14)
+	if stale || reason != "" {
+		t.Fatalf("fresh inventory = %v %q", stale, reason)
+	}
+}
+
+func TestVulnDigestDue(t *testing.T) {
+	now := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
+	if !vulnDigestDue(time.Time{}, now) {
+		t.Fatal("never sent must be due")
+	}
+	if vulnDigestDue(now.Add(-5*24*time.Hour), now) {
+		t.Fatal("within six days must skip")
+	}
+	if !vulnDigestDue(now.Add(-6*24*time.Hour), now) {
+		t.Fatal("six days must send")
+	}
+}
+
+func TestLooksLikeSARIFRejectsInventoryEnvelope(t *testing.T) {
+	envelope := []byte(`{"repository_id":12,"commit_sha":"abc","runs":[{"results":[]}]}`)
+	if looksLikeSARIF(envelope) {
+		t.Fatal("inventory envelopes must not be treated as SARIF")
+	}
+	doc := []byte(`{"version":"2.1.0","runs":[{"results":[]}]}`)
+	if !looksLikeSARIF(doc) {
+		t.Fatal("a SARIF document with runs must be accepted")
+	}
+}
+
+func TestParseSARIFSkipsResultsWithoutPackage(t *testing.T) {
+	raw := []byte(`{
+		"version":"2.1.0",
+		"runs":[{"results":[
+			{"ruleId":"CVE-2026-1","locations":[{"physicalLocation":{"artifactLocation":{"uri":"src/app.ts"}}}]},
+			{"ruleId":"CVE-2026-2","properties":{"package":{"name":"demo-http-client","version":"2.4.0","ecosystem":"npm"}},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"apps/api/package-lock.json"}}}]}
+		]}]
+	}`)
+	parsed, matches := parseSARIFMatches(raw)
+	if len(parsed.Components) != 1 || parsed.Components[0].PackageName != "demo-http-client" {
+		t.Fatalf("components = %+v", parsed.Components)
+	}
+	if len(matches) != 1 || matches[0].CanonicalID != "CVE-2026-2" {
+		t.Fatalf("matches = %+v", matches)
+	}
+	if len(parsed.Coverage) == 0 {
+		t.Fatal("skipped results must leave Unknown coverage")
+	}
+}
+
+func TestVulnPolicyChangeSummaryOmitsSecrets(t *testing.T) {
+	summary := vulnPolicyChangeSummary(
+		map[string]string{"collection_mode": "hosted", "enforce_pr_gate": "false", "token": "secret"},
+		map[string]string{"collection_mode": "agent", "enforce_pr_gate": "true", "token": "secret"},
+	)
+	if strings.Contains(summary, "secret") {
+		t.Fatalf("secret leaked: %s", summary)
+	}
+	if !strings.Contains(summary, "collection_mode") || !strings.Contains(summary, "enforce_pr_gate") {
+		t.Fatalf("summary = %s", summary)
+	}
+}
+
+func TestParseOpsRecordRef(t *testing.T) {
+	kind, id := parseOpsRecordRef("CHG0000013")
+	if kind != "change" || id != 13 {
+		t.Fatalf("change = %s %d", kind, id)
+	}
+	kind, id = parseOpsRecordRef("inc7")
+	if kind != "incident" || id != 7 {
+		t.Fatalf("incident = %s %d", kind, id)
+	}
+	kind, id = parseOpsRecordRef("REQ0000004")
+	if kind != "ticket" || id != 4 {
+		t.Fatalf("ticket = %s %d", kind, id)
+	}
+}
+
+func TestBulkFalsePositiveNeedsReason(t *testing.T) {
+	next, problem := nextLifecycle(vulnLifeOpen, vulnLifeFalsePos, "")
+	if next != vulnLifeOpen || problem == "" {
+		t.Fatalf("false positive without reason = %s %s", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeOpen, vulnLifeAccepted, "accepted for 30 days")
+	if next != vulnLifeAccepted || problem != "" {
+		t.Fatalf("risk accept = %s %s", next, problem)
+	}
+}
+
+func TestVulnScanIsAutomaticForScheduleAndPush(t *testing.T) {
+	if !vulnScanIsAutomatic("schedule") || !vulnScanIsAutomatic("PUSH") {
+		t.Fatal("schedule and push must be automatic")
+	}
+	if vulnScanIsAutomatic("manual") || vulnScanIsAutomatic("ci") || vulnScanIsAutomatic("webhook") {
+		t.Fatal("explicit Scan now, CI, and comparison must still run when a repository is paused")
+	}
+}
+
+func TestVulnCampaignCSVEscapesAndOmitsEmail(t *testing.T) {
+	csv := renderVulnCampaignCSV([]map[string]any{
+		{
+			"advisory":   "CVE-2026-1",
+			"repository": "org/app,prod",
+			"package":    "demo-http-client",
+			"version":    "2.4.0",
+			"owner":      "owner@example.com",
+			"due_at":     "2026-11-01",
+		},
+	})
+	if !strings.Contains(csv, `"org/app,prod"`) {
+		t.Fatalf("comma in repository must be quoted: %s", csv)
+	}
+	if strings.Contains(csv, "@") || strings.Contains(strings.ToLower(csv), "example.com") {
+		t.Fatalf("emails must not appear in campaign export: %s", csv)
+	}
+	if !strings.Contains(csv, "demo-http-client") || !strings.Contains(csv, "2026-11-01") {
+		t.Fatalf("package and due date missing: %s", csv)
+	}
+	if name := vulnCampaignExportFilename("CVE-2026-1"); name != "CVE-2026-1-open-occurrences.csv" {
+		t.Fatalf("filename = %s", name)
+	}
+}
+
+func TestVulnExportOwnerDropsEmail(t *testing.T) {
+	if got := vulnExportOwner("platform"); got != "platform" {
+		t.Fatalf("team owner = %q", got)
+	}
+	if got := vulnExportOwner("sec@example.com"); got != "" {
+		t.Fatalf("email leaked = %q", got)
 	}
 }

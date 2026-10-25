@@ -35,40 +35,50 @@ type vulnAdvisoryView struct {
 }
 
 type vulnFindingView struct {
-	ID             int     `json:"id"`
-	Repo           string  `json:"repository"`
-	Service        string  `json:"service,omitempty"`
-	ServiceID      int     `json:"service_id,omitempty"`
-	ProjectID      int     `json:"project_id,omitempty"`
-	CanonicalID    string  `json:"canonical_id"`
-	Title          string  `json:"title"`
-	Severity       string  `json:"severity"`
-	Priority       string  `json:"priority"`
-	PriorityReason string  `json:"priority_reason"`
-	Lifecycle      string  `json:"lifecycle"`
-	PatchState     string  `json:"patch_state"`
-	Confidence     string  `json:"confidence"`
-	Ecosystem      string  `json:"ecosystem"`
-	PackageName    string  `json:"package_name"`
-	Installed      string  `json:"installed_version"`
-	FirstFixed     string  `json:"first_fixed_version,omitempty"`
-	Recommended    string  `json:"recommended_version,omitempty"`
-	ParentPackage  string  `json:"parent_package,omitempty"`
-	ModulePath     string  `json:"module_path,omitempty"`
-	Path           string  `json:"path,omitempty"`
-	Owner          string  `json:"owner,omitempty"`
-	KEV            bool    `json:"kev"`
-	CommitSHA      string  `json:"commit_sha,omitempty"`
-	PRURL          string  `json:"pr_url,omitempty"`
-	ChangeRef      string  `json:"change_ref,omitempty"`
-	DueAt          *string `json:"due_at,omitempty"`
-	LastSeenAt     *string `json:"last_seen_at,omitempty"`
-	SourceURL      string  `json:"source_url,omitempty"`
-	Reachability   string  `json:"reachability,omitempty"`
-	MatchSource    string  `json:"match_source,omitempty"`
-	LastScanID     int     `json:"last_scan_id,omitempty"`
-	Direct         bool    `json:"direct"`
-	Dev            bool    `json:"dev"`
+	ID               int      `json:"id"`
+	Repo             string   `json:"repository"`
+	Service          string   `json:"service,omitempty"`
+	ServiceID        int      `json:"service_id,omitempty"`
+	ProjectID        int      `json:"project_id,omitempty"`
+	CanonicalID      string   `json:"canonical_id"`
+	Title            string   `json:"title"`
+	Severity         string   `json:"severity"`
+	Priority         string   `json:"priority"`
+	PriorityReason   string   `json:"priority_reason"`
+	Lifecycle        string   `json:"lifecycle"`
+	PatchState       string   `json:"patch_state"`
+	Confidence       string   `json:"confidence"`
+	Ecosystem        string   `json:"ecosystem"`
+	PackageName      string   `json:"package_name"`
+	Installed        string   `json:"installed_version"`
+	FirstFixed       string   `json:"first_fixed_version,omitempty"`
+	Recommended      string   `json:"recommended_version,omitempty"`
+	ParentPackage    string   `json:"parent_package,omitempty"`
+	ModulePath       string   `json:"module_path,omitempty"`
+	Path             string   `json:"path,omitempty"`
+	Owner            string   `json:"owner,omitempty"`
+	KEV              bool     `json:"kev"`
+	CommitSHA        string   `json:"commit_sha,omitempty"`
+	PRURL            string   `json:"pr_url,omitempty"`
+	ChangeRef        string   `json:"change_ref,omitempty"`
+	DueAt            *string  `json:"due_at,omitempty"`
+	LastSeenAt       *string  `json:"last_seen_at,omitempty"`
+	SourceURL        string   `json:"source_url,omitempty"`
+	Reachability     string   `json:"reachability,omitempty"`
+	MatchSource      string   `json:"match_source,omitempty"`
+	LastScanID       int      `json:"last_scan_id,omitempty"`
+	Direct           bool     `json:"direct"`
+	Dev              bool     `json:"dev"`
+	EPSS             float64  `json:"epss,omitempty"`
+	EPSSPercentile   float64  `json:"epss_percentile,omitempty"`
+	AffectedRanges   []string `json:"affected_ranges,omitempty"`
+	Overdue          bool     `json:"overdue,omitempty"`
+	LinkedChangeID   int      `json:"linked_change_id,omitempty"`
+	LinkedIncidentID int      `json:"linked_incident_id,omitempty"`
+	LinkedTicketID   int      `json:"linked_ticket_id,omitempty"`
+	LinkedChange     string   `json:"linked_change,omitempty"`
+	LinkedIncident   string   `json:"linked_incident,omitempty"`
+	LinkedTicket     string   `json:"linked_ticket,omitempty"`
 }
 
 type vulnServiceRow struct {
@@ -416,6 +426,15 @@ func enqueueVulnScan(repoID, serviceID, projectID, actorID int, trigger, idempot
 	if DB == nil {
 		return 0, fmt.Errorf("database is not configured")
 	}
+	if vulnScanIsAutomatic(trigger) {
+		var enabled bool
+		if err := queryRowContext(`SELECT enabled FROM vuln_repositories WHERE id=$1`, repoID).Scan(&enabled); err != nil {
+			return 0, fmt.Errorf("repository is not registered")
+		}
+		if !enabled {
+			return 0, fmt.Errorf("Scheduled collection is paused. History and open findings were kept.")
+		}
+	}
 	var existing int
 	_ = queryRowContext(`SELECT id FROM vuln_scan_jobs WHERE repo_id = $1 AND state IN ('queued','running') ORDER BY id DESC LIMIT 1`, repoID).Scan(&existing)
 	if existing > 0 {
@@ -518,7 +537,11 @@ func saveInventoryAndCorrelate(jobID, repoID int, commit string, parsed vulnPars
 	for _, item := range parsed.Components {
 		assessed[item.ModulePath+"|"+item.Ecosystem] = true
 	}
-	created := upsertVulnMatches(repoID, jobID, commit, matches, assessed, vulnMatchScan, trigger)
+	origin := vulnMatchScan
+	if strings.EqualFold(trigger, "ci") {
+		origin = vulnMatchCI
+	}
+	created := upsertVulnMatches(repoID, jobID, commit, matches, assessed, origin, trigger)
 	persistPatchPlans(repoID, matches)
 	appendVulnScanLog(jobID, "correlation", fmt.Sprintf(
 		"Package match: %d new findings from %d lockfile packages. Existing open findings were kept. Advisory catalog %d. %s",
@@ -568,7 +591,7 @@ func upsertVulnMatches(repoID, jobID int, commit string, matches []vulnMatch, as
 	_ = queryRowContext(`SELECT COALESCE(project_id,0), branch, owner_team FROM vuln_repositories WHERE id = $1`, repoID).Scan(&projectID, &branch, &ownerTeam)
 	var serviceID int
 	_ = queryRowContext(`SELECT service_id FROM vuln_service_repos WHERE repo_id = $1 ORDER BY id LIMIT 1`, repoID).Scan(&serviceID)
-	if origin != vulnMatchIntel {
+	if origin != vulnMatchIntel && origin != vulnMatchCI {
 		origin = vulnMatchScan
 	}
 	created := 0
@@ -1047,7 +1070,7 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		args = append(args, life)
 		where += fmt.Sprintf(" AND f.lifecycle = $%d", len(args))
 	}
-	if src := strings.ToLower(strings.TrimSpace(matchSource)); src == vulnMatchIntel || src == vulnMatchScan {
+	if src := strings.ToLower(strings.TrimSpace(matchSource)); src == vulnMatchIntel || src == vulnMatchScan || src == vulnMatchCI {
 		args = append(args, src)
 		where += fmt.Sprintf(" AND COALESCE(NULLIF(f.match_source,''),'scan') = $%d", len(args))
 	}
@@ -1057,7 +1080,8 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		       f.ecosystem, f.package_name, f.installed_version, f.first_fixed_version, f.recommended_version, f.parent_package,
 		       f.module_path, f.path, f.owner, a.kev, f.pr_url, f.change_ref, f.due_at, f.last_seen_at, a.source_url,
 		       COALESCE((SELECT commit_sha FROM vuln_scan_jobs WHERE id = f.last_scan_id), ''), COALESCE(NULLIF(f.reachability,''),'unknown'),
-		       COALESCE(NULLIF(f.match_source,''),'scan'), COALESCE(f.last_scan_id,0), COALESCE(f.direct, TRUE), COALESCE(f.dev, FALSE)
+		       COALESCE(NULLIF(f.match_source,''),'scan'), COALESCE(f.last_scan_id,0), COALESCE(f.direct, TRUE), COALESCE(f.dev, FALSE),
+		       COALESCE(a.epss,0), COALESCE(a.epss_percentile,0), COALESCE(f.linked_change_id,0), COALESCE(f.linked_incident_id,0), COALESCE(f.linked_ticket_id,0)
 		FROM vuln_findings f
 		JOIN vuln_advisories a ON a.id = f.advisory_id
 		JOIN vuln_repositories r ON r.id = f.repo_id
@@ -1080,12 +1104,19 @@ func listVulnFindings(userID, projectID, serviceID int, severity, lifecycle, mat
 		if err := rows.Scan(&item.ID, &item.Repo, &item.Service, &item.ServiceID, &item.ProjectID, &item.CanonicalID, &item.Title, &item.Severity, &cvssScore, &cvssVector,
 			&item.Priority, &item.PriorityReason, &item.Lifecycle, &item.PatchState, &item.Confidence, &item.Ecosystem, &item.PackageName,
 			&item.Installed, &item.FirstFixed, &item.Recommended, &item.ParentPackage, &item.ModulePath, &item.Path, &item.Owner, &item.KEV,
-			&item.PRURL, &item.ChangeRef, &due, &seen, &item.SourceURL, &item.CommitSHA, &item.Reachability, &item.MatchSource, &item.LastScanID, &item.Direct, &item.Dev); err != nil {
+			&item.PRURL, &item.ChangeRef, &due, &seen, &item.SourceURL, &item.CommitSHA, &item.Reachability, &item.MatchSource, &item.LastScanID, &item.Direct, &item.Dev,
+			&item.EPSS, &item.EPSSPercentile, &item.LinkedChangeID, &item.LinkedIncidentID, &item.LinkedTicketID); err != nil {
 			continue
 		}
 		item.DueAt = nullTimePtr(due)
 		item.LastSeenAt = nullTimePtr(seen)
 		item.Severity = normalizeStoredSeverity(cvssScore, item.Severity, cvssVector)
+		attachVulnFindingLinks(&item)
+		if item.DueAt != nil {
+			if dueAt, parseErr := time.Parse(time.RFC3339, *item.DueAt); parseErr == nil && dueAt.Before(time.Now().UTC()) && !findingIsClosed(item.Lifecycle) && item.Lifecycle != vulnLifeAccepted {
+				item.Overdue = true
+			}
+		}
 		if wantSev != "" && item.Severity != wantSev {
 			continue
 		}
@@ -1109,6 +1140,7 @@ func getVulnFinding(userID, id int) (*vulnFindingView, []map[string]any, error) 
 	if found == nil {
 		return nil, nil, fmt.Errorf("not found")
 	}
+	found.AffectedRanges = advisoryRangeLines(found.CanonicalID, found.Ecosystem, found.PackageName)
 	events := []map[string]any{}
 	rows, cancel, err := queryRowsWithTimeout(`SELECT kind, detail, actor_id, created_at FROM vuln_finding_events WHERE finding_id = $1 ORDER BY id`, id)
 	if err == nil {

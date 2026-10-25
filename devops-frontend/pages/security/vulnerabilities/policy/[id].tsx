@@ -22,7 +22,14 @@ type RepoConfig = {
   access_state?: string;
   access_detail?: string;
   last_scheduled_at?: string;
+  stale?: boolean;
+  stale_reason?: string;
+  stale_after_days?: number;
+  last_inventory_at?: string;
+  enabled?: boolean;
 };
+
+type PolicyEvent = { id: number; actor_id?: number; summary: string; created_at: string };
 
 export default function VulnPolicyDetailPage() {
   const apiUrl = useApiUrl();
@@ -37,10 +44,12 @@ export default function VulnPolicyDetailPage() {
   const [forks, setForks] = useState(false);
   const [gate, setGate] = useState(false);
   const [alert, setAlert] = useState('high');
+  const [staleDays, setStaleDays] = useState('14');
   const [isManager, setIsManager] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [audit, setAudit] = useState<PolicyEvent[]>([]);
 
   useEffect(() => {
     setIsManager(sessionCanManageVulnWorkspace());
@@ -48,9 +57,10 @@ export default function VulnPolicyDetailPage() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [repoRes, meRes] = await Promise.all([
+    const [repoRes, meRes, auditRes] = await Promise.all([
       vulnRequest(apiUrl, '/api/devops/security/repositories?probe=1'),
       vulnRequest(apiUrl, '/api/devops/me'),
+      vulnRequest(apiUrl, `/api/devops/security/repositories/${id}/audit`),
     ]);
     setIsManager(canManageVulnWorkspace(meRes.body) || sessionCanManageVulnWorkspace());
     if (repoRes.status !== 200) {
@@ -73,6 +83,8 @@ export default function VulnPolicyDetailPage() {
     setForks(Boolean(item.allow_fork_prs));
     setGate(Boolean(item.enforce_pr_gate));
     setAlert(item.alert_min_severity || 'high');
+    setStaleDays(String(item.stale_after_days || 14));
+    setAudit(asRows<PolicyEvent>(auditRes.body.events));
   }, [apiUrl, id]);
 
   useEffect(() => {
@@ -98,6 +110,7 @@ export default function VulnPolicyDetailPage() {
       enforce_pr_gate: gate,
       exclusions,
       branch: branch.trim(),
+      stale_after_days: Number(staleDays) || 14,
     });
     setBusy(false);
     if (result.status !== 200) {
@@ -105,6 +118,28 @@ export default function VulnPolicyDetailPage() {
       return;
     }
     setNotice('Repository policy saved. Hosted tokens stay on the API.');
+    await load();
+  }
+
+  async function toggleEnabled(enabled: boolean) {
+    if (!isManager && !sessionCanManageVulnWorkspace()) {
+      setError('Pausing scheduled collection needs an admin or manager role.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const result = await vulnRequest(apiUrl, `/api/devops/security/repositories/${id}/${enabled ? 'resume' : 'pause'}`, 'POST', {});
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'Repository schedule could not be updated.');
+      return;
+    }
+    setNotice(typeof result.body.note === 'string'
+      ? result.body.note
+      : (enabled
+        ? 'Scheduled collection is enabled. History and open findings were kept.'
+        : 'Scheduled collection is paused. History and open findings were kept. Scan now still runs.'));
     await load();
   }
 
@@ -118,7 +153,7 @@ export default function VulnPolicyDetailPage() {
           <div>
             <span className="portal-page__eyebrow">Security</span>
             <h1 className="portal-page__title">{repo?.repository || 'Repository policy'}</h1>
-            <p className="portal-page__subtitle">Collection, schedule, and alerts. Hosted collector never executes package scripts. This form never displays secret values.</p>
+            <p className="portal-page__subtitle">Collection, schedule, and alerts. Pause stops scheduled scans and webhooks without deleting history or open findings. Scan now still runs. Hosted collector never executes package scripts. This form never displays secret values.</p>
           </div>
           <Link className="btn btn-secondary" href="/security/vulnerabilities?tab=configuration">Back to Config</Link>
         </div>
@@ -129,8 +164,9 @@ export default function VulnPolicyDetailPage() {
             <dl className="sre-meta">
               <div className="sre-meta__item"><dt>Collection</dt><dd>{collectionModeLabel(mode)}</dd></div>
               <div className="sre-meta__item"><dt>Token</dt><dd><span title={repo.access_detail || ''}>{accessLabel(repo.access_state)}</span></dd></div>
-              <div className="sre-meta__item"><dt>Last scheduled</dt><dd>{repo.last_scheduled_at ? formatOperationalTime(repo.last_scheduled_at) : 'Never'}</dd></div>
+              <div className="sre-meta__item"><dt>Schedule</dt><dd>{repo.enabled === false ? 'Paused' : (repo.last_scheduled_at ? formatOperationalTime(repo.last_scheduled_at) : 'Off')}</dd></div>
               <div className="sre-meta__item"><dt>Provider</dt><dd>{repo.provider || 'github'}</dd></div>
+              <div className="sre-meta__item"><dt>Inventory</dt><dd title={repo.stale_reason || ''}>{repo.stale ? 'Stale · Unknown' : (repo.last_inventory_at ? formatOperationalTime(repo.last_inventory_at) : 'Unknown')}</dd></div>
             </dl>
             <section className="portal-surface">
               <div className="portal-surface__header">
@@ -157,16 +193,36 @@ export default function VulnPolicyDetailPage() {
                   </select>
                 </label>
                 <label className="label">Schedule minutes<input className="input" value={schedule} onChange={(event) => setSchedule(event.target.value)} /></label>
+                <label className="label">Stale after days<input className="input" value={staleDays} onChange={(event) => setStaleDays(event.target.value)} /></label>
                 <label className="label">Path exclusions<input className="input" value={exclusions} onChange={(event) => setExclusions(event.target.value)} placeholder="docs/, vendor/" /></label>
                 <label className="sec-vuln-check"><input type="checkbox" checked={forks} onChange={(event) => setForks(event.target.checked)} /> Allow fork pull requests</label>
                 <label className="sec-vuln-check"><input type="checkbox" checked={gate} onChange={(event) => setGate(event.target.checked)} /> Enforce comparison gate (does not merge)</label>
-                <p className="form-section__copy">Hosted collector runs due jobs every five minutes when schedule is 15 or more. Agents and CI are not kicked from this schedule.</p>
+                <p className="form-section__copy">Hosted collector runs due jobs every five minutes when schedule is 15 or more. Pause leaves history and open findings in place. Agents and CI are not kicked from this schedule. Stale inventory stays Unknown; it is not a Secure label.</p>
                 <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={busy || !isManager}>Save policy</button>
+                  <button type="button" className="btn btn-secondary" disabled={busy || !isManager} onClick={() => void toggleEnabled(repo.enabled === false)}>{repo.enabled === false ? 'Enable scheduled scans' : 'Pause scheduled scans'}</button>
                   <Link className="btn btn-secondary" href="/security/vulnerabilities/policy">Choose another repository</Link>
                 </div>
               </form>
               {!isManager ? <p className="form-section__copy">Saving policy needs an admin or manager role.</p> : null}
+            </section>
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Policy audit</h2>
+                  <p className="portal-surface__subtitle">Who changed collection mode, branch, schedule, pause, or PR gate. Token values are never recorded.</p>
+                </div>
+              </div>
+              {audit.length ? (
+                <ul className="sre-monitor-list">
+                  {audit.map((item) => (
+                    <li key={item.id}>
+                      <strong>{item.summary}</strong>
+                      <span>{item.created_at ? formatOperationalTime(item.created_at) : 'Unknown'}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="form-section__copy">No policy changes recorded yet.</p>}
             </section>
           </>
         ) : null}

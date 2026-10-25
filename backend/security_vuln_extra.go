@@ -8,27 +8,41 @@ import (
 )
 
 type vulnRepoConfig struct {
-	ID              int     `json:"id"`
-	Repository      string  `json:"repository"`
-	ProjectID       int     `json:"project_id,omitempty"`
-	Branch          string  `json:"branch"`
-	OwnerTeam       string  `json:"owner_team,omitempty"`
-	CollectionMode  string  `json:"collection_mode"`
-	ScheduleMinutes int     `json:"schedule_minutes"`
-	AlertMinSev     string  `json:"alert_min_severity"`
-	Exclusions      string  `json:"exclusions,omitempty"`
-	AllowForkPRs    bool    `json:"allow_fork_prs"`
-	EnforcePRGate   bool    `json:"enforce_pr_gate"`
-	Provider        string  `json:"provider"`
-	Enabled         bool    `json:"enabled"`
-	UpdatedAt       *string `json:"updated_at,omitempty"`
-	AccessState     string  `json:"access_state,omitempty"`
-	AccessDetail    string  `json:"access_detail,omitempty"`
-	AccessCheckedAt *string `json:"access_checked_at,omitempty"`
-	LastScheduledAt *string `json:"last_scheduled_at,omitempty"`
+	ID               int     `json:"id"`
+	Repository       string  `json:"repository"`
+	ProjectID        int     `json:"project_id,omitempty"`
+	Branch           string  `json:"branch"`
+	OwnerTeam        string  `json:"owner_team,omitempty"`
+	CollectionMode   string  `json:"collection_mode"`
+	ScheduleMinutes  int     `json:"schedule_minutes"`
+	AlertMinSev      string  `json:"alert_min_severity"`
+	Exclusions       string  `json:"exclusions,omitempty"`
+	AllowForkPRs     bool    `json:"allow_fork_prs"`
+	EnforcePRGate    bool    `json:"enforce_pr_gate"`
+	Provider         string  `json:"provider"`
+	Enabled          bool    `json:"enabled"`
+	UpdatedAt        *string `json:"updated_at,omitempty"`
+	AccessState      string  `json:"access_state,omitempty"`
+	AccessDetail     string  `json:"access_detail,omitempty"`
+	AccessCheckedAt  *string `json:"access_checked_at,omitempty"`
+	LastScheduledAt  *string `json:"last_scheduled_at,omitempty"`
+	StaleAfterDays   int     `json:"stale_after_days,omitempty"`
+	Stale            bool    `json:"stale"`
+	StaleReason      string  `json:"stale_reason,omitempty"`
+	LastInventoryAt  *string `json:"last_inventory_at,omitempty"`
+	InventoryAgeDays int     `json:"inventory_age_days,omitempty"`
+	LastScanState    string  `json:"last_scan_state,omitempty"`
 }
 
 func runVulnPRComparison(userID, repoID, prNumber int) (int, error) {
+	return runVulnPRComparisonFrom(userID, repoID, prNumber, "manual")
+}
+
+func runVulnPRComparisonFrom(userID, repoID, prNumber int, source string) (int, error) {
+	source = strings.ToLower(strings.TrimSpace(source))
+	if source == "" {
+		source = "manual"
+	}
 	var owner, name, provider string
 	var projectID int
 	var allowFork bool
@@ -39,11 +53,22 @@ func runVulnPRComparison(userID, repoID, prNumber int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if source == "webhook" {
+		var existing int
+		_ = queryRowContext(`
+			SELECT id FROM vuln_pr_comparisons
+			WHERE repo_id=$1 AND pr_number=$2 AND head_sha=$3 AND created_at > CURRENT_TIMESTAMP - INTERVAL '2 hours'
+			ORDER BY id DESC LIMIT 1
+		`, repoID, prNumber, headSHA).Scan(&existing)
+		if existing > 0 {
+			return existing, nil
+		}
+	}
 	var id int
 	err = queryRowContext(`
-		INSERT INTO vuln_pr_comparisons (repo_id, project_id, pr_number, base_sha, head_sha, state, created_by)
-		VALUES ($1,$2,$3,$4,$5,'running',$6) RETURNING id
-	`, repoID, nullIfZero(projectID), prNumber, baseSHA, headSHA, userID).Scan(&id)
+		INSERT INTO vuln_pr_comparisons (repo_id, project_id, pr_number, base_sha, head_sha, state, created_by, compare_source)
+		VALUES ($1,$2,$3,$4,$5,'running',$6,$7) RETURNING id
+	`, repoID, nullIfZero(projectID), prNumber, baseSHA, headSHA, userID, source).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -151,7 +176,8 @@ func listVulnPRComparisons(userID int) []map[string]any {
 	extra, args := vulnProjectFilter(seeAll, ids, "c.project_id", args)
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT c.id, c.pr_number, c.base_sha, c.head_sha, c.state, c.coverage, c.introduced_critical, c.introduced_high, c.removed_count,
-		       COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), c.error, c.created_at
+		       COALESCE(r.owner,'') || '/' || COALESCE(r.name,''), c.error, c.created_at,
+		       COALESCE(NULLIF(c.compare_source,''),'manual'), COALESCE(r.enforce_pr_gate, FALSE)
 		FROM vuln_pr_comparisons c JOIN vuln_repositories r ON r.id = c.repo_id
 		WHERE 1=1 `+extra+` ORDER BY c.id DESC LIMIT 50
 	`, args...)
@@ -163,16 +189,21 @@ func listVulnPRComparisons(userID int) []map[string]any {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, pr, introC, introH, removed int
-		var base, head, state, coverage, repo, errText string
+		var base, head, state, coverage, repo, errText, source string
 		var created time.Time
-		if rows.Scan(&id, &pr, &base, &head, &state, &coverage, &introC, &introH, &removed, &repo, &errText, &created) != nil {
+		var enforce bool
+		if rows.Scan(&id, &pr, &base, &head, &state, &coverage, &introC, &introH, &removed, &repo, &errText, &created, &source, &enforce) != nil {
 			continue
+		}
+		note := "Removed in the PR does not close default-branch or deployment findings. Incomplete coverage is never a clean verdict. Informational unless repository policy enforces the comparison gate. OpsTrellis does not merge."
+		if enforce {
+			note = "Removed in the PR does not close default-branch or deployment findings. Incomplete coverage is never a clean verdict. Policy gate is enforced. OpsTrellis does not merge."
 		}
 		out = append(out, map[string]any{
 			"id": id, "pr_number": pr, "base_sha": base, "head_sha": head, "state": state, "coverage": coverage,
 			"introduced_critical": introC, "introduced_high": introH, "removed_count": removed,
 			"repository": repo, "error": errText, "created_at": created.UTC().Format(time.RFC3339),
-			"note": "Removed in the PR does not close default-branch or deployment findings. Incomplete coverage is never a clean verdict.",
+			"compare_source": source, "enforce_pr_gate": enforce, "note": note,
 		})
 	}
 	return out
@@ -244,10 +275,14 @@ func listVulnCampaigns(userID int) []map[string]any {
 		if item.Service != "" {
 			g["services"] = append(g["services"].([]string), item.Service)
 		}
+		due := ""
+		if item.DueAt != nil {
+			due = *item.DueAt
+		}
 		occ := map[string]any{
 			"finding_id": item.ID, "repository": item.Repo, "package_name": item.PackageName,
 			"installed_version": item.Installed, "direct": item.Direct, "dev": item.Dev,
-			"plan_id": planBy[item.Repo+"|"+item.PackageName],
+			"owner": vulnExportOwner(item.Owner), "due_at": due, "plan_id": planBy[item.Repo+"|"+item.PackageName],
 		}
 		g["occurrences"] = append(g["occurrences"].([]map[string]any), occ)
 	}
@@ -342,7 +377,8 @@ func listVulnRepoConfigs(userID int) []vulnRepoConfig {
 		SELECT id, COALESCE(owner,'') || '/' || COALESCE(name,''), COALESCE(project_id,0), branch, owner_team,
 		       COALESCE(NULLIF(collection_mode,''),'hosted'), schedule_minutes, alert_min_severity, exclusions, allow_fork_prs, enforce_pr_gate,
 		       COALESCE(NULLIF(provider,''),'github'), enabled, updated_at,
-		       COALESCE(NULLIF(access_state,''),'unknown'), COALESCE(access_detail,''), access_checked_at, last_scheduled_at
+		       COALESCE(NULLIF(access_state,''),'unknown'), COALESCE(access_detail,''), access_checked_at, last_scheduled_at,
+		       COALESCE(stale_after_days,14)
 		FROM vuln_repositories WHERE 1=1 `+extra+` ORDER BY id
 	`, args...)
 	if err != nil {
@@ -355,10 +391,11 @@ func listVulnRepoConfigs(userID int) []vulnRepoConfig {
 		var item vulnRepoConfig
 		var updated time.Time
 		var checked, scheduled sql.NullTime
-		if rows.Scan(&item.ID, &item.Repository, &item.ProjectID, &item.Branch, &item.OwnerTeam, &item.CollectionMode, &item.ScheduleMinutes, &item.AlertMinSev, &item.Exclusions, &item.AllowForkPRs, &item.EnforcePRGate, &item.Provider, &item.Enabled, &updated, &item.AccessState, &item.AccessDetail, &checked, &scheduled) == nil {
+		if rows.Scan(&item.ID, &item.Repository, &item.ProjectID, &item.Branch, &item.OwnerTeam, &item.CollectionMode, &item.ScheduleMinutes, &item.AlertMinSev, &item.Exclusions, &item.AllowForkPRs, &item.EnforcePRGate, &item.Provider, &item.Enabled, &updated, &item.AccessState, &item.AccessDetail, &checked, &scheduled, &item.StaleAfterDays) == nil {
 			item.UpdatedAt = stampPtr(updated)
 			item.AccessCheckedAt = nullTimePtr(checked)
 			item.LastScheduledAt = nullTimePtr(scheduled)
+			attachVulnRepoFreshness(&item)
 			out = append(out, item)
 		}
 	}
@@ -398,17 +435,43 @@ func updateVulnRepoConfig(id int, body map[string]any) error {
 	}
 	allowFork, _ := body["allow_fork_prs"].(bool)
 	enforceGate, _ := body["enforce_pr_gate"].(bool)
+	enabledSet := false
 	enabled := true
 	if v, ok := body["enabled"].(bool); ok {
+		enabledSet = true
 		enabled = v
+	}
+	staleDays := 0
+	switch v := body["stale_after_days"].(type) {
+	case float64:
+		staleDays = int(v)
+	case int:
+		staleDays = v
 	}
 	_, err := execContext(`
 		UPDATE vuln_repositories
 		SET collection_mode=$2, owner_team=CASE WHEN $3='' THEN owner_team ELSE $3 END, exclusions=$4,
-		    alert_min_severity=$5, branch=CASE WHEN $6='' THEN branch ELSE $6 END, schedule_minutes=$7, allow_fork_prs=$8, enforce_pr_gate=$9, enabled=$10, updated_at=CURRENT_TIMESTAMP
+		    alert_min_severity=$5, branch=CASE WHEN $6='' THEN branch ELSE $6 END, schedule_minutes=$7, allow_fork_prs=$8, enforce_pr_gate=$9,
+		    enabled=CASE WHEN $10 THEN $11 ELSE enabled END,
+		    stale_after_days=CASE WHEN $12 > 0 THEN $12 ELSE stale_after_days END, updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
-	`, id, mode, strings.TrimSpace(team), strings.TrimSpace(excl), alert, branch, schedule, allowFork, enforceGate, enabled)
+	`, id, mode, strings.TrimSpace(team), strings.TrimSpace(excl), alert, branch, schedule, allowFork, enforceGate, enabledSet, enabled, staleDays)
 	return err
+}
+
+func setVulnRepoEnabled(id int, enabled bool) error {
+	if DB == nil || id <= 0 {
+		return fmt.Errorf("repository not found")
+	}
+	res, err := execContext(`UPDATE vuln_repositories SET enabled=$2, updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, enabled)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("repository not found")
+	}
+	return nil
 }
 
 func serviceVulnDetail(userID, serviceID int) map[string]any {
@@ -514,7 +577,7 @@ func handleVulnGitHubEvent(event string, payload map[string]any) {
 		if number <= 0 {
 			return
 		}
-		_, _ = runVulnPRComparison(0, repoID, number)
+		_, _ = runVulnPRComparisonFrom(0, repoID, number, "webhook")
 	}
 }
 

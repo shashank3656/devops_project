@@ -234,6 +234,7 @@ func handleVulnInventoryUpload(w http.ResponseWriter, r *http.Request, userID, a
 		Components    []vulnComponent   `json:"components"`
 		Coverage      []vulnCoverageGap `json:"coverage"`
 		SBOM          json.RawMessage   `json:"sbom"`
+		SARIF         json.RawMessage   `json:"sarif"`
 	}
 	if json.Unmarshal(raw, &req) != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid inventory envelope", nil)
@@ -243,6 +244,10 @@ func handleVulnInventoryUpload(w http.ResponseWriter, r *http.Request, userID, a
 		jobID = req.JobID
 	}
 	if req.RepoID <= 0 || strings.TrimSpace(req.CommitSHA) == "" {
+		if looksLikeSARIF(raw) || looksLikeSBOMDocument(raw) {
+			writeAPIError(w, r, http.StatusBadRequest, "Bind SARIF or SBOM to a registered repository_id and commit_sha", nil)
+			return
+		}
 		writeAPIError(w, r, http.StatusBadRequest, "repository_id and commit_sha are required", nil)
 		return
 	}
@@ -266,7 +271,17 @@ func handleVulnInventoryUpload(w http.ResponseWriter, r *http.Request, userID, a
 		return
 	}
 	parsed := vulnParsedInventory{Components: req.Components, Coverage: req.Coverage}
-	if len(req.SBOM) > 0 {
+	sarifRaw := req.SARIF
+	if len(sarifRaw) == 0 && looksLikeSARIF(req.SBOM) {
+		sarifRaw = req.SBOM
+	}
+	if len(sarifRaw) > 0 && looksLikeSARIF(sarifRaw) {
+		sarifInv, extra := parseSARIFMatches(sarifRaw)
+		parsed = mergeParsedInventories([]vulnParsedInventory{parsed, sarifInv})
+		if len(extra) > 0 {
+			appendVulnScanLog(jobID, "correlation", fmt.Sprintf("SARIF package identity: %d results with a CVE/GHSA rule still need catalog correlation.", len(extra)))
+		}
+	} else if len(req.SBOM) > 0 {
 		sbom := parseSBOM("upload.sbom.json", "", string(req.SBOM))
 		parsed = mergeParsedInventories([]vulnParsedInventory{parsed, sbom})
 	}

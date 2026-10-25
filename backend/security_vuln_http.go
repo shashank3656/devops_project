@@ -101,6 +101,33 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 			return
 		}
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"services": items, "status": "ok"})
+	case path == "findings/view" && r.Method == http.MethodGet:
+		var filters any
+		raw := loadVulnFindingsView(userID)
+		if json.Unmarshal(raw, &filters) != nil {
+			filters = map[string]any{}
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"filters": filters, "status": "ok"})
+	case path == "findings/view" && r.Method == http.MethodPut:
+		raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+		if len(raw) == 0 {
+			raw = []byte("{}")
+		}
+		if !json.Valid(raw) {
+			writeAPIError(w, r, http.StatusBadRequest, "filters must be JSON", nil)
+			return
+		}
+		var wrapped struct {
+			Filters json.RawMessage `json:"filters"`
+		}
+		if json.Unmarshal(raw, &wrapped) == nil && len(wrapped.Filters) > 0 && json.Valid(wrapped.Filters) {
+			raw = wrapped.Filters
+		}
+		if err := saveVulnFindingsView(userID, json.RawMessage(raw)); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "findings view could not be saved", err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"status": "ok"})
 	case path == "findings/bulk" && r.Method == http.MethodPost:
 		handleVulnFindingsBulk(w, r, userID)
 	case path == "findings" && r.Method == http.MethodGet:
@@ -113,6 +140,15 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "failed to list findings", err)
 			return
+		}
+		if r.URL.Query().Get("overdue") == "1" {
+			overdue := []vulnFindingView{}
+			for _, item := range items {
+				if item.Overdue {
+					overdue = append(overdue, item)
+				}
+			}
+			items = overdue
 		}
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"findings": items, "status": "ok"})
 	case parts[0] == "findings" && len(parts) >= 2:
@@ -173,8 +209,23 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 			return
 		}
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
-			"scan": item, "log": listVulnScanEvents(id, item), "findings": listFindingsForScan(id), "status": "ok",
+			"scan": item, "log": listVulnScanEvents(id, item), "findings": listFindingsForScan(id), "diff": diffVulnScan(id), "status": "ok",
 		})
+	case parts[0] == "scans" && len(parts) == 3 && parts[2] == "diff" && r.Method == http.MethodGet:
+		id, _ := strconv.Atoi(parts[1])
+		if id <= 0 {
+			writeAPIError(w, r, http.StatusNotFound, "scan not found", nil)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"diff": diffVulnScan(id), "status": "ok"})
+	case parts[0] == "scans" && len(parts) == 3 && parts[2] == "inventory" && r.Method == http.MethodGet:
+		id, _ := strconv.Atoi(parts[1])
+		doc, err := exportVulnInventory(0, id)
+		if err != nil {
+			writeAPIError(w, r, http.StatusNotFound, err.Error(), err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"inventory": doc, "status": "ok"})
 	case path == "intelligence/sync" && r.Method == http.MethodPost:
 		if _, ok := requireDevopsManager(w, r); !ok {
 			return
@@ -232,6 +283,14 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 	case path == "inventories" && r.Method == http.MethodPost:
 		raw, _ := io.ReadAll(io.LimitReader(r.Body, 2<<20))
 		handleVulnInventoryUpload(w, r, userID, 0, 0, raw)
+	case parts[0] == "repositories" && len(parts) == 3 && parts[2] == "inventory" && r.Method == http.MethodGet:
+		id, _ := strconv.Atoi(parts[1])
+		doc, err := exportVulnInventory(id, 0)
+		if err != nil {
+			writeAPIError(w, r, http.StatusNotFound, err.Error(), err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"inventory": doc, "status": "ok"})
 	case path == "repositories" && r.Method == http.MethodGet:
 		force := r.URL.Query().Get("probe") == "1"
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"repositories": listVulnRepoConfigsProbed(userID, force), "status": "ok"})
@@ -298,11 +357,62 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)
 			return
 		}
+		before := loadVulnRepoPolicySnapshot(id)
 		if err := updateVulnRepoConfig(id, body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
+		recordVulnPolicyEvent(id, userID, vulnPolicyChangeSummary(before, loadVulnRepoPolicySnapshot(id)))
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"status": "ok"})
+	case parts[0] == "repositories" && len(parts) == 3 && (parts[2] == "pause" || parts[2] == "resume") && r.Method == http.MethodPost:
+		if _, ok := requireDevopsManager(w, r); !ok {
+			return
+		}
+		id, _ := strconv.Atoi(parts[1])
+		if id <= 0 {
+			writeAPIError(w, r, http.StatusNotFound, "repository not found", nil)
+			return
+		}
+		var projectID int
+		if err := queryRowContext(`SELECT COALESCE(project_id,0) FROM vuln_repositories WHERE id=$1`, id).Scan(&projectID); err != nil {
+			writeAPIError(w, r, http.StatusNotFound, "repository not found", nil)
+			return
+		}
+		if projectID > 0 && !ensureProjectVisible(w, r, userID, projectID) {
+			return
+		}
+		enabled := parts[2] == "resume"
+		before := loadVulnRepoPolicySnapshot(id)
+		if err := setVulnRepoEnabled(id, enabled); err != nil {
+			writeAPIError(w, r, http.StatusNotFound, "repository not found", err)
+			return
+		}
+		recordVulnPolicyEvent(id, userID, vulnPolicyChangeSummary(before, loadVulnRepoPolicySnapshot(id)))
+		note := "Scheduled collection and inbound webhooks are paused. History and open findings were kept. Scan now still runs."
+		if enabled {
+			note = "Scheduled collection is enabled. Scan now was already available while paused. History and open findings were kept."
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"enabled": enabled, "status": "ok", "note": note})
+	case parts[0] == "repositories" && len(parts) == 3 && parts[2] == "audit" && r.Method == http.MethodGet:
+		id, _ := strconv.Atoi(parts[1])
+		if id <= 0 {
+			writeAPIError(w, r, http.StatusNotFound, "repository not found", nil)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"events": listVulnPolicyEvents(id), "status": "ok"})
+	case path == "repositories/from-services" && r.Method == http.MethodPost:
+		if _, ok := requireDevopsManager(w, r); !ok {
+			return
+		}
+		registered, skipped, already, err := registerVulnReposFromServiceMap(userID)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "service map repositories could not be registered", err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"registered": registered, "skipped": skipped, "already": already, "status": "ok",
+			"note": "Registered repositories from the service map. Scan is still explicit. Empty coverage stays Unknown.",
+		})
 	case path == "configuration" && r.Method == http.MethodGet:
 		agents, _ := listVulnAgents(userID)
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
@@ -315,6 +425,22 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 		})
 	case path == "campaigns" && r.Method == http.MethodGet:
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"campaigns": listVulnCampaigns(userID), "status": "ok"})
+	case path == "campaigns/export" && r.Method == http.MethodGet:
+		canonical := strings.TrimSpace(r.URL.Query().Get("canonical_id"))
+		if canonical == "" {
+			writeAPIError(w, r, http.StatusBadRequest, "canonical_id is required", nil)
+			return
+		}
+		rows := vulnCampaignExportRows(userID, canonical)
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"canonical_id": canonical,
+			"filename":     vulnCampaignExportFilename(canonical),
+			"headers":      []string{"advisory", "repository", "package", "version", "owner", "due_at"},
+			"rows":         rows,
+			"csv":          renderVulnCampaignCSV(rows),
+			"status":       "ok",
+			"note":         "Open occurrences for a change request. Closed findings are omitted. Emails are not included. This is not Fixed.",
+		})
 	case path == "campaigns/prs" && r.Method == http.MethodPost:
 		if _, ok := requireDevopsManager(w, r); !ok {
 			return
@@ -424,12 +550,17 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 
 func handleVulnFindingPatch(w http.ResponseWriter, r *http.Request, userID, id int, current *vulnFindingView) {
 	var body struct {
-		Lifecycle string  `json:"lifecycle"`
-		Owner     string  `json:"owner"`
-		PRURL     string  `json:"pr_url"`
-		ChangeRef string  `json:"change_ref"`
-		Reason    string  `json:"reason"`
-		DueAt     *string `json:"due_at"`
+		Lifecycle   string  `json:"lifecycle"`
+		Owner       string  `json:"owner"`
+		PRURL       string  `json:"pr_url"`
+		ChangeRef   string  `json:"change_ref"`
+		IncidentRef string  `json:"incident_ref"`
+		TicketRef   string  `json:"ticket_ref"`
+		ChangeID    int     `json:"change_id"`
+		IncidentID  int     `json:"incident_id"`
+		TicketID    int     `json:"ticket_id"`
+		Reason      string  `json:"reason"`
+		DueAt       *string `json:"due_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
@@ -460,6 +591,11 @@ func handleVulnFindingPatch(w http.ResponseWriter, r *http.Request, userID, id i
 			due = parsed
 		}
 	}
+	linkDetail, linkErr := applyVulnFindingLinks(userID, id, body.ChangeRef, body.IncidentRef, body.TicketRef, body.ChangeID, body.IncidentID, body.TicketID)
+	if linkErr != nil {
+		writeAPIError(w, r, http.StatusConflict, linkErr.Error(), linkErr)
+		return
+	}
 	_, err := execContext(`
 		UPDATE vuln_findings SET lifecycle=$2, owner=$3, pr_url=CASE WHEN $4='' THEN pr_url ELSE $4 END,
 			change_ref=CASE WHEN $5='' THEN change_ref ELSE $5 END, patch_state=$6,
@@ -471,6 +607,10 @@ func handleVulnFindingPatch(w http.ResponseWriter, r *http.Request, userID, id i
 		return
 	}
 	detail := firstNonEmpty(body.Reason, "Updated to "+next)
+	if linkDetail != "" {
+		detail = firstNonEmpty(body.Reason, linkDetail)
+		_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail, actor_id) VALUES ($1,'linked',$2,$3)`, id, linkDetail, userID)
+	}
 	_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail, actor_id) VALUES ($1,'update',$2,$3)`, id, detail, userID)
 	item, events, _ := getVulnFinding(userID, id)
 	_ = writeJSONResponse(w, http.StatusOK, map[string]any{"finding": item, "activity": events, "status": "ok"})
@@ -497,6 +637,7 @@ func handleVulnFindingsBulk(w http.ResponseWriter, r *http.Request, userID int) 
 		Owner     string  `json:"owner"`
 		DueAt     *string `json:"due_at"`
 		Reason    string  `json:"reason"`
+		ExpiresAt string  `json:"expires_at"`
 	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil || len(body.IDs) == 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "ids are required", nil)
@@ -507,9 +648,34 @@ func handleVulnFindingsBulk(w http.ResponseWriter, r *http.Request, userID int) 
 		return
 	}
 	want := strings.ToLower(strings.TrimSpace(body.Lifecycle))
-	if want != "" && want != vulnLifeAcked && want != vulnLifeRemediate {
-		writeAPIError(w, r, http.StatusConflict, "Bulk update is limited to acknowledged or in remediation. Fixed is never set here.", nil)
+	closing := want == vulnLifeAccepted || want == vulnLifeFalsePos
+	if want != "" && want != vulnLifeAcked && want != vulnLifeRemediate && !closing {
+		writeAPIError(w, r, http.StatusConflict, "Bulk update is limited to acknowledged, in remediation, false positive, or risk accepted. Fixed is never set here.", nil)
 		return
+	}
+	var expires time.Time
+	if closing {
+		if strings.TrimSpace(body.Reason) == "" || strings.TrimSpace(body.ExpiresAt) == "" {
+			writeAPIError(w, r, http.StatusBadRequest, "Bulk false-positive and risk-accept need a reason and expiry.", nil)
+			return
+		}
+		manager := devopsUserIsManager(userID)
+		if user, err := GetUserByID(userID); err == nil && user != nil && user.Role == "admin" {
+			manager = true
+		}
+		if !manager {
+			writeAPIError(w, r, http.StatusConflict, "Bulk false-positive and risk-accept need an admin or manager role.", nil)
+			return
+		}
+		parsed, err := time.Parse("2006-01-02", strings.TrimSpace(body.ExpiresAt))
+		if err != nil {
+			parsed, err = time.Parse(time.RFC3339, strings.TrimSpace(body.ExpiresAt))
+		}
+		if err != nil || !parsed.After(time.Now().UTC()) {
+			writeAPIError(w, r, http.StatusBadRequest, "expiry must be a future date", nil)
+			return
+		}
+		expires = parsed.UTC()
 	}
 	updated := 0
 	for _, id := range body.IDs {
@@ -542,6 +708,16 @@ func handleVulnFindingsBulk(w http.ResponseWriter, r *http.Request, userID int) 
 			WHERE id=$1
 		`, id, next, owner, keepDue, due); err != nil {
 			continue
+		}
+		if closing {
+			kind := "exception"
+			if want == vulnLifeFalsePos {
+				kind = "vex_not_affected"
+			}
+			_, _ = execContext(`
+				INSERT INTO vuln_exceptions (finding_id, kind, reason, evidence, issuer, expires_at, created_by, status)
+				VALUES ($1,$2,$3,'','bulk',$4,$5,'active')
+			`, id, kind, strings.TrimSpace(body.Reason), expires, userID)
 		}
 		_, _ = execContext(`INSERT INTO vuln_finding_events (finding_id, kind, detail, actor_id) VALUES ($1,'update',$2,$3)`, id, firstNonEmpty(body.Reason, "Bulk update to "+next), userID)
 		updated++
@@ -704,8 +880,7 @@ func handleVulnScanCreate(w http.ResponseWriter, r *http.Request, userID int) {
 				return
 			}
 			var projectID int
-			var enabled bool
-			if err := queryRowContext(`SELECT COALESCE(project_id,0), enabled FROM vuln_repositories WHERE id=$1`, repoID).Scan(&projectID, &enabled); err != nil || !enabled {
+			if err := queryRowContext(`SELECT COALESCE(project_id,0) FROM vuln_repositories WHERE id=$1`, repoID).Scan(&projectID); err != nil {
 				writeAPIError(w, r, http.StatusNotFound, "repository not found", nil)
 				return
 			}

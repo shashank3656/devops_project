@@ -125,6 +125,8 @@ export function matchSourceLabel(value?: string): string {
       return 'Internet advisory';
     case 'scan':
       return 'Repository scan';
+    case 'ci':
+      return 'CI / SARIF';
     default:
       return 'Unknown';
   }
@@ -197,7 +199,7 @@ export function lifecycleLabel(value: string): string {
   }
 }
 
-export async function vulnRequest(apiUrl: string, path: string, method: 'GET' | 'POST' | 'PATCH' = 'GET', body?: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
+export async function vulnRequest(apiUrl: string, path: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT' = 'GET', body?: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('devops_token') : '';
   if (!token) {
     if (typeof window !== 'undefined') window.location.assign('/login');
@@ -245,4 +247,26 @@ export function sessionCanManageVulnWorkspace(): boolean {
   } catch {
     return false;
   }
+}
+
+export function epssLabel(value?: number, percentile?: number): string {
+  if (!value || value <= 0) return 'Unknown';
+  const score = `${Math.round(value * 1000) / 10}%`;
+  if (percentile && percentile > 0) {
+    return `${score} · ${Math.round(percentile * 100)}th`;
+  }
+  return score;
+}
+
+export function downloadJSONFile(filename: string, payload: unknown): void {
+  if (typeof window === 'undefined' || payload == null) return;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

@@ -263,6 +263,30 @@ func migrateSecurityVulnSchema() {
 		  AND a.canonical_id = b.canonical_id
 	`)
 	_, _ = DB.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vuln_findings_identity ON vuln_findings (repo_id, branch, module_path, ecosystem, package_name, canonical_id)`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_repositories ADD COLUMN IF NOT EXISTS stale_after_days INTEGER NOT NULL DEFAULT 14`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS linked_change_id INTEGER`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS linked_incident_id INTEGER`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_findings ADD COLUMN IF NOT EXISTS linked_ticket_id INTEGER`)
+	_, _ = DB.Exec(`ALTER TABLE vuln_pr_comparisons ADD COLUMN IF NOT EXISTS compare_source VARCHAR(40) NOT NULL DEFAULT 'manual'`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS vuln_policy_events (
+			id SERIAL PRIMARY KEY,
+			repo_id INTEGER NOT NULL REFERENCES vuln_repositories(id) ON DELETE CASCADE,
+			actor_id INTEGER NOT NULL DEFAULT 0,
+			summary TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_vuln_policy_events_repo ON vuln_policy_events (repo_id, id DESC)`)
+	_, _ = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS vuln_digest_runs (
+			id SERIAL PRIMARY KEY,
+			sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			teams INTEGER NOT NULL DEFAULT 0,
+			open_critical INTEGER NOT NULL DEFAULT 0,
+			open_high INTEGER NOT NULL DEFAULT 0
+		)
+	`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS vuln_scan_events (
 			id SERIAL PRIMARY KEY,

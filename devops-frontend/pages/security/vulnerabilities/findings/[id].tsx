@@ -5,7 +5,8 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, sessionCanManageVulnWorkspace, severityBadge, severityLabel, usageLabel, vulnRequest } from '../../../../lib/securityVuln';
+import { recordReference } from '../../../../lib/recordRef';
+import { epssLabel, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, sessionCanManageVulnWorkspace, severityBadge, severityLabel, usageLabel, vulnRequest } from '../../../../lib/securityVuln';
 
 type Finding = {
   id: number;
@@ -39,6 +40,16 @@ type Finding = {
   match_source?: string;
   direct?: boolean;
   dev?: boolean;
+  epss?: number;
+  epss_percentile?: number;
+  affected_ranges?: string[];
+  overdue?: boolean;
+  linked_change_id?: number;
+  linked_incident_id?: number;
+  linked_ticket_id?: number;
+  linked_change?: string;
+  linked_incident?: string;
+  linked_ticket?: string;
 };
 
 type Activity = { kind: string; detail: string; created_at: string };
@@ -58,6 +69,8 @@ export default function VulnFindingDetailPage() {
   const [dueAt, setDueAt] = useState('');
   const [prUrl, setPrUrl] = useState('');
   const [changeRef, setChangeRef] = useState('');
+  const [incidentRef, setIncidentRef] = useState('');
+  const [ticketRef, setTicketRef] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [isManager, setIsManager] = useState(false);
@@ -79,7 +92,9 @@ export default function VulnFindingDetailPage() {
     setOwner(item.owner || '');
     setDueAt(item.due_at ? item.due_at.slice(0, 10) : '');
     setPrUrl(item.pr_url || '');
-    setChangeRef(item.change_ref || '');
+    setChangeRef(item.linked_change || item.change_ref || '');
+    setIncidentRef(item.linked_incident || '');
+    setTicketRef(item.linked_ticket || '');
     setActivity(Array.isArray(result.body.activity) ? result.body.activity as Activity[] : []);
     setExceptions(Array.isArray(result.body.exceptions) ? result.body.exceptions as ExceptionRow[] : []);
   }, [apiUrl, id]);
@@ -109,7 +124,7 @@ export default function VulnFindingDetailPage() {
 
   async function onSave(event: FormEvent) {
     event.preventDefault();
-    await patch({ owner, due_at: dueAt, pr_url: prUrl, change_ref: changeRef, reason, lifecycle: finding?.lifecycle || 'open' });
+    await patch({ owner, due_at: dueAt, pr_url: prUrl, change_ref: changeRef, incident_ref: incidentRef, ticket_ref: ticketRef, reason, lifecycle: finding?.lifecycle || 'open' });
   }
 
   async function verify() {
@@ -170,14 +185,18 @@ export default function VulnFindingDetailPage() {
               <div className="sre-meta__item"><dt>Reachability</dt><dd>{reachabilityLabel(finding.reachability)}{finding.reachability === 'not_imported' ? ' · not a not-affected claim' : ''}</dd></div>
               <div className="sre-meta__item"><dt>Origin</dt><dd>{matchSourceLabel(finding.match_source)}{finding.match_source === 'intel' ? ' · public advisory matched the stored inventory; the lockfile was not fetched again' : ''}</dd></div>
               <div className="sre-meta__item"><dt>KEV</dt><dd>{finding.kev ? 'Known exploitation' : 'Not listed'}</dd></div>
-              <div className="sre-meta__item"><dt>Due</dt><dd>{finding.due_at ? formatOperationalTime(finding.due_at) : 'None'}</dd></div>
+              <div className="sre-meta__item"><dt>EPSS</dt><dd>{epssLabel(finding.epss, finding.epss_percentile)}</dd></div>
+              <div className="sre-meta__item"><dt>Due</dt><dd>{finding.overdue ? <span className="sec-sev sec-sev--critical">Overdue</span> : null}{finding.overdue ? ' ' : ''}{finding.due_at ? formatOperationalTime(finding.due_at) : 'None'}</dd></div>
               <div className="sre-meta__item"><dt>Last seen</dt><dd>{finding.last_seen_at ? formatOperationalTime(finding.last_seen_at) : 'Unknown'}</dd></div>
+              <div className="sre-meta__item"><dt>Linked change</dt><dd>{finding.linked_change_id ? <Link href={`/changes/${finding.linked_change_id}`}>{finding.linked_change || recordReference('CHG', finding.linked_change_id)}</Link> : 'None'}</dd></div>
+              <div className="sre-meta__item"><dt>Linked incident</dt><dd>{finding.linked_incident_id ? <Link href={`/incidents/${finding.linked_incident_id}/edit`}>{finding.linked_incident || recordReference('INC', finding.linked_incident_id)}</Link> : 'None'}</dd></div>
+              <div className="sre-meta__item"><dt>Linked ticket</dt><dd>{finding.linked_ticket_id ? <Link href={`/tickets?id=${finding.linked_ticket_id}`}>{finding.linked_ticket || recordReference('REQ', finding.linked_ticket_id)}</Link> : 'None'}</dd></div>
             </dl>
             <section className="portal-surface">
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Evidence</h2>
-                  <p className="portal-surface__subtitle">Exact package identity from the stored inventory snapshot.</p>
+                  <p className="portal-surface__subtitle">Lockfile path, installed package, and advisory range from the stored inventory. This is not a live clone.</p>
                 </div>
               </div>
               <dl className="sre-meta">
@@ -186,9 +205,10 @@ export default function VulnFindingDetailPage() {
                 <div className="sre-meta__item"><dt>Repository</dt><dd>{finding.repository || 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Service</dt><dd>{finding.service || 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Module</dt><dd>{finding.module_path || '/'}</dd></div>
-                <div className="sre-meta__item"><dt>Manifest</dt><dd>{finding.path || 'Unknown'}</dd></div>
+                <div className="sre-meta__item"><dt>Lockfile</dt><dd>{finding.path || 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Commit</dt><dd>{finding.commit_sha ? finding.commit_sha.slice(0, 12) : 'Unknown'}</dd></div>
                 <div className="sre-meta__item"><dt>Advisory</dt><dd>{finding.source_url ? <a href={finding.source_url} target="_blank" rel="noreferrer">{finding.canonical_id}</a> : finding.canonical_id}</dd></div>
+                <div className="sre-meta__item"><dt>Advisory range</dt><dd>{(finding.affected_ranges || []).length ? finding.affected_ranges?.join(' · ') : 'Unknown'}</dd></div>
               </dl>
             </section>
             <section className="portal-surface">
@@ -209,14 +229,16 @@ export default function VulnFindingDetailPage() {
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Remediation</h2>
-                  <p className="portal-surface__subtitle">Link a PR or change. Merged is not Fixed. Request a rescan to verify the repository.</p>
+                  <p className="portal-surface__subtitle">Link a PR, change, incident, or ticket. Linked work is not Fixed. Request a rescan to verify the repository.</p>
                 </div>
               </div>
               <form className="portal-form-grid" onSubmit={onSave}>
                 <label className="label">Owner<input className="input" value={owner} onChange={(event) => setOwner(event.target.value)} /></label>
                 <label className="label">Due<input className="input" type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} /></label>
                 <label className="label">Pull request URL<input className="input" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} /></label>
-                <label className="label">Change reference<input className="input" value={changeRef} onChange={(event) => setChangeRef(event.target.value)} /></label>
+                <label className="label">Change<input className="input" value={changeRef} onChange={(event) => setChangeRef(event.target.value)} placeholder="CHG0000001" /></label>
+                <label className="label">Incident<input className="input" value={incidentRef} onChange={(event) => setIncidentRef(event.target.value)} placeholder="INC0000001" /></label>
+                <label className="label">Ticket<input className="input" value={ticketRef} onChange={(event) => setTicketRef(event.target.value)} placeholder="REQ0000001" /></label>
                 <label className="label">Note<input className="input" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
                 <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={busy}>Save</button>

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DataTable, EmptyState, formatOperationalTime, type DataTableColumn } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { lifecycleLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
+import { downloadJSONFile, lifecycleLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, vulnRequest } from '../../../../lib/securityVuln';
 
 type Service = {
   service_id: number;
@@ -125,6 +125,19 @@ export default function VulnServiceDetailPage() {
     setDigest('');
     setDeploySbom('');
     await load();
+  }
+
+  async function downloadScanInventory(scanId: number) {
+    setBusy(true);
+    setError('');
+    const result = await vulnRequest(apiUrl, `/api/devops/security/scans/${scanId}/inventory`);
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'No stored inventory for that scan. Coverage is Unknown.');
+      return;
+    }
+    const slug = (service?.repository || 'inventory').replace(/[^a-zA-Z0-9._-]+/g, '-');
+    downloadJSONFile(`${slug}-scan-${scanId}-sbom.json`, result.body.inventory ?? result.body);
   }
 
   const findingColumns: DataTableColumn<Finding>[] = [
@@ -276,6 +289,7 @@ export default function VulnServiceDetailPage() {
                     { id: 'commit', header: 'Commit', cell: (item: Scan) => item.commit_sha ? item.commit_sha.slice(0, 12) : 'Unknown' },
                     { id: 'when', header: 'Queued', cell: (item: Scan) => (item.created_at ? formatOperationalTime(item.created_at) : 'Unknown') },
                     { id: 'err', header: 'Error', cell: (item: Scan) => item.error || 'None recorded' },
+                    { id: 'sbom', header: '', cell: (item: Scan) => <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void downloadScanInventory(item.id)}>Download inventory</button> },
                   ]}
                   rows={scans}
                   rowKey={(item) => String(item.id)}

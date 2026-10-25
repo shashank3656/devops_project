@@ -1,11 +1,12 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BulkBar, CopyButton, DataTable, EmptyState, formatOperationalTime, type DataTableColumn, type RowKey } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { accessLabel, asRows, canManageVulnWorkspace, collectionModeLabel, findingIsClosed, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, scanJobIds, sessionCanManageVulnWorkspace, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
+import { downloadCSV } from '../../lib/csv';
+import { accessLabel, asRows, canManageVulnWorkspace, collectionModeLabel, downloadJSONFile, epssLabel, findingIsClosed, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, scanJobIds, sessionCanManageVulnWorkspace, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
 
 type Overview = {
@@ -80,6 +81,10 @@ type FindingRow = {
   last_scan_id?: number;
   direct?: boolean;
   dev?: boolean;
+  epss?: number;
+  epss_percentile?: number;
+  overdue?: boolean;
+  path?: string;
 };
 
 type ScanRow = {
@@ -100,6 +105,15 @@ type ScanRow = {
 
 type ScanEvent = { stage: string; detail: string; created_at: string };
 type ScanFinding = { id: number; canonical_id: string; severity: string; package_name: string; installed_version: string; lifecycle: string; confidence: string };
+type ScanDiff = {
+  current_id?: number;
+  previous_id?: number;
+  repository?: string;
+  note?: string;
+  added?: ScanFinding[];
+  still_open?: ScanFinding[];
+  gone?: ScanFinding[];
+};
 
 type PlanRow = {
   id: number;
@@ -122,12 +136,34 @@ type SourceRow = {
 };
 
 type AgentRow = { id: number; name: string; status: string; version?: string; last_heartbeat_at?: string };
-type CampaignOccurrence = { finding_id: number; repository: string; package_name: string; installed_version?: string; direct?: boolean; dev?: boolean; plan_id?: number };
+type CampaignOccurrence = { finding_id: number; repository: string; package_name: string; installed_version?: string; direct?: boolean; dev?: boolean; owner?: string; due_at?: string; plan_id?: number };
 type CampaignRow = { canonical_id: string; title: string; severity: string; count: number; services?: string[]; occurrences?: CampaignOccurrence[] };
 type RepoAccess = { repository: string; access_state?: string; access_detail?: string; collection_mode?: string };
-type ComparisonRow = { id: number; pr_number: number; repository: string; state: string; coverage: string; introduced_critical: number; introduced_high: number; removed_count: number; note?: string };
+type ComparisonRow = { id: number; pr_number: number; repository: string; state: string; coverage: string; introduced_critical: number; introduced_high: number; removed_count: number; note?: string; compare_source?: string; enforce_pr_gate?: boolean };
 type NewDepRow = { repository: string; ecosystem: string; package_name: string; version: string; note?: string };
-type RepoConfig = { id: number; repository: string; provider?: string; collection_mode: string; owner_team?: string; schedule_minutes: number; alert_min_severity: string; allow_fork_prs: boolean; enforce_pr_gate?: boolean; exclusions?: string; branch: string; access_state?: string; access_detail?: string; last_scheduled_at?: string };
+type RepoConfig = {
+  id: number;
+  repository: string;
+  provider?: string;
+  collection_mode: string;
+  owner_team?: string;
+  schedule_minutes: number;
+  alert_min_severity: string;
+  allow_fork_prs: boolean;
+  enforce_pr_gate?: boolean;
+  exclusions?: string;
+  branch: string;
+  access_state?: string;
+  access_detail?: string;
+  last_scheduled_at?: string;
+  stale?: boolean;
+  stale_reason?: string;
+  stale_after_days?: number;
+  last_inventory_at?: string;
+  inventory_age_days?: number;
+  last_scan_state?: string;
+  enabled?: boolean;
+};
 
 function known(value?: string): string {
   const text = (value || '').trim();
@@ -184,6 +220,8 @@ export default function GlobalVulnerabilitiesPage() {
   const [scanDetail, setScanDetail] = useState<ScanRow | null>(null);
   const [scanLog, setScanLog] = useState<ScanEvent[]>([]);
   const [scanFindings, setScanFindings] = useState<ScanFinding[]>([]);
+  const [scanDiff, setScanDiff] = useState<ScanDiff | null>(null);
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [compareDetail, setCompareDetail] = useState<{ id: number; items: { classification: string; canonical_id: string; package_name: string; severity: string; base_version?: string; head_version?: string }[] } | null>(null);
   const [repoFilter, setRepoFilter] = useState('');
   const [latestScanOnly, setLatestScanOnly] = useState(false);
@@ -193,6 +231,9 @@ export default function GlobalVulnerabilitiesPage() {
   const [findingSelected, setFindingSelected] = useState<Set<RowKey>>(new Set());
   const [assignOwner, setAssignOwner] = useState('');
   const [assignDue, setAssignDue] = useState('');
+  const [bulkReason, setBulkReason] = useState('');
+  const [bulkExpires, setBulkExpires] = useState('');
+  const viewReady = useRef(false);
   const [campaignDetail, setCampaignDetail] = useState<CampaignRow | null>(null);
   const [repoAccess, setRepoAccess] = useState<RepoAccess[]>([]);
   const [deployService, setDeployService] = useState('');
@@ -220,6 +261,7 @@ export default function GlobalVulnerabilitiesPage() {
     const projectQuery = params.toString() ? `?${params.toString()}` : '';
     const findingParams = new URLSearchParams(params);
     if (lifecycleFilter) findingParams.set('lifecycle', lifecycleFilter);
+    if (overdueOnly) findingParams.set('overdue', '1');
     const findingQuery = findingParams.toString() ? `?${findingParams.toString()}` : '';
     const probe = tab === 'configuration' || tab === 'sources' ? '?probe=1' : '';
     const [overviewRes, serviceRes, advisoryRes, findingRes, scanRes, planRes, sourceRes, campaignRes, compareRes, depRes, repoRes, meRes] = await Promise.all([
@@ -258,18 +300,57 @@ export default function GlobalVulnerabilitiesPage() {
     setRepoAccess(asRows<RepoAccess>(sourceRes.body.repository_access));
     setIsManager(canManageVulnWorkspace(meRes.body) || sessionCanManageVulnWorkspace());
     setLoading(false);
-  }, [apiUrl, lifecycleFilter, projectId, serviceId, tab]);
+  }, [apiUrl, lifecycleFilter, overdueOnly, projectId, serviceId, tab]);
 
   useEffect(() => {
     if (!router.isReady) return;
     void load();
   }, [load, router.isReady]);
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await vulnRequest(apiUrl, '/api/devops/security/findings/view');
+      if (cancelled || result.status !== 200) {
+        viewReady.current = true;
+        return;
+      }
+      const filters = result.body.filters && typeof result.body.filters === 'object' && !Array.isArray(result.body.filters)
+        ? result.body.filters as Record<string, unknown>
+        : {};
+      if (typeof filters.severity === 'string') setSeverity(filters.severity);
+      if (typeof filters.lifecycle === 'string') setLifecycleFilter(filters.lifecycle);
+      if (typeof filters.repository === 'string') setRepoFilter(filters.repository);
+      if (typeof filters.patch_state === 'string') setPatchFilter(filters.patch_state);
+      if (typeof filters.reachability === 'string') setReachFilter(filters.reachability);
+      if (typeof filters.unassigned_only === 'boolean') setUnassignedOnly(filters.unassigned_only);
+      if (typeof filters.intel_only === 'boolean') setIntelOnly(filters.intel_only);
+      if (typeof filters.hide_dev === 'boolean') setHideDevDeps(filters.hide_dev);
+      if (typeof filters.overdue_only === 'boolean') setOverdueOnly(filters.overdue_only);
+      viewReady.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, [apiUrl, router.isReady]);
+
+  useEffect(() => {
+    if (!viewReady.current) return;
+    const timer = window.setTimeout(() => {
+      void vulnRequest(apiUrl, '/api/devops/security/findings/view', 'PUT', {
+        severity, lifecycle: lifecycleFilter, repository: repoFilter, patch_state: patchFilter,
+        reachability: reachFilter, unassigned_only: unassignedOnly, intel_only: intelOnly,
+        hide_dev: hideDevDeps, overdue_only: overdueOnly,
+      });
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [apiUrl, hideDevDeps, intelOnly, lifecycleFilter, overdueOnly, patchFilter, reachFilter, repoFilter, severity, unassignedOnly]);
+
   const loadScanDetail = useCallback(async (id: number) => {
     if (!id) {
       setScanDetail(null);
       setScanLog([]);
       setScanFindings([]);
+      setScanDiff(null);
       return;
     }
     const result = await vulnRequest(apiUrl, `/api/devops/security/scans/${id}`);
@@ -279,6 +360,7 @@ export default function GlobalVulnerabilitiesPage() {
     setScanDetail((result.body.scan || null) as ScanRow | null);
     setScanLog(asRows<ScanEvent>(result.body.log));
     setScanFindings(asRows<ScanFinding>(result.body.findings));
+    setScanDiff((result.body.diff || null) as ScanDiff | null);
   }, [apiUrl]);
 
   useEffect(() => {
@@ -365,6 +447,7 @@ export default function GlobalVulnerabilitiesPage() {
       const focusScanId = selectedScanId || scans[0]?.id || 0;
       if (latestScanOnly && focusScanId && item.last_scan_id !== focusScanId) return false;
       if (hideDevDeps && item.dev) return false;
+      if (overdueOnly && !item.overdue) return false;
       if (reachFilter && (item.reachability || 'unknown') !== reachFilter) return false;
       if (!lifecycleFilter && findingIsClosed(item.lifecycle)) return false;
       if (lifecycleFilter && item.lifecycle !== lifecycleFilter) return false;
@@ -373,7 +456,7 @@ export default function GlobalVulnerabilitiesPage() {
       if (!q) return true;
       return `${item.canonical_id} ${item.package_name} ${item.repository} ${item.service || ''} ${item.owner || ''}`.toLowerCase().includes(q);
     });
-  }, [findings, hideDevDeps, intelOnly, latestScanOnly, lifecycleFilter, patchFilter, reachFilter, repoFilter, scans, search, selectedScanId, severity, teamFilter, unassignedOnly]);
+  }, [findings, hideDevDeps, intelOnly, latestScanOnly, lifecycleFilter, overdueOnly, patchFilter, reachFilter, repoFilter, scans, search, selectedScanId, severity, teamFilter, unassignedOnly]);
 
   const findingRepos = useMemo(
     () => Array.from(new Set([...findings.map((item) => item.repository), ...repos.map((item) => item.repository)].filter(Boolean))).sort(),
@@ -496,7 +579,7 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The inventory could not be accepted.');
       return;
     }
-    setNotice('SBOM inventory accepted. Image OS packages match from the uploaded document; images are not pulled.');
+    setNotice('Inventory accepted. CycloneDX, SPDX, and SARIF with package identity correlate like a hosted scan. Results without a package are skipped. Images are not pulled.');
     void load();
   }
 
@@ -510,7 +593,7 @@ export default function GlobalVulnerabilitiesPage() {
       setError(typeof result.body.error === 'string' ? result.body.error : 'The pull request could not be compared.');
       return;
     }
-    setNotice('Comparison stored against immutable base and head commits. Incomplete coverage is never a clean verdict.');
+    setNotice('Comparison stored against immutable base and head commits. Informational unless repository policy enforces the gate. OpsTrellis does not merge.');
     void load();
   }
 
@@ -538,6 +621,19 @@ export default function GlobalVulnerabilitiesPage() {
       setNotice('Repository registered. Inventory arrives from a private agent or CI upload.');
     }
     setNewRepo('');
+    void load();
+  }
+
+  async function registerFromServiceMap() {
+    setBusy(true);
+    setError('');
+    const result = await vulnRequest(apiUrl, '/api/devops/security/repositories/from-services', 'POST', {});
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'Service map repositories could not be registered.');
+      return;
+    }
+    setNotice(`Registered ${Number(result.body.registered) || 0} from the service map. ${Number(result.body.already) || 0} already registered. Scan is still explicit.`);
     void load();
   }
 
@@ -569,6 +665,36 @@ export default function GlobalVulnerabilitiesPage() {
     setLatestScanOnly(false);
     setHideDevDeps(false);
     setReachFilter('');
+    setOverdueOnly(false);
+  }
+
+  function inventoryFilename(repo: string, suffix: string): string {
+    const slug = (repo || 'inventory').replace(/[^a-zA-Z0-9._-]+/g, '-');
+    return `${slug}-${suffix}.json`;
+  }
+
+  async function downloadScanInventory(scanId: number, repo: string) {
+    setBusy(true);
+    setError('');
+    const result = await vulnRequest(apiUrl, `/api/devops/security/scans/${scanId}/inventory`);
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'No stored inventory for that scan. Coverage is Unknown.');
+      return;
+    }
+    downloadJSONFile(inventoryFilename(repo, `scan-${scanId}-sbom`), result.body.inventory ?? result.body);
+  }
+
+  async function downloadRepoInventory(repoId: number, repo: string) {
+    setBusy(true);
+    setError('');
+    const result = await vulnRequest(apiUrl, `/api/devops/security/repositories/${repoId}/inventory`);
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'No stored inventory for that repository. Coverage is Unknown.');
+      return;
+    }
+    downloadJSONFile(inventoryFilename(repo, 'inventory-sbom'), result.body.inventory ?? result.body);
   }
 
   async function bulkFindings(lifecycle: string, reason: string) {
@@ -581,6 +707,14 @@ export default function GlobalVulnerabilitiesPage() {
     if (lifecycle) payload.lifecycle = lifecycle;
     if (assignOwner.trim()) payload.owner = assignOwner.trim();
     if (assignDue) payload.due_at = assignDue;
+    if (lifecycle === 'false_positive' || lifecycle === 'risk_accepted') {
+      if (!bulkReason.trim() || !bulkExpires) {
+        setError('Bulk false-positive and risk-accept need a reason and expiry.');
+        return;
+      }
+      payload.reason = bulkReason.trim();
+      payload.expires_at = bulkExpires;
+    }
     setBusy(true);
     setError('');
     const result = await vulnRequest(apiUrl, '/api/devops/security/findings/bulk', 'POST', payload);
@@ -619,6 +753,38 @@ export default function GlobalVulnerabilitiesPage() {
     const urls = Array.isArray(result.body.pr_urls) ? result.body.pr_urls.filter((item): item is string => typeof item === 'string') : [];
     setNotice(urls.length ? `Opened ${urls.length} draft proposal${urls.length === 1 ? '' : 's'}. OpsTrellis does not merge them.` : 'Draft proposals opened. OpsTrellis does not merge them.');
     void load();
+  }
+
+  async function toggleRepoEnabled(id: number, enabled: boolean) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const result = await vulnRequest(apiUrl, `/api/devops/security/repositories/${id}/${enabled ? 'resume' : 'pause'}`, 'POST', {});
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'Repository schedule could not be updated.');
+      return;
+    }
+    setNotice(typeof result.body.note === 'string'
+      ? result.body.note
+      : (enabled
+        ? 'Scheduled collection is enabled. History and open findings were kept.'
+        : 'Scheduled collection is paused. History and open findings were kept. Scan now still runs.'));
+    void load();
+  }
+
+  function exportCampaignCSV(campaign: CampaignRow) {
+    const rows = (campaign.occurrences || []).map((item) => [
+      campaign.canonical_id,
+      item.repository || '',
+      item.package_name || '',
+      item.installed_version || '',
+      (item.owner || '').includes('@') ? '' : (item.owner || ''),
+      item.due_at || '',
+    ]);
+    const filename = `${campaign.canonical_id.replace(/[^A-Za-z0-9_-]+/g, '-')}-open-occurrences.csv`;
+    downloadCSV(filename, ['advisory', 'repository', 'package', 'version', 'owner', 'due_at'], rows);
+    setNotice('Exported open occurrences for a change request. Emails are not included. This is not Fixed.');
   }
 
   async function bindDeployment() {
@@ -738,8 +904,13 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'fix', header: 'Fix', cell: (item) => item.patch_state === 'fix_available' ? <span className="sec-sev sec-sev--high">Fix available{item.first_fixed_version ? ` · ${item.first_fixed_version}` : ''}</span> : (item.first_fixed_version || patchLabel(item.patch_state)) },
     { id: 'reach', header: 'Reachability', cell: (item) => reachabilityLabel(item.reachability) },
     { id: 'origin', header: 'Origin', cell: (item) => matchSourceLabel(item.match_source) },
+    { id: 'epss', header: 'EPSS', cell: (item) => epssLabel(item.epss, item.epss_percentile) },
     { id: 'owner', header: 'Owner', cell: (item) => known(item.owner) },
-    { id: 'due', header: 'Due', cell: (item) => (item.due_at ? formatOperationalTime(item.due_at) : 'None') },
+    { id: 'due', header: 'Due', cell: (item) => (
+      item.due_at
+        ? <span>{item.overdue ? <span className="sec-sev sec-sev--critical">Overdue</span> : null}{item.overdue ? ' ' : ''}{formatOperationalTime(item.due_at)}</span>
+        : 'None'
+    ) },
     { id: 'seen', header: 'Last scan', cell: (item) => (item.last_seen_at ? formatOperationalTime(item.last_seen_at) : 'Unknown') },
     { id: 'state', header: 'State', cell: (item) => lifecycleLabel(item.lifecycle) },
   ], []);
@@ -778,15 +949,20 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'access', header: 'Token', cell: (item) => <span title={item.access_detail || ''}>{accessLabel(item.access_state)}</span> },
     { id: 'branch', header: 'Branch', cell: (item) => item.branch || 'main' },
     { id: 'team', header: 'Owner', cell: (item) => known(item.owner_team) },
-    { id: 'sched', header: 'Last scheduled', cell: (item) => (item.last_scheduled_at ? formatOperationalTime(item.last_scheduled_at) : (item.schedule_minutes >= 15 ? `Every ${item.schedule_minutes}m` : 'Off')) },
+    { id: 'status', header: 'Schedule', cell: (item) => (item.enabled === false ? 'Paused' : (item.last_scheduled_at ? formatOperationalTime(item.last_scheduled_at) : (item.schedule_minutes >= 15 ? `Every ${item.schedule_minutes}m` : 'Off'))) },
+    { id: 'fresh', header: 'Inventory', cell: (item) => (
+      <span title={item.stale_reason || ''}>{item.stale ? 'Stale · Unknown' : (item.last_inventory_at ? `Fresh · ${item.inventory_age_days ?? 0}d` : 'Unknown')}</span>
+    ) },
     { id: 'gate', header: 'PR gate', cell: (item) => (item.enforce_pr_gate ? 'Enforced' : 'Informational') },
     { id: 'edit', header: '', cell: (item) => (
       <span className="sec-vuln-row-actions">
         <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void scanRepositories([item.id])}>Scan now</button>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void downloadRepoInventory(item.id, item.repository)}>Download inventory</button>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !isManager} onClick={() => void toggleRepoEnabled(item.id, item.enabled === false)}>{item.enabled === false ? 'Enable' : 'Pause'}</button>
         <Link className="btn btn-secondary btn-sm" href={`/security/vulnerabilities/policy/${item.id}`}>Edit policy</Link>
       </span>
     ) },
-  ], [apiUrl, busy, projectId]);
+  ], [apiUrl, busy, isManager, projectId]);
 
   const sourceColumns: DataTableColumn<SourceRow>[] = useMemo(() => [
     { id: 'provider', header: 'Provider', cell: (item) => item.provider },
@@ -971,6 +1147,10 @@ export default function GlobalVulnerabilitiesPage() {
                   <input type="checkbox" checked={hideDevDeps} onChange={(event) => setHideDevDeps(event.target.checked)} />
                   Hide devDependencies
                 </label>
+                <label className={`sec-vuln-filters__chip${overdueOnly ? ' is-on' : ''}`}>
+                  <input type="checkbox" checked={overdueOnly} onChange={(event) => setOverdueOnly(event.target.checked)} />
+                  Overdue
+                </label>
               </div>
               <button type="button" className="btn btn-secondary btn-sm" onClick={clearVulnFilters}>Clear</button>
             </div>
@@ -1095,7 +1275,7 @@ export default function GlobalVulnerabilitiesPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Repository findings</h2>
-                <p className="portal-surface__subtitle">Confirmed and potential dependency matches stay here until a finding is closed. A second scan of the same repository adds newly identified packages instead of duplicating existing rows. Production exposure stays Unknown until a deployment mapping exists.</p>
+                <p className="portal-surface__subtitle">Confirmed and potential dependency matches stay here until a finding is closed. Overdue does not auto-close. A second scan of the same repository adds newly identified packages instead of duplicating existing rows. Production exposure stays Unknown until a deployment mapping exists.</p>
               </div>
             </div>
             {scans[0] ? (
@@ -1119,6 +1299,10 @@ export default function GlobalVulnerabilitiesPage() {
                 <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void assignSelectedFindings()}>Assign</button>
                 <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void bulkFindings('acknowledged', 'Acknowledged from Findings')}>Acknowledge</button>
                 <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void bulkFindings('in_remediation', 'Moved to in remediation from Findings')}>In remediation</button>
+                <label className="label">Reason<input className="input" value={bulkReason} onChange={(event) => setBulkReason(event.target.value)} placeholder="Required for false positive / risk accept" /></label>
+                <label className="label">Expiry<input className="input" type="date" value={bulkExpires} onChange={(event) => setBulkExpires(event.target.value)} /></label>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !isManager} onClick={() => void bulkFindings('false_positive', bulkReason.trim())}>False positive</button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !isManager} onClick={() => void bulkFindings('risk_accepted', bulkReason.trim())}>Risk accept</button>
               </BulkBar>
             </div>
             <DataTable
@@ -1139,7 +1323,7 @@ export default function GlobalVulnerabilitiesPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Campaigns</h2>
-                <p className="portal-surface__subtitle">Open findings grouped by canonical advisory, including internet advisories matched to stored lockfiles. Closed findings leave this list. Unknown coverage is not listed as unaffected.</p>
+                <p className="portal-surface__subtitle">Open findings grouped by canonical advisory, including internet advisories matched to stored lockfiles. Export CSV of one advisory for a change request. Closed findings leave this list. Emails are not included. This is not Fixed.</p>
               </div>
             </div>
             <DataTable
@@ -1164,6 +1348,7 @@ export default function GlobalVulnerabilitiesPage() {
                     <p className="portal-surface__subtitle">{campaignDetail.title || 'Open occurrences for this advisory. One draft PR is opened per repository that has a patch plan.'}</p>
                   </div>
                   <div className="runbooks__action-row">
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !(campaignDetail.occurrences || []).length} onClick={() => exportCampaignCSV(campaignDetail)}>Export CSV</button>
                     {isManager ? <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void openCampaignPRs(campaignDetail.canonical_id)}>Open draft PRs</button> : null}
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCampaignDetail(null)}>Close</button>
                   </div>
@@ -1174,6 +1359,8 @@ export default function GlobalVulnerabilitiesPage() {
                     { id: 'finding', header: 'Finding', cell: (item: CampaignOccurrence) => <Link href={`/security/vulnerabilities/findings/${item.finding_id}`}>#{item.finding_id}</Link> },
                     { id: 'repo', header: 'Repository', cell: (item: CampaignOccurrence) => known(item.repository) },
                     { id: 'pkg', header: 'Package', cell: (item: CampaignOccurrence) => `${item.package_name}@${item.installed_version || 'unresolved'}` },
+                    { id: 'owner', header: 'Owner', cell: (item: CampaignOccurrence) => known((item.owner || '').includes('@') ? '' : item.owner) },
+                    { id: 'due', header: 'Due', cell: (item: CampaignOccurrence) => (item.due_at ? formatOperationalTime(item.due_at) : 'Unknown') },
                     { id: 'usage', header: 'Usage', cell: (item: CampaignOccurrence) => usageLabel(item) },
                     { id: 'plan', header: 'Plan', cell: (item: CampaignOccurrence) => (item.plan_id ? `Plan ${item.plan_id}` : 'No plan yet') },
                   ]}
@@ -1241,6 +1428,7 @@ export default function GlobalVulnerabilitiesPage() {
                       <h2 className="portal-surface__title">Scan results</h2>
                       <p className="portal-surface__subtitle">{scanDetail.repository} · job #{scanDetail.id}. Empty coverage is not a secure label.</p>
                     </div>
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void downloadScanInventory(scanDetail.id, scanDetail.repository)}>Download inventory</button>
                   </div>
                   <dl className="sec-vuln-status">
                     <div><dt>State</dt><dd>{scanDetail.state} · {scanDetail.stage}</dd></div>
@@ -1276,6 +1464,27 @@ export default function GlobalVulnerabilitiesPage() {
                     rowKey={(item) => String(item.id)}
                     empty={<EmptyState title={scanDetail.state === 'queued' || scanDetail.state === 'running' ? 'Scan in progress' : 'No matches from this scan'} body="This is not a secure label. Unscanned modules stay Unknown." />}
                   />
+                  <div className="sec-vuln-diff">
+                    <h3 className="portal-surface__title">Scan-to-scan diff</h3>
+                    <p className="form-section__copy">{scanDiff?.note || 'Gone since the previous scan is not Fixed. Close only after a verify scan or an explicit disposition.'}{scanDiff?.previous_id ? ` Compared with job #${scanDiff.previous_id}.` : ' No previous succeeded scan to compare.'}</p>
+                    <DataTable
+                      label="Scan-to-scan diff"
+                      columns={[
+                        { id: 'bucket', header: 'Change', cell: (item: ScanFinding & { bucket: string }) => item.bucket },
+                        { id: 'id', header: 'Advisory', cell: (item: ScanFinding) => <Link href={`/security/vulnerabilities/findings/${item.id}`}>{item.canonical_id}</Link> },
+                        { id: 'pkg', header: 'Package', cell: (item: ScanFinding) => `${item.package_name}@${item.installed_version || 'unresolved'}` },
+                        { id: 'sev', header: 'Severity', cell: (item: ScanFinding) => <span className={severityBadge(item.severity)}>{severityLabel(item.severity)}</span> },
+                        { id: 'state', header: 'State', cell: (item: ScanFinding) => lifecycleLabel(item.lifecycle) },
+                      ]}
+                      rows={[
+                        ...(scanDiff?.added || []).map((item) => ({ ...item, bucket: 'Added' })),
+                        ...(scanDiff?.still_open || []).map((item) => ({ ...item, bucket: 'Still open' })),
+                        ...(scanDiff?.gone || []).map((item) => ({ ...item, bucket: 'Gone · not Fixed' })),
+                      ]}
+                      rowKey={(item) => `${item.bucket}-${item.id}`}
+                      empty={<EmptyState title="No scan-to-scan changes" body="Added, still-open, and gone rows appear after a succeeded or partial scan. Gone is not Fixed." />}
+                    />
+                  </div>
                 </section>
                 <section className="portal-surface">
                   <div className="portal-surface__header">
@@ -1308,7 +1517,7 @@ export default function GlobalVulnerabilitiesPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">PR comparisons</h2>
-                <p className="portal-surface__subtitle">Introduced versus removed against the same advisory snapshot. Fork PRs stay closed unless the repository policy allows them.</p>
+                <p className="portal-surface__subtitle">Opened and updated pull requests store the same comparison as this form. Informational unless repository policy enforces the gate. OpsTrellis does not merge.</p>
               </div>
             </div>
             <form className="portal-form-grid" onSubmit={(event) => { event.preventDefault(); void comparePr(); }}>
@@ -1327,6 +1536,8 @@ export default function GlobalVulnerabilitiesPage() {
               label="PR comparisons"
               columns={[
                 { id: 'pr', header: 'PR', cell: (item: ComparisonRow) => <button type="button" className="btn btn-secondary btn-sm" onClick={() => void openComparison(item.id)}>{item.repository}#{item.pr_number}</button> },
+                { id: 'src', header: 'Source', cell: (item: ComparisonRow) => (item.compare_source === 'webhook' ? 'Webhook' : 'Manual') },
+                { id: 'gate', header: 'Gate', cell: (item: ComparisonRow) => (item.enforce_pr_gate ? 'Enforced' : 'Informational') },
                 { id: 'state', header: 'State', cell: (item: ComparisonRow) => `${item.state} · ${item.coverage}` },
                 { id: 'in', header: 'Introduced C/H', cell: (item: ComparisonRow) => `${item.introduced_critical} / ${item.introduced_high}` },
                 { id: 'out', header: 'Removed', cell: (item: ComparisonRow) => String(item.removed_count) },
@@ -1481,7 +1692,7 @@ export default function GlobalVulnerabilitiesPage() {
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">CI / SBOM upload</h2>
-                  <p className="portal-surface__subtitle">Bind a CycloneDX or SPDX document to a registered repository and commit. Images are not pulled from a Docker socket.</p>
+                  <p className="portal-surface__subtitle">Bind a CycloneDX, SPDX, or SARIF document to a registered repository and commit. SARIF results without package identity are skipped. Images are not pulled from a Docker socket.</p>
                 </div>
               </div>
               <form className="sec-vuln-inline sec-vuln-inline--ci" onSubmit={(event) => { event.preventDefault(); void uploadSbom(); }}>
@@ -1495,7 +1706,7 @@ export default function GlobalVulnerabilitiesPage() {
                 <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={busy}>Upload inventory</button>
                 </div>
-                <label className="label">SBOM JSON<textarea className="input" rows={5} value={sbomText} onChange={(event) => setSbomText(event.target.value)} /></label>
+                <label className="label">SBOM or SARIF JSON<textarea className="input" rows={5} value={sbomText} onChange={(event) => setSbomText(event.target.value)} /></label>
               </form>
               <p className="form-section__copy">CI can also run <code>python3 workers/vuln_agent.py --ci</code> with VULN_PORTAL_TOKEN and VULN_REPOSITORY_ID.</p>
             </section>
@@ -1517,6 +1728,7 @@ export default function GlobalVulnerabilitiesPage() {
                 <label className="label">Branch<input className="input" value={newRepoBranch} onChange={(event) => setNewRepoBranch(event.target.value)} /></label>
                 <div className="portal-form-actions">
                   <button type="submit" className="btn btn-primary" disabled={busy || !isManager}>Register</button>
+                  <button type="button" className="btn btn-secondary" disabled={busy || !isManager} onClick={() => void registerFromServiceMap()}>Register from service map</button>
                 </div>
               </form>
               {!isManager ? <p className="form-section__copy">Registering a repository needs a manager role.</p> : null}
@@ -1525,8 +1737,17 @@ export default function GlobalVulnerabilitiesPage() {
                 columns={repoColumns}
                 rows={repos}
                 rowKey={(item) => String(item.id)}
-                empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then open Repository policy." />}
+                empty={<EmptyState title={loading ? 'Loading repositories' : 'No repositories registered'} body="Register owner/name or a GitHub, GitLab, or Bitbucket URL, then open Repository policy. Pause stops scheduled scans and webhooks; Scan now still runs and history stays." />}
               />
+            </section>
+            <section className="portal-surface">
+              <div className="portal-surface__header">
+                <div>
+                  <h2 className="portal-surface__title">Weekly open-risk digest</h2>
+                  <p className="portal-surface__subtitle">Owner teams receive confirmed Critical and High matches when a digest has not been sent in six days. Public advisories are not organization exposure. Empty coverage stays Unknown. Findings are not auto-closed.</p>
+                </div>
+              </div>
+              <p className="form-section__copy">Set owner team on repository policy so the digest can route. Stale inventory stays Unknown until a stored snapshot exists.</p>
             </section>
           </div>
         ) : null}

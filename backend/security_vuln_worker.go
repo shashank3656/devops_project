@@ -15,6 +15,8 @@ func startVulnSecurityWorker() {
 		defer expireTicker.Stop()
 		scheduleTicker := time.NewTicker(5 * time.Minute)
 		defer scheduleTicker.Stop()
+		digestTicker := time.NewTicker(12 * time.Hour)
+		defer digestTicker.Stop()
 		for {
 			select {
 			case <-jobTicker.C:
@@ -29,6 +31,8 @@ func startVulnSecurityWorker() {
 				notifyDueVulnFindings()
 			case <-scheduleTicker.C:
 				enqueueDueVulnSchedules()
+			case <-digestTicker.C:
+				sendVulnWeeklyDigests()
 			}
 		}
 	}()
