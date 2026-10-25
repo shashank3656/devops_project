@@ -57,6 +57,7 @@ interface NotificationSettingsSnapshot {
   notify_handovers: boolean;
   notify_blocked_promotions: boolean;
   notify_gate_approval_expiring: boolean;
+  notify_cost: boolean;
 }
 
 interface OpsAnalyticsPayload {
@@ -224,6 +225,7 @@ export default function ApprovalNotificationAnalyticsPage() {
               <div><span>Webhook</span><strong>{analytics.settings.webhook_configured ? 'Connected' : 'Not set'}</strong></div>
               <div><span>Expiring certificates</span><strong>{analytics.settings.notify_expiring_assets ? 'On' : 'Off'}</strong></div>
               <div><span>Handovers</span><strong>{analytics.settings.notify_handovers ? 'On' : 'Off'}</strong></div>
+              <div><span>Cost</span><strong>{analytics.settings.notify_cost ? 'On' : 'Off'}</strong></div>
             </div>
 
             <div className="alert-trends">

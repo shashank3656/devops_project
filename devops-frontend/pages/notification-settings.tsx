@@ -29,6 +29,7 @@ interface NotificationSettings {
   notify_handovers: boolean;
   notify_blocked_promotions: boolean;
   notify_gate_approval_expiring: boolean;
+  notify_cost: boolean;
   updated_at?: string;
   updated_by_username?: string;
 }
@@ -52,6 +53,7 @@ const defaultSettings: NotificationSettings = {
   notify_handovers: true,
   notify_blocked_promotions: true,
   notify_gate_approval_expiring: true,
+  notify_cost: true,
 };
 
 function formatDateTime(value?: string): string {
@@ -138,6 +140,7 @@ export default function NotificationSettingsPage() {
           notify_handovers: settings.notify_handovers,
           notify_blocked_promotions: settings.notify_blocked_promotions,
           notify_gate_approval_expiring: settings.notify_gate_approval_expiring,
+          notify_cost: settings.notify_cost,
         }),
       });
       if (response.status === 401 || response.status === 403) {
@@ -243,6 +246,10 @@ export default function NotificationSettingsPage() {
                 <label className="alert-switch-row">
                   <span className="alert-switch">On-call handovers<input type="checkbox" checked={settings.notify_handovers} onChange={(event) => updateField('notify_handovers', event.target.checked)} /></span>
                   <p className="alert-hint">When a handover is submitted, acknowledged, revised, or overdue. Incident reassignment is a separate choice on acknowledgement.</p>
+                </label>
+                <label className="alert-switch-row">
+                  <span className="alert-switch">Cost anomalies and budgets<input type="checkbox" checked={settings.notify_cost} onChange={(event) => updateField('notify_cost', event.target.checked)} /></span>
+                  <p className="alert-hint">When a like-for-like cost anomaly or budget threshold is detected. Budgets never stop workloads. Secret values are never included.</p>
                 </label>
               </div>
             </section>

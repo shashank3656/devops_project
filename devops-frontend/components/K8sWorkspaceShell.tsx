@@ -108,6 +108,13 @@ export default function K8sWorkspaceShell({
                   · env <strong>{scope.environment}</strong>
                 </>
               ) : null}
+              {' · '}
+              <Link
+                href={`/cost/kubernetes?cluster_name=${encodeURIComponent(scope.cluster_name || '')}&project_id=${encodeURIComponent(scope.project_id || '')}&environment=${encodeURIComponent(scope.environment || '')}`}
+                className="k8s-workspace-rail__link"
+              >
+                Cost for this cluster
+              </Link>
             </p>
           ) : (
             <p className="portal-page__subtitle" style={{ marginTop: 8 }}>

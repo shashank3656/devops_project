@@ -26,6 +26,7 @@ export const SECTION_PAGES: { section: SectionKey; key: string; label: string }[
   { section: 'daily', key: 'services', label: 'Service inventory' },
   { section: 'operations', key: 'on-call', label: 'On-call' },
   { section: 'operations', key: 'certificates', label: 'Certificates & domains' },
+  { section: 'operations', key: 'cost', label: 'Cost' },
   { section: 'operations', key: 'maintenance', label: 'Maintenance' },
   { section: 'operations', key: 'reports', label: 'Reports' },
   { section: 'operations', key: 'webhooks', label: 'Webhooks' },

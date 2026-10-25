@@ -85,6 +85,7 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/services', key: 'services' },
   { prefix: '/on-call', key: 'on-call' },
   { prefix: '/certificates', key: 'certificates' },
+  { prefix: '/cost', key: 'cost' },
   { prefix: '/operations/webhooks', key: 'webhooks' },
   { prefix: '/maintenance', key: 'maintenance' },
   { prefix: '/reports-automation', key: 'reports' },
@@ -127,6 +128,7 @@ export function homeFor(grants: PortalGrants): string {
   if (grants.daily && pageAllowed('/dashboard', grants)) return '/dashboard';
   if (grants.requests && pageAllowed('/my-requests', grants)) return '/my-requests';
   if (grants.operations && pageAllowed('/on-call', grants)) return '/on-call';
+  if (grants.operations && pageAllowed('/cost', grants)) return '/cost';
   if (grants.infrastructure && pageAllowed('/iam', grants)) return '/iam';
   if (grants.infrastructure && pageAllowed('/k8s', grants)) return '/k8s';
   if (grants.security && pageAllowed('/security/vulnerabilities', grants)) return '/security/vulnerabilities';
@@ -169,6 +171,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
   if (grants.operations) {
     if (pageOn(grants, 'on-call', true)) prefixes.push('/on-call');
     if (pageOn(grants, 'certificates', true)) prefixes.push('/certificates');
+    if (pageOn(grants, 'cost', true)) prefixes.push('/cost');
     if (pageOn(grants, 'maintenance', true)) prefixes.push('/maintenance');
     if (pageOn(grants, 'reports', true)) prefixes.push('/reports-automation');
     if (pageOn(grants, 'webhooks', true)) prefixes.push('/operations/webhooks');

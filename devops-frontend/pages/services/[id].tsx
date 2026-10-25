@@ -84,6 +84,64 @@ function readTeams(data: { teams?: unknown; owner_teams?: unknown }): OwnerTeam[
     .filter((item) => item.id > 0 && item.name);
 }
 
+function ServiceCostStrip({
+  serviceName,
+  apiUrl,
+  token,
+}: {
+  serviceName: string;
+  apiUrl: string;
+  token: string;
+}) {
+  const [display, setDisplay] = useState('Unknown');
+  const [note, setNote] = useState('Operating cost stays Unknown until a billed line is allocated to this service.');
+  const [windowLabel, setWindowLabel] = useState('');
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    if (!token || !serviceName) return;
+    const params = new URLSearchParams({ name: serviceName });
+    fetch(`${apiUrl}/api/cost/service?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (res.status === 403) {
+          setHidden(true);
+          return null;
+        }
+        const data = await res.json().catch(() => ({})) as {
+          operating_cost?: { display?: string };
+          window_start?: string;
+          window_end?: string;
+          note?: string;
+        };
+        if (!res.ok) throw new Error('unavailable');
+        return data;
+      })
+      .then((data) => {
+        if (!data) return;
+        setDisplay(data.operating_cost?.display || 'Unknown');
+        setNote(data.note || 'Operating cost for allocated billed lines. No match stays Unknown, never $0.');
+        setWindowLabel(data.window_start ? `${data.window_start} to ${data.window_end}` : '');
+      })
+      .catch(() => {
+        setDisplay('Unknown');
+        setNote('Operating cost could not be loaded. Missing coverage stays Unknown, never $0.');
+      });
+  }, [apiUrl, serviceName, token]);
+  if (hidden) return null;
+  return (
+    <section className="portal-surface">
+      <div className="portal-surface__header">
+        <div>
+          <h2 className="portal-surface__title">Operating cost</h2>
+          <p className="portal-surface__subtitle">{note}</p>
+        </div>
+        <Link href={`/cost/explorer?portal_service=${encodeURIComponent(serviceName)}`} className="btn btn-secondary">Open explorer</Link>
+      </div>
+      <p className="portal-surface__title">{display}</p>
+      {windowLabel ? <p className="portal-surface__subtitle">{windowLabel}</p> : null}
+    </section>
+  );
+}
+
 function ServiceCertificates({
   serviceName,
   projectId,
@@ -538,6 +596,7 @@ export default function ServiceDetailPage() {
                       </div>
                       {item.dashboard_url ? <a href={item.dashboard_url} target="_blank" rel="noreferrer">Open dashboard</a> : <p className="sre-meta__empty">Grafana {known(item.grafana_uid)}</p>}
                     </section>
+                    <ServiceCostStrip serviceName={item.service} apiUrl={apiUrl} token={sessionToken} />
                     <ServiceCertificates serviceName={item.service} projectId={item.project_id} environment={item.environment} apiUrl={apiUrl} token={sessionToken} />
                     <section className="portal-surface">
                       <div className="portal-surface__header">

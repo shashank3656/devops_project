@@ -21,7 +21,7 @@ import {
   IconUser,
 } from './Icons';
 import { SupportHub } from '@infragate/ui';
-import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
+import { supportArticles, supportQuickPromptsForPath } from '../lib/supportContent';
 import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { expireSession, readAccessDenied, rememberAccessDenied } from '../lib/sessionExpiry';
 import { isRecordDetailPath } from '../lib/scopeHref';
@@ -86,6 +86,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/on-call': 'On-call',
   '/on-call/handovers': 'Handovers',
   '/certificates': 'Certificates & domains',
+  '/cost': 'Cost analysis',
+  '/cost/accounts': 'Account spend',
+  '/cost/projects': 'Project spend',
+  '/cost/cloud': 'Cloud account spend',
+  '/cost/explorer': 'Cost explorer',
+  '/cost/optimization': 'Cost optimization',
+  '/cost/anomalies': 'Cost anomalies',
+  '/cost/budgets': 'Cost budgets',
+  '/cost/savings': 'Cost savings',
+  '/cost/kubernetes': 'Kubernetes cost',
+  '/cost/configuration': 'Cost configuration',
   '/operations/webhooks': 'Webhooks',
   '/maintenance': 'Maintenance',
   '/service-desk': 'Service desk',
@@ -231,6 +242,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
+  const [supportSeed, setSupportSeed] = useState('');
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
@@ -539,7 +551,20 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     setNotifyOpen(false);
     setProfileOpen(false);
     setSupportOpen(false);
+    setSupportSeed('');
   }, [pathname]);
+
+  useEffect(() => {
+    const onAsk = (event: Event) => {
+      const question = (event as CustomEvent<{ question?: string }>).detail?.question || '';
+      if (!question) return;
+      setSupportSeed(question);
+      setSupportTab('chat');
+      setSupportOpen(true);
+    };
+    window.addEventListener('opstrellis-cost-ask', onAsk as EventListener);
+    return () => window.removeEventListener('opstrellis-cost-ask', onAsk as EventListener);
+  }, []);
 
   useEffect(() => {
     if (!notifyOpen && !profileOpen) return;
@@ -658,6 +683,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { href: '/on-call/handovers', label: 'Handovers' },
         ] },
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
+        { href: '/cost', label: 'Cost', Icon: IconFileText, children: [
+          { href: '/cost', label: 'Overview' },
+          { href: '/cost/explorer', label: 'Explorer' },
+          { href: '/cost/optimization', label: 'Optimization' },
+          { href: '/cost/anomalies', label: 'Anomalies' },
+          { href: '/cost/budgets', label: 'Budgets' },
+          { href: '/cost/savings', label: 'Savings' },
+          { href: '/cost/kubernetes', label: 'Kubernetes' },
+          { href: '/cost/configuration', label: 'Configuration' },
+        ] },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
@@ -679,6 +714,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { href: '/on-call/handovers', label: 'Handovers' },
         ] },
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
+        { href: '/cost', label: 'Cost', Icon: IconFileText, children: [
+          { href: '/cost', label: 'Overview' },
+          { href: '/cost/explorer', label: 'Explorer' },
+          { href: '/cost/optimization', label: 'Optimization' },
+          { href: '/cost/anomalies', label: 'Anomalies' },
+          { href: '/cost/budgets', label: 'Budgets' },
+          { href: '/cost/savings', label: 'Savings' },
+          { href: '/cost/kubernetes', label: 'Kubernetes' },
+          { href: '/cost/configuration', label: 'Configuration' },
+        ] },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
@@ -1285,6 +1330,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'create-change', label: 'Create change request', href: '/changes/new', hint: 'Open a change' },
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar', hint: 'Scheduled changes' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes', hint: 'What shipped' },
+          { id: 'cost', label: 'Cost', href: '/cost', hint: 'Operating bill and request estimates' },
           { id: 'services', label: 'Service inventory', href: '/services', hint: 'Production services, observability, and findings' },
           { id: 'add-service', label: 'Add service', href: '/services/new', hint: 'Register a service' },
           { id: 'operator-activity', label: 'Operator activity', href: '/activity', hint: 'Recent operator actions' },
@@ -1304,7 +1350,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         currentPath={pathname}
         currentTitle={pageTitle}
         articles={supportArticles}
-        quickPrompts={supportQuickPrompts}
+        quickPrompts={supportQuickPromptsForPath(pathname)}
+        seedQuestion={supportSeed}
+        onSeedConsumed={() => setSupportSeed('')}
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}
         remapIncidentCitationLinks

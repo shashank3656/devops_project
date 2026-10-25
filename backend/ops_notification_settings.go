@@ -28,6 +28,7 @@ type opsNotificationSettings struct {
 	NotifyHandovers            bool       `json:"notify_handovers"`
 	NotifyBlockedPromotions    bool       `json:"notify_blocked_promotions"`
 	NotifyGateApprovalExpiring bool       `json:"notify_gate_approval_expiring"`
+	NotifyCost                 bool       `json:"notify_cost"`
 	UpdatedAt                  *time.Time `json:"updated_at,omitempty"`
 	UpdatedBy                  *int       `json:"updated_by,omitempty"`
 	UpdatedByUsername          string     `json:"updated_by_username,omitempty"`
@@ -44,6 +45,7 @@ func defaultOpsNotificationSettings() opsNotificationSettings {
 		NotifyHandovers:            true,
 		NotifyBlockedPromotions:    true,
 		NotifyGateApprovalExpiring: true,
+		NotifyCost:                 true,
 	}
 	settings.applyDerivedConfiguration()
 	return settings
@@ -111,6 +113,7 @@ func loadOpsNotificationSettings() (opsNotificationSettings, error) {
 		       COALESCE(notify_handovers, TRUE),
 		       notify_blocked_promotions,
 		       notify_gate_approval_expiring,
+		       COALESCE(notify_cost, TRUE),
 		       updated_at,
 		       updated_by,
 		       COALESCE(u.username, '')
@@ -130,6 +133,7 @@ func loadOpsNotificationSettings() (opsNotificationSettings, error) {
 		&settings.NotifyHandovers,
 		&settings.NotifyBlockedPromotions,
 		&settings.NotifyGateApprovalExpiring,
+		&settings.NotifyCost,
 		&updatedAt,
 		&updatedBy,
 		&settings.UpdatedByUsername,
@@ -172,10 +176,11 @@ func upsertOpsNotificationSettings(managerID int, settings opsNotificationSettin
 			notify_handovers,
 			notify_blocked_promotions,
 			notify_gate_approval_expiring,
+			notify_cost,
 			updated_by,
 			updated_at
 		) VALUES (
-			1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP
+			1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP
 		)
 		ON CONFLICT (id) DO UPDATE SET
 			in_app_enabled = EXCLUDED.in_app_enabled,
@@ -190,6 +195,7 @@ func upsertOpsNotificationSettings(managerID int, settings opsNotificationSettin
 			notify_handovers = EXCLUDED.notify_handovers,
 			notify_blocked_promotions = EXCLUDED.notify_blocked_promotions,
 			notify_gate_approval_expiring = EXCLUDED.notify_gate_approval_expiring,
+			notify_cost = EXCLUDED.notify_cost,
 			updated_by = EXCLUDED.updated_by,
 			updated_at = CURRENT_TIMESTAMP
 	`,
@@ -205,6 +211,7 @@ func upsertOpsNotificationSettings(managerID int, settings opsNotificationSettin
 		settings.NotifyHandovers,
 		settings.NotifyBlockedPromotions,
 		settings.NotifyGateApprovalExpiring,
+		settings.NotifyCost,
 		managerID,
 	); err != nil {
 		return settings, err
@@ -222,6 +229,8 @@ func isOpsNotificationCategoryEnabled(settings opsNotificationSettings, category
 		return settings.NotifyBlockedPromotions
 	case "gate_approval_expiring":
 		return settings.NotifyGateApprovalExpiring
+	case "cost_anomaly", "cost_recommendation", "cost_budget":
+		return settings.NotifyCost
 	default:
 		return true
 	}

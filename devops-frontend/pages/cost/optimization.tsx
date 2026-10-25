@@ -1,0 +1,203 @@
+import Head from 'next/head';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { useEffect, useState } from 'react';
+import CostNav from '../../components/CostNav';
+import DevOpsLayout from '../../components/DevOpsLayout';
+import { useApiUrl } from '../../context/ApiUrlContext';
+import { CostOptimization, CostRecommendation, costQuery, fetchCostJson } from '../../lib/cost';
+
+export default function CostOptimizationPage() {
+  const apiUrl = useApiUrl();
+  const router = useRouter();
+  const basis = typeof router.query.basis === 'string' && router.query.basis === 'amortized' ? 'amortized' : 'actual';
+  const currency = typeof router.query.currency === 'string' && router.query.currency.trim() ? router.query.currency : 'USD';
+  const from = typeof router.query.from === 'string' ? router.query.from : '';
+  const to = typeof router.query.to === 'string' ? router.query.to : '';
+  const calc = typeof router.query.calc === 'string' ? router.query.calc : '';
+  const [data, setData] = useState<CostOptimization | null>(null);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState('');
+  const [open, setOpen] = useState<CostRecommendation | null>(null);
+  const [changeNumber, setChangeNumber] = useState('');
+  const [reason, setReason] = useState('');
+  const [reviewBy, setReviewBy] = useState('');
+  const [confounders, setConfounders] = useState('');
+
+  const load = () => {
+    if (!router.isReady) return;
+    setLoading(true);
+    fetchCostJson<CostOptimization>(apiUrl, `/api/cost/recommendations${costQuery(basis, currency, { from, to, calc })}`)
+      .then((payload) => {
+        setData(payload);
+        setError('');
+        const match = (payload.recommendations || []).find((row) => (open?.calc_id || calc) && row.calc_id === (open?.calc_id || calc));
+        setOpen(match || open);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+  }, [apiUrl, router.isReady, basis, currency, from, to, calc]);
+
+  const act = async (action: string, extra?: Record<string, string>) => {
+    if (!open) return;
+    setActing(action);
+    setNotice('');
+    try {
+      const data = await fetchCostJson<{ note?: string; recommendation?: CostRecommendation }>(apiUrl, `/api/cost/recommendations/${encodeURIComponent(open.calc_id)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          action,
+          change_number: changeNumber,
+          reason,
+          review_by: reviewBy,
+          confounders,
+          ...(extra || {}),
+        }),
+      });
+      setNotice(data.note || 'Saved. Infrastructure was not changed.');
+      if (data.recommendation) setOpen(data.recommendation);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Recommendation could not be updated.');
+    } finally {
+      setActing('');
+    }
+  };
+
+  const blocked = open?.status === 'blocked' || open?.lifecycle === 'blocked';
+
+  return (
+    <DevOpsLayout>
+      <Head><title>Cost optimization</title></Head>
+      <div className="portal-page">
+        <div className="portal-page__header">
+          <div>
+            <span className="portal-page__eyebrow">Operations</span>
+            <h1 className="portal-page__title">Cost optimization</h1>
+            <p className="portal-page__subtitle">
+              Detected → review → accepted → change linked → verified or Inconclusive. Acceptance is not permission to execute. Missing metrics still block rightsizing.
+            </p>
+          </div>
+        </div>
+        <CostNav current="optimization" />
+        {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
+        {notice ? <div className="alert alert-info" role="status">{notice}</div> : null}
+        <div className="portal-pill-row">
+          <span className="portal-pill">Non-overlapping savings {data?.nonoverlapping_savings?.display || 'Unknown'}</span>
+          <span className="portal-pill">Metrics {data?.metrics_ready ? 'Ready' : 'Unknown'}</span>
+          <span className="portal-pill">Executes No</span>
+          <span className="portal-pill">Pauses workloads No</span>
+        </div>
+        {loading ? <div className="empty-state">Loading recommendations…</div> : null}
+        {!loading && !(data?.recommendations || []).length ? (
+          <div className="empty-state">No recommendations for this window. Import billed lines first. Rightsizing stays blocked until utilization exists.</div>
+        ) : null}
+        {!loading && (data?.opportunity_groups || []).length ? (
+          <section className="portal-surface portal-surface--table">
+            <h2 className="portal-surface__title">Opportunity groups</h2>
+            <table className="portal-table">
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Resource</th>
+                  <th>Calculations</th>
+                  <th>Capped savings</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.opportunity_groups || []).map((row) => (
+                  <tr key={row.group_id}>
+                    <td>{row.group_id}</td>
+                    <td>{row.resource_id}</td>
+                    <td>{(row.calc_ids || []).join(', ')}</td>
+                    <td>{row.savings?.display || 'Unknown'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="portal-surface__subtitle">Mutually exclusive actions share a group. Those dollar amounts are not added together.</p>
+          </section>
+        ) : null}
+        {!loading && (data?.recommendations || []).length ? (
+          <section className="portal-surface portal-surface--table">
+            <table className="portal-table">
+              <thead>
+                <tr>
+                  <th>Finding</th>
+                  <th>Lifecycle</th>
+                  <th>Impact</th>
+                  <th>Confidence</th>
+                  <th>Savings</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.recommendations || []).map((row) => (
+                  <tr key={row.calc_id}>
+                    <td>
+                      {row.finding_type}
+                      <div className="portal-surface__subtitle">{row.resource_id} · {row.calc_id}</div>
+                    </td>
+                    <td>{row.lifecycle || row.status}{row.waiting_for ? ` · ${row.waiting_for}` : ''}</td>
+                    <td>{row.impact}</td>
+                    <td>{row.confidence}</td>
+                    <td>{row.savings_high?.display || 'Unknown'}</td>
+                    <td>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(row)}>Review</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+        {open ? (
+          <section className="portal-surface">
+            <h2 className="portal-surface__title">{open.calc_id}</h2>
+            <dl className="sre-meta">
+              <div className="sre-meta__item"><dt>Evidence</dt><dd>{open.evidence}</dd></div>
+              <div className="sre-meta__item"><dt>Calculation</dt><dd>{open.calculation}</dd></div>
+              <div className="sre-meta__item"><dt>Proposed action</dt><dd>{open.proposed_action}</dd></div>
+              <div className="sre-meta__item"><dt>Verification</dt><dd>{open.verification || open.lifecycle || 'Not measured'}</dd></div>
+              <div className="sre-meta__item"><dt>Bill reduction</dt><dd>{open.bill_reduction?.display || 'Unknown'}</dd></div>
+              <div className="sre-meta__item"><dt>Allocation reduction</dt><dd>{open.allocation_reduction?.display || 'Unknown'}</dd></div>
+              <div className="sre-meta__item"><dt>Cost avoidance</dt><dd>{open.cost_avoidance?.display || 'Unknown'}</dd></div>
+              {open.change_id ? <div className="sre-meta__item"><dt>Linked change</dt><dd><Link href={open.change_href || `/changes/${open.change_id}`}>{open.change_number}</Link></dd></div> : null}
+              {open.blocked_reason ? <div className="sre-meta__item"><dt>Blocked</dt><dd>{open.blocked_reason}</dd></div> : null}
+            </dl>
+            <div className="portal-form-grid">
+              <label className="label">Existing change number
+                <input className="input" value={changeNumber} onChange={(event) => setChangeNumber(event.target.value)} placeholder="CHG0000001" />
+              </label>
+              <label className="label">Dismiss reason
+                <input className="input" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Owner deferred" />
+              </label>
+              <label className="label">Review date
+                <input className="input" type="date" value={reviewBy} onChange={(event) => setReviewBy(event.target.value)} />
+              </label>
+              <label className="label">Confounders
+                <input className="input" value={confounders} onChange={(event) => setConfounders(event.target.value)} placeholder="Price change, traffic, commitment" />
+              </label>
+            </div>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-secondary" disabled={!!acting || data?.can_operate === false} onClick={() => void act('review')}>Under review</button>
+              <button type="button" className="btn btn-primary" disabled={!!acting || blocked || data?.can_operate === false} onClick={() => void act('accept')}>Accept</button>
+              <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || !changeNumber || data?.can_operate === false} onClick={() => void act('link')}>Link change</button>
+              <Link href="/changes/new" className="btn btn-secondary">Open a change</Link>
+              <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || data?.can_operate === false} onClick={() => void act('verify')}>Measure</button>
+              <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || data?.can_operate === false} onClick={() => void act('verify', { result: 'inconclusive' })}>Mark Inconclusive</button>
+              <button type="button" className="btn btn-secondary" disabled={!!acting || !reason || !reviewBy || data?.can_operate === false} onClick={() => void act('dismiss')}>Dismiss</button>
+            </div>
+            <p className="portal-surface__subtitle">Linking uses an existing CHG. This page never resizes, deletes, or applies the change. Verification can be Inconclusive.</p>
+          </section>
+        ) : null}
+      </div>
+    </DevOpsLayout>
+  );
+}

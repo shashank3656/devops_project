@@ -348,6 +348,9 @@ export default function CloudAccountDetailPage() {
                 <Link href="/environments" className="btn btn-secondary">
                   Environment catalog
                 </Link>
+                <Link href="/cost/configuration" className="btn btn-secondary">
+                  Cost
+                </Link>
               </div>
             </section>
 

@@ -34,6 +34,8 @@ interface SupportHubProps {
   token?: string | null;
   /** DevOps portal: open incident editor from copilot citation links. */
   remapIncidentCitationLinks?: boolean;
+  seedQuestion?: string;
+  onSeedConsumed?: () => void;
 }
 
 function matchesRoute(article: SupportArticle, currentPath: string): boolean {
@@ -130,6 +132,8 @@ export default function SupportHub({
   apiUrl,
   token,
   remapIncidentCitationLinks = false,
+  seedQuestion,
+  onSeedConsumed,
 }: SupportHubProps) {
   const [activeTab, setActiveTab] = useState<SupportTab>(initialTab);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -213,11 +217,17 @@ export default function SupportHub({
     );
   }, [articles, contextArticle, docsQuery, selectedCategory]);
 
+  useEffect(() => {
+    if (!open || !seedQuestion) return;
+    setInput(seedQuestion);
+  }, [open, seedQuestion]);
+
   if (!open) return null;
 
   const handleSend = (seed?: string) => {
     const question = (seed ?? input).trim();
     if (!question) return;
+    onSeedConsumed?.();
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: 'user', text: question };
     setMessages((current) => [...current, userMessage]);
     setInput('');
