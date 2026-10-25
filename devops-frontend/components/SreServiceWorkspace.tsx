@@ -832,6 +832,8 @@ export default function SreServiceWorkspace({
 
           {tab === 'findings' ? (
         <div className="sre-panel">
+          <p className="form-section__copy">Monitor findings stay here. Dependency advisories are under Security → Global Vulnerabilities & Patches.</p>
+          <p><Link href={`/security/vulnerabilities?tab=findings&service_id=${serviceId}`}>Open dependency findings</Link></p>
           <div className="sre-filter-bar">
             <label>Severity
               <select className="input" value={findingFilter.severity} onChange={(event) => setFindingFilter({ ...findingFilter, severity: event.target.value })}>

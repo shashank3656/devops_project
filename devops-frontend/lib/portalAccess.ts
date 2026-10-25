@@ -87,8 +87,9 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/operations/webhooks', key: 'webhooks' },
   { prefix: '/maintenance', key: 'maintenance' },
   { prefix: '/reports-automation', key: 'reports' },
+  { prefix: '/security/vulnerabilities', key: 'vulnerabilities' },
   { prefix: '/security/cloud-scan', key: 'cloud-scan' },
-  { prefix: '/security/code-scan', key: 'code-scan' },
+  { prefix: '/security/code-scan', key: 'vulnerabilities' },
   { prefix: '/security/findings', key: 'findings' },
   { prefix: '/credential-audit', key: 'secrets' },
   { prefix: '/previews', key: 'previews' },
@@ -127,6 +128,7 @@ export function homeFor(grants: PortalGrants): string {
   if (grants.operations && pageAllowed('/on-call', grants)) return '/on-call';
   if (grants.infrastructure && pageAllowed('/iam', grants)) return '/iam';
   if (grants.infrastructure && pageAllowed('/k8s', grants)) return '/k8s';
+  if (grants.security && pageAllowed('/security/vulnerabilities', grants)) return '/security/vulnerabilities';
   if (grants.security && pageAllowed('/security/cloud-scan', grants)) return '/security/cloud-scan';
   if (grants.records && pageAllowed('/previews', grants)) return '/previews';
   if (grants.portalAccess) return '/portal-access';

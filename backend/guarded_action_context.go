@@ -23,22 +23,25 @@ type guardedFreezeBrief struct {
 }
 
 type guardedActionContext struct {
-	Action         string                 `json:"action"`
-	CanAct         bool                   `json:"can_act"`
-	BlockReason    string                 `json:"block_reason,omitempty"`
-	ResourceLabel  string                 `json:"resource_label,omitempty"`
-	Environment    string                 `json:"environment,omitempty"`
-	TargetEnv      string                 `json:"target_environment,omitempty"`
-	Image          string                 `json:"image,omitempty"`
-	CommitSHA      string                 `json:"commit_sha,omitempty"`
-	Freeze         guardedFreezeBrief     `json:"freeze"`
-	OpenIncidents  []guardedIncidentBrief `json:"open_incidents"`
-	Warnings       []string               `json:"warnings,omitempty"`
+	Action        string                 `json:"action"`
+	CanAct        bool                   `json:"can_act"`
+	BlockReason   string                 `json:"block_reason,omitempty"`
+	ResourceLabel string                 `json:"resource_label,omitempty"`
+	Environment   string                 `json:"environment,omitempty"`
+	TargetEnv     string                 `json:"target_environment,omitempty"`
+	Image         string                 `json:"image,omitempty"`
+	CommitSHA     string                 `json:"commit_sha,omitempty"`
+	Freeze        guardedFreezeBrief     `json:"freeze"`
+	OpenIncidents []guardedIncidentBrief `json:"open_incidents"`
+	Warnings      []string               `json:"warnings,omitempty"`
 }
 
 func devopsUserIsManager(userID int) bool {
 	if userID <= 0 {
 		return false
+	}
+	if user, err := GetUserByID(userID); err == nil && user != nil && strings.EqualFold(user.Role, "admin") {
+		return true
 	}
 	prof, err := GetDevopsProfile(userID)
 	return err == nil && prof != nil && prof.IsManager

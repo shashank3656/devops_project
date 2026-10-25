@@ -7142,6 +7142,16 @@ html[data-theme] .devops-layout .work-board {
   gap: 12px;
 }
 
+.ops-minis--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  .ops-minis--four {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ops-mini {
   border-radius: 16px;
   color: inherit;
@@ -9098,6 +9108,66 @@ html[data-theme='dark'] .devops-layout .access-chip.is-on {
   background: #2a2444;
   border-color: rgba(139, 120, 230, 0.45);
   color: #f3eefe;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-status {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-status dd {
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-intel {
+  border-color: rgba(196, 181, 253, 0.28);
+  background: rgba(109, 74, 255, 0.16);
+  color: var(--ot-cool-white, #F5F7FC);
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-check {
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-token code {
+  background: #192238;
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-coverage {
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-coverage li {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-bulk .label {
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-filters {
+  border-color: rgba(196, 181, 253, 0.22);
+  background: #192238;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-filters__fields label {
+  color: #c4b5fd;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-filters__options {
+  border-top-color: rgba(245, 247, 252, 0.08);
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-filters__chip {
+  border-color: rgba(245, 247, 252, 0.12);
+  background: #101525;
+  color: #f5f7fc;
+}
+
+html[data-theme='dark'] .devops-layout .sec-vuln-filters__chip.is-on {
+  border-color: rgba(109, 74, 255, 0.55);
+  background: rgba(109, 74, 255, 0.22);
+  color: #c4b5fd;
 }
 
 html[data-theme='dark'] .devops-layout .access-status.is-ready {
@@ -11545,3 +11615,428 @@ html[data-theme='dark'] .sre-sli--unknown { background: #192238; color: #c4b5fd;
 html[data-theme='dark'] .sre-cards--watch .sre-card.is-selected {
   outline-color: #c4b5fd;
 }
+
+html[data-theme] .devops-layout .portal-page .ops-minis--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  html[data-theme] .devops-layout .portal-page .ops-minis--four {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sec-vuln-tabs {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.sec-vuln-tabs a {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.sec-vuln-status {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px 28px;
+  margin: 0 0 12px;
+  padding: 0 0 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid #e7e9f0;
+}
+
+.sec-vuln-status dt {
+  margin: 0 0 2px;
+  color: #58677f;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.sec-vuln-status dd {
+  margin: 0;
+  color: #17233b;
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.sec-vuln-inline {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: end;
+  gap: 12px 14px;
+  margin: 12px 0 16px;
+}
+
+.sec-vuln-inline .label {
+  flex: 1 1 0;
+  min-width: 140px;
+}
+
+.sec-vuln-inline .portal-form-actions {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.sec-vuln-inline--ci {
+  flex-wrap: wrap;
+}
+
+.sec-vuln-inline--ci .label:has(textarea) {
+  flex: 1 1 100%;
+}
+
+.sec-vuln-inline--digest {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: 14px 16px;
+  margin: 0;
+}
+
+.sec-vuln-inline--digest .label {
+  min-width: 0;
+}
+
+.sec-vuln-inline--digest .label:has(textarea),
+.sec-vuln-inline--digest .portal-form-actions {
+  grid-column: 1 / -1;
+}
+
+.sec-vuln-inline--digest textarea.input {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.sec-vuln-inline--digest .portal-form-actions {
+  justify-content: flex-end;
+}
+
+.sec-vuln-filters {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(109, 74, 255, 0.18);
+  border-radius: 14px;
+  background: #f5f7fc;
+}
+
+.sec-vuln-filters__fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+}
+
+.sec-vuln-filters__search {
+  grid-column: auto;
+}
+
+.sec-vuln-filters__fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: #58677f;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sec-vuln-filters__fields .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.sec-vuln-filters__options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(23, 35, 59, 0.08);
+}
+
+.sec-vuln-filters__toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sec-vuln-filters__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #d5d9e4;
+  background: #fff;
+  color: #17233b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sec-vuln-filters__chip input {
+  width: 14px;
+  height: 14px;
+  accent-color: #6d4aff;
+}
+
+.sec-vuln-filters__chip.is-on {
+  border-color: rgba(109, 74, 255, 0.45);
+  background: rgba(196, 181, 253, 0.28);
+}
+
+.sec-vuln-filters__options .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.sec-vuln-inline--policy {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.sec-vuln-inline--policy .sec-vuln-status,
+.sec-vuln-inline--policy .form-section__copy,
+.sec-vuln-inline--policy .portal-form-actions {
+  grid-column: 1 / -1;
+}
+
+.sec-vuln-intel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid rgba(109, 74, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(196, 181, 253, 0.16);
+  color: var(--ot-ink);
+}
+
+.sec-vuln-intel span {
+  flex: 1 1 240px;
+}
+
+.sec-vuln-workspace,
+.sec-vuln-split {
+  display: grid;
+  gap: 16px;
+}
+
+.sec-vuln-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.sec-vuln-wizard .ig-stepper {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  row-gap: 0;
+}
+
+.sec-vuln-wizard .ig-stepper__label {
+  font-size: 12px;
+}
+
+.sec-vuln-split .portal-form-actions,
+.sec-vuln-split .form-section__copy,
+.sec-vuln-split .sre-meta,
+.sec-vuln-workspace .portal-form-actions,
+.sec-vuln-workspace .form-section__copy {
+  grid-column: 1 / -1;
+}
+
+.sec-vuln-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  color: #17233b;
+  font-size: 14px;
+}
+
+.sec-vuln-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.sec-vuln-run {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #101525;
+  color: #f5f7fc;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.sec-vuln-token {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.sec-vuln-token code {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #f5f7fc;
+  color: #17233b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.sec-vuln-row-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.sec-vuln-bulk .ig-bulkbar {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  max-width: none;
+  width: 100%;
+  margin: 0 0 16px;
+  justify-content: flex-start;
+}
+
+.sec-vuln-bulk .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #17233b;
+  font-size: 12px;
+}
+
+.sec-vuln-bulk .input {
+  min-height: 32px;
+  width: 148px;
+}
+
+.sec-vuln-coverage {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  color: #58677f;
+  font-size: 13px;
+}
+
+.sec-vuln-coverage li {
+  padding: 6px 0;
+  border-bottom: 1px solid #e7e9f0;
+}
+
+.sec-vuln-log {
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow: auto;
+  border-radius: 10px;
+  background: #101525;
+  color: #f5f7fc;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sec-vuln-log li {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(245, 247, 252, 0.08);
+}
+
+.sec-vuln-log strong {
+  color: #c4b5fd;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.sec-vuln-log small {
+  color: #9aa6bc;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .sec-vuln-split {
+    grid-template-columns: 1fr;
+  }
+
+  .sec-vuln-inline,
+  .sec-vuln-status {
+    flex-wrap: wrap;
+  }
+
+  .sec-vuln-inline--policy {
+    grid-template-columns: 1fr;
+  }
+
+  .sec-vuln-inline--digest {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sec-vuln-filters__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sec-vuln-filters__search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .sec-vuln-inline--digest {
+    grid-template-columns: 1fr;
+  }
+
+  .sec-vuln-filters__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .sec-vuln-filters__options {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.sec-sev {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #d5d9e4;
+  background: #eef1f8;
+  color: #58677f;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sec-sev--critical { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.sec-sev--high { background: #ffedd5; border-color: #fed7aa; color: #9a3412; }
+.sec-sev--medium { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+
+html[data-theme='dark'] .sec-sev { background: #192238; border-color: #2a3654; color: #c4b5fd; }
+html[data-theme='dark'] .sec-sev--critical { background: #3f1d1d; border-color: #7f1d1d; color: #fecaca; }
+html[data-theme='dark'] .sec-sev--high { background: #3a2a20; border-color: #9a3412; color: #fdba74; }
+html[data-theme='dark'] .sec-sev--medium { background: #3a3420; border-color: #854d0e; color: #fde68a; }

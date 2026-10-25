@@ -1,0 +1,952 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestVulnAlertKeysStayDeduped(t *testing.T) {
+	first := fmt.Sprintf("vuln:%d:%s:%s", 12, "fix_available", "2.4.2")
+	second := fmt.Sprintf("vuln:%d:%s:%s", 12, "fix_available", "2.4.2")
+	if first != second {
+		t.Fatal("retries of the same fix must reuse one logical alert key")
+	}
+	withdrawn := fmt.Sprintf("vuln:%d:%s", 12, "fix_withdrawn:2.4.2")
+	if withdrawn == first {
+		t.Fatal("a withdrawn fix must be a different event")
+	}
+}
+
+func TestCanonicalizeAdvisoryAliases(t *testing.T) {
+	canonical, aliases := canonicalizeAdvisoryIDs("CVE-2026-1111", "GHSA-aaaa-bbbb-cccc", "CVE-2026-1111")
+	if canonical != "GHSA-AAAA-BBBB-CCCC" {
+		t.Fatalf("canonical = %q", canonical)
+	}
+	if len(aliases) != 2 {
+		t.Fatalf("aliases = %v", aliases)
+	}
+}
+
+func TestVersionRangeMatchAndFixBoundary(t *testing.T) {
+	rng := parseGitHubVersionRange("npm", "demo-http-client", ">= 2.4.0 < 2.4.2", "2.4.2")
+	hit, _ := versionInRange("2.4.0", rng)
+	if !hit {
+		t.Fatal("2.4.0 should be affected")
+	}
+	hit, _ = versionInRange("2.4.1", rng)
+	if !hit {
+		t.Fatal("2.4.1 should be affected")
+	}
+	hit, why := versionInRange("2.4.2", rng)
+	if hit {
+		t.Fatalf("fixed version must not match: %s", why)
+	}
+}
+
+func TestNpmDoesNotMatchPythonSameName(t *testing.T) {
+	components := []vulnComponent{{
+		Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.0", Path: "package-lock.json", Resolved: true, Direct: true,
+	}}
+	advisories := []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-2026-1",
+		Title:       "Python only",
+		Severity:    "critical",
+		Ranges: []vulnAffectedRange{{
+			Ecosystem: "pypi", Package: "demo-http-client", Introduced: "0", Fixed: "3.0.0",
+		}},
+	}}
+	if got := correlateInventory(components, advisories); len(got) != 0 {
+		t.Fatalf("cross-ecosystem match = %+v", got)
+	}
+}
+
+func TestConfirmedMatchAndUnaffectedFix(t *testing.T) {
+	advisory := vulnAdvisoryRecord{
+		CanonicalID: "GHSA-DEMO-HTTP",
+		Aliases:     []string{"GHSA-DEMO-HTTP", "CVE-2026-4242"},
+		Title:       "demo-http-client before 2.4.2",
+		Severity:    "high",
+		CVSSScore:   7.5,
+		FirstFixed:  "2.4.2",
+		Ranges: []vulnAffectedRange{
+			parseGitHubVersionRange("npm", "demo-http-client", "< 2.4.2", "2.4.2"),
+		},
+	}
+	vulnerable := correlateInventory([]vulnComponent{{
+		Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.0", Path: "apps/api/package-lock.json",
+		ModulePath: "apps/api", Resolved: true, Direct: false, ParentPackage: "demo-sdk",
+	}}, []vulnAdvisoryRecord{advisory})
+	if len(vulnerable) != 1 || vulnerable[0].Confidence != vulnConfidenceConfirmed {
+		t.Fatalf("vulnerable = %+v", vulnerable)
+	}
+	if vulnerable[0].FirstFixed != "2.4.2" || vulnerable[0].Recommended != "2.4.2" {
+		t.Fatalf("fix fields = %+v", vulnerable[0])
+	}
+	if vulnerable[0].ParentPackage != "demo-sdk" {
+		t.Fatalf("parent = %q", vulnerable[0].ParentPackage)
+	}
+	fixed := correlateInventory([]vulnComponent{{
+		Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.2", Path: "apps/api/package-lock.json", ModulePath: "apps/api", Resolved: true, Direct: true,
+	}}, []vulnAdvisoryRecord{advisory})
+	if len(fixed) != 0 {
+		t.Fatalf("fixed version still matched: %+v", fixed)
+	}
+}
+
+func TestUnresolvedMavenIsCoverageNotVersion(t *testing.T) {
+	parsed := parsePOM("backend/pom.xml", "backend", `<project><dependencies><dependency><groupId>com.acme</groupId><artifactId>core</artifactId><version>${core.version}</version></dependency></dependencies></project>`)
+	if len(parsed.Components) != 1 || parsed.Components[0].Resolved || parsed.Components[0].Version != "" {
+		t.Fatalf("unresolved component = %+v", parsed.Components)
+	}
+	if len(parsed.Coverage) == 0 {
+		t.Fatal("expected coverage gap for BOM/property version")
+	}
+	matches := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-2026-MAVEN",
+		Severity:    "high",
+		Ranges:      []vulnAffectedRange{{Ecosystem: "maven", Package: "com.acme:core", Introduced: "0", Fixed: "2.0.0"}},
+	}})
+	if len(matches) != 1 || matches[0].Confidence != vulnConfidenceNeedsVer {
+		t.Fatalf("unresolved match = %+v", matches)
+	}
+}
+
+func TestGlobalAdvisoryIsNotExposure(t *testing.T) {
+	matches := correlateInventory(nil, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-2026-9999",
+		Title:       "Public critical advisory",
+		Severity:    "critical",
+		CVSSScore:   9.8,
+		Ranges:      []vulnAffectedRange{{Ecosystem: "npm", Package: "left-pad", Introduced: "0", Fixed: "1.3.0"}},
+	}})
+	if len(matches) != 0 {
+		t.Fatalf("empty inventory must not create repository findings: %+v", matches)
+	}
+}
+
+func TestNpmLockTransitiveAndDirect(t *testing.T) {
+	raw := `{
+	  "packages": {
+	    "": {"name": "checkout-api"},
+	    "node_modules/demo-sdk": {"version": "1.0.0"},
+	    "node_modules/demo-sdk/node_modules/demo-http-client": {"version": "2.4.0"}
+	  }
+	}`
+	parsed := parseNPMLock("package-lock.json", "", raw)
+	if len(parsed.Components) != 2 {
+		t.Fatalf("components = %+v", parsed.Components)
+	}
+	var nested *vulnComponent
+	for i := range parsed.Components {
+		if parsed.Components[i].PackageName == "demo-http-client" {
+			nested = &parsed.Components[i]
+		}
+	}
+	if nested == nil || nested.Direct || nested.ParentPackage != "demo-sdk" {
+		t.Fatalf("nested = %+v", nested)
+	}
+}
+
+func TestPatchPlanGroupsParentUpgrade(t *testing.T) {
+	matches := []vulnMatch{
+		{
+			CanonicalID: "GHSA-1", Confidence: vulnConfidenceConfirmed, FirstFixed: "2.4.2", Recommended: "2.4.2",
+			Component:     vulnComponent{Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.0", ModulePath: "apps/api", Direct: false, ParentPackage: "demo-sdk"},
+			ParentPackage: "demo-sdk",
+		},
+		{
+			CanonicalID: "GHSA-2", Confidence: vulnConfidenceConfirmed, FirstFixed: "2.4.2", Recommended: "2.4.2",
+			Component:     vulnComponent{Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.1", ModulePath: "apps/api", Direct: false, ParentPackage: "demo-sdk"},
+			ParentPackage: "demo-sdk",
+		},
+	}
+	plans := groupPatchPlans(matches)
+	if len(plans) != 1 {
+		t.Fatalf("plans = %+v", plans)
+	}
+	if plans[0].Action != "parent_upgrade" || plans[0].PackageName != "demo-sdk" || len(plans[0].FindingKeys) != 2 {
+		t.Fatalf("group = %+v", plans[0])
+	}
+	if !plans[0].Estimated || plans[0].Status != "tests_required" {
+		t.Fatalf("must remain estimated until tests exist: %+v", plans[0])
+	}
+}
+
+func TestLifecycleRejectsDirectFixed(t *testing.T) {
+	next, problem := nextLifecycle(vulnLifeOpen, vulnLifeFixed, "done")
+	if next != vulnLifeOpen || problem == "" {
+		t.Fatalf("direct fixed must be rejected, got %q %q", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeOpen, vulnLifeAcked, "")
+	if next != vulnLifeAcked || problem != "" {
+		t.Fatalf("ack = %q %q", next, problem)
+	}
+}
+
+func TestYarnLockParsesResolvedVersion(t *testing.T) {
+	parsed := parseVulnArtifact("frontend/yarn.lock", "demo-http-client@^2.4.0:\n  version \"2.4.0\"\n")
+	if len(parsed.Components) != 1 || parsed.Components[0].PackageName != "demo-http-client" || parsed.Components[0].Version != "2.4.0" {
+		t.Fatalf("yarn = %+v", parsed.Components)
+	}
+}
+
+func TestBunLockbRemainsCoverageGap(t *testing.T) {
+	parsed := parseVulnArtifact("apps/web/bun.lockb", "binary")
+	if len(parsed.Components) != 0 || len(parsed.Coverage) == 0 {
+		t.Fatalf("bun.lockb coverage = %+v", parsed)
+	}
+}
+
+func TestDockerfileMutableTagIsCoverageNotMatch(t *testing.T) {
+	parsed := parseVulnArtifact("Dockerfile", "FROM node:20\n")
+	if len(parsed.Components) != 1 || parsed.Components[0].Usage != "image_tag" || parsed.Components[0].Resolved {
+		t.Fatalf("dockerfile = %+v", parsed.Components)
+	}
+	if len(parsed.Coverage) == 0 {
+		t.Fatal("mutable tag must stay a coverage gap")
+	}
+	matches := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-IMAGE",
+		Severity:    "high",
+		Ranges:      []vulnAffectedRange{{Ecosystem: "image", Package: "node:20", Introduced: "0", Fixed: "21"}},
+	}})
+	if len(matches) != 0 {
+		t.Fatalf("declared image tags must not confirm findings: %+v", matches)
+	}
+}
+
+func TestSBOMImagePackageCanMatch(t *testing.T) {
+	parsed := parseSBOM("image.cdx.json", "", `{
+		"components":[{"name":"busybox","version":"1.36.1","purl":"pkg:apk/busybox@1.36.1","type":"operating-system"}]
+	}`)
+	if len(parsed.Components) != 1 || parsed.Components[0].Usage != "image" || parsed.Components[0].Ecosystem != "alpine" {
+		t.Fatalf("sbom = %+v", parsed.Components)
+	}
+	matches := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-BUSYBOX",
+		Severity:    "high",
+		Ranges:      []vulnAffectedRange{{Ecosystem: "alpine", Package: "busybox", Introduced: "0", Fixed: "1.36.2"}},
+	}})
+	if len(matches) != 1 || matches[0].Confidence != vulnConfidenceConfirmed {
+		t.Fatalf("image sbom match = %+v", matches)
+	}
+}
+
+func TestNpmDeclaredVersionAndPackageJSONDeps(t *testing.T) {
+	version, ok := npmDeclaredVersion("^4.17.1")
+	if !ok || version != "4.17.1" {
+		t.Fatalf("caret = %s %v", version, ok)
+	}
+	parsed := parseVulnArtifact("package.json", `{"dependencies":{"express":"^4.17.1"},"devDependencies":{"eslint":"8.0.0"},"engines":{"node":"20.11.0"}}`)
+	if len(parsed.Components) != 3 {
+		t.Fatalf("components = %+v", parsed.Components)
+	}
+	found := map[string]vulnComponent{}
+	for _, item := range parsed.Components {
+		found[item.PackageName] = item
+	}
+	if found["express"].Ecosystem != "npm" || found["express"].Version != "4.17.1" || !found["express"].Resolved {
+		t.Fatalf("express = %+v", found["express"])
+	}
+	if found["node"].Usage != "declared_runtime" {
+		t.Fatalf("node = %+v", found["node"])
+	}
+	if got := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-NODE", Severity: "critical",
+		Ranges: []vulnAffectedRange{{Ecosystem: "node", Package: "node", Introduced: "0", Fixed: "20.12.0"}},
+	}}); len(got) != 0 {
+		t.Fatalf("declared runtime matched: %+v", got)
+	}
+	if got := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-EXPRESS", Severity: "high",
+		Ranges: []vulnAffectedRange{{Ecosystem: "npm", Package: "express", Introduced: "0", Fixed: "4.17.3"}},
+	}}); len(got) != 1 {
+		t.Fatalf("express declared dep should match: %+v", got)
+	}
+}
+
+func TestLockfilePreferredOverPackageJSON(t *testing.T) {
+	merged := mergeParsedInventories([]vulnParsedInventory{
+		parseVulnArtifact("package.json", `{"dependencies":{"express":"4.17.1"}}`),
+		parseNPMLock("package-lock.json", "", `{"packages":{"node_modules/express":{"version":"4.18.2"}}}`),
+	})
+	if len(merged.Components) != 1 || merged.Components[0].Version != "4.18.2" || merged.Components[0].Path != "package-lock.json" {
+		t.Fatalf("merged = %+v", merged.Components)
+	}
+}
+
+func TestNormalizeStoredSeverityUsesScoreAndVector(t *testing.T) {
+	if normalizeStoredSeverity(7.5, "unknown", "") != vulnSevHigh {
+		t.Fatal("cvss score must map unknown labels")
+	}
+	if normalizeStoredSeverity(0, "unknown", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N") != vulnSevHigh {
+		t.Fatal("cvss vector must map unknown labels")
+	}
+}
+
+func TestParseNVDReadsV30AndV40(t *testing.T) {
+	v30 := []byte(`{"vulnerabilities":[{"cve":{"descriptions":[{"lang":"en","value":"go text"}],"metrics":{"cvssMetricV30":[{"cvssData":{"baseScore":7.5,"vectorString":"CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}}]}}}]}`)
+	score, vector, summary := parseNVD(v30)
+	if score != 7.5 || !strings.Contains(vector, "CVSS:3.0") || summary != "go text" {
+		t.Fatalf("v30 = %v %q %q", score, vector, summary)
+	}
+	v40 := []byte(`{"vulnerabilities":[{"cve":{"descriptions":[{"lang":"en","value":"go net"}],"metrics":{"cvssMetricV40":[{"cvssData":{"baseScore":9.1,"vectorString":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"}}]}}}]}`)
+	score, _, _ = parseNVD(v40)
+	if score != 9.1 {
+		t.Fatalf("v40 = %v", score)
+	}
+}
+
+func TestDeclaredRuntimeIsNotAFinding(t *testing.T) {
+	parsed := parseVulnArtifact("package.json", `{"engines":{"node":"20.11.0"}}`)
+	if len(parsed.Components) != 1 || parsed.Components[0].Usage != "declared_runtime" {
+		t.Fatalf("engines = %+v", parsed)
+	}
+	if got := correlateInventory(parsed.Components, []vulnAdvisoryRecord{{
+		CanonicalID: "CVE-NODE", Severity: "critical",
+		Ranges: []vulnAffectedRange{{Ecosystem: "node", Package: "node", Introduced: "0", Fixed: "20.12.0"}},
+	}}); len(got) != 0 {
+		t.Fatalf("declared runtime matched: %+v", got)
+	}
+}
+
+func TestPRCompareClassifiesIntroducedAndIncomplete(t *testing.T) {
+	advisory := vulnAdvisoryRecord{
+		CanonicalID: "GHSA-PR", Severity: "critical",
+		Ranges: []vulnAffectedRange{{Ecosystem: "npm", Package: "demo-http-client", Introduced: "0", Fixed: "2.4.2"}},
+	}
+	base := correlateInventory([]vulnComponent{{Ecosystem: "npm", PackageName: "left-pad", Version: "1.0.0", Resolved: true}}, []vulnAdvisoryRecord{advisory})
+	head := correlateInventory([]vulnComponent{{Ecosystem: "npm", PackageName: "demo-http-client", Version: "2.4.0", Path: "package-lock.json", Resolved: true}}, []vulnAdvisoryRecord{advisory})
+	items := compareVulnMatches(base, head)
+	if len(items) != 1 || items[0]["classification"] != "introduced" {
+		t.Fatalf("compare = %+v", items)
+	}
+	if classifyPRFinding("introduced", "incomplete") != "not_comparable" {
+		t.Fatal("incomplete coverage must never be a clean introduced verdict")
+	}
+	if classifyPRFinding("removed", "incomplete") != "removed" {
+		t.Fatal("removed stays removed")
+	}
+}
+
+func TestAgentCannotClaimOtherTenantJob(t *testing.T) {
+	if vulnAgentOwnsJob(5, 9) {
+		t.Fatal("agent for project 5 must not claim project 9")
+	}
+	if !vulnAgentOwnsJob(5, 5) {
+		t.Fatal("agent should claim its own project")
+	}
+	if vulnAgentOwnsJob(0, 5) {
+		t.Fatal("unscoped agent must not claim a project job")
+	}
+	if !vulnAgentCanClaim(5, 0, 5) {
+		t.Fatal("agent must claim a job whose repository belongs to the same project")
+	}
+	if vulnAgentCanClaim(0, 0, 5) {
+		t.Fatal("unscoped agent must not claim a project repository job")
+	}
+}
+
+func TestVulnScanNextStepForAgentAndCI(t *testing.T) {
+	if !strings.Contains(vulnScanNextStep("agent"), "automatically") || !strings.Contains(vulnScanNextStep("agent"), "private agent") {
+		t.Fatal("agent next step")
+	}
+	if !strings.Contains(vulnScanNextStep("ci"), "automatically") {
+		t.Fatal("ci next step")
+	}
+	if !vulnScanAutoCollects("ci") || !vulnScanAutoCollects("agent") || !vulnScanAutoCollects("hosted") {
+		t.Fatal("scan now must auto-collect lockfiles for hosted, agent, and CI")
+	}
+	if vulnScanParkStage("ci") != "awaiting_upload" || vulnScanParkStage("agent") != "awaiting_agent" || vulnScanParkStage("hosted") != "" {
+		t.Fatal("fallback park stages")
+	}
+}
+
+func TestLooksLikeNpmLockAndCommitResolved(t *testing.T) {
+	if !looksLikeNpmLock([]byte(`{"lockfileVersion":3,"packages":{"":{}}}`)) {
+		t.Fatal("npm lock should be detected")
+	}
+	if looksLikeNpmLock([]byte(`{"bomFormat":"CycloneDX"}`)) {
+		t.Fatal("SBOM is not an npm lock")
+	}
+	if !vulnCommitLooksResolved("abcdef0") || vulnCommitLooksResolved("main") || vulnCommitLooksResolved("unspecified") {
+		t.Fatal("commit resolution heuristic")
+	}
+	parsed := parseVulnArtifact("package-lock.json", `{"lockfileVersion":3,"packages":{"node_modules/left-pad":{"version":"1.3.0"}}}`)
+	if len(parsed.Components) != 1 || parsed.Components[0].PackageName != "left-pad" {
+		t.Fatalf("lockfile upload parse = %+v", parsed.Components)
+	}
+}
+
+func TestAgentTokenHashNeverEqualsRaw(t *testing.T) {
+	raw := "ost_agent_demo"
+	got := hashVulnToken(raw)
+	if got == raw || strings.Contains(got, "ost_agent") {
+		t.Fatalf("hash leaked token material: %s", got)
+	}
+	if hashVulnToken(raw) != got {
+		t.Fatal("hash must be stable")
+	}
+}
+
+func TestGoModIndirect(t *testing.T) {
+	parsed := parseGoMod("go.mod", "", "module example.com/app\n\nrequire (\n\tgithub.com/foo/bar v1.2.3 // indirect\n)\n")
+	if len(parsed.Components) != 1 || parsed.Components[0].Direct || parsed.Components[0].Version != "1.2.3" {
+		t.Fatalf("go.mod = %+v", parsed.Components)
+	}
+}
+
+func TestParseGitHubAdvisoriesKeepsAliases(t *testing.T) {
+	body := []byte(`[{
+		"ghsa_id":"GHSA-aaaa-bbbb-cccc",
+		"cve_id":"CVE-2026-1111",
+		"html_url":"https://github.com/advisories/GHSA-aaaa-bbbb-cccc",
+		"summary":"demo-http-client affected",
+		"severity":"high",
+		"cvss":{"score":7.5,"vector_string":"CVSS:3.1/AV:N"},
+		"vulnerabilities":[{
+			"package":{"ecosystem":"npm","name":"demo-http-client"},
+			"vulnerable_version_range":"< 2.4.2",
+			"first_patched_version":{"identifier":"2.4.2"}
+		}]
+	}]`)
+	items := parseGitHubAdvisories(body)
+	if len(items) != 1 || items[0].CanonicalID != "GHSA-AAAA-BBBB-CCCC" {
+		t.Fatalf("parsed = %+v", items)
+	}
+	if items[0].FirstFixed != "2.4.2" || items[0].Severity != vulnSevHigh {
+		t.Fatalf("fields = %+v", items[0])
+	}
+}
+
+func TestConnectorPublicStillOmitsSecretsForVulnJSON(t *testing.T) {
+	overview := vulnOverview(0)
+	raw, _ := json.Marshal(overview)
+	if strings.Contains(string(raw), "ghp_") || strings.Contains(strings.ToLower(string(raw)), "github_token") && strings.Contains(string(raw), `"github_token"`) {
+		t.Fatalf("token leaked: %s", raw)
+	}
+	if _, ok := overview["github_token_configured"]; !ok {
+		t.Fatal("expected boolean github_token_configured")
+	}
+}
+
+func TestVulnExclusionsSkipListedPaths(t *testing.T) {
+	kept, gaps := applyVulnExclusions([]string{"apps/api/package-lock.json", "vendor-extra/go.mod", "docs/bom.json"}, "docs,vendor-extra")
+	if len(kept) != 1 || kept[0] != "apps/api/package-lock.json" {
+		t.Fatalf("kept = %v", kept)
+	}
+	if len(gaps) != 2 {
+		t.Fatalf("gaps = %+v", gaps)
+	}
+}
+
+func TestAcceptedInventorySchema(t *testing.T) {
+	if !acceptedVulnInventorySchema("") || !acceptedVulnInventorySchema("opstrellis.inventory.v1") {
+		t.Fatal("supported schemas were rejected")
+	}
+	if acceptedVulnInventorySchema("v2-private-code") {
+		t.Fatal("unknown schema must be rejected")
+	}
+}
+
+func TestParseVulnRepoProviders(t *testing.T) {
+	provider, owner, name := parseVulnRepo("https://gitlab.com/acme/platform/api.git")
+	if provider != "gitlab" || owner != "acme/platform" || name != "api" {
+		t.Fatalf("gitlab = %s %s %s", provider, owner, name)
+	}
+	provider, owner, name = parseVulnRepo("git@bitbucket.org:acme/api.git")
+	if provider != "bitbucket" || owner != "acme" || name != "api" {
+		t.Fatalf("bitbucket = %s %s %s", provider, owner, name)
+	}
+	provider, owner, name = parseVulnRepo("org/service")
+	if provider != "github" || owner != "org" || name != "service" {
+		t.Fatalf("github = %s %s %s", provider, owner, name)
+	}
+}
+
+func TestReachabilityUnknownWithoutSources(t *testing.T) {
+	items := []vulnComponent{{PackageName: "lodash"}}
+	applyReachability(items, nil, false)
+	if items[0].Reachability != vulnReachUnknown {
+		t.Fatalf("unscanned = %s", items[0].Reachability)
+	}
+	applyReachability(items, []string{"import lodash from 'lodash'"}, true)
+	if items[0].Reachability != vulnReachImported {
+		t.Fatalf("imported = %s", items[0].Reachability)
+	}
+	items[0].Reachability = ""
+	applyReachability(items, []string{"console.log('ok')"}, true)
+	if items[0].Reachability != vulnReachNotImported {
+		t.Fatalf("not imported = %s", items[0].Reachability)
+	}
+}
+
+func TestVulnPRCheckEnforceNeverMerges(t *testing.T) {
+	state, desc := vulnPRCheckDescription("incomplete", 0, 0, true)
+	if state != "pending" || !strings.Contains(desc, "does not merge") || !strings.Contains(desc, "Policy gate") {
+		t.Fatalf("enforced incomplete = %s %s", state, desc)
+	}
+	state, desc = vulnPRCheckDescription("complete", 0, 0, true)
+	if state != "success" || !strings.Contains(desc, "does not merge") {
+		t.Fatalf("enforced clean = %s %s", state, desc)
+	}
+	if strings.Contains(strings.ToLower(desc), "auto-merge") {
+		t.Fatal("gate must never claim merge")
+	}
+}
+
+func TestVulnPRCheckNeverMerges(t *testing.T) {
+	state, desc := vulnPRCheckState("incomplete", 0, 0)
+	if state != "pending" || !strings.Contains(desc, "does not merge") {
+		t.Fatalf("incomplete = %s %s", state, desc)
+	}
+	state, desc = vulnPRCheckState("complete", 1, 0)
+	if state != "failure" {
+		t.Fatalf("introduced critical = %s", state)
+	}
+	state, desc = vulnPRCheckState("complete", 0, 0)
+	if state != "success" || !strings.Contains(desc, "does not merge") {
+		t.Fatalf("clean informational = %s %s", state, desc)
+	}
+}
+
+func TestDeploymentOutcomeNeedsSBOM(t *testing.T) {
+	if deploymentPatchOutcome(vulnPatchRepoOK, false, false) != vulnPatchDeployPen {
+		t.Fatal("digest without SBOM cannot verify deployment")
+	}
+	if deploymentPatchOutcome(vulnPatchRepoOK, true, true) != vulnPatchDeployPen {
+		t.Fatal("package still in digest SBOM stays pending")
+	}
+	if deploymentPatchOutcome(vulnPatchRepoOK, true, false) != vulnPatchDeployOK {
+		t.Fatal("absent from digest SBOM should be deployment verified")
+	}
+}
+
+func TestPatchProposalForbidsForceAndMerge(t *testing.T) {
+	body := vulnPatchProposalMarkdown(1, "acme/api", "apps/api", "npm", "demo-http-client", "2.4.0", "2.4.2", "direct_upgrade", "[1]")
+	if !strings.Contains(body, "No automatic merge") || !strings.Contains(body, "--force") {
+		t.Fatalf("proposal missing safeguards: %s", body)
+	}
+}
+
+func TestDueAtForPriority(t *testing.T) {
+	if dueAtForPriority(vulnPriorityReview) != nil {
+		t.Fatal("review findings have no SLA clock")
+	}
+	if dueAtForPriority(vulnPriorityUrgent) == nil {
+		t.Fatal("urgent findings need a due date")
+	}
+}
+
+func TestSeverityFromOSVLabelsAndCVSS(t *testing.T) {
+	if severityFromScore(0, "MODERATE") != vulnSevMedium {
+		t.Fatal("moderate must map to medium")
+	}
+	if severityFromScore(0, "HIGH") != vulnSevHigh {
+		t.Fatal("HIGH must map to high")
+	}
+	if severityFromScore(0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N") != vulnSevHigh {
+		t.Fatalf("cvss vector = %s", severityFromScore(0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"))
+	}
+	if severityFromScore(9.8, "") != vulnSevCritical {
+		t.Fatal("9.8 must be critical")
+	}
+	if severityFromScore(0, "not-a-severity") != vulnSevUnknown {
+		t.Fatal("unknown labels stay unknown")
+	}
+}
+
+func TestParseOSVQueryKeepsNpmRangeAndSeverity(t *testing.T) {
+	body := []byte(`{"vulns":[{"id":"GHSA-DEMO-NODE","aliases":["CVE-2026-4242"],"summary":"express before 4.17.3","database_specific":{"severity":"MODERATE"},"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"}],"affected":[{"package":{"ecosystem":"npm","name":"express"},"ranges":[{"events":[{"introduced":"0"},{"fixed":"4.17.3"}]}]}]}]}`)
+	got := parseOSVQuery(body, "nodejs", "express")
+	if len(got) != 1 || got[0].CanonicalID == "" || got[0].Severity != vulnSevHigh {
+		t.Fatalf("parsed = %+v", got)
+	}
+	if len(got[0].Ranges) != 1 || got[0].Ranges[0].Package != "express" || got[0].Ranges[0].Fixed != "4.17.3" {
+		t.Fatalf("ranges = %+v", got[0].Ranges)
+	}
+	match := osvRecordToMatch(vulnComponent{Ecosystem: "npm", PackageName: "express", Version: "4.17.1", Path: "package-lock.json", Resolved: true, Direct: true}, got[0])
+	if match.Confidence != vulnConfidenceConfirmed || match.CanonicalID == "" {
+		t.Fatalf("osv match = %+v", match)
+	}
+	merged := mergeVulnMatches([]vulnMatch{match}, correlateInventory([]vulnComponent{match.Component}, got))
+	if len(merged) != 1 {
+		t.Fatalf("merged = %+v", merged)
+	}
+}
+
+func TestVulnScanQueueNote(t *testing.T) {
+	hosted := vulnScanQueueNote("hosted")
+	if !strings.Contains(hosted, "latest commit") {
+		t.Fatalf("hosted = %q", hosted)
+	}
+	if !strings.Contains(vulnScanQueueNote("agent"), "automatically") {
+		t.Fatal("agent jobs collect lockfiles automatically")
+	}
+	if !strings.Contains(vulnScanQueueNote("ci"), "automatically") {
+		t.Fatal("ci jobs collect lockfiles automatically")
+	}
+}
+
+func TestDiscoverLockfilesSkipsNodeModules(t *testing.T) {
+	got := discoverVulnLockfiles([]string{
+		"apps/api/package-lock.json",
+		"apps/api/node_modules/foo/package-lock.json",
+		"backend/pom.xml",
+		"vendor/x/go.mod",
+	})
+	if len(got) != 2 || got[0] != "apps/api/package-lock.json" || got[1] != "backend/pom.xml" {
+		t.Fatalf("discovered = %v", got)
+	}
+	sboms := discoverVulnLockfiles([]string{"services/api/sbom.json", "docs/bom.json", "node_modules/pkg/sbom.json"})
+	if len(sboms) != 2 || sboms[0] != "services/api/sbom.json" || sboms[1] != "docs/bom.json" {
+		t.Fatalf("sboms = %v", sboms)
+	}
+}
+
+func TestNodejsRepoMatchesNpmInternetAdvisory(t *testing.T) {
+	components := []vulnComponent{{
+		Ecosystem: "nodejs", PackageName: "express", Version: "4.17.1", Path: "package-lock.json",
+		ModulePath: ".", Resolved: true, Direct: true,
+	}}
+	advisories := []vulnAdvisoryRecord{{
+		CanonicalID: "GHSA-DEMO-NODE",
+		Aliases:     []string{"CVE-2026-4242"},
+		Title:       "express before 4.17.3",
+		Severity:    "high",
+		Ranges: []vulnAffectedRange{{
+			Ecosystem: "npm", Package: "express", Introduced: "0", Fixed: "4.17.3",
+		}},
+	}}
+	got := correlateInventory(components, advisories)
+	if len(got) != 1 || got[0].Confidence != vulnConfidenceConfirmed {
+		t.Fatalf("nodejs inventory must match npm advisory: %+v", got)
+	}
+	safe := correlateInventory([]vulnComponent{{
+		Ecosystem: "javascript", PackageName: "express", Version: "4.17.3", Path: "package-lock.json", Resolved: true, Direct: true,
+	}}, advisories)
+	if len(safe) != 0 {
+		t.Fatalf("fixed node version still matched: %+v", safe)
+	}
+}
+
+func TestIntelMatchDetailDoesNotClaimRescan(t *testing.T) {
+	got := intelMatchDetail("abc123")
+	if !strings.Contains(got, "abc123") || !strings.Contains(got, "was not fetched again") {
+		t.Fatalf("detail = %q", got)
+	}
+	empty := intelMatchDetail("  ")
+	if !strings.Contains(empty, "stored inventory") || !strings.Contains(empty, "was not fetched again") {
+		t.Fatalf("empty = %q", empty)
+	}
+}
+
+func TestVulnBranchCandidatesPrefersDefault(t *testing.T) {
+	got := vulnBranchCandidates("main", "master")
+	if len(got) < 2 || got[0] != "main" || got[1] != "master" {
+		t.Fatalf("got = %v", got)
+	}
+	uniq := vulnBranchCandidates("main", "main")
+	if len(uniq) != 2 || uniq[0] != "main" || uniq[1] != "master" {
+		t.Fatalf("uniq = %v", uniq)
+	}
+	empty := vulnBranchCandidates("", "")
+	if len(empty) != 2 || empty[0] != "main" || empty[1] != "master" {
+		t.Fatalf("empty = %v", empty)
+	}
+}
+
+func TestInternetAdvisoryMatchIncludesScan(t *testing.T) {
+	if !isInternetAdvisoryMatch("scan") || !isInternetAdvisoryMatch("intel") || !isInternetAdvisoryMatch("") {
+		t.Fatal("scan and intel are internet package matches")
+	}
+	if isInternetAdvisoryMatch("manual") {
+		t.Fatal("unknown origin is not an internet match")
+	}
+	if !isOpenVulnLifecycle("open") || isOpenVulnLifecycle("fixed") {
+		t.Fatal("open findings count; fixed findings do not")
+	}
+}
+
+func TestOsvQueryPayloadOmitsSource(t *testing.T) {
+	payload := osvQueryPayload("express", "npm", "4.18.2")
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(raw)), "source") {
+		t.Fatalf("source leaked: %s", raw)
+	}
+	pkg, _ := payload["package"].(map[string]string)
+	if pkg["name"] != "express" || pkg["ecosystem"] != "npm" || payload["version"] != "4.18.2" {
+		t.Fatalf("payload = %+v", payload)
+	}
+	if osvEcosystem("nodejs") != "npm" || osvEcosystem("javascript") != "npm" {
+		t.Fatal("nodejs inventory must query OSV as npm")
+	}
+}
+
+func TestSummarizeVulnCoverageNotes(t *testing.T) {
+	empty := summarizeVulnCoverage(nil)
+	if !strings.Contains(strings.ToLower(empty), "no coverage") {
+		t.Fatalf("empty = %q", empty)
+	}
+	got := summarizeVulnCoverage([]vulnCoverageGap{
+		{Path: "package.json", Reason: "package.json declared versions were used because a lockfile was not preferred for this module."},
+		{Path: "/", Reason: "Source files were not sampled for import evidence."},
+	})
+	if !strings.Contains(got, "package.json") || !strings.Contains(got, "source") {
+		t.Fatalf("got = %q", got)
+	}
+}
+
+func TestBulkLifecycleForbidsFixed(t *testing.T) {
+	next, problem := nextLifecycle(vulnLifeOpen, vulnLifeFixed, "done")
+	if next != vulnLifeOpen || problem == "" {
+		t.Fatalf("fixed must stay blocked: %s %s", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeOpen, vulnLifeAcked, "")
+	if next != vulnLifeAcked || problem != "" {
+		t.Fatalf("ack = %s %s", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeAcked, vulnLifeRemediate, "")
+	if next != vulnLifeRemediate || problem != "" {
+		t.Fatalf("remediate = %s %s", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeOpen, vulnLifeFalsePos, "not in the lockfile")
+	if next != vulnLifeFalsePos || problem != "" {
+		t.Fatalf("false positive with reason = %s %s", next, problem)
+	}
+}
+
+func TestOpenFindingsStayUntilClosed(t *testing.T) {
+	if findingIsClosed(vulnLifeOpen) || findingIsClosed(vulnLifeAcked) || findingIsClosed(vulnLifeRemediate) {
+		t.Fatal("open and in-progress findings must stay on Findings and Campaigns")
+	}
+	if !findingIsClosed(vulnLifeFixed) || !findingIsClosed(vulnLifeFalsePos) || !findingIsClosed(vulnLifeWithdrawn) {
+		t.Fatal("closed findings must leave the open Findings and Campaigns lists")
+	}
+}
+
+func TestVulnReposMatchIgnoresHostPrefix(t *testing.T) {
+	if !vulnReposMatch("https://github.com/acme/api", "acme/api") {
+		t.Fatal("service map URLs must match stored owner/name")
+	}
+	if vulnReposMatch("acme/api", "acme/other") {
+		t.Fatal("different repositories must not match")
+	}
+}
+
+func TestScorecardsCountNormalizedCVSS(t *testing.T) {
+	crit, high := tallyConfirmedOpenSeverity([]vulnSeverityRow{
+		{Severity: "unknown", Score: 9.1, Lifecycle: vulnLifeOpen, Confidence: vulnConfidenceConfirmed},
+		{Severity: "unknown", Score: 7.5, Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", Lifecycle: vulnLifeOpen, Confidence: vulnConfidenceConfirmed},
+		{Severity: "high", Score: 0, Lifecycle: vulnLifeFixed, Confidence: vulnConfidenceConfirmed},
+		{Severity: "critical", Score: 0, Lifecycle: vulnLifeOpen, Confidence: vulnConfidencePotential},
+		{Severity: "medium", Score: 5, Lifecycle: vulnLifeOpen, Confidence: vulnConfidenceConfirmed},
+	})
+	if crit != 1 || high != 1 {
+		t.Fatalf("crit=%d high=%d", crit, high)
+	}
+}
+
+func TestProbeAccessWithoutTokenDoesNotLeakSecret(t *testing.T) {
+	prev := GitHubToken
+	GitHubToken = ""
+	defer func() { GitHubToken = prev }()
+	state, detail := probeVulnRepoAccess("github", "acme", "api")
+	if state != "no_token" {
+		t.Fatalf("state = %s", state)
+	}
+	if strings.Contains(strings.ToLower(detail), "github_pat") || strings.Contains(detail, "ghp_") {
+		t.Fatalf("token leaked: %s", detail)
+	}
+}
+
+func TestClassifyScanDiff(t *testing.T) {
+	started := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
+	added := started.Add(time.Minute)
+	older := started.Add(-time.Hour)
+	if got := classifyScanDiff(12, 12, 8, added, started, vulnLifeOpen); got != "added" {
+		t.Fatalf("added = %q", got)
+	}
+	if got := classifyScanDiff(12, 12, 8, older, started, vulnLifeOpen); got != "still_open" {
+		t.Fatalf("still_open = %q", got)
+	}
+	if got := classifyScanDiff(8, 12, 8, older, started, vulnLifeOpen); got != "gone" {
+		t.Fatalf("gone = %q", got)
+	}
+	if got := classifyScanDiff(8, 12, 8, older, started, vulnLifeFixed); got != "" {
+		t.Fatalf("closed gone = %q", got)
+	}
+	if got := classifyScanDiff(12, 0, 8, added, started, vulnLifeOpen); got != "" {
+		t.Fatalf("no current scan = %q", got)
+	}
+}
+
+func TestVulnRepoStaleReason(t *testing.T) {
+	stale, reason := vulnRepoStaleReason(false, 0, "", 14)
+	if !stale || !strings.Contains(reason, "Unknown") {
+		t.Fatalf("no inventory = %v %q", stale, reason)
+	}
+	stale, reason = vulnRepoStaleReason(true, 2, "failed", 14)
+	if !stale || !strings.Contains(strings.ToLower(reason), "failed") {
+		t.Fatalf("failed scan = %v %q", stale, reason)
+	}
+	stale, reason = vulnRepoStaleReason(true, 14, "succeeded", 14)
+	if !stale || !strings.Contains(reason, "Unknown") {
+		t.Fatalf("aged inventory = %v %q", stale, reason)
+	}
+	stale, reason = vulnRepoStaleReason(true, 3, "succeeded", 14)
+	if stale || reason != "" {
+		t.Fatalf("fresh inventory = %v %q", stale, reason)
+	}
+	stale, reason = vulnRepoStaleReason(true, 3, "cancelled", 14)
+	if stale {
+		t.Fatalf("cancelled with fresh inventory must not be stale: %s", reason)
+	}
+	stale, reason = vulnRepoStaleReason(false, 0, "cancelled", 14)
+	if !stale || !strings.Contains(reason, "Unknown") {
+		t.Fatalf("cancelled without inventory stays Unknown: %v %q", stale, reason)
+	}
+}
+
+func TestVulnQueuedScanIsCancelable(t *testing.T) {
+	if !vulnScanIsCancelable("queued") || !vulnScanIsCancelable("QUEUED") {
+		t.Fatal("queued scans must be cancelable")
+	}
+	for _, state := range []string{"running", "succeeded", "partial", "failed", "cancelled"} {
+		if vulnScanIsCancelable(state) {
+			t.Fatalf("%s must not be cancelable", state)
+		}
+	}
+}
+
+func TestVulnDigestDue(t *testing.T) {
+	now := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
+	if !vulnDigestDue(time.Time{}, now) {
+		t.Fatal("never sent must be due")
+	}
+	if vulnDigestDue(now.Add(-5*24*time.Hour), now) {
+		t.Fatal("within six days must skip")
+	}
+	if !vulnDigestDue(now.Add(-6*24*time.Hour), now) {
+		t.Fatal("six days must send")
+	}
+}
+
+func TestLooksLikeSARIFRejectsInventoryEnvelope(t *testing.T) {
+	envelope := []byte(`{"repository_id":12,"commit_sha":"abc","runs":[{"results":[]}]}`)
+	if looksLikeSARIF(envelope) {
+		t.Fatal("inventory envelopes must not be treated as SARIF")
+	}
+	doc := []byte(`{"version":"2.1.0","runs":[{"results":[]}]}`)
+	if !looksLikeSARIF(doc) {
+		t.Fatal("a SARIF document with runs must be accepted")
+	}
+}
+
+func TestParseSARIFSkipsResultsWithoutPackage(t *testing.T) {
+	raw := []byte(`{
+		"version":"2.1.0",
+		"runs":[{"results":[
+			{"ruleId":"CVE-2026-1","locations":[{"physicalLocation":{"artifactLocation":{"uri":"src/app.ts"}}}]},
+			{"ruleId":"CVE-2026-2","properties":{"package":{"name":"demo-http-client","version":"2.4.0","ecosystem":"npm"}},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"apps/api/package-lock.json"}}}]}
+		]}]
+	}`)
+	parsed, matches := parseSARIFMatches(raw)
+	if len(parsed.Components) != 1 || parsed.Components[0].PackageName != "demo-http-client" {
+		t.Fatalf("components = %+v", parsed.Components)
+	}
+	if len(matches) != 1 || matches[0].CanonicalID != "CVE-2026-2" {
+		t.Fatalf("matches = %+v", matches)
+	}
+	if len(parsed.Coverage) == 0 {
+		t.Fatal("skipped results must leave Unknown coverage")
+	}
+}
+
+func TestVulnPolicyChangeSummaryOmitsSecrets(t *testing.T) {
+	summary := vulnPolicyChangeSummary(
+		map[string]string{"collection_mode": "hosted", "enforce_pr_gate": "false", "token": "secret"},
+		map[string]string{"collection_mode": "agent", "enforce_pr_gate": "true", "token": "secret"},
+	)
+	if strings.Contains(summary, "secret") {
+		t.Fatalf("secret leaked: %s", summary)
+	}
+	if !strings.Contains(summary, "collection_mode") || !strings.Contains(summary, "enforce_pr_gate") {
+		t.Fatalf("summary = %s", summary)
+	}
+}
+
+func TestParseOpsRecordRef(t *testing.T) {
+	kind, id := parseOpsRecordRef("CHG0000013")
+	if kind != "change" || id != 13 {
+		t.Fatalf("change = %s %d", kind, id)
+	}
+	kind, id = parseOpsRecordRef("inc7")
+	if kind != "incident" || id != 7 {
+		t.Fatalf("incident = %s %d", kind, id)
+	}
+	kind, id = parseOpsRecordRef("REQ0000004")
+	if kind != "ticket" || id != 4 {
+		t.Fatalf("ticket = %s %d", kind, id)
+	}
+}
+
+func TestBulkFalsePositiveNeedsReason(t *testing.T) {
+	next, problem := nextLifecycle(vulnLifeOpen, vulnLifeFalsePos, "")
+	if next != vulnLifeOpen || problem == "" {
+		t.Fatalf("false positive without reason = %s %s", next, problem)
+	}
+	next, problem = nextLifecycle(vulnLifeOpen, vulnLifeAccepted, "accepted for 30 days")
+	if next != vulnLifeAccepted || problem != "" {
+		t.Fatalf("risk accept = %s %s", next, problem)
+	}
+}
+
+func TestVulnScanIsAutomaticForScheduleAndPush(t *testing.T) {
+	if !vulnScanIsAutomatic("schedule") || !vulnScanIsAutomatic("PUSH") {
+		t.Fatal("schedule and push must be automatic")
+	}
+	if vulnScanIsAutomatic("manual") || vulnScanIsAutomatic("ci") || vulnScanIsAutomatic("webhook") {
+		t.Fatal("explicit Scan now, CI, and comparison must still run when a repository is paused")
+	}
+}
+
+func TestVulnCampaignCSVEscapesAndOmitsEmail(t *testing.T) {
+	csv := renderVulnCampaignCSV([]map[string]any{
+		{
+			"advisory":   "CVE-2026-1",
+			"repository": "org/app,prod",
+			"package":    "demo-http-client",
+			"version":    "2.4.0",
+			"owner":      "owner@example.com",
+			"due_at":     "2026-11-01",
+		},
+	})
+	if !strings.Contains(csv, `"org/app,prod"`) {
+		t.Fatalf("comma in repository must be quoted: %s", csv)
+	}
+	if strings.Contains(csv, "@") || strings.Contains(strings.ToLower(csv), "example.com") {
+		t.Fatalf("emails must not appear in campaign export: %s", csv)
+	}
+	if !strings.Contains(csv, "demo-http-client") || !strings.Contains(csv, "2026-11-01") {
+		t.Fatalf("package and due date missing: %s", csv)
+	}
+	if name := vulnCampaignExportFilename("CVE-2026-1"); name != "CVE-2026-1-open-occurrences.csv" {
+		t.Fatalf("filename = %s", name)
+	}
+}
+
+func TestVulnExportOwnerDropsEmail(t *testing.T) {
+	if got := vulnExportOwner("platform"); got != "platform" {
+		t.Fatalf("team owner = %q", got)
+	}
+	if got := vulnExportOwner("sec@example.com"); got != "" {
+		t.Fatalf("email leaked = %q", got)
+	}
+}

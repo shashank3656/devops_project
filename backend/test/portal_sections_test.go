@@ -42,10 +42,13 @@ func TestSectionForPath(t *testing.T) {
 		"/api/devops/environment-catalog": "catalog",
 		"/api/devops/k8s-pods":            "infrastructure",
 		"/api/scans/jobs":                 "security",
+		"/api/devops/security/overview":   "security",
 		"/api/devops/evidence":            "records",
 		"/api/devops/me":                  "",
 		"/api/webhooks/github":            "",
 		"/api/deployments/callbacks":      "",
+		"/api/security/agent/enroll":      "",
+		"/api/security/webhooks/github":   "",
 		"/health":                         "",
 	}
 	for path, want := range cases {

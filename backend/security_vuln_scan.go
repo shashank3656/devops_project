@@ -1,0 +1,345 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/go-github/v61/github"
+)
+
+const (
+	vulnMaxTreeEntries = 8000
+	vulnMaxLockfiles   = 40
+	vulnMaxFileBytes   = 200000
+)
+
+func runVulnScanJob(jobID int) {
+	if DB == nil || jobID <= 0 {
+		return
+	}
+	var repoID int
+	var state, mode string
+	if err := queryRowContext(`SELECT repo_id, state, COALESCE(NULLIF(collection_mode,''),'hosted') FROM vuln_scan_jobs WHERE id = $1`, jobID).Scan(&repoID, &state, &mode); err != nil {
+		return
+	}
+	if state != "queued" && state != "running" {
+		return
+	}
+	_, _ = execContext(`UPDATE vuln_scan_jobs SET state='running', stage='clone', started_at=COALESCE(started_at, CURRENT_TIMESTAMP) WHERE id=$1`, jobID)
+	provider, owner, name, branch, exclusions := vulnProviderGitHub, "", "", "main", ""
+	if err := queryRowContext(`SELECT COALESCE(NULLIF(provider,''),'github'), owner, name, branch, COALESCE(exclusions,'') FROM vuln_repositories WHERE id = $1`, repoID).Scan(&provider, &owner, &name, &branch, &exclusions); err != nil {
+		failVulnScan(jobID, "queued", "Repository registration was not found.")
+		return
+	}
+	appendVulnScanLog(jobID, "clone", "Collecting lockfiles and SBOMs automatically for "+owner+"/"+name+". Registered branch is "+branch+".")
+	commit, usedBranch, err := resolveVulnCommit(provider, owner, name, branch)
+	if err != nil {
+		detail := err.Error()
+		access := "unknown"
+		switch {
+		case strings.Contains(detail, "not found with this token"), strings.Contains(detail, "No matching branch"):
+			access = "not_found"
+		case strings.Contains(detail, "could not be read"):
+			access = "denied"
+		case strings.Contains(detail, "GITHUB_TOKEN"), strings.Contains(detail, "GITLAB_TOKEN"), strings.Contains(detail, "BITBUCKET_TOKEN"):
+			access = "no_token"
+		}
+		persistVulnRepoAccess(repoID, access, detail)
+		if parkVulnScanForFallback(jobID, mode, detail) {
+			return
+		}
+		failVulnScan(jobID, "clone", detail)
+		return
+	}
+	persistVulnRepoAccess(repoID, "reachable", "Collector resolved the latest commit and will pick lockfiles and SBOMs automatically.")
+	if usedBranch == "" {
+		usedBranch = branch
+	}
+	if usedBranch != branch {
+		appendVulnScanLog(jobID, "clone", "Registered branch "+branch+" was missing. Using "+usedBranch+" instead.")
+		persistVulnRepoBranch(repoID, usedBranch)
+		branch = usedBranch
+	}
+	appendVulnScanLog(jobID, "clone", "Latest commit "+commit+" on "+branch+".")
+	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='inventory', commit_sha=$2 WHERE id=$1`, jobID, commit)
+	paths, truncated, err := listVulnRepoPaths(provider, owner, name, commit)
+	if err != nil {
+		if parkVulnScanForFallback(jobID, mode, err.Error()) {
+			return
+		}
+		failVulnScan(jobID, "inventory", err.Error())
+		return
+	}
+	lockfiles := discoverVulnLockfiles(paths)
+	excludedGaps := []vulnCoverageGap{}
+	lockfiles, excludedGaps = applyVulnExclusions(lockfiles, exclusions)
+	if len(lockfiles) > vulnMaxLockfiles {
+		lockfiles = lockfiles[:vulnMaxLockfiles]
+	}
+	appendVulnScanLog(jobID, "inventory", fmt.Sprintf("Found %d lockfiles or SBOMs in the tree.", len(lockfiles)))
+	parsedItems := make([]vulnParsedInventory, 0, len(lockfiles))
+	coverage := []vulnCoverageGap{}
+	coverage = append(coverage, excludedGaps...)
+	if truncated {
+		coverage = append(coverage, vulnCoverageGap{Path: "/", Reason: "The repository tree was truncated. Some modules may be unscanned."})
+	}
+	for _, filePath := range lockfiles {
+		content, sizeOK, getErr := fetchVulnRepoFile(provider, owner, name, filePath, commit)
+		if getErr != nil {
+			coverage = append(coverage, vulnCoverageGap{Path: filePath, Reason: "File could not be read from the immutable commit."})
+			continue
+		}
+		if !sizeOK {
+			coverage = append(coverage, vulnCoverageGap{Path: filePath, Reason: "File exceeded the scan size cap and was skipped."})
+			continue
+		}
+		parsedItems = append(parsedItems, parseVulnArtifact(filePath, content))
+	}
+	merged := mergeParsedInventories(parsedItems)
+	merged.Coverage = append(coverage, merged.Coverage...)
+	if len(lockfiles) == 0 {
+		merged.Coverage = append(merged.Coverage, vulnCoverageGap{Path: "/", Reason: "No supported lockfile or SBOM was found. This is not a clean result."})
+	}
+	sourceBlobs := []string{}
+	sourceScanned := false
+	for _, filePath := range discoverVulnSourceFiles(paths) {
+		content, sizeOK, getErr := fetchVulnRepoFile(provider, owner, name, filePath, commit)
+		if getErr != nil || !sizeOK {
+			continue
+		}
+		sourceBlobs = append(sourceBlobs, content)
+		sourceScanned = true
+	}
+	applyReachability(merged.Components, sourceBlobs, sourceScanned)
+	if !sourceScanned {
+		merged.Coverage = append(merged.Coverage, vulnCoverageGap{Path: "/", Reason: "Source files were not sampled for import evidence. Reachability stays Unknown; this is not a not-affected claim."})
+	}
+	_, _ = execContext(`UPDATE vuln_scan_jobs SET stage='correlation' WHERE id=$1`, jobID)
+	appendVulnScanLog(jobID, "correlation", fmt.Sprintf("Matching %d components against saved advisories.", len(merged.Components)))
+	if err := saveInventoryAndCorrelate(jobID, repoID, commit, merged); err != nil {
+		failVulnScan(jobID, "correlation", "Inventory could not be saved.")
+		return
+	}
+	state = "succeeded"
+	if len(merged.Coverage) > 0 {
+		state = "partial"
+	}
+	assessed := 0
+	seenMod := map[string]bool{}
+	for _, item := range merged.Components {
+		if !seenMod[item.ModulePath] {
+			seenMod[item.ModulePath] = true
+			assessed++
+		}
+	}
+	res, err := execContext(`
+		UPDATE vuln_scan_jobs
+		SET state=$2, stage='done', coverage_json=$3, discovered_modules=$4, assessed_modules=$5, error='', finished_at=CURRENT_TIMESTAMP
+		WHERE id=$1 AND state IN ('queued','running')
+	`, jobID, state, encodeJSONString(merged.Coverage), len(merged.Modules), assessed)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
+	appendVulnScanLog(jobID, "done", fmt.Sprintf("Scan %s. %d modules assessed. %d coverage notes.", state, assessed, len(merged.Coverage)))
+}
+
+func failVulnScan(jobID int, stage, message string) {
+	res, err := execContext(`
+		UPDATE vuln_scan_jobs
+		SET state='failed', stage=$2, error=$3, finished_at=CURRENT_TIMESTAMP
+		WHERE id=$1 AND state IN ('queued','running')
+	`, jobID, stage, message)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
+	appendVulnScanLog(jobID, stage, message)
+	notifyVulnScanFailed(jobID, message)
+}
+
+func notifyVulnScanFailed(jobID int, message string) {
+	if jobID <= 0 {
+		return
+	}
+	var projectID int
+	var team, repo string
+	_ = queryRowContext(`
+		SELECT COALESCE(j.project_id,0), COALESCE(r.owner_team,''), COALESCE(r.owner,'') || '/' || COALESCE(r.name,'')
+		FROM vuln_scan_jobs j JOIN vuln_repositories r ON r.id = j.repo_id WHERE j.id=$1
+	`, jobID).Scan(&projectID, &team, &repo)
+	var projectPtr *int
+	if projectID > 0 {
+		projectPtr = &projectID
+	}
+	_ = dispatchOpsNotification(
+		fmt.Sprintf("vuln-scan:%d:failed", jobID),
+		"security_vuln",
+		"Scan failed for "+firstNonEmpty(repo, "repository"),
+		firstNonEmpty(message, "The scan failed. Coverage stays Unknown; this is not a secure label."),
+		nil,
+		projectPtr,
+		ownerUserIDs(team),
+		map[string]any{"job_id": jobID, "repository": repo},
+	)
+}
+
+func loadGitHubPRSHAs(owner, name string, prNumber int, allowFork bool) (string, string, error) {
+	client, err := vulnGitHubClient()
+	if err != nil {
+		return "", "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pr, _, err := client.PullRequests.Get(ctx, owner, name, prNumber)
+	if err != nil || pr == nil || pr.GetBase() == nil || pr.GetHead() == nil {
+		return "", "", fmt.Errorf("The pull request could not be read.")
+	}
+	if pr.GetHead().GetRepo() != nil && pr.GetBase().GetRepo() != nil && pr.GetHead().GetRepo().GetID() != pr.GetBase().GetRepo().GetID() && !allowFork {
+		return "", "", fmt.Errorf("Fork pull requests are not scanned unless the repository policy allows them.")
+	}
+	baseSHA := pr.GetBase().GetSHA()
+	headSHA := pr.GetHead().GetSHA()
+	if baseSHA == "" || headSHA == "" {
+		return "", "", fmt.Errorf("The pull request was missing an immutable commit SHA.")
+	}
+	return baseSHA, headSHA, nil
+}
+
+func persistVulnRepoBranch(repoID int, branch string) {
+	branch = strings.TrimSpace(branch)
+	if repoID <= 0 || branch == "" {
+		return
+	}
+	_, _ = execContext(`UPDATE vuln_repositories SET branch=$2, updated_at=CURRENT_TIMESTAMP WHERE id=$1`, repoID, branch)
+}
+
+func githubStatusCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	if responseErr, ok := err.(*github.ErrorResponse); ok && responseErr.Response != nil {
+		return responseErr.Response.StatusCode
+	}
+	return 0
+}
+
+func resolveGitHubVulnCommit(owner, name, branch string) (string, string, error) {
+	client, err := vulnGitHubClient()
+	if err != nil {
+		return "", "", err
+	}
+	ctx := context.Background()
+	defaultBranch := ""
+	repo, resp, repoErr := client.Repositories.Get(ctx, owner, name)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	if repoErr != nil {
+		switch status {
+		case 401, 403:
+			return "", "", fmt.Errorf("Repository %s/%s could not be read. Check repository access.", owner, name)
+		case 404:
+			return "", "", fmt.Errorf("Repository %s/%s was not found with this token. Private repos need GITHUB_TOKEN access.", owner, name)
+		}
+	} else if repo != nil {
+		defaultBranch = strings.TrimSpace(repo.GetDefaultBranch())
+	}
+	candidates := vulnBranchCandidates(branch, defaultBranch)
+	var lastErr error
+	for _, cand := range candidates {
+		ref, _, refErr := client.Git.GetRef(ctx, owner, name, "heads/"+cand)
+		if refErr != nil {
+			lastErr = refErr
+			continue
+		}
+		sha := ""
+		if ref != nil && ref.Object != nil {
+			sha = strings.TrimSpace(ref.Object.GetSHA())
+		}
+		if sha == "" {
+			lastErr = fmt.Errorf("The commit SHA was empty.")
+			continue
+		}
+		return sha, cand, nil
+	}
+	if lastErr != nil {
+		switch githubStatusCode(lastErr) {
+		case 401, 403:
+			return "", "", fmt.Errorf("Repository %s/%s could not be read. Check repository access.", owner, name)
+		case 404:
+			return "", "", fmt.Errorf("No matching branch was found for %s/%s. Tried %s.", owner, name, strings.Join(candidates, ", "))
+		}
+	}
+	return "", "", fmt.Errorf("The latest commit could not be resolved. Check repository access.")
+}
+
+func listGitHubVulnRepoPaths(owner, name, sha string) ([]string, bool, error) {
+	client, err := vulnGitHubClient()
+	if err != nil {
+		return nil, false, err
+	}
+	tree, _, err := client.Git.GetTree(context.Background(), owner, name, sha, true)
+	if err != nil {
+		return nil, false, fmt.Errorf("The repository tree could not be read.")
+	}
+	if tree == nil {
+		return nil, false, fmt.Errorf("The repository tree was empty.")
+	}
+	truncated := tree.GetTruncated()
+	if len(tree.Entries) > vulnMaxTreeEntries {
+		truncated = true
+	}
+	limit := len(tree.Entries)
+	if limit > vulnMaxTreeEntries {
+		limit = vulnMaxTreeEntries
+	}
+	out := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		entry := tree.Entries[i]
+		if entry.GetType() != "blob" {
+			continue
+		}
+		out = append(out, entry.GetPath())
+	}
+	return out, truncated, nil
+}
+
+func fetchGitHubVulnRepoFile(owner, name, path, sha string) (string, bool, error) {
+	client, err := vulnGitHubClient()
+	if err != nil {
+		return "", false, err
+	}
+	file, _, _, err := client.Repositories.GetContents(context.Background(), owner, name, path, &github.RepositoryContentGetOptions{Ref: sha})
+	if err != nil {
+		return "", false, err
+	}
+	if file == nil {
+		return "", false, fmt.Errorf("missing file")
+	}
+	if file.GetSize() > vulnMaxFileBytes {
+		return "", false, nil
+	}
+	content, err := file.GetContent()
+	if err != nil {
+		return "", false, err
+	}
+	if len(content) > vulnMaxFileBytes {
+		return "", false, nil
+	}
+	return content, true, nil
+}
+
+func vulnGitHubClient() (*github.Client, error) {
+	if strings.TrimSpace(GitHubToken) == "" {
+		return nil, fmt.Errorf("Hosted collector needs GITHUB_TOKEN on the API. Private outbound agents and CI inventory uploads are the alternatives.")
+	}
+	return newGitHubClient()
+}
