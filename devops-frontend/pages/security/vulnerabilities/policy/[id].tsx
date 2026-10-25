@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { accessLabel, asRows, collectionModeLabel, queryText, vulnRequest } from '../../../../lib/securityVuln';
+import { accessLabel, asRows, canManageVulnWorkspace, collectionModeLabel, queryText, sessionCanManageVulnWorkspace, vulnRequest } from '../../../../lib/securityVuln';
 
 type RepoConfig = {
   id: number;
@@ -42,15 +42,17 @@ export default function VulnPolicyDetailPage() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    setIsManager(sessionCanManageVulnWorkspace());
+  }, []);
+
   const load = useCallback(async () => {
     if (!id) return;
     const [repoRes, meRes] = await Promise.all([
       vulnRequest(apiUrl, '/api/devops/security/repositories?probe=1'),
       vulnRequest(apiUrl, '/api/devops/me'),
     ]);
-    const profile = meRes.body.devops_profile as { is_manager?: boolean } | undefined;
-    const role = typeof meRes.body.role === 'string' ? meRes.body.role : '';
-    setIsManager(Boolean(profile?.is_manager) || role === 'admin');
+    setIsManager(canManageVulnWorkspace(meRes.body) || sessionCanManageVulnWorkspace());
     if (repoRes.status !== 200) {
       setError(typeof repoRes.body.error === 'string' ? repoRes.body.error : 'Repository policy could not be loaded.');
       setRepo(null);
@@ -80,8 +82,8 @@ export default function VulnPolicyDetailPage() {
 
   async function onSave(event: FormEvent) {
     event.preventDefault();
-    if (!isManager) {
-      setError('Saving policy needs a manager role.');
+    if (!isManager && !sessionCanManageVulnWorkspace()) {
+      setError('Saving policy needs an admin or manager role.');
       return;
     }
     setBusy(true);
@@ -134,7 +136,7 @@ export default function VulnPolicyDetailPage() {
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Policy</h2>
-                  <p className="portal-surface__subtitle">Saving policy needs a manager role. OpsTrellis does not merge pull requests and does not patch production.</p>
+                  <p className="portal-surface__subtitle">Admins and managers can save collection, schedule, and alert policy. OpsTrellis does not merge pull requests and does not patch production.</p>
                 </div>
               </div>
               <form className="portal-form-grid" onSubmit={(event) => void onSave(event)}>
@@ -164,7 +166,7 @@ export default function VulnPolicyDetailPage() {
                   <Link className="btn btn-secondary" href="/security/vulnerabilities/policy">Choose another repository</Link>
                 </div>
               </form>
-              {!isManager ? <p className="form-section__copy">Saving policy needs a manager role.</p> : null}
+              {!isManager ? <p className="form-section__copy">Saving policy needs an admin or manager role.</p> : null}
             </section>
           </>
         ) : null}

@@ -106,7 +106,7 @@ func requireDevopsManager(w http.ResponseWriter, r *http.Request) (userID int, o
 	if !ok {
 		return 0, false
 	}
-	if user, err := GetUserByID(uid); err == nil && user != nil && user.Role == "admin" {
+	if user, err := GetUserByID(uid); err == nil && user != nil && strings.EqualFold(user.Role, "admin") {
 		return uid, true
 	}
 	prof, err := GetDevopsProfile(uid)

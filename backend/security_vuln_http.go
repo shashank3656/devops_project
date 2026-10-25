@@ -285,6 +285,14 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 			writeAPIError(w, r, http.StatusNotFound, "repository not found", nil)
 			return
 		}
+		var projectID int
+		if err := queryRowContext(`SELECT COALESCE(project_id,0) FROM vuln_repositories WHERE id=$1`, id).Scan(&projectID); err != nil {
+			writeAPIError(w, r, http.StatusNotFound, "repository not found", nil)
+			return
+		}
+		if projectID > 0 && !ensureProjectVisible(w, r, userID, projectID) {
+			return
+		}
 		var body map[string]any
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", nil)

@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
-import { lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, severityBadge, severityLabel, usageLabel, vulnRequest } from '../../../../lib/securityVuln';
+import { lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, sessionCanManageVulnWorkspace, severityBadge, severityLabel, usageLabel, vulnRequest } from '../../../../lib/securityVuln';
 
 type Finding = {
   id: number;
@@ -43,8 +43,6 @@ type Finding = {
 
 type Activity = { kind: string; detail: string; created_at: string };
 type ExceptionRow = { id: number; kind: string; reason: string; evidence?: string; issuer?: string; status: string; expires_at: string };
-
-const DEVOPS_USER_KEY = 'devops_user';
 
 export default function VulnFindingDetailPage() {
   const apiUrl = useApiUrl();
@@ -87,13 +85,7 @@ export default function VulnFindingDetailPage() {
   }, [apiUrl, id]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(DEVOPS_USER_KEY);
-      const parsed = raw ? JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } } : null;
-      setIsManager(Boolean(parsed?.devops_profile?.is_manager) || parsed?.role === 'admin');
-    } catch {
-      setIsManager(false);
-    }
+    setIsManager(sessionCanManageVulnWorkspace());
   }, []);
 
   useEffect(() => {

@@ -219,3 +219,30 @@ export async function vulnRequest(apiUrl: string, path: string, method: 'GET' | 
 export function asRows<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
 }
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+export function canManageVulnWorkspace(payload: Record<string, unknown> | null | undefined): boolean {
+  const root = payload || {};
+  const nested = asRecord(root.user);
+  const account = Object.keys(nested).length ? nested : root;
+  const role = String(account.role || root.role || '').toLowerCase();
+  if (role === 'admin') return true;
+  const grants = asRecord(account.grants || root.grants);
+  if (grants.manager === true) return true;
+  const profile = asRecord(account.devops_profile || root.devops_profile);
+  return profile.is_manager === true;
+}
+
+export function sessionCanManageVulnWorkspace(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem('devops_user');
+    if (!raw) return false;
+    return canManageVulnWorkspace(JSON.parse(raw) as Record<string, unknown>);
+  } catch {
+    return false;
+  }
+}

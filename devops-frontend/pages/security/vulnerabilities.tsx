@@ -5,10 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BulkBar, CopyButton, DataTable, EmptyState, formatOperationalTime, type DataTableColumn, type RowKey } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { accessLabel, asRows, collectionModeLabel, findingIsClosed, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, scanJobIds, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
+import { accessLabel, asRows, canManageVulnWorkspace, collectionModeLabel, findingIsClosed, isInternetAdvisoryMatch, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, scanJobIds, sessionCanManageVulnWorkspace, severityBadge, severityLabel, usageLabel, vulnRequest, vulnTab, VULN_TABS, type VulnTab } from '../../lib/securityVuln';
 import { useWorkspaceScope } from '../../shared-ui/useWorkspaceScope';
-
-const DEVOPS_USER_KEY = 'devops_user';
 
 type Overview = {
   critical_findings?: number;
@@ -204,13 +202,7 @@ export default function GlobalVulnerabilitiesPage() {
   const [deploySbom, setDeploySbom] = useState('');
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(DEVOPS_USER_KEY);
-      const parsed = raw ? JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } } : null;
-      setIsManager(Boolean(parsed?.devops_profile?.is_manager) || parsed?.role === 'admin');
-    } catch {
-      setIsManager(false);
-    }
+    setIsManager(sessionCanManageVulnWorkspace());
   }, []);
 
   const setTab = (next: VulnTab) => {
@@ -264,9 +256,7 @@ export default function GlobalVulnerabilitiesPage() {
     setHosted(Boolean(sourceRes.body.hosted_collector));
     setHostedNote(typeof sourceRes.body.hosted_collector_note === 'string' ? sourceRes.body.hosted_collector_note : '');
     setRepoAccess(asRows<RepoAccess>(sourceRes.body.repository_access));
-    const profile = meRes.body.devops_profile as { is_manager?: boolean } | undefined;
-    const role = typeof meRes.body.role === 'string' ? meRes.body.role : '';
-    setIsManager(Boolean(profile?.is_manager) || role === 'admin');
+    setIsManager(canManageVulnWorkspace(meRes.body) || sessionCanManageVulnWorkspace());
     setLoading(false);
   }, [apiUrl, lifecycleFilter, projectId, serviceId, tab]);
 
@@ -563,6 +553,22 @@ export default function GlobalVulnerabilitiesPage() {
 
   function selectedFindingIds(): number[] {
     return Array.from(findingSelected).map((key) => Number(key)).filter((id) => id > 0);
+  }
+
+  function clearVulnFilters() {
+    setSearch('');
+    setSeverity('');
+    setKevOnly(false);
+    setUnassignedOnly(false);
+    setIntelOnly(false);
+    setTeamFilter('');
+    setTechFilter('');
+    setPatchFilter('');
+    setLifecycleFilter('');
+    setRepoFilter('');
+    setLatestScanOnly(false);
+    setHideDevDeps(false);
+    setReachFilter('');
   }
 
   async function bulkFindings(lifecycle: string, reason: string) {
@@ -891,7 +897,86 @@ export default function GlobalVulnerabilitiesPage() {
             <Link key={item.id} href={{ pathname: '/security/vulnerabilities', query: { ...(projectId ? { project_id: projectId } : {}), ...(item.id === 'services' ? {} : { tab: item.id }) } }} className={tab === item.id ? 'is-current' : undefined}>{item.label}</Link>
           ))}
         </nav>
-        {tab === 'services' || tab === 'advisories' || tab === 'findings' ? (
+        {tab === 'findings' ? (
+          <form className="sec-vuln-filters" onSubmit={(event) => event.preventDefault()}>
+            <div className="sec-vuln-filters__fields">
+              <label className="sec-vuln-filters__search">
+                Search
+                <input className="input" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Service, repository, package, or advisory" />
+              </label>
+              <label>
+                Severity
+                <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
+                  <option value="">All displayed</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                </select>
+              </label>
+              <label>
+                Fix availability
+                <select className="input" value={patchFilter} onChange={(event) => setPatchFilter(event.target.value)}>
+                  <option value="">All patch states</option>
+                  <option value="fix_available">Fix available</option>
+                  <option value="no_known_fix">No known fix</option>
+                  <option value="pr_linked">PR linked</option>
+                </select>
+              </label>
+              <label>
+                Lifecycle
+                <select className="input" value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
+                  <option value="">Open findings</option>
+                  <option value="open">Open</option>
+                  <option value="acknowledged">Acknowledged</option>
+                  <option value="in_remediation">In remediation</option>
+                  <option value="pending_verification">Pending verification</option>
+                  <option value="risk_accepted">Risk accepted</option>
+                  <option value="fixed">Fixed</option>
+                  <option value="false_positive">False positive</option>
+                  <option value="withdrawn">Withdrawn</option>
+                </select>
+              </label>
+              <label>
+                Repository
+                <select className="input" value={repoFilter} onChange={(event) => setRepoFilter(event.target.value)}>
+                  <option value="">All repositories</option>
+                  {findingRepos.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+              <label>
+                Reachability
+                <select className="input" value={reachFilter} onChange={(event) => setReachFilter(event.target.value)}>
+                  <option value="">All evidence</option>
+                  <option value="imported">Imported</option>
+                  <option value="not_imported">Not imported</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+            </div>
+            <div className="sec-vuln-filters__options">
+              <div className="sec-vuln-filters__toggles">
+                <label className={`sec-vuln-filters__chip${unassignedOnly ? ' is-on' : ''}`}>
+                  <input type="checkbox" checked={unassignedOnly} onChange={(event) => setUnassignedOnly(event.target.checked)} />
+                  Unassigned
+                </label>
+                <label className={`sec-vuln-filters__chip${intelOnly ? ' is-on' : ''}`}>
+                  <input type="checkbox" checked={intelOnly} onChange={(event) => setIntelOnly(event.target.checked)} />
+                  Internet matches
+                </label>
+                <label className={`sec-vuln-filters__chip${latestScanOnly ? ' is-on' : ''}`}>
+                  <input type="checkbox" checked={latestScanOnly} onChange={(event) => setLatestScanOnly(event.target.checked)} />
+                  This scan
+                </label>
+                <label className={`sec-vuln-filters__chip${hideDevDeps ? ' is-on' : ''}`}>
+                  <input type="checkbox" checked={hideDevDeps} onChange={(event) => setHideDevDeps(event.target.checked)} />
+                  Hide devDependencies
+                </label>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={clearVulnFilters}>Clear</button>
+            </div>
+          </form>
+        ) : null}
+        {tab === 'services' || tab === 'advisories' ? (
           <form className="svc-filters svc-filters--inventory" onSubmit={(event) => event.preventDefault()}>
             <label>
               Search
@@ -933,48 +1018,8 @@ export default function GlobalVulnerabilitiesPage() {
                 <option value="pr_linked">PR linked</option>
               </select>
             </label>
-            {tab === 'findings' ? (
-              <label>
-                Lifecycle
-                <select className="input" value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
-                  <option value="">Open findings</option>
-                  <option value="open">Open</option>
-                  <option value="acknowledged">Acknowledged</option>
-                  <option value="in_remediation">In remediation</option>
-                  <option value="pending_verification">Pending verification</option>
-                  <option value="risk_accepted">Risk accepted</option>
-                  <option value="fixed">Fixed</option>
-                  <option value="false_positive">False positive</option>
-                  <option value="withdrawn">Withdrawn</option>
-                </select>
-              </label>
-            ) : null}
-            {tab === 'findings' ? (
-              <label>
-                Repository
-                <select className="input" value={repoFilter} onChange={(event) => setRepoFilter(event.target.value)}>
-                  <option value="">All repositories</option>
-                  {findingRepos.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
-              </label>
-            ) : null}
-            {tab === 'findings' ? (
-              <label>
-                Reachability
-                <select className="input" value={reachFilter} onChange={(event) => setReachFilter(event.target.value)}>
-                  <option value="">All evidence</option>
-                  <option value="imported">Imported</option>
-                  <option value="not_imported">Not imported</option>
-                  <option value="unknown">Unknown</option>
-                </select>
-              </label>
-            ) : null}
-            <button type="button" className="btn btn-secondary" onClick={() => { setSearch(''); setSeverity(''); setKevOnly(false); setUnassignedOnly(false); setIntelOnly(false); setTeamFilter(''); setTechFilter(''); setPatchFilter(''); setLifecycleFilter(''); setRepoFilter(''); setLatestScanOnly(false); setHideDevDeps(false); setReachFilter(''); }}>Clear</button>
+            <button type="button" className="btn btn-secondary" onClick={clearVulnFilters}>Clear</button>
             {tab === 'advisories' ? <label className="label"><input type="checkbox" checked={kevOnly} onChange={(event) => setKevOnly(event.target.checked)} /> KEV only</label> : null}
-            {tab === 'findings' ? <label className="label"><input type="checkbox" checked={unassignedOnly} onChange={(event) => setUnassignedOnly(event.target.checked)} /> Unassigned queue</label> : null}
-            {tab === 'findings' ? <label className="label"><input type="checkbox" checked={intelOnly} onChange={(event) => setIntelOnly(event.target.checked)} /> Internet advisory matches</label> : null}
-            {tab === 'findings' ? <label className="label"><input type="checkbox" checked={latestScanOnly} onChange={(event) => setLatestScanOnly(event.target.checked)} /> This scan only</label> : null}
-            {tab === 'findings' ? <label className="label"><input type="checkbox" checked={hideDevDeps} onChange={(event) => setHideDevDeps(event.target.checked)} /> Hide devDependencies</label> : null}
           </form>
         ) : null}
 
