@@ -386,11 +386,16 @@ export default function GlobalVulnerabilitiesPage() {
     if (!watched.length) return;
     if (watched.some((item) => item.state === 'queued' || item.state === 'running')) return;
     const failed = watched.filter((item) => item.state === 'failed');
-    const ok = watched.filter((item) => item.state !== 'failed');
+    const cancelled = watched.filter((item) => item.state === 'cancelled');
+    const ok = watched.filter((item) => item.state !== 'failed' && item.state !== 'cancelled');
     const repos = Array.from(new Set(ok.map((item) => item.repository).filter(Boolean)));
     setWatchScanIds([]);
     setLatestScanOnly(false);
     if (!ok.length) {
+      if (cancelled.length && !failed.length) {
+        setNotice(`Scan #${cancelled[0].id} cancelled. History and open findings were kept. This is not Fixed.`);
+        return;
+      }
       setNotice(failed[0] ? `Scan #${failed[0].id} failed${failed[0].error ? `: ${failed[0].error}` : ''}. Stay on History for the log.` : 'Queued scans finished without stored findings.');
       return;
     }
@@ -927,7 +932,12 @@ export default function GlobalVulnerabilitiesPage() {
     { id: 'commit', header: 'Commit', cell: (item) => item.commit_sha ? item.commit_sha.slice(0, 12) : 'Unknown' },
     { id: 'when', header: 'Queued', cell: (item) => (item.created_at ? formatOperationalTime(item.created_at) : 'Unknown') },
     { id: 'err', header: 'Error', cell: (item) => item.error || 'None recorded' },
-  ], [selectedScanId]);
+    { id: 'cancel', header: '', cell: (item) => (
+      item.state === 'queued'
+        ? <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void cancelScan(item.id)}>Cancel</button>
+        : null
+    ) },
+  ], [busy, selectedScanId]);
 
   async function openPatchPR(planId: number) {
     setBusy(true);
@@ -939,6 +949,43 @@ export default function GlobalVulnerabilitiesPage() {
       return;
     }
     setNotice('Draft patch proposal opened. OpsTrellis does not merge it and does not patch production.');
+    void load();
+  }
+
+  async function cancelScan(id: number) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const result = await vulnRequest(apiUrl, `/api/devops/security/scans/${id}/cancel`, 'POST', {});
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'The queued scan could not be cancelled.');
+      return;
+    }
+    setWatchScanIds((ids) => ids.filter((item) => item !== id));
+    setNotice(typeof result.body.note === 'string' ? result.body.note : 'Queued scan cancelled. History and open findings were kept. This is not Fixed.');
+    void load();
+  }
+
+  async function cancelQueuedScans() {
+    const queued = scans.filter((item) => item.state === 'queued');
+    if (!queued.length) {
+      setError('No queued scans to cancel.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const result = await vulnRequest(apiUrl, '/api/devops/security/scans/cancel-queued', 'POST', {});
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'Queued scans could not be cancelled.');
+      return;
+    }
+    const ids = new Set(queued.map((item) => item.id));
+    setWatchScanIds((current) => current.filter((item) => !ids.has(item)));
+    const n = Number(result.body.cancelled) || queued.length;
+    setNotice(typeof result.body.note === 'string' ? result.body.note : `${n} queued scan${n === 1 ? '' : 's'} cancelled. History and open findings were kept.`);
     void load();
   }
 
@@ -1398,8 +1445,11 @@ export default function GlobalVulnerabilitiesPage() {
               <div className="portal-surface__header">
                 <div>
                   <h2 className="portal-surface__title">Scan history</h2>
-                  <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules.</p>
+                  <p className="portal-surface__subtitle">Partial and failed scans keep the last successful inventory. They cannot close unscanned modules. Queued scans can be cancelled; running scans keep going.</p>
                 </div>
+                {scans.some((item) => item.state === 'queued') ? (
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void cancelQueuedScans()}>Cancel queued</button>
+                ) : null}
               </div>
               <form className="sec-vuln-inline" onSubmit={(event) => { event.preventDefault(); void scanRepositories([Number(scanTargetRepo)]); }}>
                 <label className="label">Registered repository
@@ -1428,7 +1478,10 @@ export default function GlobalVulnerabilitiesPage() {
                       <h2 className="portal-surface__title">Scan results</h2>
                       <p className="portal-surface__subtitle">{scanDetail.repository} · job #{scanDetail.id}. Empty coverage is not a secure label.</p>
                     </div>
-                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void downloadScanInventory(scanDetail.id, scanDetail.repository)}>Download inventory</button>
+                    <span className="sec-vuln-row-actions">
+                      {scanDetail.state === 'queued' ? <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void cancelScan(scanDetail.id)}>Cancel queued scan</button> : null}
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void downloadScanInventory(scanDetail.id, scanDetail.repository)}>Download inventory</button>
+                    </span>
                   </div>
                   <dl className="sec-vuln-status">
                     <div><dt>State</dt><dd>{scanDetail.state} · {scanDetail.stage}</dd></div>
@@ -1439,7 +1492,9 @@ export default function GlobalVulnerabilitiesPage() {
                   </dl>
                   {scanDetail.error ? <p className="form-section__copy">{scanDetail.error}</p> : null}
                   {scanDetail.coverage_note ? <p className="form-section__copy">Coverage: {scanDetail.coverage_note}</p> : null}
-                  {scanDetail.state !== 'queued' && scanDetail.state !== 'running' && (scanDetail.finding_count ?? scanFindings.length) === 0 ? (
+                  {scanDetail.state === 'cancelled' ? (
+                    <p className="form-section__copy">This job was cancelled before the collector started. History and open findings were kept. This is not Fixed.</p>
+                  ) : scanDetail.state !== 'queued' && scanDetail.state !== 'running' && (scanDetail.finding_count ?? scanFindings.length) === 0 ? (
                     <p className="form-section__copy">This job did not create package findings. The Scan log records whether lockfiles were found and whether OSV answered. An empty Findings tab is not proof the collector skipped the repo.</p>
                   ) : null}
                   <h3 className="portal-surface__title">Coverage notes</h3>
@@ -1462,7 +1517,7 @@ export default function GlobalVulnerabilitiesPage() {
                     ]}
                     rows={scanFindings}
                     rowKey={(item) => String(item.id)}
-                    empty={<EmptyState title={scanDetail.state === 'queued' || scanDetail.state === 'running' ? 'Scan in progress' : 'No matches from this scan'} body="This is not a secure label. Unscanned modules stay Unknown." />}
+                    empty={<EmptyState title={scanDetail.state === 'queued' || scanDetail.state === 'running' ? 'Scan in progress' : (scanDetail.state === 'cancelled' ? 'Scan cancelled' : 'No matches from this scan')} body="This is not a secure label. Unscanned modules stay Unknown." />}
                   />
                   <div className="sec-vuln-diff">
                     <h3 className="portal-surface__title">Scan-to-scan diff</h3>

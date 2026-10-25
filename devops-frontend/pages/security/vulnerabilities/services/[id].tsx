@@ -140,6 +140,20 @@ export default function VulnServiceDetailPage() {
     downloadJSONFile(`${slug}-scan-${scanId}-sbom.json`, result.body.inventory ?? result.body);
   }
 
+  async function cancelScan(scanId: number) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const result = await vulnRequest(apiUrl, `/api/devops/security/scans/${scanId}/cancel`, 'POST', {});
+    setBusy(false);
+    if (result.status !== 200) {
+      setError(typeof result.body.error === 'string' ? result.body.error : 'The queued scan could not be cancelled.');
+      return;
+    }
+    setNotice(typeof result.body.note === 'string' ? result.body.note : 'Queued scan cancelled. History and open findings were kept. This is not Fixed.');
+    await load();
+  }
+
   const findingColumns: DataTableColumn<Finding>[] = [
     { id: 'id', header: 'Advisory', cell: (item) => <Link href={`/security/vulnerabilities/findings/${item.id}`}>{item.canonical_id}</Link> },
     { id: 'pkg', header: 'Package', cell: (item) => `${item.package_name}@${item.installed_version || 'unresolved'}` },
@@ -275,7 +289,7 @@ export default function VulnServiceDetailPage() {
                 <div className="portal-surface__header">
                   <div>
                     <h2 className="portal-surface__title">Scan history</h2>
-                    <p className="portal-surface__subtitle">Jobs for this service’s repository, including hosted scans started from Config.</p>
+                    <p className="portal-surface__subtitle">Jobs for this service’s repository, including hosted scans started from Config. Queued scans can be cancelled; running scans keep going.</p>
                   </div>
                   <Link className="btn btn-secondary btn-sm" href="/security/vulnerabilities?tab=history">Open History</Link>
                 </div>
@@ -289,7 +303,12 @@ export default function VulnServiceDetailPage() {
                     { id: 'commit', header: 'Commit', cell: (item: Scan) => item.commit_sha ? item.commit_sha.slice(0, 12) : 'Unknown' },
                     { id: 'when', header: 'Queued', cell: (item: Scan) => (item.created_at ? formatOperationalTime(item.created_at) : 'Unknown') },
                     { id: 'err', header: 'Error', cell: (item: Scan) => item.error || 'None recorded' },
-                    { id: 'sbom', header: '', cell: (item: Scan) => <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void downloadScanInventory(item.id)}>Download inventory</button> },
+                    { id: 'sbom', header: '', cell: (item: Scan) => (
+                      <span className="sec-vuln-row-actions">
+                        {item.state === 'queued' ? <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void cancelScan(item.id)}>Cancel</button> : null}
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void downloadScanInventory(item.id)}>Download inventory</button>
+                      </span>
+                    ) },
                   ]}
                   rows={scans}
                   rowKey={(item) => String(item.id)}

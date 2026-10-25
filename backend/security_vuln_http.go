@@ -201,6 +201,35 @@ func routeVulnSecurity(w http.ResponseWriter, r *http.Request, userID int, path 
 		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"scans": items, "status": "ok"})
 	case path == "scans" && r.Method == http.MethodPost:
 		handleVulnScanCreate(w, r, userID)
+	case path == "scans/cancel-queued" && r.Method == http.MethodPost:
+		n, err := cancelQueuedVulnScans(userID)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "queued scans could not be cancelled", err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"cancelled": n, "status": "ok",
+			"note": "Queued scans cancelled. Running scans were left running. History and open findings were kept. This is not Fixed.",
+		})
+	case parts[0] == "scans" && len(parts) == 3 && parts[2] == "cancel" && r.Method == http.MethodPost:
+		id, _ := strconv.Atoi(parts[1])
+		if id <= 0 {
+			writeAPIError(w, r, http.StatusNotFound, "scan not found", nil)
+			return
+		}
+		if err := cancelVulnScan(userID, id); err != nil {
+			msg := err.Error()
+			code := http.StatusConflict
+			if strings.Contains(strings.ToLower(msg), "not found") {
+				code = http.StatusNotFound
+			}
+			writeAPIError(w, r, code, msg, err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"id": id, "state": "cancelled", "status": "ok",
+			"note": "Queued scan cancelled. History and open findings were kept. This is not Fixed.",
+		})
 	case parts[0] == "scans" && len(parts) == 2 && r.Method == http.MethodGet:
 		id, _ := strconv.Atoi(parts[1])
 		item, err := getVulnScan(id)

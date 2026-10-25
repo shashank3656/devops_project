@@ -763,6 +763,25 @@ func TestVulnRepoStaleReason(t *testing.T) {
 	if stale || reason != "" {
 		t.Fatalf("fresh inventory = %v %q", stale, reason)
 	}
+	stale, reason = vulnRepoStaleReason(true, 3, "cancelled", 14)
+	if stale {
+		t.Fatalf("cancelled with fresh inventory must not be stale: %s", reason)
+	}
+	stale, reason = vulnRepoStaleReason(false, 0, "cancelled", 14)
+	if !stale || !strings.Contains(reason, "Unknown") {
+		t.Fatalf("cancelled without inventory stays Unknown: %v %q", stale, reason)
+	}
+}
+
+func TestVulnQueuedScanIsCancelable(t *testing.T) {
+	if !vulnScanIsCancelable("queued") || !vulnScanIsCancelable("QUEUED") {
+		t.Fatal("queued scans must be cancelable")
+	}
+	for _, state := range []string{"running", "succeeded", "partial", "failed", "cancelled"} {
+		if vulnScanIsCancelable(state) {
+			t.Fatalf("%s must not be cancelable", state)
+		}
+	}
 }
 
 func TestVulnDigestDue(t *testing.T) {

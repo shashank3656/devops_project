@@ -128,20 +128,32 @@ func runVulnScanJob(jobID int) {
 			assessed++
 		}
 	}
-	_, _ = execContext(`
+	res, err := execContext(`
 		UPDATE vuln_scan_jobs
 		SET state=$2, stage='done', coverage_json=$3, discovered_modules=$4, assessed_modules=$5, error='', finished_at=CURRENT_TIMESTAMP
-		WHERE id=$1
+		WHERE id=$1 AND state IN ('queued','running')
 	`, jobID, state, encodeJSONString(merged.Coverage), len(merged.Modules), assessed)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
 	appendVulnScanLog(jobID, "done", fmt.Sprintf("Scan %s. %d modules assessed. %d coverage notes.", state, assessed, len(merged.Coverage)))
 }
 
 func failVulnScan(jobID int, stage, message string) {
-	_, _ = execContext(`
+	res, err := execContext(`
 		UPDATE vuln_scan_jobs
 		SET state='failed', stage=$2, error=$3, finished_at=CURRENT_TIMESTAMP
-		WHERE id=$1
+		WHERE id=$1 AND state IN ('queued','running')
 	`, jobID, stage, message)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
 	appendVulnScanLog(jobID, stage, message)
 	notifyVulnScanFailed(jobID, message)
 }

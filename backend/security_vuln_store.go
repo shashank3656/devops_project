@@ -480,6 +480,69 @@ func vulnScanQueueNote(mode string) string {
 	}
 }
 
+func vulnScanIsCancelable(state string) bool {
+	return strings.EqualFold(strings.TrimSpace(state), "queued")
+}
+
+func cancelVulnScan(userID, jobID int) error {
+	if DB == nil || jobID <= 0 {
+		return fmt.Errorf("scan not found")
+	}
+	seeAll, ids, err := visibleServiceProjectIDs(userID)
+	if err != nil {
+		return err
+	}
+	args := []any{jobID}
+	extra, args := vulnProjectFilter(seeAll, ids, "COALESCE(NULLIF(j.project_id,0), r.project_id)", args)
+	var state string
+	if err := queryRowContext(`
+		SELECT j.state
+		FROM vuln_scan_jobs j JOIN vuln_repositories r ON r.id = j.repo_id
+		WHERE j.id=$1`+extra, args...).Scan(&state); err != nil {
+		return fmt.Errorf("scan not found")
+	}
+	if strings.EqualFold(state, "cancelled") {
+		return nil
+	}
+	if !vulnScanIsCancelable(state) {
+		if strings.EqualFold(state, "running") {
+			return fmt.Errorf("Scan is already running and cannot be cancelled.")
+		}
+		return fmt.Errorf("Scan already finished.")
+	}
+	res, err := execContext(`
+		UPDATE vuln_scan_jobs
+		SET state='cancelled', stage='cancelled', error='Cancelled before the collector started.', finished_at=CURRENT_TIMESTAMP
+		WHERE id=$1 AND state='queued'
+	`, jobID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("Scan is already running and cannot be cancelled.")
+	}
+	appendVulnScanLog(jobID, "cancelled", "Queued scan cancelled. History and open findings were kept. This is not Fixed.")
+	return nil
+}
+
+func cancelQueuedVulnScans(userID int) (int, error) {
+	items, err := listVulnScans(userID)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, item := range items {
+		if !vulnScanIsCancelable(item.State) {
+			continue
+		}
+		if err := cancelVulnScan(userID, item.ID); err == nil {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func appendVulnScanLog(jobID int, stage, detail string) {
 	if DB == nil || jobID <= 0 {
 		return
@@ -1012,6 +1075,8 @@ func listVulnServiceRows(userID, projectID int) ([]vulnServiceRow, error) {
 			switch {
 			case state == "failed":
 				row.Coverage = "Scan failed"
+			case state == "cancelled":
+				row.Coverage = "Scan cancelled"
 			case state == "partial":
 				row.Coverage = "Partial scan"
 			case state == "succeeded" && row.Critical+row.High == 0:
