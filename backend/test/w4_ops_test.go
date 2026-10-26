@@ -16,7 +16,7 @@ func TestQueryAsksToApply(t *testing.T) {
 
 func TestBuildGroundedAnswerRequiresCitations(t *testing.T) {
 	empty := buildGroundedAnswer("why is checkout down?", nil)
-	if !strings.Contains(empty.Reply, "Change, Incident, or runbook") {
+	if !strings.Contains(empty.Reply, "Change, Incident, runbook") || !strings.Contains(empty.Reply, "CALC-COST") {
 		t.Fatalf("%s", empty.Reply)
 	}
 	apply := buildGroundedAnswer("terraform apply prod now", []groundedSource{{Kind: "change", ID: 1, Number: "CHG1", Title: "ship"}})

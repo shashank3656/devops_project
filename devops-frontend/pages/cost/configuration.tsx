@@ -68,18 +68,36 @@ export default function CostConfigurationPage() {
   useEffect(() => {
     const token = typeof window === 'undefined' ? '' : localStorage.getItem(COST_TOKEN_KEY) || '';
     const headers = { Authorization: token ? `Bearer ${token}` : '' };
-    fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => (res.ok ? res.json() : {})).then((payload) => {
-      const rows = Array.isArray(payload?.teams) ? payload.teams : [];
-      setTeamOptions(rows.map((row: { name?: string; slug?: string }) => ({
-        name: String(row.name || '').trim(),
-        slug: String(row.slug || '').trim(),
-      })).filter((row: { name: string }) => row.name));
-    }).catch(() => setTeamOptions([]));
-    fetch(`${apiUrl}/api/devops/services?view=summary`, { headers }).then((res) => (res.ok ? res.json() : {})).then((payload) => {
-      const rows = Array.isArray(payload?.services) ? payload.services : Array.isArray(payload?.items) ? payload.items : [];
-      const names = rows.map((row: { service?: string; name?: string }) => String(row.service || row.name || '').trim()).filter(Boolean);
-      setServiceOptions([...new Set(names)].sort());
-    }).catch(() => setServiceOptions([]));
+    fetch(`${apiUrl}/api/devops/my-teams`, { headers })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const payload = (await res.json()) as { teams?: { name?: string; slug?: string }[] };
+        const rows = Array.isArray(payload.teams) ? payload.teams : [];
+        setTeamOptions(
+          rows
+            .map((row) => ({
+              name: String(row.name || '').trim(),
+              slug: String(row.slug || '').trim(),
+            }))
+            .filter((row) => row.name),
+        );
+      })
+      .catch(() => setTeamOptions([]));
+    fetch(`${apiUrl}/api/devops/services?view=summary`, { headers })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const payload = (await res.json()) as { services?: { service?: string; name?: string }[]; items?: { service?: string; name?: string }[] };
+        const rows = Array.isArray(payload.services)
+          ? payload.services
+          : Array.isArray(payload.items)
+            ? payload.items
+            : [];
+        const names = rows
+          .map((row) => String(row.service || row.name || '').trim())
+          .filter((row): row is string => Boolean(row));
+        setServiceOptions([...new Set(names)].sort());
+      })
+      .catch(() => setServiceOptions([]));
   }, [apiUrl]);
 
   const enable = async () => {
