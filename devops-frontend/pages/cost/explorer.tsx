@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import CostAskButton from '../../components/CostAskButton';
 import CostDailyChart from '../../components/CostDailyChart';
 import CostDrawer from '../../components/CostDrawer';
-import CostEmpty from '../../components/CostEmpty';
+import CostSetupFlow from '../../components/CostSetupFlow';
 import CostFreshnessStrip from '../../components/CostFreshnessStrip';
 import CostNav from '../../components/CostNav';
 import CostSampleBanner from '../../components/CostSampleBanner';
@@ -20,6 +20,7 @@ import {
   fetchCostCSV,
   fetchCostJson,
   groupCostExplorerLines,
+  uniqueCostExplorerFilters,
 } from '../../lib/cost';
 import { COST_SAMPLE, COST_SAMPLE_DAYS, COST_SAMPLE_LINES, COST_SAMPLE_PRIOR_DAYS } from '../../lib/costSample';
 
@@ -54,7 +55,8 @@ export default function CostExplorerPage() {
   const [exporting, setExporting] = useState(false);
   const [open, setOpen] = useState<CostExplorerGroup | CostLine | null>(null);
 
-  const filters = { service, region, account, team, from, to, portal_service: portalService, family };
+  const windowFilters = { from, to, portal_service: portalService };
+  const filters = { ...windowFilters, service, region, account, team, family };
   const showSample = router.query.sample === '1' && Boolean(data?.empty);
   const exportDisabled = Boolean(data?.empty) || showSample;
   const exportReason = showSample ? 'Sample data cannot be exported.' : 'Connect a billing source to export costs.';
@@ -62,30 +64,32 @@ export default function CostExplorerPage() {
   useEffect(() => {
     if (!router.isReady) return;
     setLoading(true);
-    fetchCostJson<CostExplorer>(apiUrl, `/api/cost/explorer${costQuery(basis, currency, filters)}`)
+    fetchCostJson<CostExplorer>(apiUrl, `/api/cost/explorer${costQuery(basis, currency, windowFilters)}`)
       .then((payload) => {
         setData(payload);
         setError('');
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [apiUrl, router.isReady, basis, currency, service, region, account, team, from, to, portalService, family]);
+  }, [apiUrl, router.isReady, basis, currency, from, to, portalService]);
 
+  const sourceLines = showSample ? COST_SAMPLE_LINES : (data?.lines || []);
+  const explorerOptions = useMemo(() => uniqueCostExplorerFilters(sourceLines), [sourceLines]);
   const groups = useMemo(() => {
-    const sampleLines = COST_SAMPLE_LINES.filter((line) => {
+    const lines = sourceLines.filter((line) => {
       if (family && line.service !== family) return false;
-      if (service && !line.service.toLowerCase().includes(service.toLowerCase())) return false;
-      if (team && (line.team_slug || '') !== team) return false;
+      if (service && line.service !== service) return false;
+      if (team && (line.team_slug || 'unallocated') !== team) return false;
       if (region && line.region !== region) return false;
+      if (account && line.account_id !== account) return false;
       return true;
     });
-    const lines = showSample ? sampleLines : (data?.lines || []);
     const coverage = showSample ? 'complete' : (data?.coverage || 'none');
     const rows = groupCostExplorerLines(lines, groupBy, coverage, data?.currency || currency);
     const query = search.trim().toLowerCase();
     if (!query) return rows;
     return rows.filter((row) => `${row.label} ${row.owner}`.toLowerCase().includes(query));
-  }, [data, groupBy, search, currency, showSample, family, service, team, region]);
+  }, [sourceLines, data, groupBy, search, currency, showSample, family, service, team, region, account]);
 
   const patch = (next: Record<string, string | undefined>) => {
     const query = { ...router.query };
@@ -137,14 +141,16 @@ export default function CostExplorerPage() {
           exportDisabled={exportDisabled}
           exportDisabledReason={exportReason}
           sample={showSample}
+          explorerOptions={explorerOptions}
         />
         {showSample ? <CostSampleBanner /> : <CostFreshnessStrip detail={data?.freshness_detail} coverage={data?.coverage} />}
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {loading ? <div className="empty-state">Loading billed lines…</div> : null}
         {!loading && data?.empty && !showSample ? (
-          <CostEmpty
-            title="Connect billing data to explore costs"
-            copy="Add a billing source to see billed lines by service, team, and resource."
+          <CostSetupFlow
+            canOperate={data?.can_operate}
+            state="none"
+            sampleHref={costHref('/cost/explorer', router.query, { sample: '1' })}
           />
         ) : null}
         {!loading && populated ? (

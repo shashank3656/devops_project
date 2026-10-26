@@ -1,17 +1,39 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useWorkspaceScope } from '@infragate/ui';
 import CostFirstRun from '../../components/CostFirstRun';
+import { CostCloudBillingCard } from '../../components/CostSetupFlow';
 import CostFreshnessStrip from '../../components/CostFreshnessStrip';
 import CostNav from '../../components/CostNav';
 import CostSearchSelect from '../../components/CostSearchSelect';
 import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { COST_TOKEN_KEY, CostConfiguration, CostConnection, fetchCostJson, freshnessLabel, readinessLabel, sampleCUR2, validateCostAllocation } from '../../lib/cost';
+import {
+  COST_TOKEN_KEY,
+  CostConfiguration,
+  CostConnection,
+  VisibleCostProject,
+  costAccountIngestReady,
+  costAskSourceLine,
+  costBillingSetup,
+  costCloudId,
+  costCloudsForProject,
+  costEligibleForCloud,
+  uniqueCostClouds,
+  fetchCostJson,
+  fetchVisibleCostProjects,
+  freshnessLabel,
+  readinessLabel,
+  sampleCUR2,
+  validateCostAllocation,
+} from '../../lib/cost';
 
 export default function CostConfigurationPage() {
   const apiUrl = useApiUrl();
+  const { scope } = useWorkspaceScope();
+  const [projects, setProjects] = useState<VisibleCostProject[]>([]);
   const [data, setData] = useState<CostConfiguration | null>(null);
   const [accountId, setAccountId] = useState('');
   const [error, setError] = useState('');
@@ -34,9 +56,11 @@ export default function CostConfigurationPage() {
       .then((payload) => {
         setData(payload);
         setError('');
-        setAccountId((current) => current || (payload.eligible?.[0] ? String(payload.eligible[0].id) : ''));
-        setImportConnection((current) => current || (payload.connections?.[0] ? String(payload.connections[0].id) : ''));
-        setImportJSON((current) => current || sampleCUR2(payload.connections?.[0]?.account_id || '123456789012'));
+        const awsEligible = (payload.eligible || []).filter((row) => costAccountIngestReady(row));
+        const awsConnections = (payload.connections || []).filter((row) => costCloudId(row.provider || 'aws') === 'aws');
+        setAccountId((current) => current || (awsEligible[0] ? String(awsEligible[0].id) : ''));
+        setImportConnection((current) => current || (awsConnections[0] ? String(awsConnections[0].id) : ''));
+        setImportJSON((current) => current || sampleCUR2(awsConnections[0]?.account_id || '123456789012'));
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
@@ -63,6 +87,10 @@ export default function CostConfigurationPage() {
 
   useEffect(() => {
     load();
+  }, [apiUrl]);
+
+  useEffect(() => {
+    fetchVisibleCostProjects(apiUrl).then(setProjects).catch(() => setProjects([]));
   }, [apiUrl]);
 
   useEffect(() => {
@@ -193,6 +221,27 @@ export default function CostConfigurationPage() {
     }
   };
 
+  const projectClouds = costCloudsForProject(projects, scope.projectId);
+  const projectName = projects.find((row) => row.id === String(scope.projectId))?.name || '';
+  const scopedEligible = useMemo(
+    () => (data?.eligible || []).filter((row) => !scope.projectId || String(row.project_id || '') === String(scope.projectId)),
+    [data, scope.projectId],
+  );
+  const scopedConnections = useMemo(
+    () => (data?.connections || []).filter((row) => !scope.projectId || String(row.project_id || '') === String(scope.projectId)),
+    [data, scope.projectId],
+  );
+  const awsEligible = scopedEligible.filter((row) => costAccountIngestReady(row));
+  const awsConnections = scopedConnections.filter((row) => costCloudId(row.provider || 'aws') === 'aws');
+  const pendingClouds = uniqueCostClouds([
+    ...projectClouds,
+    ...scopedEligible.map((row) => row.provider),
+  ]).filter((cloud) => cloud !== 'aws');
+  const showAwsEnable = projectClouds.includes('aws') || (!projectClouds.length && (awsEligible.length > 0 || awsConnections.length > 0 || pendingClouds.length === 0));
+  const hint = projectClouds.length === 1
+    ? costBillingSetup(projectClouds[0]).note
+    : (typeof data?.pilot === 'object' && data.pilot?.note) || costAskSourceLine(projectClouds);
+
   const testConnection = async (connection: CostConnection) => {
     setActing(`test-${connection.id}`);
     setNotice('');
@@ -236,28 +285,33 @@ export default function CostConfigurationPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">Data sources</h1>
-            <p className="cost-shell__hint">
-              {typeof data?.pilot === 'object' && data.pilot?.note
-                ? data.pilot.note
-                : 'Pilot: labelled AWS CUR 2.0 import. This page does not store billing credentials and does not pull CUR automatically.'}
-            </p>
+            <p className="cost-shell__hint">{hint}</p>
           </div>
         </div>
         <CostNav current="configuration" />
         <CostFreshnessStrip detail={data?.freshness_detail} />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-info" role="status">{notice}</div> : null}
+        {!loading && pendingClouds.map((cloud) => (
+          <CostCloudBillingCard
+            key={cloud}
+            cloud={cloud}
+            projectName={projectName}
+            accounts={scopedEligible.filter((row) => costEligibleForCloud(row, cloud))}
+          />
+        ))}
+        {showAwsEnable ? (
         <section className="portal-surface">
-          <h2 className="portal-surface__title">Enable on an existing account</h2>
-          <p className="portal-surface__subtitle">{data?.note}</p>
+          <h2 className="portal-surface__title">Enable on an existing AWS account</h2>
+          <p className="portal-surface__subtitle">{costBillingSetup('aws').note}</p>
           {loading ? <div className="empty-state">Loading accounts…</div> : null}
           {!loading && data?.can_operate === false ? (
             <div className="empty-state">You can view spend. Cost operate is required to enable or import.</div>
           ) : null}
-          {!loading && data?.can_operate !== false && !(data?.eligible || []).length && !(data?.connections || []).length ? (
-            <CostFirstRun canOperate title="No AWS accounts in a project you can see" primaryHref="/cloud-accounts" primaryLabel="Open cloud accounts" />
+          {!loading && data?.can_operate !== false && !awsEligible.length && !awsConnections.length && !pendingClouds.length ? (
+            <CostFirstRun canOperate title="No cloud accounts in a project you can see" primaryHref="/cloud-accounts" primaryLabel="Open cloud accounts" />
           ) : null}
-          {!loading && data?.can_operate !== false && !(data?.eligible || []).length && (data?.connections || []).length ? (
+          {!loading && data?.can_operate !== false && !awsEligible.length && awsConnections.length ? (
             <div className="empty-state">
               Cost is already enabled on every AWS account you can operate. Ingest billed data on a connection below.
             </div>
@@ -267,11 +321,11 @@ export default function CostConfigurationPage() {
               <p>Assistant checks: {data.ai_proof.safe ?? 0} allowed, {data.ai_proof.blocked ?? 0} blocked. {data.ai_proof.note}</p>
             </CostTechnicalDetails>
           ) : null}
-          {(data?.eligible || []).length && data?.can_operate !== false ? (
+          {awsEligible.length && data?.can_operate !== false ? (
             <>
               <label className="label">Cloud account
                 <select className="input" value={accountId} onChange={(event) => setAccountId(event.target.value)}>
-                  {data!.eligible.map((account) => (
+                  {awsEligible.map((account) => (
                     <option key={account.id} value={account.id}>
                       {account.display_name} · {account.project_code || account.project_name || 'Project'} · {account.account_id}
                     </option>
@@ -284,11 +338,16 @@ export default function CostConfigurationPage() {
             </>
           ) : null}
         </section>
+        ) : null}
+        {!loading && data?.can_operate !== false && !scopedEligible.length && !scopedConnections.length && !pendingClouds.length && !showAwsEnable ? (
+          <CostFirstRun canOperate title="No cloud accounts in a project you can see" primaryHref="/cloud-accounts" primaryLabel="Open cloud accounts" />
+        ) : null}
+        {showAwsEnable ? (
         <section className="portal-surface portal-surface--table">
           <h2 className="portal-surface__title">Collection</h2>
           <p className="portal-surface__subtitle">On-demand labelled import only. Schedule stays Not scheduled until automated collection exists.</p>
-          {!(data?.collection || []).length ? (
-            <div className="empty-state">Enable Cost on an account to see source configuration and last success.</div>
+          {!awsConnections.length ? (
+            <div className="empty-state">Enable Cost on an AWS account to see source configuration and last success.</div>
           ) : (
             <table className="portal-table">
               <thead>
@@ -303,8 +362,8 @@ export default function CostConfigurationPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.collection || []).map((row) => {
-                  const connection = (data?.connections || []).find((item) => item.id === row.connection_id);
+                {(data?.collection || []).filter((row) => awsConnections.some((item) => item.id === row.connection_id)).map((row) => {
+                  const connection = awsConnections.find((item) => item.id === row.connection_id);
                   return (
                     <tr key={row.connection_id}>
                       <td>{row.configuration || row.source}</td>
@@ -329,8 +388,8 @@ export default function CostConfigurationPage() {
         </section>
         <section className="portal-surface portal-surface--table">
           <h2 className="portal-surface__title">Connections</h2>
-          {!(data?.connections || []).length ? (
-            <div className="empty-state">No Cost connections yet.</div>
+          {!awsConnections.length ? (
+            <div className="empty-state">No AWS Cost connections yet.</div>
           ) : (
             <table className="portal-table">
               <thead>
@@ -344,7 +403,7 @@ export default function CostConfigurationPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.connections || []).map((row) => (
+                {awsConnections.map((row) => (
                   <tr key={row.id}>
                     <td>
                       <Link href={`/cost/accounts/${row.id}`}>{row.display_name}</Link>
@@ -368,13 +427,15 @@ export default function CostConfigurationPage() {
             </table>
           )}
         </section>
+        ) : null}
+        {showAwsEnable ? (
         <section className="portal-surface">
           <h2 className="portal-surface__title">Labelled AWS CUR 2.0 import</h2>
           <p className="portal-surface__subtitle">
-            Paste CUR 2.0 JSON. Kind import, backfill, or correction. Backfill is limited to 13 months. A replay of the same export does not double spend. A correction supersedes the window and keeps history.
+            Paste CUR 2.0 JSON. Kind import, backfill, or correction. Backfill is limited to 13 months. A replay of the same export does not double spend. A correction supersedes the window and keeps history. This form is AWS only.
           </p>
-          {!(data?.connections || []).length ? (
-            <div className="empty-state">Enable Cost on an account first.</div>
+          {!awsConnections.length ? (
+            <div className="empty-state">Enable Cost on an AWS account first.</div>
           ) : (
             <>
               <div className="portal-form-grid">
@@ -382,10 +443,10 @@ export default function CostConfigurationPage() {
                   <select className="input" value={importConnection} onChange={(event) => {
                     const next = event.target.value;
                     setImportConnection(next);
-                    const account = data?.connections.find((row) => String(row.id) === next);
+                    const account = awsConnections.find((row) => String(row.id) === next);
                     if (account) setImportJSON(sampleCUR2(account.account_id));
                   }}>
-                    {(data?.connections || []).map((row) => (
+                    {awsConnections.map((row) => (
                       <option key={row.id} value={row.id}>{row.display_name} · {row.account_id}</option>
                     ))}
                   </select>
@@ -407,6 +468,7 @@ export default function CostConfigurationPage() {
             </>
           )}
         </section>
+        ) : null}
         <section className="portal-surface">
           <h2 className="portal-surface__title">Allocation rules</h2>
           <p className="portal-surface__subtitle">
@@ -479,6 +541,7 @@ export default function CostConfigurationPage() {
             </table>
           ) : <p className="sre-meta__empty">No explicit rules yet. Tags and connection defaults still apply.</p>}
         </section>
+        {showAwsEnable ? (
         <section className="portal-surface portal-surface--table">
           <h2 className="portal-surface__title">Ingest history</h2>
           {!(data?.batches || []).length ? (
@@ -510,6 +573,7 @@ export default function CostConfigurationPage() {
             </table>
           )}
         </section>
+        ) : null}
       </div>
     </DevOpsLayout>
   );

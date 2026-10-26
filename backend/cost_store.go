@@ -67,15 +67,18 @@ type costWindowSlice struct {
 }
 
 type costEligibleAccount struct {
-	ID          int    `json:"id"`
-	AccountID   string `json:"account_id"`
-	DisplayName string `json:"display_name"`
-	Provider    string `json:"provider"`
-	TeamSlug    string `json:"team_slug"`
-	ProjectID   int    `json:"project_id,omitempty"`
-	ProjectName string `json:"project_name,omitempty"`
-	ProjectCode string `json:"project_code,omitempty"`
-	Status      string `json:"status"`
+	ID            int    `json:"id"`
+	AccountID     string `json:"account_id,omitempty"`
+	DisplayName   string `json:"display_name"`
+	Provider      string `json:"provider"`
+	TeamSlug      string `json:"team_slug"`
+	ProjectID     int    `json:"project_id,omitempty"`
+	ProjectName   string `json:"project_name,omitempty"`
+	ProjectCode   string `json:"project_code,omitempty"`
+	Status        string `json:"status"`
+	CostReady     bool   `json:"cost_ready"`
+	BillingSource string `json:"billing_source"`
+	Note          string `json:"note,omitempty"`
 }
 
 func costReadiness(value string) string {
@@ -243,8 +246,8 @@ func enableCostConnection(userID, cloudAccountID int) (*costConnection, error) {
 	if costDemoAccountID(account.AccountID) {
 		return nil, fmt.Errorf("demo cloud accounts cannot be used for Cost")
 	}
-	if normalizeCloudProvider(account.Provider) != "aws" {
-		return nil, fmt.Errorf("Cost C1 only enables AWS CUR 2.0 on an existing account")
+	if !costBillingIngestReady(account.Provider) {
+		return nil, fmt.Errorf("%s", costBillingSetupNote(account.Provider))
 	}
 	if strings.EqualFold(account.Status, "disabled") {
 		return nil, fmt.Errorf("disabled cloud accounts cannot enable Cost")
@@ -300,22 +303,27 @@ func listEligibleCostAccounts(userID int) ([]costEligibleAccount, error) {
 		if !userCanOperateCost(userID, account.ProjectID) {
 			continue
 		}
-		if normalizeCloudProvider(account.Provider) != "aws" {
-			continue
-		}
 		if strings.EqualFold(account.Status, "disabled") {
 			continue
 		}
+		provider := normalizeCloudProvider(account.Provider)
+		accountID := ""
+		if provider == "aws" {
+			accountID = account.AccountID
+		}
 		out = append(out, costEligibleAccount{
-			ID:          account.ID,
-			AccountID:   account.AccountID,
-			DisplayName: account.DisplayName,
-			Provider:    account.Provider,
-			TeamSlug:    account.TeamSlug,
-			ProjectID:   account.ProjectID,
-			ProjectName: account.ProjectName,
-			ProjectCode: account.ProjectCode,
-			Status:      account.Status,
+			ID:            account.ID,
+			AccountID:     accountID,
+			DisplayName:   account.DisplayName,
+			Provider:      provider,
+			TeamSlug:      account.TeamSlug,
+			ProjectID:     account.ProjectID,
+			ProjectName:   account.ProjectName,
+			ProjectCode:   account.ProjectCode,
+			Status:        account.Status,
+			CostReady:     costBillingIngestReady(provider),
+			BillingSource: costBillingSource(provider),
+			Note:          costBillingSetupNote(provider),
 		})
 	}
 	return out, nil

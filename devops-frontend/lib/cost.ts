@@ -634,19 +634,24 @@ export type CostExplorer = {
   note?: string;
 };
 
+export type CostEligibleAccount = {
+  id: number;
+  account_id?: string;
+  display_name: string;
+  provider: string;
+  team_slug: string;
+  project_id?: number;
+  project_name?: string;
+  project_code?: string;
+  status: string;
+  cost_ready?: boolean;
+  billing_source?: string;
+  note?: string;
+};
+
 export type CostConfiguration = {
   connections: CostConnection[];
-  eligible: {
-    id: number;
-    account_id: string;
-    display_name: string;
-    provider: string;
-    team_slug: string;
-    project_id?: number;
-    project_name?: string;
-    project_code?: string;
-    status: string;
-  }[];
+  eligible: CostEligibleAccount[];
   batches?: CostBatch[];
   rules?: CostAllocationRule[];
   collection?: CostCollection[];
@@ -792,7 +797,7 @@ export const COST_COPILOT_CHIPS = [
   'Why is coverage incomplete?',
 ];
 
-export const COST_SCOPE_KEYS = ['from', 'to', 'basis', 'currency', 'project', 'cloud', 'environment', 'sample'] as const;
+export const COST_SCOPE_KEYS = ['from', 'to', 'range', 'basis', 'currency', 'project', 'cloud', 'environment', 'sample'] as const;
 const COST_SCOPE_STORAGE = 'opstrellis-cost-scope';
 
 export function pickCostScope(query: { [key: string]: string | string[] | undefined | unknown }): Record<string, string> {
@@ -945,6 +950,33 @@ export type CostFilterOptions = {
   imports: string[];
 };
 
+export type CostExplorerFilterOptions = {
+  products: string[];
+  teams: string[];
+  regions: string[];
+  accounts: string[];
+};
+
+export function uniqueCostExplorerFilters(lines: CostLine[]): CostExplorerFilterOptions {
+  const products = new Set<string>();
+  const teams = new Set<string>();
+  const regions = new Set<string>();
+  const accounts = new Set<string>();
+  (lines || []).forEach((line) => {
+    if (line.service) products.add(line.service);
+    teams.add(line.team_slug || 'unallocated');
+    if (line.region) regions.add(line.region);
+    if (line.account_id) accounts.add(line.account_id);
+  });
+  const sort = (values: Set<string>) => [...values].sort((a, b) => a.localeCompare(b));
+  return {
+    products: sort(products),
+    teams: sort(teams),
+    regions: sort(regions),
+    accounts: sort(accounts),
+  };
+}
+
 export function emptyCostAnalysisFilters(): CostAnalysisFilters {
   return { project: '', cloud: '', environment: '', freshness: '', importStatus: '' };
 }
@@ -1016,7 +1048,8 @@ export function costFamilyTone(label: string) {
   return 'other';
 }
 
-export function costWindowPreset(from: string, to: string) {
+export function costWindowPreset(from: string, to: string, range?: string) {
+  if (range === 'custom') return 'custom';
   if (!from && !to) return 'all';
   const thisMonth = costThisMonth();
   if (from === thisMonth.from && to === thisMonth.to) return 'this';
@@ -1155,6 +1188,161 @@ export function importableLabel(value: string | undefined) {
   return 'Unknown';
 }
 
+export type CostCloudId = 'aws' | 'gcp' | 'azure';
+
+export function costCloudId(value: string): CostCloudId | '' {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'aws' || normalized === 'gcp' || normalized === 'azure') return normalized;
+  return '';
+}
+
+export function costCloudLabel(value: string): string {
+  switch (costCloudId(value)) {
+    case 'gcp':
+      return 'GCP';
+    case 'azure':
+      return 'Azure';
+    case 'aws':
+      return 'AWS';
+    default:
+      return 'Cloud';
+  }
+}
+
+export function uniqueCostClouds(values: string[]): CostCloudId[] {
+  const out: CostCloudId[] = [];
+  values.forEach((value) => {
+    const id = costCloudId(value);
+    if (id && !out.includes(id)) out.push(id);
+  });
+  return out;
+}
+
+export function parseCostProjectClouds(project: { clouds?: unknown; cloud?: string }): string[] {
+  if (Array.isArray(project.clouds)) {
+    return uniqueCostClouds(project.clouds.map((item) => String(item || '')));
+  }
+  return uniqueCostClouds(String(project.cloud || '').split(','));
+}
+
+export type VisibleCostProject = { id: string; name: string; clouds: CostCloudId[] };
+
+export async function fetchVisibleCostProjects(apiUrl: string): Promise<VisibleCostProject[]> {
+  const token = typeof window === 'undefined' ? '' : localStorage.getItem(COST_TOKEN_KEY) || '';
+  const res = await fetch(`${apiUrl}/api/devops/projects`, {
+    headers: { Authorization: token ? `Bearer ${token}` : '' },
+  });
+  if (!res.ok) return [];
+  const payload = (await res.json()) as {
+    projects?: { id?: number | string; name?: string; clouds?: unknown; cloud?: string }[];
+  };
+  return (payload.projects || [])
+    .map((row) => ({
+      id: String(row.id || ''),
+      name: String(row.name || ''),
+      clouds: parseCostProjectClouds(row),
+    }))
+    .filter((row) => row.id);
+}
+
+export function costCloudsForProject(projects: VisibleCostProject[], projectId: string): CostCloudId[] {
+  if (projectId) {
+    const match = projects.find((row) => row.id === String(projectId));
+    if (match) return match.clouds;
+  }
+  const all: string[] = [];
+  projects.forEach((row) => all.push(...row.clouds));
+  return uniqueCostClouds(all);
+}
+
+export type CostBillingSetup = {
+  cloud: CostCloudId;
+  label: string;
+  source: string;
+  ingestReady: boolean;
+  headline: string;
+  connectLabel: string;
+  emptyCopy: string;
+  emptyList: string;
+  note: string;
+  stages: { title: string; copy: string }[];
+};
+
+export function costBillingSetup(cloud: string): CostBillingSetup {
+  switch (costCloudId(cloud)) {
+    case 'gcp':
+      return {
+        cloud: 'gcp',
+        label: 'GCP',
+        source: 'GCP Cloud Billing export',
+        ingestReady: false,
+        headline: 'Connect GCP billing to see costs',
+        connectLabel: 'Open GCP billing setup',
+        emptyCopy: 'This project uses GCP. Cost will use Cloud Billing export to BigQuery. That export is not ingested yet, so spend stays Unknown. This product does not store billing credentials.',
+        emptyList: 'No GCP projects in this project yet. Assign one on Cloud accounts.',
+        note: 'GCP Cloud Billing export to BigQuery is not ingested yet. Spend stays Unknown. This product does not store billing credentials and does not pull BigQuery automatically.',
+        stages: [
+          { title: 'Choose a GCP project', copy: 'Pick a GCP project already assigned in OpsTrellis. Demo inventory stays out.' },
+          { title: 'Export Cloud Billing to BigQuery', copy: 'In GCP, enable Cloud Billing export for the billing account that owns this project. Cost does not store service-account keys or pull BigQuery automatically in this pilot.' },
+          { title: 'Review costs', copy: 'Spend stays Unknown until GCP billing export is ingested. Incomplete stays Unknown, never $0.' },
+        ],
+      };
+    case 'azure':
+      return {
+        cloud: 'azure',
+        label: 'Azure',
+        source: 'Azure Cost Management export',
+        ingestReady: false,
+        headline: 'Connect Azure billing to see costs',
+        connectLabel: 'Open Azure billing setup',
+        emptyCopy: 'This project uses Azure. Cost will use a Cost Management export to a storage account. That export is not ingested yet, so spend stays Unknown. This product does not store billing credentials.',
+        emptyList: 'No Azure subscriptions in this project yet. Assign one on Cloud accounts.',
+        note: 'Azure Cost Management export to a storage account is not ingested yet. Spend stays Unknown. This product does not store billing credentials and does not pull Azure billing automatically.',
+        stages: [
+          { title: 'Choose a subscription', copy: 'Pick an Azure subscription already assigned in OpsTrellis. Demo inventory stays out.' },
+          { title: 'Export Cost Management to storage', copy: 'In Azure, create a Cost Management export of actual cost for that subscription to a storage account. Cost does not store tenant secrets or pull Azure billing automatically in this pilot.' },
+          { title: 'Review costs', copy: 'Spend stays Unknown until the Azure export is ingested. Incomplete stays Unknown, never $0.' },
+        ],
+      };
+    default:
+      return {
+        cloud: 'aws',
+        label: 'AWS',
+        source: 'AWS CUR 2.0',
+        ingestReady: true,
+        headline: 'Connect billing data to see costs',
+        connectLabel: 'Connect billing source',
+        emptyCopy: 'Add a billing source to see project and account spend. The sample dashboard is optional.',
+        emptyList: 'No AWS accounts in this project yet. Assign one on Cloud accounts.',
+        note: 'Enable Cost, then import a labelled CUR 2.0 export. Collection is manual. Incomplete stays Unknown, never $0. This product does not store billing credentials.',
+        stages: [
+          { title: 'Choose account', copy: 'Pick a cloud account already assigned to a project you can see. Demo inventory accounts stay out.' },
+          { title: 'Connect billing data', copy: 'Enable Cost and import a labelled CUR 2.0 export. Collection is manual in this pilot. Incomplete stays Unknown, never $0.' },
+          { title: 'Review costs', copy: 'The operating bill appears after a complete revision exists.' },
+        ],
+      };
+  }
+}
+
+export function costAskSourceLine(clouds: string[]): string {
+  const ids = uniqueCostClouds(clouds);
+  if (ids.length === 1 && ids[0] === 'gcp') return 'Source GCP Cloud Billing export. Not ingested yet.';
+  if (ids.length === 1 && ids[0] === 'azure') return 'Source Azure Cost Management export. Not ingested yet.';
+  if (ids.includes('gcp') || ids.includes('azure')) {
+    return 'Source follows the project cloud. AWS uses labelled CUR 2.0. GCP and Azure billing are not ingested yet.';
+  }
+  return 'Source labelled CUR 2.0.';
+}
+
+export function costEligibleForCloud(account: { provider?: string; cost_ready?: boolean }, cloud: string): boolean {
+  return costCloudId(account.provider || '') === costCloudId(cloud);
+}
+
+export function costAccountIngestReady(account: { provider?: string; cost_ready?: boolean }): boolean {
+  if (typeof account.cost_ready === 'boolean') return account.cost_ready;
+  return costCloudId(account.provider || 'aws') === 'aws';
+}
+
 export function budgetAlertLabel(value: string | undefined) {
   if ((value || '').toLowerCase() === 'over') return 'Over';
   if ((value || '').toLowerCase() === 'warn') return 'Warning';
@@ -1184,7 +1372,7 @@ export function costUnknownReason(input: {
     return {
       code: 'not_imported',
       title: 'Not imported',
-      detail: 'Cost is not imported for this account. Enable Cost, then import billed lines. Spend stays Unknown until a complete revision exists.',
+      detail: 'Cost is not imported for this account. Connect this cloud billing export, then import billed lines when that source exists. Spend stays Unknown until a complete revision exists.',
     };
   }
   if (coverage === 'none' || (input.lineCount === 0 && coverage !== 'complete' && coverage !== 'incomplete')) {

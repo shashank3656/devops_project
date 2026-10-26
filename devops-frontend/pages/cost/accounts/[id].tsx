@@ -2,14 +2,15 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostAttention from '../../../components/CostAttention';
+import CostDailyChart from '../../../components/CostDailyChart';
 import CostFreshnessStrip from '../../../components/CostFreshnessStrip';
-import CostKpiStrip from '../../../components/CostKpiStrip';
-import CostMixChart from '../../../components/CostMixChart';
 import CostNav from '../../../components/CostNav';
+import CostScorecard from '../../../components/CostScorecard';
 import CostTechnicalDetails from '../../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { CostAccountDashboard, budgetAlertLabel, costQuery, costToneForDisplay, costUnknownReason, downloadCostCSV, fetchCostCSV, fetchCostJson, importableLabel } from '../../../lib/cost';
+import { CostAccountDashboard, budgetAlertLabel, costHref, costQuery, costUnknownReason, fetchCostJson, importableLabel } from '../../../lib/cost';
 
 export default function CostAccountDashboardPage() {
   const apiUrl = useApiUrl();
@@ -22,7 +23,6 @@ export default function CostAccountDashboardPage() {
   const [data, setData] = useState<CostAccountDashboard | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (!router.isReady || !id) return;
@@ -38,8 +38,26 @@ export default function CostAccountDashboardPage() {
 
   const title = data?.connection?.display_name || 'Account spend';
   const spendUnknown = !data?.spend || data.spend.display === 'Unknown';
-  const mix = data?.service_mix || [];
   const days = data?.daily || [];
+  const overviewHref = costHref('/cost', router.query);
+  const projectHref = data?.project?.id ? costHref(`/cost/projects/${data.project.id}`, router.query) : overviewHref;
+  const explorerHref = costHref('/cost/explorer', router.query);
+  const riskBudget = (data?.budgets || []).find((row) => row.alert === 'over') || (data?.budgets || []).find((row) => row.alert === 'warn') || (data?.budgets || [])[0];
+  const attention = [
+    ...(data?.stale_hint ? [{ title: data.stale_hint.note || 'Billing data is stale', detail: 'Import a newer labelled window', href: data.stale_hint.href || '/cost/configuration', tone: 'source' as const }] : []),
+    ...(data?.importable || []).filter((item) => item.status !== 'ready').map((item) => ({
+      title: item.label,
+      detail: item.note || importableLabel(item.status),
+      href: item.href || '/cost/configuration',
+      tone: 'source' as const,
+    })),
+    ...(data?.budgets || []).filter((row) => row.alert === 'over' || row.alert === 'warn').map((row) => ({
+      title: row.alert === 'over' ? `${row.name} is over budget` : `${row.name} is near budget`,
+      detail: `Remaining ${row.remaining?.display || 'Unknown'}`,
+      href: costHref('/cost/budgets', router.query),
+      tone: row.alert === 'over' ? 'risk' as const : 'alert' as const,
+    })),
+  ];
 
   return (
     <DevOpsLayout>
@@ -53,17 +71,16 @@ export default function CostAccountDashboardPage() {
             </p>
           </div>
           <div className="portal-page__actions">
-            {data?.project?.id ? <Link href={`/cost/projects/${data.project.id}`} className="btn btn-secondary btn-sm">Project</Link> : null}
-            <Link href="/cost" className="btn btn-secondary btn-sm">All projects</Link>
-            {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-secondary btn-sm">Import</Link> : null}
+            {data?.project?.id ? <Link href={projectHref} className="btn btn-secondary btn-sm">Project</Link> : null}
+            <Link href={overviewHref} className="btn btn-secondary btn-sm">All projects</Link>
+            {data?.can_operate ? <Link href={costHref('/cost/configuration', router.query)} className="btn btn-secondary btn-sm">Import</Link> : null}
           </div>
         </div>
         <CostNav
           current="overview"
-          compact
           crumbs={[
-            { href: '/cost', label: 'Cost' },
-            data?.project?.id ? { href: `/cost/projects/${data.project.id}`, label: data.project.name || 'Project' } : { href: '/cost', label: 'Project' },
+            { href: overviewHref, label: 'Overview' },
+            data?.project?.id ? { href: projectHref, label: data.project?.name || 'Project' } : { href: overviewHref, label: 'Project' },
             { label: title },
           ]}
         />
@@ -83,14 +100,17 @@ export default function CostAccountDashboardPage() {
         {loading ? <div className="empty-state">Loading account spend…</div> : null}
         {!loading && data ? (
           <>
-            <CostKpiStrip
+            <CostScorecard
               canOperate={data.can_operate}
               items={[
                 {
-                  label: 'This account',
+                  label: 'Spend to date',
                   value: spendUnknown ? 'Unknown' : data.spend?.display || 'Unknown',
-                  hint: spendUnknown ? 'Incomplete stays Unknown, never $0' : `${basis} billed window`,
-                  tone: costToneForDisplay(data.spend?.display),
+                  comparison: data.compare?.like_for_like ? data.compare.delta?.display : 'Unknown',
+                  comparisonLabel: 'Versus prior period',
+                  visual: 'trend',
+                  sparkline: days.map((row) => row.percent),
+                  href: explorerHref,
                   unknown: costUnknownReason({
                     display: data.spend?.display,
                     coverage: data.spend?.coverage || data.coverage,
@@ -98,82 +118,48 @@ export default function CostAccountDashboardPage() {
                     freshness: data.freshness,
                     stale: Boolean(data.stale_hint),
                   }),
+                  meaning: 'spend',
                 },
                 {
                   label: 'Prior window',
                   value: data.compare?.prior?.display || 'Unknown',
-                  hint: data.compare?.like_for_like ? 'Like-for-like' : 'Needs two complete windows',
-                  tone: costToneForDisplay(data.compare?.prior?.display),
+                  comparisonLabel: 'Method',
+                  comparison: data.compare?.like_for_like ? 'Like-for-like' : 'Needs two complete windows',
                   unknown: costUnknownReason({
                     display: data.compare?.prior?.display,
                     coverage: data.compare?.prior?.coverage || data.compare?.prior_coverage,
                   }),
+                  meaning: 'spend',
                 },
                 {
-                  label: 'Delta',
-                  value: data.compare?.delta?.display || 'Unknown',
-                  hint: 'Incomplete stays Unknown, never $0',
-                  tone: costToneForDisplay(data.compare?.delta?.display),
-                  unknown: costUnknownReason({
-                    display: data.compare?.delta?.display,
-                    coverage: data.compare?.delta?.coverage,
-                  }),
+                  label: 'Budget remaining',
+                  value: riskBudget?.remaining?.display || 'Unknown',
+                  comparisonLabel: 'Budget',
+                  comparison: riskBudget?.name || 'No budget this month',
+                  href: costHref('/cost/budgets', router.query),
+                  meaning: riskBudget?.alert === 'over' ? 'risk' : 'neutral',
                 },
                 {
-                  label: 'Kubernetes',
-                  value: data.kubernetes?.bound ? 'Bound' : 'Not bound',
-                  hint: 'Breakdown of this bill, never extra',
-                  tone: data.kubernetes?.bound ? 'k8s' : 'unknown',
-                  href: data.kubernetes?.href || '/cost/kubernetes',
+                  label: 'Potential savings',
+                  value: data.suggestions?.[0]?.savings_high?.display || 'Unknown',
+                  comparisonLabel: 'Status',
+                  comparison: 'Estimated, not verified',
+                  estimate: true,
+                  visual: 'count',
+                  countLabel: `${(data.suggestions || []).length} opportunities`,
+                  href: costHref('/cost/optimization', router.query),
+                  meaning: 'savings',
                 },
               ]}
             />
-            <div className="cost-ledger__meta">
-              <Link href={`/cost/explorer${costQuery(basis, currency, { from: data.window_start || from, to: data.window_end || to })}`}>Explorer</Link>
-              <Link href="/cost/optimization">Optimization</Link>
-              {data.kubernetes?.href ? <Link href={data.kubernetes.href}>Kubernetes</Link> : null}
-              {data.export_href ? (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  disabled={exporting}
-                  onClick={() => {
-                    setExporting(true);
-                    fetchCostCSV(apiUrl, `${data.export_href}${costQuery(basis, currency, { from: data.window_start || from, to: data.window_end || to })}`)
-                      .then((text) => downloadCostCSV(text, 'cost-account.csv'))
-                      .catch((err: Error) => setError(err.message))
-                      .finally(() => setExporting(false));
-                  }}
-                >
-                  {exporting ? 'Exporting…' : 'Export CSV'}
-                </button>
-              ) : null}
-            </div>
             <section className="cost-dash cost-dash--split">
               <div className="cost-dash__graph">
-                <span className="portal-surface__eyebrow">Service mix</span>
-                <h2 className="portal-surface__title">Where spend sits</h2>
-                <CostMixChart
-                  mix={mix}
-                  days={days}
-                  familyHref={(family) => `/cost/explorer${costQuery(basis, currency, { from: data.window_start || from, to: data.window_end || to, family })}`}
-                />
-              </div>
-              <div className="cost-dash__side">
-                <span className="portal-surface__eyebrow">Import</span>
-                <h2 className="portal-surface__title">What can still be brought in</h2>
-                <div className="cost-import">
-                  {(data.importable || []).map((item) => (
-                    <Link key={item.id} href={item.href || '/cost/configuration'} className="cost-import__row">
-                      <span>
-                        <span className="cost-import__label">{item.label}</span>
-                        <span className="cost-import__note">{item.note}</span>
-                      </span>
-                      <span className="cost-import__status">{importableLabel(item.status)}</span>
-                    </Link>
-                  ))}
+                <div className="cost-dash__head">
+                  <h2 className="portal-surface__title">Spend trend</h2>
                 </div>
+                <CostDailyChart days={days} currency={currency} />
               </div>
+              <CostAttention items={attention} />
             </section>
             {(data.budgets || []).length ? (
               <section className="portal-surface portal-surface--tight">
@@ -182,7 +168,7 @@ export default function CostAccountDashboardPage() {
                     <span className="portal-surface__eyebrow">Budgets</span>
                     <h2 className="portal-surface__title">Remaining uses this window</h2>
                   </div>
-                  <Link href="/cost/budgets" className="btn btn-secondary btn-sm">Open budgets</Link>
+                  <Link href={costHref('/cost/budgets', router.query)} className="btn btn-secondary btn-sm">Open budgets</Link>
                 </div>
                 <table className="portal-table">
                   <thead>
@@ -215,7 +201,7 @@ export default function CostAccountDashboardPage() {
                     Acceptance is not permission to execute. Suggestions never resize or delete resources.
                   </p>
                 </div>
-                <Link href="/cost/optimization" className="btn btn-secondary btn-sm">Open optimization</Link>
+                <Link href={costHref('/cost/optimization', router.query)} className="btn btn-secondary btn-sm">Open optimization</Link>
               </div>
               {(data.suggestions || []).length ? (
                 <table className="portal-table">

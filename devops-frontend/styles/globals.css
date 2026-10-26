@@ -11079,23 +11079,46 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
 }
 .cost-tree {
   display: grid;
-  gap: 32px;
-  margin-bottom: 28px;
+  gap: 16px;
+  margin: 0;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--cost-surface);
+  border: 1px solid var(--cost-badge-border);
+}
+.cost-tree__head h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: var(--cost-text);
+}
+.cost-tree__head p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--cost-muted);
 }
 .cost-tree__project {
   display: grid;
-  gap: 16px;
+  gap: 10px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--cost-badge-border);
 }
 .cost-tree__project-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
+}
+.cost-tree__project-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 .cost-tree__project-name {
   margin: 0;
-  font-size: 22px;
-  letter-spacing: -0.04em;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  color: var(--cost-text);
 }
 .cost-tree__cloud {
   display: grid;
@@ -11109,15 +11132,15 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   color: var(--color-text-muted);
 }
 .cost-tree__account {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   padding: 12px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: #192238;
-  color: #f5f7fc;
+  border-radius: 12px;
+  border: 1px solid var(--cost-badge-border);
+  background: transparent;
+  color: var(--cost-text);
   text-decoration: none;
   transition: border-color 160ms ease;
 }
@@ -11155,13 +11178,13 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
 .cost-tree__account-meta {
   display: block;
   margin-top: 2px;
-  color: #c4b5fd;
+  color: var(--cost-muted);
   font-size: 12px;
 }
 .cost-tree__spend {
   font-variant-numeric: tabular-nums;
   font-weight: 650;
-  color: #2dd4bf;
+  color: var(--cost-text);
   white-space: nowrap;
 }
 .cost-dash {
@@ -11299,12 +11322,12 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   white-space: nowrap;
 }
 [data-theme="light"] .cost-tree__account {
-  background: #f5f7fc;
-  border-color: #d5d9e4;
+  background: #ffffff;
+  border-color: #e4e8f0;
   color: #17233b;
 }
 [data-theme="light"] .cost-tree__account-meta {
-  color: #5835db;
+  color: #58677f;
 }
 [data-theme="light"] .cost-mix__track {
   background: #e8ecf5;
@@ -11541,6 +11564,10 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
 .cost-drawer__panel .cost-toolbar__field {
   min-width: 0;
   flex: 1 1 100%;
+}
+.cost-drawer__panel .cost-toolbar__field .input {
+  width: 100%;
+  min-height: 40px;
 }
 .cost-k8s-meta {
   display: grid;
@@ -12242,6 +12269,56 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   font-weight: 700;
 }
 .cost-setup__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cost-empty .cost-setup__steps { margin: 16px 0 0; }
+.cost-setup__clouds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.cost-setup__cloud {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--cost-badge-border);
+  background: var(--cost-badge-bg);
+  color: var(--cost-muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.cost-setup__cloud.is-active {
+  border-color: #6d4aff;
+  background: rgba(109, 74, 255, 0.12);
+  color: var(--cost-text);
+}
+.cost-setup__meta {
+  margin: 0 0 12px;
+  color: var(--cost-muted);
+  font-size: 13px;
+}
+.cost-pending {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.cost-pending li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--cost-badge-border);
+  background: var(--cost-badge-bg);
+}
+.cost-pending strong {
+  color: var(--cost-text);
+  font-size: 14px;
+}
+.cost-pending span {
+  color: var(--cost-muted);
+  font-size: 13px;
+}
 .cost-sample {
   display: flex;
   flex-wrap: wrap;
@@ -12298,11 +12375,19 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 8px;
+  gap: 8px 12px;
 }
 .cost-period .cost-toolbar__field {
   min-width: 118px;
   flex: 0 0 auto;
+}
+.cost-toolbar__field--date,
+.cost-period .cost-toolbar__field--date {
+  min-width: 158px;
+}
+.cost-toolbar__field--date .input {
+  min-width: 158px;
+  color-scheme: inherit;
 }
 .cost-chart {
   margin: 8px 0 0;

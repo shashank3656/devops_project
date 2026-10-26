@@ -98,6 +98,7 @@ export const KNOWN_PAGES: ReadonlySet<string> = new Set([
   '/cost/optimization',
   '/cost/anomalies',
   '/cost/budgets',
+  '/cost/budgets/new',
   '/cost/savings',
   '/cost/kubernetes',
   '/cost/configuration',

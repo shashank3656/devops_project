@@ -2,13 +2,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import CostKpiStrip from '../../../components/CostKpiStrip';
-import CostMixChart from '../../../components/CostMixChart';
+import CostDailyChart from '../../../components/CostDailyChart';
 import CostNav from '../../../components/CostNav';
-import CostUnknown from '../../../components/CostUnknown';
+import CostProjectList from '../../../components/CostProjectList';
+import CostScorecard from '../../../components/CostScorecard';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { CostProjectDashboard, budgetAlertLabel, costAccountStatus, costAccountStatusLabel, costQuery, costToneForDisplay, costUnknownReason, fetchCostJson, freshnessLabel, sortCostTreeBySpend } from '../../../lib/cost';
+import { CostProjectDashboard, costHref, costQuery, costUnknownReason, fetchCostJson, freshnessLabel } from '../../../lib/cost';
 
 export default function CostProjectDashboardPage() {
   const apiUrl = useApiUrl();
@@ -36,8 +36,8 @@ export default function CostProjectDashboardPage() {
 
   const title = data?.project?.name || 'Project spend';
   const spendUnknown = !data?.spend || data.spend.display === 'Unknown';
-  const mix = data?.service_mix || [];
-  const days = data?.daily || [];
+  const overviewHref = costHref('/cost', router.query);
+  const riskBudget = (data?.budgets || []).find((row) => row.alert === 'over') || (data?.budgets || []).find((row) => row.alert === 'warn') || (data?.budgets || [])[0];
 
   return (
     <DevOpsLayout>
@@ -46,17 +46,16 @@ export default function CostProjectDashboardPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">{title}</h1>
-            <p className="cost-shell__hint">{data?.project?.code || 'Project'} · Clouds and accounts in this project.</p>
+            <p className="cost-shell__hint">{data?.project?.code || 'Project'} · Open an account dashboard for that billed window.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/cost" className="btn btn-secondary btn-sm">All projects</Link>
+            <Link href={overviewHref} className="btn btn-secondary btn-sm">All projects</Link>
           </div>
         </div>
         <CostNav
           current="overview"
-          compact
           crumbs={[
-            { href: '/cost', label: 'Cost' },
+            { href: overviewHref, label: 'Overview' },
             { label: title },
           ]}
         />
@@ -64,131 +63,59 @@ export default function CostProjectDashboardPage() {
         {loading ? <div className="empty-state">Loading project spend…</div> : null}
         {!loading && data ? (
           <>
-            <CostKpiStrip
+            <CostScorecard
               canOperate={data.can_operate}
               items={[
                 {
                   label: 'Project spend',
                   value: spendUnknown ? 'Unknown' : data.spend?.display || 'Unknown',
-                  hint: spendUnknown ? 'Incomplete stays Unknown, never $0' : `${basis} billed window`,
-                  tone: costToneForDisplay(data.spend?.display),
+                  comparisonLabel: 'Window',
+                  comparison: data.window_start && data.window_end ? `${data.window_start} to ${data.window_end}` : 'Billed window',
+                  visual: 'trend',
+                  sparkline: (data.daily || []).map((row) => row.percent),
                   unknown: costUnknownReason({
                     display: data.spend?.display,
                     coverage: data.spend?.coverage || data.coverage,
                     freshness: data.freshness,
                   }),
+                  meaning: 'spend',
                 },
                 {
-                  label: 'Waiting',
+                  label: 'Budget remaining',
+                  value: riskBudget?.remaining?.display || 'Unknown',
+                  comparisonLabel: 'Budget',
+                  comparison: riskBudget?.name || 'No budget this month',
+                  href: costHref('/cost/budgets', router.query),
+                  meaning: riskBudget?.alert === 'over' ? 'risk' : 'neutral',
+                },
+                {
+                  label: 'Waiting recommendations',
                   value: String(data.waiting_count ?? 0),
-                  hint: 'Suggestions that never execute',
-                  tone: (data.waiting_count || 0) > 0 ? 'wait' : 'unknown',
-                  href: '/cost/optimization',
+                  comparisonLabel: 'Status',
+                  comparison: 'Estimated, not executed',
+                  visual: 'count',
+                  countLabel: `${data.waiting_count ?? 0} waiting`,
+                  href: costHref('/cost/optimization', router.query),
+                  meaning: 'savings',
                 },
                 {
                   label: 'Freshness',
                   value: freshnessLabel(data.freshness),
-                  hint: data.window_start ? `${data.window_start} to ${data.window_end}` : 'Window',
-                  tone: data.freshness === 'stale' ? 'stale' : data.freshness === 'current' ? 'billed' : 'unknown',
-                },
-                {
-                  label: 'Access',
-                  value: data.cost_role === 'operate' ? 'Operate' : 'View',
-                  hint: 'Granted at project level',
-                  tone: data.can_operate ? 'billed' : 'unknown',
+                  comparisonLabel: 'Access',
+                  comparison: data.cost_role === 'operate' ? 'Operate' : 'View',
+                  meaning: 'neutral',
                 },
               ]}
             />
-            <section className="cost-dash cost-dash--split">
+            <section className="cost-dash">
               <div className="cost-dash__graph">
-                <span className="portal-surface__eyebrow">Service mix</span>
-                <h2 className="portal-surface__title">Where spend sits</h2>
-                <CostMixChart
-                  mix={mix}
-                  days={days}
-                  familyHref={(family) => `/cost/explorer${costQuery(basis, currency, { from: data.window_start || from, to: data.window_end || to, family })}`}
-                />
-              </div>
-              <div className="cost-dash__side">
-                <span className="portal-surface__eyebrow">Accounts</span>
-                <h2 className="portal-surface__title">Clouds in this project</h2>
-                {(sortCostTreeBySpend(data.project ? [data.project] : [])[0]?.clouds || []).map((cloud) => (
-                  <div key={cloud.provider} className="cost-tree__cloud">
-                    <div className="cost-tree__cloud-label">{cloud.provider}</div>
-                    {(cloud.accounts || []).map((account) => {
-                      const status = costAccountStatus(account);
-                      const reason = costUnknownReason({
-                        display: account.spend?.display,
-                        coverage: account.spend?.coverage,
-                        importStatus: account.import_status,
-                        freshness: account.freshness,
-                        stale: Boolean(account.stale_hint),
-                      });
-                      return (
-                        <div key={`${account.id}-${account.cloud_account_id}`} className={`cost-tree__account${status === 'not_imported' ? ' is-missing' : ''}${status === 'stale' ? ' is-stale' : ''}`}>
-                          <Link href={account.href} className="cost-tree__account-main">
-                            <span className={`cost-dot cost-dot--${status}`} title={costAccountStatusLabel(status)} />
-                            <span>
-                              <span className="cost-tree__account-name">{account.display_name}</span>
-                              <span className="cost-tree__account-meta">{account.environment || 'Unknown'}</span>
-                            </span>
-                          </Link>
-                          <span className="cost-tree__spend">
-                            {reason ? <CostUnknown reason={reason} canOperate={data.can_operate} /> : (account.spend?.display || 'Unknown')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+                <div className="cost-dash__head">
+                  <h2 className="portal-surface__title">Spend trend</h2>
+                </div>
+                <CostDailyChart days={data.daily || []} currency={currency} />
               </div>
             </section>
-            {(data.budgets || []).length ? (
-              <section className="portal-surface portal-surface--tight">
-                <h2 className="portal-surface__title">Budgets</h2>
-                <table className="portal-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Remaining</th>
-                      <th>Alert</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.budgets || []).map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.name}</td>
-                        <td>{row.remaining?.display || 'Unknown'}</td>
-                        <td>{budgetAlertLabel(row.alert)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            ) : null}
-            <section className="portal-surface portal-surface--tight">
-              <h2 className="portal-surface__title">Waiting suggestions</h2>
-              {(data.suggestions || []).length ? (
-                <table className="portal-table">
-                  <thead>
-                    <tr>
-                      <th>Calculation</th>
-                      <th>Finding</th>
-                      <th>Savings</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.suggestions || []).map((row) => (
-                      <tr key={row.calc_id}>
-                        <td><Link href={row.href || '/cost/optimization'}>{row.calc_id}</Link></td>
-                        <td>{row.finding_type}</td>
-                        <td>{row.savings_high?.display || 'Unknown'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <p className="sre-meta__empty">No waiting suggestions for this project.</p>}
-            </section>
+            {data.project ? <CostProjectList projects={[data.project]} query={router.query} title="Accounts in this project" showProjectAction={false} /> : null}
           </>
         ) : null}
       </div>

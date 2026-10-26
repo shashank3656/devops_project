@@ -10,32 +10,30 @@ import CostFirstRun from '../../components/CostFirstRun';
 import { CostPeriodControls } from '../../components/CostFilterBar';
 import CostFreshnessStrip from '../../components/CostFreshnessStrip';
 import CostNav from '../../components/CostNav';
+import CostProjectList from '../../components/CostProjectList';
 import CostSampleBanner from '../../components/CostSampleBanner';
 import CostScorecard from '../../components/CostScorecard';
 import CostSetupFlow from '../../components/CostSetupFlow';
-import CostUnknown from '../../components/CostUnknown';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import {
   CostOverview,
-  CostTreeProject,
+  VisibleCostProject,
   applyCostAnalysisFilters,
   costAccountStatus,
   costAccountStatusLabel,
+  costAskSourceLine,
+  costCloudsForProject,
   costHref,
   costQuery,
   costUnknownReason,
   countCostAccounts,
   fetchCostJson,
+  fetchVisibleCostProjects,
   sortCostTreeBySpend,
   uniqueCostFilterOptions,
 } from '../../lib/cost';
 import { COST_SAMPLE, COST_SAMPLE_DAYS, COST_SAMPLE_PRIOR_DAYS } from '../../lib/costSample';
-
-function accountHref(project: CostTreeProject, accountId: number) {
-  const account = project.clouds.flatMap((cloud) => cloud.accounts).find((item) => item.id === accountId);
-  return account?.href || `/cost/accounts/${accountId}`;
-}
 
 export default function CostOverviewPage() {
   const apiUrl = useApiUrl();
@@ -55,6 +53,7 @@ export default function CostOverviewPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [projectsCatalog, setProjectsCatalog] = useState<VisibleCostProject[]>([]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -67,6 +66,10 @@ export default function CostOverviewPage() {
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [apiUrl, router.isReady, basis, currency, from, to]);
+
+  useEffect(() => {
+    fetchVisibleCostProjects(apiUrl).then(setProjectsCatalog).catch(() => setProjectsCatalog([]));
+  }, [apiUrl]);
 
   const allProjects = data?.projects || [];
   const filterOptions = useMemo(() => uniqueCostFilterOptions(allProjects), [allProjects]);
@@ -161,7 +164,7 @@ export default function CostOverviewPage() {
             >
               {exporting ? 'Exporting…' : 'Export'}
             </button>
-            <CostAskButton question="Summarize this billed window" context={`Period ${windowQuery.from || 'this month'} to ${windowQuery.to || 'today'}. Basis ${basis}. Coverage ${showSample ? 'sample' : data?.coverage || 'Unknown'}. Operating bill ${showSample ? COST_SAMPLE.spend : data?.operating_bill?.display || 'Unknown'}. Source labelled CUR 2.0.`}>
+            <CostAskButton question="Summarize this billed window" context={`Period ${windowQuery.from || 'this month'} to ${windowQuery.to || 'today'}. Basis ${basis}. Coverage ${showSample ? 'sample' : data?.coverage || 'Unknown'}. Operating bill ${showSample ? COST_SAMPLE.spend : data?.operating_bill?.display || 'Unknown'}. ${costAskSourceLine(costCloudsForProject(projectsCatalog, projectFilter))}`}>
               Ask AI
             </CostAskButton>
           </div>
@@ -242,6 +245,11 @@ export default function CostOverviewPage() {
                 },
               ]}
             />
+            {filteredEmpty ? (
+              <CostFirstRun canOperate={canOperate} title="No accounts match these filters" primaryLabel="Clear filters" primaryHref={costHref('/cost', { basis, currency, from, to })} />
+            ) : !showSample ? (
+              <CostProjectList projects={projects} query={router.query} />
+            ) : null}
             <section className="cost-dash cost-dash--split">
               <div className="cost-dash__graph">
                 <div className="cost-dash__head">
@@ -297,63 +305,6 @@ export default function CostOverviewPage() {
                 )}
               </article>
             </section>
-            {filteredEmpty ? (
-              <CostFirstRun canOperate={canOperate} title="No accounts match these filters" primaryLabel="Clear filters" primaryHref={costHref('/cost', { basis, currency, from, to })} />
-            ) : !showSample ? (
-              <section className="cost-tree" aria-label="Cost by project">
-                {projects.map((project) => (
-                  <article key={project.id} className="cost-tree__project">
-                    <header className="cost-tree__project-head">
-                      <div>
-                        <span className="portal-surface__eyebrow">{project.code || 'Project'}</span>
-                        <h2 className="cost-tree__project-name">
-                          <Link href={project.href || `/cost/projects/${project.id}`}>{project.name}</Link>
-                        </h2>
-                      </div>
-                      <p className="cost-tree__spend">
-                        {costUnknownReason({ display: project.spend?.display, coverage: project.spend?.coverage })
-                          ? <CostUnknown reason={costUnknownReason({ display: project.spend?.display, coverage: project.spend?.coverage })!} canOperate={project.can_operate} />
-                          : (project.spend?.display || 'Unknown')}
-                      </p>
-                    </header>
-                    {(project.clouds || []).map((cloud) => (
-                      <div key={cloud.provider} className="cost-tree__cloud">
-                        <div className="cost-tree__cloud-label">{cloud.provider}</div>
-                        {(cloud.accounts || []).map((account) => {
-                          const status = costAccountStatus(account);
-                          const reason = costUnknownReason({
-                            display: account.spend?.display,
-                            coverage: account.spend?.coverage,
-                            importStatus: account.import_status,
-                            freshness: account.freshness,
-                            stale: Boolean(account.stale_hint),
-                          });
-                          return (
-                            <div
-                              key={`${account.id}-${account.cloud_account_id}`}
-                              className={`cost-tree__account${status === 'not_imported' ? ' is-missing' : ''}${status === 'stale' ? ' is-stale' : ''}`}
-                            >
-                              <Link href={account.href || accountHref(project, account.id)} className="cost-tree__account-main">
-                                <span className={`cost-dot cost-dot--${status}`} title={costAccountStatusLabel(status)} />
-                                <span>
-                                  <span className="cost-tree__account-name">{account.display_name}</span>
-                                  <span className="cost-tree__account-meta">{account.environment || 'Unknown'}</span>
-                                </span>
-                              </Link>
-                              <span className="cost-tree__spend">
-                                {reason
-                                  ? <CostUnknown reason={reason} canOperate={project.can_operate} />
-                                  : (account.spend?.display || 'Unknown')}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </article>
-                ))}
-              </section>
-            ) : null}
           </>
         ) : null}
       </div>

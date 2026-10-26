@@ -3,9 +3,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import CostNav from '../../../components/CostNav';
+import CostSetupFlow from '../../../components/CostSetupFlow';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
-import { CostAccountDashboard, costQuery, fetchCostJson, importableLabel } from '../../../lib/cost';
+import { CostAccountDashboard, costBillingSetup, costQuery, fetchCostJson, importableLabel } from '../../../lib/cost';
 
 export default function CostCloudAccountPage() {
   const apiUrl = useApiUrl();
@@ -36,6 +37,7 @@ export default function CostCloudAccountPage() {
   }, [apiUrl, router.isReady, id, basis, currency, from, to]);
 
   const title = data?.connection?.display_name || 'Cloud account';
+  const setup = costBillingSetup(data?.cloud || data?.connection?.provider || '');
 
   return (
     <DevOpsLayout>
@@ -45,13 +47,17 @@ export default function CostCloudAccountPage() {
           <div>
             <h1 className="portal-page__title">{title}</h1>
             <p className="cost-shell__hint">
-              {data?.project?.name || 'Project'} · {data?.cloud || 'Cloud'} · {data?.environment || 'Unknown'}. {data?.note || 'Cost billing is not imported yet. Spend stays Unknown.'}
+              {data?.project?.name || 'Project'} · {setup.label} · {data?.environment || 'Unknown'}. {data?.note || setup.note}
             </p>
           </div>
           <div className="portal-page__actions">
             {data?.project?.id ? <Link href={`/cost/projects/${data.project.id}`} className="btn btn-secondary btn-sm">Project</Link> : null}
             <Link href="/cost" className="btn btn-secondary btn-sm">All projects</Link>
-            {data?.can_operate ? <Link href="/cost/configuration" className="btn btn-primary btn-sm">Enable Cost</Link> : null}
+            {data?.can_operate ? (
+              <Link href="/cost/configuration" className="btn btn-primary btn-sm">
+                {setup.ingestReady ? 'Enable Cost' : setup.connectLabel}
+              </Link>
+            ) : null}
           </div>
         </div>
         <CostNav
@@ -66,6 +72,7 @@ export default function CostCloudAccountPage() {
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {loading ? <div className="empty-state">Loading account…</div> : null}
         {!loading && data ? (
+          setup.ingestReady ? (
           <section className="cost-dash__side">
             <span className="portal-surface__eyebrow">Import</span>
             <h2 className="portal-surface__title">What can still be brought in</h2>
@@ -81,6 +88,13 @@ export default function CostCloudAccountPage() {
               ))}
             </div>
           </section>
+          ) : (
+            <CostSetupFlow
+              canOperate={data.can_operate}
+              state="none"
+              clouds={[setup.cloud]}
+            />
+          )
         ) : null}
       </div>
     </DevOpsLayout>

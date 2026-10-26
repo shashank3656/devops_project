@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { useWorkspaceScope } from '@infragate/ui';
 import {
   COST_SCOPE_KEYS,
+  CostExplorerFilterOptions,
   CostFilterOptions,
   costLastMonth,
   costThisMonth,
@@ -21,6 +22,7 @@ type CostFilterBarProps = {
   hydrateScope?: boolean;
   options?: CostFilterOptions | null;
   explorer?: boolean;
+  explorerOptions?: CostExplorerFilterOptions | null;
   exporting?: boolean;
   onExport?: () => void;
   exportDisabled?: boolean;
@@ -30,38 +32,36 @@ type CostFilterBarProps = {
   totalAccounts?: number;
 };
 
-function DraftField({
+function withCurrent(list: string[] | undefined, current: string) {
+  const values = list || [];
+  if (current && !values.includes(current)) return [current, ...values];
+  return values;
+}
+
+function FilterSelect({
   label,
   value,
-  placeholder,
-  onCommit,
+  emptyLabel,
+  options,
+  optionLabel,
+  onChange,
 }: {
   label: string;
   value: string;
-  placeholder: string;
-  onCommit: (next: string) => void;
+  emptyLabel: string;
+  options: string[];
+  optionLabel?: (value: string) => string;
+  onChange: (next: string) => void;
 }) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => { setDraft(value); }, [value]);
-  const commit = () => {
-    if (draft !== value) onCommit(draft);
-  };
   return (
-    <label className={`cost-toolbar__field${label === 'Product' ? ' cost-toolbar__field--grow' : ''}`}>
+    <label className="cost-toolbar__field">
       <span>{label}</span>
-      <input
-        className="input"
-        value={draft}
-        placeholder={placeholder}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            commit();
-          }
-        }}
-      />
+      <select className="input" value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{emptyLabel}</option>
+        {options.map((item) => (
+          <option key={item} value={item}>{optionLabel ? optionLabel(item) : item}</option>
+        ))}
+      </select>
     </label>
   );
 }
@@ -112,41 +112,88 @@ export function focusWorkspaceScope() {
   control?.scrollIntoView({ block: 'nearest' });
 }
 
-export function CostPeriodControls() {
-  const { from, to, applyWindow } = useCostQuery(false);
-  const preset = costWindowPreset(from, to);
+function CostWindowPicker({
+  from,
+  to,
+  range,
+  onChange,
+  label = 'Window',
+}: {
+  from: string;
+  to: string;
+  range?: string;
+  onChange: (next: { from?: string; to?: string; range?: string }) => void;
+  label?: string;
+}) {
   const thisMonth = costThisMonth();
   const lastMonth = costLastMonth();
   const window = resolvedCostWindow(from, to);
+  const detected = costWindowPreset(from, to, range);
+  const preset = detected === 'all' ? 'this' : detected;
   const setPreset = (value: string) => {
-    if (value === 'last') applyWindow(lastMonth.from, lastMonth.to);
-    else if (value === 'custom') applyWindow(from || thisMonth.from, to || thisMonth.to);
-    else applyWindow(thisMonth.from, thisMonth.to);
+    if (value === 'last') onChange({ from: lastMonth.from, to: lastMonth.to, range: undefined });
+    else if (value === 'custom') onChange({ from: window.from, to: window.to, range: 'custom' });
+    else onChange({ from: thisMonth.from, to: thisMonth.to, range: undefined });
+  };
+  const setDate = (nextFrom: string, nextTo: string) => {
+    let start = nextFrom || window.from;
+    let end = nextTo || window.to;
+    if (start && end && start > end) {
+      const swap = start;
+      start = end;
+      end = swap;
+    }
+    onChange({ from: start, to: end, range: 'custom' });
   };
   return (
     <div className="cost-period">
       <label className="cost-toolbar__field">
-        <span>Period</span>
-        <select className="input" value={preset === 'all' ? 'this' : preset} onChange={(event) => setPreset(event.target.value)}>
+        <span>{label}</span>
+        <select className="input" value={preset} onChange={(event) => setPreset(event.target.value)}>
           <option value="this">This month</option>
           <option value="last">Last month</option>
           <option value="custom">Custom</option>
         </select>
       </label>
-      <span className="cost-toolbar__dates">{formatCostWindowRange(window.from, window.to)}</span>
       {preset === 'custom' ? (
         <>
-          <label className="cost-toolbar__field">
+          <label className="cost-toolbar__field cost-toolbar__field--date">
             <span>From</span>
-            <input className="input" type="date" value={from} onChange={(event) => applyWindow(event.target.value, to)} />
+            <input
+              className="input"
+              type="date"
+              value={window.from}
+              onChange={(event) => setDate(event.target.value, window.to)}
+            />
           </label>
-          <label className="cost-toolbar__field">
+          <label className="cost-toolbar__field cost-toolbar__field--date">
             <span>To</span>
-            <input className="input" type="date" value={to} onChange={(event) => applyWindow(from, event.target.value)} />
+            <input
+              className="input"
+              type="date"
+              value={window.to}
+              onChange={(event) => setDate(window.from, event.target.value)}
+            />
           </label>
         </>
-      ) : null}
+      ) : (
+        <span className="cost-toolbar__dates">{formatCostWindowRange(window.from, window.to)}</span>
+      )}
     </div>
+  );
+}
+
+export function CostPeriodControls() {
+  const { from, to, router, patch } = useCostQuery(false);
+  const range = typeof router.query.range === 'string' ? router.query.range : '';
+  return (
+    <CostWindowPicker
+      from={from}
+      to={to}
+      range={range}
+      label="Period"
+      onChange={(next) => patch(next)}
+    />
   );
 }
 
@@ -156,6 +203,7 @@ export default function CostFilterBar({
   hydrateScope = true,
   options,
   explorer = false,
+  explorerOptions,
   exporting = false,
   onExport,
   exportDisabled = false,
@@ -165,7 +213,7 @@ export default function CostFilterBar({
   totalAccounts,
 }: CostFilterBarProps) {
   const { scope } = useWorkspaceScope();
-  const { router, from, to, basis, patch, applyWindow } = useCostQuery(hydrateScope);
+  const { router, from, to, basis, patch } = useCostQuery(hydrateScope);
   const cloud = typeof router.query.cloud === 'string' ? router.query.cloud : '';
   const freshness = typeof router.query.freshness === 'string' ? router.query.freshness : '';
   const importStatus = typeof router.query.import === 'string' ? router.query.import : '';
@@ -177,15 +225,7 @@ export default function CostFilterBar({
   const extraOn = Boolean(cloud || freshness || importStatus || service || region || team || account || family);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const secondaryOn = extraOn;
-  const preset = costWindowPreset(from, to);
-  const thisMonth = costThisMonth();
-  const lastMonth = costLastMonth();
-  const window = resolvedCostWindow(from, to);
-  const setPreset = (value: string) => {
-    if (value === 'last') applyWindow(lastMonth.from, lastMonth.to);
-    else if (value === 'custom') applyWindow(from || thisMonth.from, to || thisMonth.to);
-    else applyWindow(thisMonth.from, thisMonth.to);
-  };
+  const range = typeof router.query.range === 'string' ? router.query.range : '';
   const projectName = options?.projects.find((item) => String(item.id) === scope.projectId)?.name
     || (scope.projectId ? 'Selected project' : 'All projects');
   const environmentName = scope.environment || 'All environments';
@@ -197,7 +237,7 @@ export default function CostFilterBar({
     service ? { key: 'service', label: `Product ${service}` } : null,
     team ? { key: 'team', label: team.toLowerCase() === 'unallocated' ? 'No team' : `Team ${team}` } : null,
     region ? { key: 'region', label: `Region ${region}` } : null,
-    account ? { key: 'account', label: 'Account filter' } : null,
+    account ? { key: 'account', label: `Account ${account}` } : null,
   ].filter(Boolean) as { key: string; label: string }[];
   const exportTitle = exportDisabled
     ? (exportDisabledReason || 'Connect a billing source to export costs.')
@@ -215,29 +255,12 @@ export default function CostFilterBar({
           </p>
         )}
         {showPeriod ? (
-          <>
-            <label className="cost-toolbar__field">
-              <span>Window</span>
-              <select className="input" value={preset === 'all' ? 'this' : preset} onChange={(event) => setPreset(event.target.value)}>
-                <option value="this">This month</option>
-                <option value="last">Last month</option>
-                <option value="custom">Custom</option>
-              </select>
-            </label>
-            <span className="cost-toolbar__dates">{formatCostWindowRange(window.from, window.to)}</span>
-            {preset === 'custom' ? (
-              <>
-                <label className="cost-toolbar__field">
-                  <span>From</span>
-                  <input className="input" type="date" value={from} onChange={(event) => applyWindow(event.target.value, to)} />
-                </label>
-                <label className="cost-toolbar__field">
-                  <span>To</span>
-                  <input className="input" type="date" value={to} onChange={(event) => applyWindow(from, event.target.value)} />
-                </label>
-              </>
-            ) : null}
-          </>
+          <CostWindowPicker
+            from={from}
+            to={to}
+            range={range}
+            onChange={(next) => patch(next)}
+          />
         ) : null}
         {showBasis ? (
           <label className="cost-toolbar__field">
@@ -249,12 +272,12 @@ export default function CostFilterBar({
           </label>
         ) : null}
         <div className="cost-toolbar__actions">
-          {!sample && (options || explorer) ? (
+          {options || explorer ? (
             <button type="button" className={`btn btn-sm ${secondaryOn ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDrawerOpen(true)}>
               More filters
             </button>
           ) : null}
-          {extraOn && !sample ? (
+          {extraOn ? (
             <button
               type="button"
               className="btn btn-sm btn-secondary"
@@ -295,10 +318,35 @@ export default function CostFilterBar({
             </header>
             {explorer ? (
               <>
-                <DraftField label="Product" value={service} placeholder="Product" onCommit={(next) => patch({ service: next || undefined })} />
-                <DraftField label="Team" value={team} placeholder="Team" onCommit={(next) => patch({ team: next || undefined })} />
-                <DraftField label="Region" value={region} placeholder="Region" onCommit={(next) => patch({ region: next || undefined })} />
-                <DraftField label="Account" value={account} placeholder="Account" onCommit={(next) => patch({ account: next || undefined })} />
+                <FilterSelect
+                  label="Product"
+                  value={service}
+                  emptyLabel="All products"
+                  options={withCurrent(explorerOptions?.products, service)}
+                  onChange={(next) => patch({ service: next || undefined })}
+                />
+                <FilterSelect
+                  label="Team"
+                  value={team}
+                  emptyLabel="All teams"
+                  options={withCurrent(explorerOptions?.teams, team)}
+                  optionLabel={(item) => (item.toLowerCase() === 'unallocated' ? 'Unallocated' : item)}
+                  onChange={(next) => patch({ team: next || undefined })}
+                />
+                <FilterSelect
+                  label="Region"
+                  value={region}
+                  emptyLabel="All regions"
+                  options={withCurrent(explorerOptions?.regions, region)}
+                  onChange={(next) => patch({ region: next || undefined })}
+                />
+                <FilterSelect
+                  label="Account"
+                  value={account}
+                  emptyLabel="All accounts"
+                  options={withCurrent(explorerOptions?.accounts, account)}
+                  onChange={(next) => patch({ account: next || undefined })}
+                />
               </>
             ) : null}
             {options ? (

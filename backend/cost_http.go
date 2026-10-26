@@ -607,7 +607,7 @@ func serveCostConfiguration(w http.ResponseWriter, r *http.Request, userID int) 
 		"can_operate":      userHasCostOperateAnywhere(userID),
 		"ai":               costAIPolicy(),
 		"ai_proof":         costAIProofSummary(listCostAIProofs(userID)),
-		"note":             "Pilot: labelled AWS CUR 2.0 import. This product does not store billing credentials and does not pull CUR automatically. Enable Cost on an existing AWS account in a project you can see. Replay keeps one billed total. Demo inventory accounts are ignored.",
+		"note":             "Billing setup follows the project cloud. AWS uses labelled CUR 2.0 import. GCP Cloud Billing export and Azure Cost Management are not ingested yet. This product does not store billing credentials and does not pull billing automatically. Replay keeps one billed total. Demo inventory accounts are ignored.",
 	})
 }
 

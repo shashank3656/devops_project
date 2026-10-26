@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import CostFilterBar from './CostFilterBar';
-import type { CostFilterOptions } from '../lib/cost';
+import type { CostExplorerFilterOptions, CostFilterOptions } from '../lib/cost';
 
 export type CostCrumb = { href?: string; label: string };
 export type CostNavId = 'overview' | 'explorer' | 'optimization' | 'anomalies' | 'budgets' | 'savings' | 'kubernetes' | 'configuration';
@@ -16,6 +16,7 @@ export default function CostNav({
   visibleAccounts,
   totalAccounts,
   sample,
+  explorerOptions,
 }: {
   current: CostNavId;
   analysis?: CostFilterOptions | null;
@@ -28,6 +29,7 @@ export default function CostNav({
   visibleAccounts?: number;
   totalAccounts?: number;
   sample?: boolean;
+  explorerOptions?: CostExplorerFilterOptions | null;
 }) {
   const overview = current === 'overview';
   return (
@@ -48,6 +50,7 @@ export default function CostNav({
           showPeriod={!overview}
           options={overview ? analysis : undefined}
           explorer={current === 'explorer'}
+          explorerOptions={current === 'explorer' ? explorerOptions : undefined}
           exporting={exporting}
           onExport={onExport}
           exportDisabled={exportDisabled}

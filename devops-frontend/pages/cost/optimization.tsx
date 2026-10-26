@@ -4,13 +4,13 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import CostAskButton from '../../components/CostAskButton';
 import CostDrawer from '../../components/CostDrawer';
-import CostEmpty from '../../components/CostEmpty';
+import CostSetupFlow from '../../components/CostSetupFlow';
 import CostNav from '../../components/CostNav';
 import CostSampleBanner from '../../components/CostSampleBanner';
 import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { CostOptimization, CostRecommendation, costLifecycleLabel, costQuery, costRiskLabel, fetchCostJson } from '../../lib/cost';
+import { CostOptimization, CostRecommendation, costHref, costLifecycleLabel, costQuery, costRiskLabel, fetchCostJson } from '../../lib/cost';
 import { COST_SAMPLE_RECS } from '../../lib/costSample';
 
 export default function CostOptimizationPage() {
@@ -95,10 +95,10 @@ export default function CostOptimizationPage() {
         {recommendations.length ? <p className="cost-review-note">Recommendations require review before changes.</p> : null}
         {loading ? <div className="empty-state">Loading recommendations…</div> : null}
         {!loading && !recommendations.length ? (
-          <CostEmpty
+          <CostSetupFlow
             canOperate={data?.can_operate}
-            title="Connect billing data to discover savings"
-            copy="Add a billing source to identify cost-saving opportunities. Utilization data helps assess rightsizing recommendations."
+            state="none"
+            sampleHref={costHref('/cost/optimization', router.query, { sample: '1' })}
           />
         ) : null}
         {!loading && (data?.opportunity_groups || []).length ? (

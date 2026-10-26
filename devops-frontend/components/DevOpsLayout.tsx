@@ -95,6 +95,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/cost/optimization': 'Optimization',
   '/cost/anomalies': 'Budgets & alerts',
   '/cost/budgets': 'Budgets & alerts',
+  '/cost/budgets/new': 'Create budget',
   '/cost/savings': 'Savings',
   '/cost/kubernetes': 'Kubernetes cost',
   '/cost/configuration': 'Data sources',
@@ -670,7 +671,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       return pathname === '/cost' || pathname.startsWith('/cost/projects/') || pathname.startsWith('/cost/accounts/') || pathname.startsWith('/cost/cloud/');
     }
     if (href === '/cost/budgets') {
-      return pathname === '/cost/budgets' || pathname === '/cost/anomalies';
+      return pathname === '/cost/budgets' || pathname.startsWith('/cost/budgets/') || pathname === '/cost/anomalies';
     }
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);

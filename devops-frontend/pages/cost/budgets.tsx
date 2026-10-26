@@ -1,13 +1,15 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostEmpty from '../../components/CostEmpty';
 import CostFirstRun from '../../components/CostFirstRun';
 import CostNav from '../../components/CostNav';
 import CostPageTabs from '../../components/CostPageTabs';
 import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { CostAnomalies, CostBudgets, budgetAlertLabel, costQuery, fetchCostJson } from '../../lib/cost';
+import { CostAnomalies, CostBudgets, budgetAlertLabel, costHref, costQuery, fetchCostJson } from '../../lib/cost';
 
 export default function CostBudgetsPage() {
   const apiUrl = useApiUrl();
@@ -23,15 +25,8 @@ export default function CostBudgetsPage() {
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
-  const [name, setName] = useState('');
-  const [scopeType, setScopeType] = useState('all');
-  const [scopeValue, setScopeValue] = useState('');
-  const [amount, setAmount] = useState('');
-  const [budgetBasis, setBudgetBasis] = useState(basis);
-  const [period, setPeriod] = useState('calendar_month');
-  const [ownerSlug, setOwnerSlug] = useState('');
-  const [warnPercent, setWarnPercent] = useState('80');
-  const [overPercent, setOverPercent] = useState('100');
+  const createHref = costHref('/cost/budgets/new', router.query);
+  const canOperate = data?.can_operate !== false;
 
   const load = () => {
     if (!router.isReady) return;
@@ -56,37 +51,13 @@ export default function CostBudgetsPage() {
       .catch(() => setAnomalies(null));
   }, [apiUrl, router.isReady, basis, currency, from, to]);
 
-  const createBudget = async () => {
-    setActing('create');
-    setNotice('');
-    try {
-      await fetchCostJson(apiUrl, '/api/cost/budgets', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          scope_type: scopeType,
-          scope_value: scopeValue,
-          amount,
-          currency,
-          basis: budgetBasis,
-          period,
-          owner_slug: ownerSlug,
-          warn_percent: Number(warnPercent) || 80,
-          over_percent: Number(overPercent) || 100,
-        }),
-      });
-      setNotice('Budget stored for its own calendar period. Analysis filters do not change that lifecycle.');
-      setName('');
-      setScopeValue('');
-      setAmount('');
-      setOwnerSlug('');
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Budget could not be saved.');
-    } finally {
-      setActing('');
-    }
-  };
+  useEffect(() => {
+    if (!router.isReady || router.query.saved !== '1') return;
+    setNotice('Budget stored for its own calendar period. Analysis filters do not change that lifecycle.');
+    const query = { ...router.query };
+    delete query.saved;
+    void router.replace({ pathname: '/cost/budgets', query }, undefined, { shallow: true });
+  }, [router.isReady, router.query.saved]);
 
   const removeBudget = async (id: number) => {
     setActing(`delete-${id}`);
@@ -104,13 +75,19 @@ export default function CostBudgetsPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Cost budgets</title></Head>
+      <Head><title>Budgets & alerts</title></Head>
       <div className="portal-page cost-analysis">
         <div className="cost-shell__head">
-          <div>
-            <h1 className="portal-page__title">Budgets & alerts</h1>
-            <p className="cost-shell__hint">Budget tracking and anomaly investigation. Remaining uses the budget period, not the Overview filter. Budgets never stop workloads.</p>
-          </div>
+          <h1 className="portal-page__title">Budgets & alerts</h1>
+          {tab === 'budgets' ? (
+            <div className="portal-page__actions">
+              {canOperate ? (
+                <Link href={createHref} className="btn btn-primary btn-sm">Create budget</Link>
+              ) : (
+                <button type="button" className="btn btn-primary btn-sm" disabled title="Ask someone with Cost operate to create a budget.">Create budget</button>
+              )}
+            </div>
+          ) : null}
         </div>
         <CostNav current="budgets" />
         <CostPageTabs
@@ -124,15 +101,9 @@ export default function CostBudgetsPage() {
         />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-info" role="status">{notice}</div> : null}
-        <div className="portal-pill-row">
-          <span className="portal-pill">Currency {data?.currency || currency}</span>
-          <span className="portal-pill">Coverage {data?.coverage || 'none'}</span>
-          <span className="portal-pill">Budget period {data?.period_start || data?.window_start || 'Unknown'} to {data?.period_end || data?.window_end || 'Unknown'}</span>
-          <span className="portal-pill">Pauses workloads No</span>
-          <span className="portal-pill">Destination Cost alerts</span>
-        </div>
         {tab === 'alerts' ? (
           <>
+            <p className="cost-review-note">Alerts require two complete billed windows. They never pause workloads.</p>
             <dl className="cost-k8s-meta" aria-label="Cost alert readiness">
               <div><dt>Alerts enabled</dt><dd>{anomalies?.alerts?.alerts_enabled ? 'On' : 'Off'}</dd></div>
               <div><dt>Monitoring ready</dt><dd>{anomalies?.alerts?.monitoring_ready ? 'Yes' : 'No'}</dd></div>
@@ -176,93 +147,53 @@ export default function CostBudgetsPage() {
         ) : null}
         {tab === 'budgets' ? (
           <>
-        <section className="portal-surface">
-          <h2 className="portal-surface__title">Add a budget</h2>
-          <div className="portal-form-grid">
-            <label className="label">Name
-              <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="September operating" />
-            </label>
-            <label className="label">Scope
-              <select className="input" value={scopeType} onChange={(event) => setScopeType(event.target.value)}>
-                <option value="all">All billed lines</option>
-                <option value="account">Account</option>
-                <option value="team">Team</option>
-                <option value="service">Service</option>
-              </select>
-            </label>
-            {scopeType !== 'all' ? (
-              <label className="label">Scope value
-                <input className="input" value={scopeValue} onChange={(event) => setScopeValue(event.target.value)} placeholder={scopeType === 'account' ? '123456789012' : 'platform-team'} />
-              </label>
+            {loading ? <div className="empty-state">Loading budgets…</div> : null}
+            {!loading && !(data?.budgets || []).length ? (
+              <CostEmpty
+                canOperate={canOperate}
+                title="Create a budget to track spend"
+                copy="Budgets evaluate against their own calendar month, not the Overview window. Remaining stays Unknown until a complete billed window exists."
+                actionHref={createHref}
+                actionLabel="Create budget"
+                deniedNote="Ask someone with Cost operate to create a budget."
+              />
             ) : null}
-            <label className="label">Amount
-              <input className="input" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="500.00" />
-            </label>
-            <label className="label">Basis
-              <select className="input" value={budgetBasis} onChange={(event) => setBudgetBasis(event.target.value)}>
-                <option value="actual">Actual</option>
-                <option value="amortized">Amortized</option>
-              </select>
-            </label>
-            <label className="label">Period
-              <select className="input" value={period} onChange={(event) => setPeriod(event.target.value)}>
-                <option value="calendar_month">Calendar month</option>
-              </select>
-            </label>
-            <label className="label">Owner team
-              <input className="input" value={ownerSlug} onChange={(event) => setOwnerSlug(event.target.value)} placeholder="platform-team" />
-            </label>
-            <label className="label">Warn at %
-              <input className="input" value={warnPercent} onChange={(event) => setWarnPercent(event.target.value)} placeholder="80" />
-            </label>
-            <label className="label">Over at %
-              <input className="input" value={overPercent} onChange={(event) => setOverPercent(event.target.value)} placeholder="100" />
-            </label>
-          </div>
-          <button type="button" className="btn btn-primary" disabled={!name || !amount || !!acting || data?.can_operate === false} onClick={() => void createBudget()}>
-            {acting === 'create' ? 'Saving…' : 'Save budget'}
-          </button>
-        </section>
-        {loading ? <div className="empty-state">Loading budgets…</div> : null}
-        {!loading && !(data?.budgets || []).length ? (
-          <div className="empty-state">No budgets yet. Remaining stays Unknown until a complete billed window exists.</div>
-        ) : null}
-        {!loading && (data?.budgets || []).length ? (
-          <section className="portal-surface portal-surface--table">
-            <table className="portal-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Scope</th>
-                  <th>Spent</th>
-                  <th>Remaining</th>
-                  <th>Alert</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.budgets || []).map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      {row.name}
-                      <div className="portal-surface__subtitle">{row.currency} {row.amount} · {row.basis} · {row.period || 'calendar_month'} · warn {row.warn_percent || 80}% / over {row.over_percent || 100}%</div>
-                    </td>
-                    <td>{row.scope_type}{row.scope_value ? ` · ${row.scope_value}` : ''}{row.owner_slug ? ` · owner ${row.owner_slug}` : ''}</td>
-                    <td>{row.spent?.display || 'Unknown'}</td>
-                    <td>{row.remaining?.display || 'Unknown'}</td>
-                    <td>{budgetAlertLabel(row.alert)}</td>
-                    <td>
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={!!acting || data?.can_operate === false} onClick={() => void removeBudget(row.id)}>
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="portal-surface__subtitle">{data?.note}</p>
-          </section>
-        ) : null}
+            {!loading && (data?.budgets || []).length ? (
+              <section className="portal-surface portal-surface--table">
+                <table className="portal-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Scope</th>
+                      <th>Spent</th>
+                      <th>Remaining</th>
+                      <th>Alert</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data?.budgets || []).map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          {row.name}
+                          <div className="portal-surface__subtitle">{row.currency} {row.amount} · {row.basis} · {row.period || 'calendar_month'} · warn {row.warn_percent || 80}% / over {row.over_percent || 100}%</div>
+                        </td>
+                        <td>{row.scope_type}{row.scope_value ? ` · ${row.scope_value}` : ''}{row.owner_slug ? ` · owner ${row.owner_slug}` : ''}</td>
+                        <td>{row.spent?.display || 'Unknown'}</td>
+                        <td>{row.remaining?.display || 'Unknown'}</td>
+                        <td>{budgetAlertLabel(row.alert)}</td>
+                        <td>
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={!!acting || !canOperate} onClick={() => void removeBudget(row.id)}>
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="portal-surface__subtitle">{data?.note}</p>
+              </section>
+            ) : null}
           </>
         ) : null}
       </div>

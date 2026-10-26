@@ -107,9 +107,9 @@ func costFreshnessDetail(connections []costConnection, now time.Time) map[string
 
 func costPilotScope() map[string]any {
 	return map[string]any{
-		"label":                      "AWS CUR 2.0 labelled import",
+		"label":                      "Manual labelled import",
 		"mode":                       "manual",
-		"note":                       "Pilot: paste a labelled CUR 2.0 export or ingest a sample bill. This product does not store billing credentials and does not pull CUR from AWS automatically.",
+		"note":                       "Pilot: AWS uses labelled CUR 2.0 import. GCP Cloud Billing export and Azure Cost Management are not ingested yet. This product does not store billing credentials and does not pull billing automatically.",
 		"stores_billing_credentials": false,
 		"automated_collection":       false,
 	}

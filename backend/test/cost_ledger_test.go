@@ -1116,6 +1116,10 @@ func TestCostNonAWSTreeRowIsNotImported(t *testing.T) {
 	if len(sources) != 1 || sources[0]["status"] != "not_imported" {
 		t.Fatalf("non-AWS importable = %+v", sources)
 	}
+	note, _ := sources[0]["note"].(string)
+	if !strings.Contains(note, "Cloud Billing") || strings.Contains(note, "imports AWS CUR 2.0 today") {
+		t.Fatalf("GCP setup note = %s", note)
+	}
 	view := costTreeAccountView(conn, costMoneyView("none", "", "USD", "actual"), false)
 	if _, ok := view["account_id"]; ok {
 		t.Fatal("tree JSON must not include account_id")
@@ -1301,6 +1305,38 @@ func TestCostAlertReadinessBlockedWithoutCoverage(t *testing.T) {
 	ready := costAlertStatus(true, "complete", "complete")
 	if ready["monitoring_ready"] != true || ready["evaluation_blocked"] != false {
 		t.Fatalf("ready flags = %+v", ready)
+	}
+}
+
+func TestCostBillingSetupFollowsProjectCloud(t *testing.T) {
+	if costBillingSource("gcp") != "gcp_billing_export" || costBillingIngestReady("gcp") {
+		t.Fatal("GCP billing is not imported yet")
+	}
+	if costBillingSource("azure") != "azure_cost_export" || costBillingIngestReady("azure") {
+		t.Fatal("Azure billing is not imported yet")
+	}
+	if costBillingSource("aws") != "aws_cur_2" || !costBillingIngestReady("aws") {
+		t.Fatal("AWS still uses labelled CUR 2.0")
+	}
+	if !strings.Contains(costBillingSetupNote("gcp"), "BigQuery") {
+		t.Fatalf("GCP note = %s", costBillingSetupNote("gcp"))
+	}
+	if !strings.Contains(costBillingSetupNote("azure"), "Cost Management") || !strings.Contains(costBillingSetupNote("azure"), "storage account") {
+		t.Fatalf("Azure note = %s", costBillingSetupNote("azure"))
+	}
+	azure := costConnection{Provider: "azure", DisplayName: "pay-sub", CloudAccountID: 11, AccountID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+	azureSources := costImportableSources(azure, false)
+	if len(azureSources) != 1 || azureSources[0]["status"] != "not_imported" {
+		t.Fatalf("Azure importable = %+v", azureSources)
+	}
+	azureNote, _ := azureSources[0]["note"].(string)
+	if !strings.Contains(azureNote, "Cost Management") || strings.Contains(azureNote, "CUR 2.0") {
+		t.Fatalf("Azure setup note = %s", azureNote)
+	}
+	azureView := costTreeAccountView(azure, costMoneyView("none", "", "USD", "actual"), false)
+	azureRaw, _ := json.Marshal(azureView)
+	if strings.Contains(string(azureRaw), "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") {
+		t.Fatalf("tree leaked an Azure subscription id: %s", azureRaw)
 	}
 }
 

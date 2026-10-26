@@ -56,6 +56,32 @@ func costCloudLabel(provider string) string {
 	}
 }
 
+func costBillingSource(provider string) string {
+	switch normalizeCloudProvider(provider) {
+	case "gcp":
+		return "gcp_billing_export"
+	case "azure":
+		return "azure_cost_export"
+	default:
+		return "aws_cur_2"
+	}
+}
+
+func costBillingIngestReady(provider string) bool {
+	return normalizeCloudProvider(provider) == "aws"
+}
+
+func costBillingSetupNote(provider string) string {
+	switch normalizeCloudProvider(provider) {
+	case "gcp":
+		return "GCP Cloud Billing export to BigQuery is not ingested yet. Spend stays Unknown. This product does not store billing credentials and does not pull BigQuery automatically."
+	case "azure":
+		return "Azure Cost Management export to a storage account is not ingested yet. Spend stays Unknown. This product does not store billing credentials and does not pull Azure billing automatically."
+	default:
+		return "Enable Cost, then import a labelled CUR 2.0 export. Collection is manual. Incomplete stays Unknown, never $0. This product does not store billing credentials."
+	}
+}
+
 func costFamilyLabel(family string) string {
 	switch strings.ToLower(strings.TrimSpace(family)) {
 	case "compute":
@@ -199,11 +225,11 @@ func costImportableSources(conn costConnection, k8sBound bool) []map[string]any 
 	provider := strings.ToLower(strings.TrimSpace(conn.Provider))
 	if provider != "" && provider != "aws" {
 		return []map[string]any{{
-			"id":     "cloud_billing",
+			"id":     costBillingSource(conn.Provider),
 			"label":  costCloudLabel(conn.Provider) + " billing",
 			"status": "not_imported",
 			"href":   "/cost/configuration",
-			"note":   "This product imports AWS CUR 2.0 today. Spend for this cloud stays Unknown until that export exists.",
+			"note":   costBillingSetupNote(conn.Provider),
 		}}
 	}
 	billingImported := strings.TrimSpace(conn.LatestRevision) != "" || costReadiness(conn.BillingReadiness) == "ready"
@@ -472,9 +498,13 @@ func mergeCostTreeConnections(userID int, connections []costConnection) []costCo
 		if _, ok := byAccount[account.ID]; ok {
 			continue
 		}
+		accountID := ""
+		if costBillingIngestReady(account.Provider) {
+			accountID = account.AccountID
+		}
 		out = append(out, costConnection{
 			CloudAccountID:     account.ID,
-			AccountID:          account.AccountID,
+			AccountID:          accountID,
 			DisplayName:        account.DisplayName,
 			Provider:           account.Provider,
 			TeamSlug:           account.TeamSlug,
@@ -806,9 +836,13 @@ func buildCostCloudDashboard(userID, cloudAccountID int, basis, currency, fromRa
 	if conn, connErr := getCostConnectionByCloudAccount(userID, cloudAccountID); connErr == nil && conn != nil {
 		return buildCostAccountDashboard(userID, conn.ID, basis, currency, fromRaw, toRaw)
 	}
+	accountID := ""
+	if costBillingIngestReady(account.Provider) {
+		accountID = account.AccountID
+	}
 	placeholder := costConnection{
 		CloudAccountID:     account.ID,
-		AccountID:          account.AccountID,
+		AccountID:          accountID,
 		DisplayName:        account.DisplayName,
 		Provider:           account.Provider,
 		TeamSlug:           account.TeamSlug,
@@ -845,7 +879,7 @@ func buildCostCloudDashboard(userID, cloudAccountID int, basis, currency, fromRa
 		"budgets":       []costBudgetStatus{},
 		"stale_hint":    nil,
 		"ai":            costAIPolicy(),
-		"note":          "Cost billing for this cloud is not imported yet. Spend stays Unknown, never $0.",
+		"note":          costBillingSetupNote(account.Provider),
 	}, nil
 }
 
