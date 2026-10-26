@@ -1,11 +1,9 @@
 import Link from 'next/link';
 
-const STEPS = [
-  { title: 'Select account', copy: 'Choose a cloud account already assigned to a project you can see.' },
-  { title: 'Connect billing source', copy: 'Enable Cost on that account. Demo inventory accounts stay out.' },
-  { title: 'Validate access', copy: 'Test the stored billed window. Incomplete stays Unknown, never $0.' },
-  { title: 'First collection', copy: 'Import a labelled CUR 2.0 export. Collection is manual in this pilot.' },
-  { title: 'View costs', copy: 'The operating bill appears after a complete revision exists.' },
+const STAGES = [
+  { title: 'Choose account', copy: 'Pick a cloud account already assigned to a project you can see. Demo inventory accounts stay out.' },
+  { title: 'Connect billing data', copy: 'Enable Cost and import a labelled CUR 2.0 export. Collection is manual in this pilot. Incomplete stays Unknown, never $0.' },
+  { title: 'Review costs', copy: 'The operating bill appears after a complete revision exists.' },
 ];
 
 export default function CostSetupFlow({
@@ -27,16 +25,17 @@ export default function CostSetupFlow({
     filtered: 'No results match the selected filters.',
     zero: 'This complete window billed zero. That is a genuine result, not missing data.',
   }[state];
+  const active = state === 'running' || state === 'partial' ? 1 : state === 'zero' ? 2 : 0;
   return (
     <section className="cost-setup" aria-label="Cost setup">
       <h2>Set up Cost</h2>
       <p>{copy}</p>
       <ol className="cost-setup__steps">
-        {STEPS.map((step, index) => (
-          <li key={step.title}>
+        {STAGES.map((step, index) => (
+          <li key={step.title} className={index === active ? 'is-active' : undefined}>
             <span className="cost-setup__index">{index + 1}</span>
             <strong>{step.title}</strong>
-            <span>{step.copy}</span>
+            {index === active ? <span>{step.copy}</span> : null}
           </li>
         ))}
       </ol>

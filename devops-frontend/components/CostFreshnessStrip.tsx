@@ -8,20 +8,16 @@ export default function CostFreshnessStrip({
   coverage?: CostCoverage | string | null;
 }) {
   if (!detail) return null;
-  const billed = detail.billed_through || 'Unknown';
+  const billed = detail.billed_through || '';
+  const hasBilled = Boolean(billed && billed !== 'Unknown');
+  if (!hasBilled && (!coverage || coverage === 'none' || coverage === 'Unknown')) return null;
   const synced = detail.last_successful_ingestion
     ? new Date(detail.last_successful_ingestion).toLocaleString()
-    : 'Unknown';
+    : '';
   return (
-    <div className="cost-status" aria-label="Billing data status">
-      <p>
-        Billing data through {billed}
-        <span aria-hidden> · </span>
-        Last synced {synced}
-        <span aria-hidden> · </span>
-        Coverage {coverage || 'Unknown'}
-      </p>
-      <p className="cost-status__note">Refreshing this page does not pull newer provider billing.</p>
-    </div>
+    <p className="cost-status" aria-label="Billing data status">
+      Billing data through {hasBilled ? billed : 'Unknown'}
+      {synced ? <><span aria-hidden> · </span>Last synced {synced}</> : null}
+    </p>
   );
 }

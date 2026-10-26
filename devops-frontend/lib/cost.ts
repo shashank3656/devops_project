@@ -792,7 +792,7 @@ export const COST_COPILOT_CHIPS = [
   'Why is coverage incomplete?',
 ];
 
-export const COST_SCOPE_KEYS = ['from', 'to', 'basis', 'currency', 'project', 'cloud', 'environment'] as const;
+export const COST_SCOPE_KEYS = ['from', 'to', 'basis', 'currency', 'project', 'cloud', 'environment', 'sample'] as const;
 const COST_SCOPE_STORAGE = 'opstrellis-cost-scope';
 
 export function pickCostScope(query: { [key: string]: string | string[] | undefined | unknown }): Record<string, string> {
@@ -804,14 +804,18 @@ export function pickCostScope(query: { [key: string]: string | string[] | undefi
   return out;
 }
 
+const COST_SAMPLE_PATHS = new Set(['/cost', '/cost/explorer', '/cost/optimization']);
+
 export function costHref(pathname: string, query: { [key: string]: string | string[] | undefined | unknown }, extra: Record<string, string> = {}) {
   const scope = pickCostScope(query);
+  if (!COST_SAMPLE_PATHS.has(pathname) && extra.sample == null) delete scope.sample;
   return `${pathname}${costQuery(scope.basis || extra.basis || '', scope.currency || extra.currency || '', { ...scope, ...extra })}`;
 }
 
 export function persistCostScope(query: { [key: string]: string | string[] | undefined | unknown }) {
   if (typeof window === 'undefined') return;
   const scope = pickCostScope(query);
+  delete scope.sample;
   if (Object.keys(scope).length) window.sessionStorage.setItem(COST_SCOPE_STORAGE, JSON.stringify(scope));
 }
 

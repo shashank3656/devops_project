@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import CostAskButton from '../../components/CostAskButton';
 import CostDailyChart from '../../components/CostDailyChart';
 import CostDrawer from '../../components/CostDrawer';
-import CostFirstRun from '../../components/CostFirstRun';
+import CostEmpty from '../../components/CostEmpty';
 import CostFreshnessStrip from '../../components/CostFreshnessStrip';
 import CostNav from '../../components/CostNav';
+import CostSampleBanner from '../../components/CostSampleBanner';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import {
@@ -20,6 +21,7 @@ import {
   fetchCostJson,
   groupCostExplorerLines,
 } from '../../lib/cost';
+import { COST_SAMPLE, COST_SAMPLE_DAYS, COST_SAMPLE_LINES, COST_SAMPLE_PRIOR_DAYS } from '../../lib/costSample';
 
 const GROUPS = [
   { id: 'service', label: 'Service' },
@@ -53,6 +55,9 @@ export default function CostExplorerPage() {
   const [open, setOpen] = useState<CostExplorerGroup | CostLine | null>(null);
 
   const filters = { service, region, account, team, from, to, portal_service: portalService, family };
+  const showSample = router.query.sample === '1' && Boolean(data?.empty);
+  const exportDisabled = Boolean(data?.empty) || showSample;
+  const exportReason = showSample ? 'Sample data cannot be exported.' : 'Connect a billing source to export costs.';
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -67,11 +72,20 @@ export default function CostExplorerPage() {
   }, [apiUrl, router.isReady, basis, currency, service, region, account, team, from, to, portalService, family]);
 
   const groups = useMemo(() => {
-    const rows = groupCostExplorerLines(data?.lines || [], groupBy, data?.coverage || 'none', data?.currency || currency);
+    const sampleLines = COST_SAMPLE_LINES.filter((line) => {
+      if (family && line.service !== family) return false;
+      if (service && !line.service.toLowerCase().includes(service.toLowerCase())) return false;
+      if (team && (line.team_slug || '') !== team) return false;
+      if (region && line.region !== region) return false;
+      return true;
+    });
+    const lines = showSample ? sampleLines : (data?.lines || []);
+    const coverage = showSample ? 'complete' : (data?.coverage || 'none');
+    const rows = groupCostExplorerLines(lines, groupBy, coverage, data?.currency || currency);
     const query = search.trim().toLowerCase();
     if (!query) return rows;
     return rows.filter((row) => `${row.label} ${row.owner}`.toLowerCase().includes(query));
-  }, [data, groupBy, search, currency]);
+  }, [data, groupBy, search, currency, showSample, family, service, team, region]);
 
   const patch = (next: Record<string, string | undefined>) => {
     const query = { ...router.query };
@@ -83,6 +97,7 @@ export default function CostExplorerPage() {
   };
 
   const exportCSV = async () => {
+    if (exportDisabled) return;
     setExporting(true);
     setError('');
     try {
@@ -98,51 +113,60 @@ export default function CostExplorerPage() {
   const crumbs = [
     { href: costHref('/cost', router.query), label: 'Overview' },
     service ? { label: service } : null,
+    family ? { label: family } : null,
     team ? { label: team === 'unallocated' ? 'Unallocated' : team } : null,
     account ? { label: 'Account' } : null,
   ].filter(Boolean) as { href?: string; label: string }[];
 
   const openGroup = open && 'lines' in open ? open : null;
   const openLine = open && 'resource_id' in open && !('lines' in open) ? open : null;
+  const populated = showSample || Boolean(data && !data.empty);
 
   return (
     <DevOpsLayout>
-      <Head><title>Cost explorer</title></Head>
+      <Head><title>Explorer</title></Head>
       <div className="portal-page cost-analysis">
         <div className="cost-shell__head">
-          <div>
-            <h1 className="portal-page__title">Cost explorer</h1>
-            <p className="cost-shell__hint">Investigate spend by service, team, account, region, or resource. Previous comparable cost stays Unknown until two complete windows exist.</p>
-          </div>
+          <h1 className="portal-page__title">Explorer</h1>
         </div>
-        <CostNav current="explorer" crumbs={crumbs} exporting={exporting} onExport={() => void exportCSV()} />
-        <CostFreshnessStrip detail={data?.freshness_detail} coverage={data?.coverage} />
+        <CostNav
+          current="explorer"
+          crumbs={crumbs}
+          exporting={exporting}
+          onExport={() => void exportCSV()}
+          exportDisabled={exportDisabled}
+          exportDisabledReason={exportReason}
+          sample={showSample}
+        />
+        {showSample ? <CostSampleBanner /> : <CostFreshnessStrip detail={data?.freshness_detail} coverage={data?.coverage} />}
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {loading ? <div className="empty-state">Loading billed lines…</div> : null}
-        {!loading && data?.empty ? (
-          <CostFirstRun
-            canOperate
-            title="No billed lines for this slice"
-            primaryLabel="Ingest billed data"
+        {!loading && data?.empty && !showSample ? (
+          <CostEmpty
+            title="Connect billing data to explore costs"
+            copy="Add a billing source to see billed lines by service, team, and resource."
           />
         ) : null}
-        {!loading && data && !data.empty ? (
+        {!loading && populated ? (
           <>
             <section className="cost-dash">
               <div className="cost-dash__graph">
                 <div className="cost-dash__head">
                   <h2 className="portal-surface__title">Spend in this slice</h2>
-                  <span className="cost-toolbar__dates">{data.total.display}</span>
+                  <span className="cost-toolbar__dates">{showSample ? COST_SAMPLE.spend : data?.total.display}</span>
                 </div>
                 <CostDailyChart
-                  days={groups.slice(0, 14).map((row) => ({
+                  days={showSample ? COST_SAMPLE_DAYS : groups.slice(0, 14).map((row) => ({
                     label: row.label,
                     display: row.display,
-                    percent: data.coverage === 'complete' && Number(groups[0]?.amount)
+                    percent: data?.coverage === 'complete' && Number(groups[0]?.amount)
                       ? Math.max(3, Math.round((Number(row.amount) / Number(groups[0].amount)) * 100))
                       : 0,
                   }))}
+                  prior={showSample ? COST_SAMPLE_PRIOR_DAYS : []}
                   emptyNote="Chart stays empty until a complete billed window exists."
+                  currency={currency}
+                  caption={showSample ? undefined : 'Spend grouped by the selected dimension'}
                 />
               </div>
             </section>
@@ -184,14 +208,14 @@ export default function CostExplorerPage() {
                       </td>
                       <td>{row.owner}</td>
                       <td>{row.display}</td>
-                      <td>Unknown</td>
-                      <td>Unknown</td>
+                      <td>{showSample ? 'See prior series' : 'Unknown'}</td>
+                      <td>{showSample ? COST_SAMPLE.comparison : 'Unknown'}</td>
                       <td>{row.count}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p className="portal-surface__subtitle">{data.note}</p>
+              <p className="portal-surface__subtitle">{showSample ? 'Sample billed lines. Not an operating bill.' : data?.note}</p>
             </section>
           </>
         ) : null}
@@ -205,7 +229,7 @@ export default function CostExplorerPage() {
           footer={
             <CostAskButton
               question="Explain this increase"
-              context={`Period ${from || 'this month'} to ${to || 'today'}. Basis ${basis}. Group ${groupBy}. Coverage ${data?.coverage || 'Unknown'}. Amount ${openGroup?.display || 'Unknown'}. Source labelled CUR 2.0.`}
+              context={`Period ${from || 'this month'} to ${to || 'today'}. Basis ${basis}. Group ${groupBy}. Coverage ${showSample ? 'sample' : data?.coverage || 'Unknown'}. Amount ${openGroup?.display || 'Unknown'}. Source labelled CUR 2.0.`}
             >
               Explain this increase
             </CostAskButton>
@@ -227,7 +251,7 @@ export default function CostExplorerPage() {
                     <td>{line.service}</td>
                     <td>{line.region || 'Unknown'}</td>
                     <td>{line.team_slug || 'Unallocated'}</td>
-                    <td>{data?.coverage === 'complete' ? `${line.currency} ${line.amount}` : 'Unknown'}</td>
+                    <td>{showSample || data?.coverage === 'complete' ? `${line.currency} ${line.amount}` : 'Unknown'}</td>
                   </tr>
                 ))}
               </tbody>

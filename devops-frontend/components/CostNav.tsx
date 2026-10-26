@@ -10,19 +10,26 @@ export default function CostNav({
   analysis,
   exporting,
   onExport,
+  exportDisabled,
+  exportDisabledReason,
   crumbs,
   visibleAccounts,
   totalAccounts,
+  sample,
 }: {
   current: CostNavId;
   analysis?: CostFilterOptions | null;
   exporting?: boolean;
   onExport?: () => void;
+  exportDisabled?: boolean;
+  exportDisabledReason?: string;
   compact?: boolean;
   crumbs?: CostCrumb[];
   visibleAccounts?: number;
   totalAccounts?: number;
+  sample?: boolean;
 }) {
+  const overview = current === 'overview';
   return (
     <div className="cost-nav">
       {crumbs?.length ? (
@@ -38,12 +45,16 @@ export default function CostNav({
       {current !== 'configuration' ? (
         <CostFilterBar
           showBasis
-          options={current === 'overview' ? analysis : undefined}
+          showPeriod={!overview}
+          options={overview ? analysis : undefined}
           explorer={current === 'explorer'}
           exporting={exporting}
           onExport={onExport}
-          visibleAccounts={visibleAccounts}
-          totalAccounts={totalAccounts}
+          exportDisabled={exportDisabled}
+          exportDisabledReason={exportDisabledReason}
+          sample={sample}
+          visibleAccounts={sample ? undefined : visibleAccounts}
+          totalAccounts={sample ? undefined : totalAccounts}
         />
       ) : null}
     </div>

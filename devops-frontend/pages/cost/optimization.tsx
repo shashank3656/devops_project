@@ -4,12 +4,14 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import CostAskButton from '../../components/CostAskButton';
 import CostDrawer from '../../components/CostDrawer';
-import CostFirstRun from '../../components/CostFirstRun';
+import CostEmpty from '../../components/CostEmpty';
 import CostNav from '../../components/CostNav';
+import CostSampleBanner from '../../components/CostSampleBanner';
 import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { CostOptimization, CostRecommendation, costLifecycleLabel, costQuery, costRiskLabel, fetchCostJson } from '../../lib/cost';
+import { COST_SAMPLE_RECS } from '../../lib/costSample';
 
 export default function CostOptimizationPage() {
   const apiUrl = useApiUrl();
@@ -75,32 +77,28 @@ export default function CostOptimizationPage() {
   };
 
   const blocked = open?.status === 'blocked' || open?.lifecycle === 'blocked';
+  const showSample = router.query.sample === '1' && !loading && !(data?.recommendations || []).length;
+  const recommendations = showSample ? COST_SAMPLE_RECS : (data?.recommendations || []);
+  const sampleLocked = showSample || Boolean(open?.calc_id?.startsWith('sample'));
 
   return (
     <DevOpsLayout>
-      <Head><title>Cost optimization</title></Head>
+      <Head><title>Optimization</title></Head>
       <div className="portal-page cost-analysis">
         <div className="cost-shell__head">
-          <div>
-            <h1 className="portal-page__title">Optimization</h1>
-            <p className="cost-shell__hint">A recommendation explains estimated savings and operational risk. Approval is not execution.</p>
-          </div>
+          <h1 className="portal-page__title">Optimization</h1>
         </div>
-        <CostNav current="optimization" />
+        <CostNav current="optimization" sample={showSample} />
+        {showSample ? <CostSampleBanner /> : null}
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-info" role="status">{notice}</div> : null}
-        <div className="portal-pill-row">
-          <span className="portal-pill">Non-overlapping savings {data?.nonoverlapping_savings?.display || 'Unknown'}</span>
-          <span className="portal-pill">Metrics {data?.metrics_ready ? 'Ready' : 'Unknown'}</span>
-          <span className="portal-pill">Executes No</span>
-          <span className="portal-pill">Pauses workloads No</span>
-        </div>
+        {recommendations.length ? <p className="cost-review-note">Recommendations require review before changes.</p> : null}
         {loading ? <div className="empty-state">Loading recommendations…</div> : null}
-        {!loading && !(data?.recommendations || []).length ? (
-          <CostFirstRun
+        {!loading && !recommendations.length ? (
+          <CostEmpty
             canOperate={data?.can_operate}
-            title="No recommendations for this window"
-            primaryLabel="Ingest billed data"
+            title="Connect billing data to discover savings"
+            copy="Add a billing source to identify cost-saving opportunities. Utilization data helps assess rightsizing recommendations."
           />
         ) : null}
         {!loading && (data?.opportunity_groups || []).length ? (
@@ -134,7 +132,7 @@ export default function CostOptimizationPage() {
             </CostTechnicalDetails>
           </section>
         ) : null}
-        {!loading && (data?.recommendations || []).length ? (
+        {!loading && recommendations.length ? (
           <section className="portal-surface portal-surface--table">
             <table className="portal-table">
               <thead>
@@ -148,7 +146,7 @@ export default function CostOptimizationPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.recommendations || []).map((row) => (
+                {recommendations.map((row) => (
                   <tr key={row.calc_id}>
                     <td>
                       {row.finding_type}
@@ -182,8 +180,8 @@ export default function CostOptimizationPage() {
               >
                 Explain this recommendation
               </CostAskButton>
-              <button type="button" className="btn btn-secondary" disabled={!!acting || data?.can_operate === false} onClick={() => void act('review')}>Under review</button>
-              <button type="button" className="btn btn-primary" disabled={!!acting || blocked || data?.can_operate === false} onClick={() => void act('accept')}>Accept</button>
+              <button type="button" className="btn btn-secondary" disabled={!!acting || sampleLocked || data?.can_operate === false} onClick={() => void act('review')}>Under review</button>
+              <button type="button" className="btn btn-primary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('accept')}>Accept</button>
             </div>
           )}
         >
@@ -214,15 +212,16 @@ export default function CostOptimizationPage() {
                 </label>
               </div>
               <div className="portal-page__actions">
-                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || !changeNumber || data?.can_operate === false} onClick={() => void act('link')}>Link change</button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || !changeNumber || data?.can_operate === false} onClick={() => void act('link')}>Link change</button>
                 <Link href="/changes/new" className="btn btn-secondary">Open a change</Link>
-                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || data?.can_operate === false} onClick={() => void act('verify')}>Measure</button>
-                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || data?.can_operate === false} onClick={() => void act('verify', { result: 'inconclusive' })}>Mark Inconclusive</button>
-                <button type="button" className="btn btn-secondary" disabled={!!acting || !reason || !reviewBy || data?.can_operate === false} onClick={() => void act('dismiss')}>Dismiss</button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('verify')}>Measure</button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('verify', { result: 'inconclusive' })}>Mark Inconclusive</button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting || sampleLocked || !reason || !reviewBy || data?.can_operate === false} onClick={() => void act('dismiss')}>Dismiss</button>
               </div>
               <CostTechnicalDetails>
                 <p>{open.calc_id}</p>
                 <p>{open.calculation}</p>
+                <p>Approval does not execute the change. This page does not pause workloads. Overlapping savings are not summed.</p>
               </CostTechnicalDetails>
             </>
           ) : null}

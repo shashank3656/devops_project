@@ -2,6 +2,8 @@ import Link from 'next/link';
 import CostUnknown from './CostUnknown';
 import type { CostUnknownReason } from '../lib/cost';
 
+export type CostScorecardVisual = 'trend' | 'range' | 'progress' | 'count';
+
 export type CostScorecardItem = {
   label: string;
   value: string;
@@ -13,6 +15,11 @@ export type CostScorecardItem = {
   href?: string;
   unknown?: CostUnknownReason | null;
   meaning?: 'spend' | 'savings' | 'risk' | 'neutral';
+  visual?: CostScorecardVisual;
+  rangeLow?: string;
+  rangeHigh?: string;
+  progress?: number;
+  countLabel?: string;
 };
 
 function Spark({ values }: { values: number[] }) {
@@ -28,6 +35,34 @@ function Spark({ values }: { values: number[] }) {
       <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
+}
+
+function Visual({ item }: { item: CostScorecardItem }) {
+  if (item.visual === 'trend' && item.sparkline?.length) {
+    return <Spark values={item.sparkline} />;
+  }
+  if (item.visual === 'range' && (item.rangeLow || item.rangeHigh)) {
+    return (
+      <span className="cost-score__range" aria-label={`Forecast range ${item.rangeLow || ''} to ${item.rangeHigh || ''}`}>
+        <span>{item.rangeLow}</span>
+        <span className="cost-score__range-bar" />
+        <span>{item.rangeHigh}</span>
+      </span>
+    );
+  }
+  if (item.visual === 'progress' && typeof item.progress === 'number') {
+    const width = Math.max(0, Math.min(100, item.progress));
+    return (
+      <span className="cost-score__meter" aria-label={`Budget used ${width}%`}>
+        <span className="cost-score__meter-fill" style={{ width: `${width}%` }} />
+      </span>
+    );
+  }
+  if (item.visual === 'count' && item.countLabel) {
+    return <span className="cost-score__count">{item.countLabel}</span>;
+  }
+  if (item.sparkline?.length) return <Spark values={item.sparkline} />;
+  return null;
 }
 
 export default function CostScorecard({
@@ -49,14 +84,14 @@ export default function CostScorecard({
                 : item.value}
             </strong>
             {item.comparison || item.comparisonLabel ? (
-              <span className={`cost-score__compare cost-score__compare--${item.meaning || 'neutral'}`}>
+              <span className="cost-score__compare">
                 {item.comparisonLabel ? `${item.comparisonLabel}: ` : ''}
                 {item.comparison || 'Unknown'}
               </span>
             ) : null}
             {item.estimate ? <span className="cost-score__badge">Estimate</span> : null}
             {item.hint ? <span className="cost-score__hint">{item.hint}</span> : null}
-            {item.sparkline?.length ? <Spark values={item.sparkline} /> : null}
+            <Visual item={item} />
           </>
         );
         const className = `cost-score__card${item.href && !item.unknown ? ' is-link' : ''}`;

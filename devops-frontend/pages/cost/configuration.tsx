@@ -231,11 +231,11 @@ export default function CostConfigurationPage() {
 
   return (
     <DevOpsLayout>
-      <Head><title>Settings & data sources</title></Head>
+      <Head><title>Data sources</title></Head>
       <div className="portal-page cost-analysis">
         <div className="cost-shell__head">
           <div>
-            <h1 className="portal-page__title">Settings & data sources</h1>
+            <h1 className="portal-page__title">Data sources</h1>
             <p className="cost-shell__hint">
               {typeof data?.pilot === 'object' && data.pilot?.note
                 ? data.pilot.note

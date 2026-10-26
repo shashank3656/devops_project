@@ -75,7 +75,7 @@ export const supportArticles: SupportArticle[] = [
       { label: 'Open budgets and alerts', href: '/cost/budgets' },
       { label: 'Open savings tracking', href: '/cost/savings' },
       { label: 'Open Kubernetes cost', href: '/cost/kubernetes' },
-      { label: 'Open settings', href: '/cost/configuration' },
+      { label: 'Open data sources', href: '/cost/configuration' },
     ],
   },
   {
