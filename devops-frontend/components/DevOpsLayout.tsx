@@ -24,6 +24,7 @@ import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPromptsForPath } from '../lib/supportContent';
 import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { expireSession, readAccessDenied, rememberAccessDenied } from '../lib/sessionExpiry';
+import { costHref } from '../lib/cost';
 import { isRecordDetailPath } from '../lib/scopeHref';
 import { readSubmissionResult, type SubmissionResult } from '../lib/submissionResult';
 import { buildBreadcrumbs } from '../lib/breadcrumbs';
@@ -86,17 +87,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/on-call': 'On-call',
   '/on-call/handovers': 'Handovers',
   '/certificates': 'Certificates & domains',
-  '/cost': 'Cost analysis',
+  '/cost': 'Cost overview',
   '/cost/accounts': 'Account spend',
   '/cost/projects': 'Project spend',
   '/cost/cloud': 'Cloud account spend',
   '/cost/explorer': 'Cost explorer',
   '/cost/optimization': 'Cost optimization',
-  '/cost/anomalies': 'Cost anomalies',
-  '/cost/budgets': 'Cost budgets',
-  '/cost/savings': 'Cost savings',
+  '/cost/anomalies': 'Budgets & alerts',
+  '/cost/budgets': 'Budgets & alerts',
+  '/cost/savings': 'Savings tracking',
   '/cost/kubernetes': 'Kubernetes cost',
-  '/cost/configuration': 'Cost configuration',
+  '/cost/configuration': 'Settings & data sources',
   '/operations/webhooks': 'Webhooks',
   '/maintenance': 'Maintenance',
   '/service-desk': 'Service desk',
@@ -668,6 +669,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     if (href === '/cost') {
       return pathname === '/cost' || pathname.startsWith('/cost/projects/') || pathname.startsWith('/cost/accounts/') || pathname.startsWith('/cost/cloud/');
     }
+    if (href === '/cost/budgets') {
+      return pathname === '/cost/budgets' || pathname === '/cost/anomalies';
+    }
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);
   };
@@ -738,14 +742,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       label: 'Cost management',
       Icon: IconFileText,
       children: [
-        { href: '/cost', label: 'Analysis' },
-        { href: '/cost/explorer', label: 'Explorer' },
+        { href: '/cost', label: 'Overview' },
+        { href: '/cost/explorer', label: 'Cost explorer' },
         { href: '/cost/optimization', label: 'Optimization' },
-        { href: '/cost/anomalies', label: 'Anomalies' },
-        { href: '/cost/budgets', label: 'Budgets' },
-        { href: '/cost/savings', label: 'Savings' },
+        { href: '/cost/budgets', label: 'Budgets & alerts' },
+        { href: '/cost/savings', label: 'Savings tracking' },
         { href: '/cost/kubernetes', label: 'Kubernetes' },
-        { href: '/cost/configuration', label: 'Configuration' },
+        { href: '/cost/configuration', label: 'Settings & data sources' },
       ],
     },
   ];
@@ -903,7 +906,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       <div key={href} className="devops-sidebar-new__expandable">
         <div className="devops-sidebar-new__group-row">
           <Link
-            href={href}
+            href={href.startsWith('/cost') ? costHref(href, router.query) : href}
             className={`devops-sidebar-new__link ${!hasChildren && leafIsActive(href) ? 'devops-sidebar-new__link--active' : groupActive ? 'devops-sidebar-new__link--current' : ''}`}
             onClick={() => {
               if (hasChildren) setOpenNavGroups((current) => ({ ...current, [href]: true }));
@@ -934,7 +937,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             {children!.map((child) => (
               <Link
                 key={child.href}
-                href={child.href}
+                href={child.href.startsWith('/cost') ? costHref(child.href, router.query) : child.href}
                 className={`devops-sidebar-new__sublink ${leafIsActive(child.href) ? 'devops-sidebar-new__sublink--active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
                 aria-current={leafIsActive(child.href) ? 'page' : undefined}

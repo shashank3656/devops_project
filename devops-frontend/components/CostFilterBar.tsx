@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import CostAskChips from './CostAskChips';
 import {
+  COST_SCOPE_KEYS,
   CostFilterOptions,
   costLastMonth,
   costThisMonth,
@@ -9,7 +9,9 @@ import {
   formatCostWindowRange,
   freshnessLabel,
   importableLabel,
+  persistCostScope,
   resolvedCostWindow,
+  storedCostScope,
 } from '../lib/cost';
 
 type CostFilterBarProps = {
@@ -88,6 +90,23 @@ export default function CostFilterBar({
   const extraOn = Boolean(project || cloud || environment || freshness || importStatus || service || region || team || account || family);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const secondaryOn = Boolean(freshness || importStatus || service || region || team || account || family);
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    if (!router.isReady || hydrated.current) return;
+    hydrated.current = true;
+    const stored = storedCostScope();
+    const hasUrlScope = COST_SCOPE_KEYS.some((key) => typeof router.query[key] === 'string');
+    if (!hasUrlScope && Object.keys(stored).length) {
+      void router.replace({ pathname: router.pathname, query: { ...stored, ...router.query } }, undefined, { shallow: true });
+      return;
+    }
+    persistCostScope(router.query);
+  }, [router.isReady, router.pathname, router.query]);
+
+  useEffect(() => {
+    if (router.isReady) persistCostScope(router.query);
+  }, [router.isReady, router.query]);
 
   const patch = (next: Record<string, string | undefined>) => {
     const query = { ...router.query };
@@ -95,6 +114,7 @@ export default function CostFilterBar({
       if (value) query[key] = value;
       else delete query[key];
     });
+    persistCostScope(query);
     void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
 
@@ -209,15 +229,14 @@ export default function CostFilterBar({
                 family: undefined,
               })}
             >
-              Clear
+              Clear all
             </button>
           ) : null}
           {onExport ? (
             <button type="button" className="btn btn-sm btn-secondary" disabled={exporting} onClick={onExport}>
-              {exporting ? 'Exporting…' : 'CSV'}
+              {exporting ? 'Exporting…' : 'Export'}
             </button>
           ) : null}
-          <CostAskChips />
         </div>
       </section>
       {drawerOpen ? (

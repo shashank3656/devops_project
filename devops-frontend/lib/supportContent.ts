@@ -69,14 +69,13 @@ export const supportArticles: SupportArticle[] = [
     keywords: ['cost', 'bill', 'cur', 'infracost', 'operating spend'],
     routePrefixes: ['/cost'],
     actions: [
-      { label: 'Open Cost', href: '/cost' },
+      { label: 'Open Cost overview', href: '/cost' },
       { label: 'Open explorer', href: '/cost/explorer' },
       { label: 'Open optimization', href: '/cost/optimization' },
-      { label: 'Open anomalies', href: '/cost/anomalies' },
-      { label: 'Open budgets', href: '/cost/budgets' },
-      { label: 'Open savings', href: '/cost/savings' },
+      { label: 'Open budgets and alerts', href: '/cost/budgets' },
+      { label: 'Open savings tracking', href: '/cost/savings' },
       { label: 'Open Kubernetes cost', href: '/cost/kubernetes' },
-      { label: 'Open configuration', href: '/cost/configuration' },
+      { label: 'Open settings', href: '/cost/configuration' },
     ],
   },
   {

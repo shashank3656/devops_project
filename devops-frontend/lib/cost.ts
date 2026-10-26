@@ -241,6 +241,19 @@ export type CostOverview = {
   anomaly_count?: number;
   recommendation_count?: number;
   waiting_count?: number;
+  compare?: {
+    current?: CostMoney;
+    prior?: CostMoney;
+    delta?: CostMoney;
+    prior_window_start?: string;
+    prior_window_end?: string;
+    prior_coverage?: string;
+    like_for_like?: boolean;
+    note?: string;
+  };
+  prior_daily?: CostGraphBar[];
+  opportunities?: { calc_id: string; finding_type: string; savings_high?: CostMoney }[];
+  anomalies?: { calc_id: string; service?: string; delta?: CostMoney }[];
   budgets?: CostBudgetStatus[];
   pauses_workloads?: boolean;
   kubernetes?: {
@@ -778,6 +791,117 @@ export const COST_COPILOT_CHIPS = [
   'Why is spend Unknown?',
   'Why is coverage incomplete?',
 ];
+
+export const COST_SCOPE_KEYS = ['from', 'to', 'basis', 'currency', 'project', 'cloud', 'environment'] as const;
+const COST_SCOPE_STORAGE = 'opstrellis-cost-scope';
+
+export function pickCostScope(query: { [key: string]: string | string[] | undefined | unknown }): Record<string, string> {
+  const out: Record<string, string> = {};
+  COST_SCOPE_KEYS.forEach((key) => {
+    const value = query[key];
+    if (typeof value === 'string' && value.trim()) out[key] = value;
+  });
+  return out;
+}
+
+export function costHref(pathname: string, query: { [key: string]: string | string[] | undefined | unknown }, extra: Record<string, string> = {}) {
+  const scope = pickCostScope(query);
+  return `${pathname}${costQuery(scope.basis || extra.basis || '', scope.currency || extra.currency || '', { ...scope, ...extra })}`;
+}
+
+export function persistCostScope(query: { [key: string]: string | string[] | undefined | unknown }) {
+  if (typeof window === 'undefined') return;
+  const scope = pickCostScope(query);
+  if (Object.keys(scope).length) window.sessionStorage.setItem(COST_SCOPE_STORAGE, JSON.stringify(scope));
+}
+
+export function storedCostScope(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.sessionStorage.getItem(COST_SCOPE_STORAGE);
+    const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+    return pickCostScope(parsed);
+  } catch {
+    return {};
+  }
+}
+
+export function askCostCopilot(question: string, context?: string) {
+  if (typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  const from = params.get('from') || '';
+  const to = params.get('to') || '';
+  const basis = params.get('basis') || 'actual';
+  window.dispatchEvent(new CustomEvent('opstrellis-cost-ask', {
+    detail: {
+      question,
+      context: context || `Period ${from && to ? `${from} to ${to}` : 'this month'}. Basis ${basis}. Source labelled CUR 2.0.`,
+    },
+  }));
+}
+
+export function costLifecycleLabel(value?: string) {
+  const key = (value || '').toLowerCase();
+  if (key === 'review' || key === 'reviewing' || key === 'under_review') return 'Reviewing';
+  if (key === 'accepted' || key === 'approved') return 'Approved';
+  if (key === 'linked' || key === 'change_linked') return 'Change linked';
+  if (key === 'verified' || key === 'verification' || key === 'measured') return 'Verification';
+  if (key === 'inconclusive') return 'Inconclusive';
+  if (key === 'dismissed' || key === 'dismiss') return 'Dismissed';
+  if (key === 'blocked') return 'Blocked';
+  return 'New';
+}
+
+export function costRiskLabel(value?: string) {
+  const key = (value || '').toLowerCase();
+  if (key === 'high' || key === 'critical') return 'High';
+  if (key === 'medium' || key === 'moderate') return 'Medium';
+  if (key === 'low') return 'Low';
+  return 'Unknown';
+}
+
+export type CostExplorerGroup = {
+  key: string;
+  label: string;
+  owner: string;
+  amount: string;
+  display: string;
+  count: number;
+  lines: CostLine[];
+};
+
+export function groupCostExplorerLines(lines: CostLine[], groupBy: string, coverage: CostCoverage, currency: string): CostExplorerGroup[] {
+  const groups = new Map<string, CostExplorerGroup>();
+  (lines || []).forEach((line) => {
+    const key = groupBy === 'team'
+      ? (line.team_slug || 'unallocated')
+      : groupBy === 'account'
+        ? (line.account_id || 'unknown')
+        : groupBy === 'region'
+          ? (line.region || 'unknown')
+          : groupBy === 'resource'
+            ? (line.resource_id || 'unknown')
+            : (line.service || 'unknown');
+    const current = groups.get(key) || {
+      key,
+      label: groupBy === 'team' && key === 'unallocated' ? 'Unallocated' : key,
+      owner: line.team_slug || 'Unallocated',
+      amount: '0',
+      display: coverage === 'complete' ? `${line.currency || currency} 0` : 'Unknown',
+      count: 0,
+      lines: [],
+    };
+    current.count += 1;
+    current.lines.push(line);
+    if (coverage === 'complete') {
+      const next = Number(current.amount) + Number(line.amount || '0');
+      current.amount = Number.isFinite(next) ? next.toFixed(6) : current.amount;
+      current.display = `${line.currency || currency} ${Number(current.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    groups.set(key, current);
+  });
+  return [...groups.values()].sort((a, b) => Number(b.amount) - Number(a.amount));
+}
 
 export function formatCostDate(value: Date) {
   return value.toISOString().slice(0, 10);

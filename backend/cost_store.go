@@ -589,6 +589,10 @@ func buildCostOverview(userID int, basis, currency, fromRaw, toRaw string) (map[
 		"anomaly_count":          len(insights.Anomalies),
 		"recommendation_count":   len(insights.Recommendations),
 		"waiting_count":          countCostWaiting(insights.Recommendations),
+		"compare":                insights.Compare,
+		"prior_daily":            insights.PriorDaily,
+		"opportunities":          costOverviewOpportunities(insights.Recommendations),
+		"anomalies":              costOverviewAnomalies(insights.Anomalies),
 		"budgets":                budgets,
 		"pauses_workloads":       false,
 		"request_estimates":      requestEstimateCard(),
@@ -604,6 +608,20 @@ func buildCostOverview(userID int, basis, currency, fromRaw, toRaw string) (map[
 		"pilot":                  costPilotScope(),
 		"note":                   "Cost is granted at project level. Actual and amortized are never added together. A replayed export does not add a second charge. Incomplete windows stay Unknown, never zero. Budgets never stop workloads. Overlapping savings are not summed. Acceptance is not permission to execute. Kubernetes cost is a breakdown of the cloud bill, never an extra line. Copilot never receives cloud account details, passwords, or role names. Refreshing this page does not pull newer provider billing data.",
 	}, nil
+}
+
+func costOverviewOpportunities(recs []costRecommendation) []costRecommendation {
+	if len(recs) > 5 {
+		return recs[:5]
+	}
+	return recs
+}
+
+func costOverviewAnomalies(rows []costAnomaly) []costAnomaly {
+	if len(rows) > 5 {
+		return rows[:5]
+	}
+	return rows
 }
 
 func buildCostExplorer(userID int, basis, currency, fromRaw, toRaw string, filter costLineQuery) (map[string]any, error) {

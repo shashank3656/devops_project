@@ -99,6 +99,8 @@ type costInsights struct {
 	Coverage         string                 `json:"coverage,omitempty"`
 	Basis            string                 `json:"basis,omitempty"`
 	Currency         string                 `json:"currency,omitempty"`
+	Compare          map[string]any         `json:"compare,omitempty"`
+	PriorDaily       []costGraphBar         `json:"prior_daily,omitempty"`
 }
 
 func costAlertStatus(enabled bool, coverage, priorCoverage string) map[string]any {
@@ -584,6 +586,12 @@ func buildCostInsights(userID int, basis, currency, fromRaw, toRaw string, metri
 		Coverage:         current.Coverage,
 		Basis:            current.Basis,
 		Currency:         current.Currency,
+		Compare: costWindowCompare(
+			costMoneyView(current.Coverage, current.Total, current.Currency, current.Basis),
+			costMoneyView(prior.Coverage, prior.Total, prior.Currency, prior.Basis),
+			prior.WindowStart, prior.WindowEnd, prior.Coverage,
+		),
+		PriorDaily: costDaySeries(prior.Lines, prior.Coverage, prior.Currency, prior.Basis),
 	}, nil
 }
 

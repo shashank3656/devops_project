@@ -1,10 +1,13 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostFirstRun from '../../components/CostFirstRun';
 import CostNav from '../../components/CostNav';
+import CostPageTabs from '../../components/CostPageTabs';
+import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { CostBudgets, budgetAlertLabel, costQuery, fetchCostJson } from '../../lib/cost';
+import { CostAnomalies, CostBudgets, budgetAlertLabel, costQuery, fetchCostJson } from '../../lib/cost';
 
 export default function CostBudgetsPage() {
   const apiUrl = useApiUrl();
@@ -13,7 +16,9 @@ export default function CostBudgetsPage() {
   const currency = typeof router.query.currency === 'string' && router.query.currency.trim() ? router.query.currency : 'USD';
   const from = typeof router.query.from === 'string' ? router.query.from : '';
   const to = typeof router.query.to === 'string' ? router.query.to : '';
+  const tab = router.query.tab === 'alerts' ? 'alerts' : 'budgets';
   const [data, setData] = useState<CostBudgets | null>(null);
+  const [anomalies, setAnomalies] = useState<CostAnomalies | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
@@ -42,6 +47,13 @@ export default function CostBudgetsPage() {
 
   useEffect(() => {
     load();
+  }, [apiUrl, router.isReady, basis, currency, from, to]);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    fetchCostJson<CostAnomalies>(apiUrl, `/api/cost/anomalies${costQuery(basis, currency, { from, to })}`)
+      .then((payload) => setAnomalies(payload))
+      .catch(() => setAnomalies(null));
   }, [apiUrl, router.isReady, basis, currency, from, to]);
 
   const createBudget = async () => {
@@ -96,11 +108,20 @@ export default function CostBudgetsPage() {
       <div className="portal-page cost-analysis">
         <div className="cost-shell__head">
           <div>
-            <h1 className="portal-page__title">Cost budgets</h1>
-            <p className="cost-shell__hint">Remaining uses the budget period, not the Analysis filter. Incomplete stays Unknown, never $0. Budgets never stop workloads.</p>
+            <h1 className="portal-page__title">Budgets & alerts</h1>
+            <p className="cost-shell__hint">Budget tracking and anomaly investigation. Remaining uses the budget period, not the Overview filter. Budgets never stop workloads.</p>
           </div>
         </div>
         <CostNav current="budgets" />
+        <CostPageTabs
+          tabs={[{ id: 'budgets', label: 'Budgets' }, { id: 'alerts', label: 'Alerts' }]}
+          current={tab}
+          onSelect={(id) => {
+            const query = { ...router.query, tab: id === 'alerts' ? 'alerts' : undefined };
+            if (id !== 'alerts') delete query.tab;
+            void router.replace({ pathname: '/cost/budgets', query }, undefined, { shallow: true });
+          }}
+        />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-info" role="status">{notice}</div> : null}
         <div className="portal-pill-row">
@@ -110,6 +131,50 @@ export default function CostBudgetsPage() {
           <span className="portal-pill">Pauses workloads No</span>
           <span className="portal-pill">Destination Cost alerts</span>
         </div>
+        {tab === 'alerts' ? (
+          <>
+            <dl className="cost-k8s-meta" aria-label="Cost alert readiness">
+              <div><dt>Alerts enabled</dt><dd>{anomalies?.alerts?.alerts_enabled ? 'On' : 'Off'}</dd></div>
+              <div><dt>Monitoring ready</dt><dd>{anomalies?.alerts?.monitoring_ready ? 'Yes' : 'No'}</dd></div>
+              <div><dt>Delivery verified</dt><dd>{anomalies?.alerts?.delivery_verified ? 'Yes' : 'No'}</dd></div>
+              <div><dt>Evaluation</dt><dd>{anomalies?.alerts?.blocked_reason || (anomalies?.alerts?.monitoring_ready ? 'Ready' : 'Unknown')}</dd></div>
+            </dl>
+            {Boolean(anomalies?.insufficient_data) || (!(anomalies?.anomalies || []).length && (anomalies?.prior_coverage || 'none') !== 'complete') ? (
+              <CostFirstRun canOperate title="Not enough comparable data" primaryLabel="Ingest billed data" />
+            ) : (anomalies?.anomalies || []).length ? (
+              <section className="portal-surface portal-surface--table">
+                <table className="portal-table">
+                  <thead>
+                    <tr>
+                      <th>Service</th>
+                      <th>Current</th>
+                      <th>Baseline</th>
+                      <th>Change</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(anomalies?.anomalies || []).filter((row) => row.resource_id || row.like_for_like).map((row) => (
+                      <tr key={row.calc_id}>
+                        <td>{row.service || 'Window'}</td>
+                        <td>{row.current?.display || 'Unknown'}</td>
+                        <td>{row.baseline?.display || 'Unknown'}</td>
+                        <td>{row.delta?.display || 'Unknown'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <CostTechnicalDetails>
+                  {(anomalies?.anomalies || []).map((row) => (
+                    <p key={row.calc_id}>{row.calc_id}</p>
+                  ))}
+                </CostTechnicalDetails>
+              </section>
+            ) : (
+              <div className="empty-state">No anomalies in this complete window.</div>
+            )}
+          </>
+        ) : null}
+        {tab === 'budgets' ? (
         <section className="portal-surface">
           <h2 className="portal-surface__title">Add a budget</h2>
           <div className="portal-form-grid">
@@ -196,6 +261,7 @@ export default function CostBudgetsPage() {
             </table>
             <p className="portal-surface__subtitle">{data?.note}</p>
           </section>
+        ) : null}
         ) : null}
       </div>
     </DevOpsLayout>

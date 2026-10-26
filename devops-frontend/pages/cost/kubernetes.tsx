@@ -2,9 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostDrawer from '../../components/CostDrawer';
 import CostFirstRun from '../../components/CostFirstRun';
 import CostKpiStrip from '../../components/CostKpiStrip';
 import CostNav from '../../components/CostNav';
+import CostPageTabs from '../../components/CostPageTabs';
 import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -15,6 +17,7 @@ import {
   CostK8sOptimization,
   CostK8sRecommendation,
   CostK8sReconciliation,
+  CostK8sWorkload,
   CostK8sWorkloads,
   costQuery,
   fetchCostJson,
@@ -25,12 +28,11 @@ import {
 } from '../../lib/cost';
 
 const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'allocation', label: 'Allocation' },
+  { id: 'overview', label: 'Cluster' },
+  { id: 'allocation', label: 'Namespaces' },
   { id: 'workloads', label: 'Workloads' },
-  { id: 'optimization', label: 'Optimization' },
-  { id: 'reconciliation', label: 'Reconciliation' },
-  { id: 'collection', label: 'Collection health' },
+  { id: 'optimization', label: 'Opportunities' },
+  { id: 'collection', label: 'Data health' },
 ] as const;
 
 type CostK8sTab = (typeof TABS)[number]['id'];
@@ -56,7 +58,9 @@ export default function CostKubernetesPage() {
     ? router.query.group
     : 'namespace';
   const distributeIdle = router.query.distribute_idle === '1';
-  const tabParam = typeof router.query.tab === 'string' ? router.query.tab : 'overview';
+  const tabParam = typeof router.query.tab === 'string'
+    ? (router.query.tab === 'reconciliation' ? 'overview' : router.query.tab)
+    : 'overview';
   const tab: CostK8sTab = TABS.some((item) => item.id === tabParam) ? (tabParam as CostK8sTab) : 'overview';
   const [data, setData] = useState<CostK8sCatalog | null>(null);
   const [connectionId, setConnectionId] = useState('');
@@ -72,6 +76,7 @@ export default function CostKubernetesPage() {
   const [optimization, setOptimization] = useState<CostK8sOptimization | null>(null);
   const [health, setHealth] = useState<CostK8sCollectionHealth | null>(null);
   const [openRec, setOpenRec] = useState<CostK8sRecommendation | null>(null);
+  const [openWorkload, setOpenWorkload] = useState<CostK8sWorkload | null>(null);
   const [snapshotJSON, setSnapshotJSON] = useState(sampleCostK8sSnapshot());
 
   const setQuery = (patch: Record<string, string>) => {
@@ -203,7 +208,7 @@ export default function CostKubernetesPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">Kubernetes cost</h1>
-            <p className="cost-shell__hint">Breakdown of the cloud bill, never an extra line. List-price estimates are not the invoice.</p>
+            <p className="cost-shell__hint">Cluster → namespace → workload. Mapped cluster cost is a breakdown of the cloud bill, never an extra line.</p>
           </div>
           <div className="portal-page__actions">
             {selected ? (
@@ -269,18 +274,7 @@ export default function CostKubernetesPage() {
             </label>
           </div>
         ) : null}
-        <div className="portal-tabs" role="tablist">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`btn btn-sm ${tab === item.id ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setQuery({ tab: item.id })}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <CostPageTabs tabs={[...TABS]} current={tab} onSelect={(id) => setQuery({ tab: id })} />
         {loading ? <div className="empty-state">Loading cluster bindings…</div> : null}
         {!loading && tab === 'overview' && !(data?.clusters || []).length ? (
           <CostFirstRun
@@ -515,7 +509,8 @@ export default function CostKubernetesPage() {
                     <th>Workload</th>
                     <th>Owner</th>
                     <th>Pods</th>
-                    <th>CPU usage</th>
+                    <th>CPU request / usage</th>
+                    <th>Memory request / usage</th>
                     <th>Estimated allocation</th>
                     <th>HPA</th>
                     <th>VPA</th>
@@ -527,12 +522,15 @@ export default function CostKubernetesPage() {
                   {(workloads?.workloads || []).map((row) => (
                     <tr key={row.workload_key}>
                       <td>
-                        {row.controller_name || row.workload_key}
+                        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpenWorkload(row)}>
+                          {row.controller_name || row.workload_key}
+                        </button>
                         <div className="portal-surface__subtitle">{row.namespace} · {row.controller_kind}</div>
                       </td>
                       <td>{constraintLabel(row.owner)}</td>
                       <td>{row.pod_count}{row.deleted_count ? ` · ${row.deleted_count} deleted` : ''}</td>
-                      <td>{metricLabel(row.cpu_usage)}</td>
+                      <td>{row.cpu_request || 'Unknown'} / {metricLabel(row.cpu_usage)}</td>
+                      <td>{row.memory_request || 'Unknown'} / {metricLabel(row.memory_usage)}</td>
                       <td>{metricLabel(row.allocation_total)}</td>
                       <td>{constraintLabel(row.hpa)}</td>
                       <td>{constraintLabel(row.vpa)}</td>
@@ -626,25 +624,9 @@ export default function CostKubernetesPage() {
                 </tbody>
               </table>
             )}
-            {openRec ? (
-              <div className="portal-surface">
-                <h3 className="portal-surface__title">{openRec.controller_name || openRec.workload_key}</h3>
-                <p className="portal-surface__subtitle">Current state: {openRec.evidence}</p>
-                <p className="portal-surface__subtitle">Proposed scenario: {openRec.proposed_action}</p>
-                <p className="portal-surface__subtitle">Reliability constraints: HPA {constraintLabel(openRec.hpa)} · VPA {constraintLabel(openRec.vpa)} · PDB {constraintLabel(openRec.pdb)} · managed-by {constraintLabel(openRec.managed_by)}</p>
-                <p className="portal-surface__subtitle">Change: none. This worker cannot create or apply a change. Candidate SKU is not priced.</p>
-                <p className="portal-surface__subtitle">Allocated reduction: {metricLabel(openRec.allocation_reduction)}. This is Estimated/list price, not cash.</p>
-                <p className="portal-surface__subtitle">Potential bill savings: {openRec.bill_reduction?.display || 'Unknown'}.</p>
-                <p className="portal-surface__subtitle">Capacity released: {openRec.capacity_released?.display || 'Unknown'}.</p>
-                <CostTechnicalDetails>
-                  <p>{openRec.calculation || openRec.calc_id}</p>
-                </CostTechnicalDetails>
-                {openRec.blocked_reason ? <p className="portal-surface__subtitle">{openRec.blocked_reason}</p> : null}
-              </div>
-            ) : null}
           </section>
         ) : null}
-        {!loading && tab === 'reconciliation' ? (
+        {!loading && tab === 'overview' ? (
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
@@ -739,6 +721,47 @@ export default function CostKubernetesPage() {
             </section>
           </>
         ) : null}
+        <CostDrawer
+          open={Boolean(openWorkload)}
+          onClose={() => setOpenWorkload(null)}
+          resetKey={openWorkload?.workload_key}
+          eyebrow={openWorkload?.namespace}
+          title={openWorkload?.controller_name || openWorkload?.workload_key || 'Workload'}
+          subtitle={`${openWorkload?.controller_kind || 'Workload'} · ${openWorkload?.pod_count || 0} pods`}
+        >
+          {openWorkload ? (
+            <dl className="sre-meta">
+              <div className="sre-meta__item"><dt>CPU request / usage</dt><dd>{openWorkload.cpu_request || 'Unknown'} / {metricLabel(openWorkload.cpu_usage)}</dd></div>
+              <div className="sre-meta__item"><dt>Memory request / usage</dt><dd>{openWorkload.memory_request || 'Unknown'} / {metricLabel(openWorkload.memory_usage)}</dd></div>
+              <div className="sre-meta__item"><dt>Allocation</dt><dd>{metricLabel(openWorkload.allocation_total)}</dd></div>
+              <div className="sre-meta__item"><dt>Owner</dt><dd>{constraintLabel(openWorkload.owner)}</dd></div>
+              <div className="sre-meta__item"><dt>Constraints</dt><dd>HPA {constraintLabel(openWorkload.hpa)} · VPA {constraintLabel(openWorkload.vpa)} · PDB {constraintLabel(openWorkload.pdb)}</dd></div>
+            </dl>
+          ) : null}
+          {(workloads?.pods || []).filter((pod) => !openWorkload || pod.controller_name === openWorkload.controller_name).slice(0, 20).map((pod) => (
+            <p key={pod.pod_uid} className="portal-surface__subtitle">{pod.pod_name} · {pod.deleted ? 'deleted' : 'running'} · {metricLabel(pod.allocation_total)}</p>
+          ))}
+        </CostDrawer>
+        <CostDrawer
+          open={Boolean(openRec)}
+          onClose={() => setOpenRec(null)}
+          resetKey={openRec?.calc_id}
+          eyebrow="Opportunity"
+          title={openRec?.controller_name || openRec?.workload_key || 'Workload'}
+          subtitle={openRec?.finding_type}
+        >
+          {openRec ? (
+            <>
+              <p className="portal-surface__subtitle">{openRec.evidence}</p>
+              <p className="portal-surface__subtitle">{openRec.proposed_action}</p>
+              <p className="portal-surface__subtitle">Bill reduction {openRec.bill_reduction?.display || 'Unknown'} can reduce the cloud bill. Capacity released {openRec.capacity_released?.display || 'Unknown'} is not cash.</p>
+              <p className="portal-surface__subtitle">This worker cannot create or apply a change.</p>
+              <CostTechnicalDetails>
+                <p>{openRec.calculation || openRec.calc_id}</p>
+              </CostTechnicalDetails>
+            </>
+          ) : null}
+        </CostDrawer>
       </div>
     </DevOpsLayout>
   );

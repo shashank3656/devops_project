@@ -1,4 +1,4 @@
-import { COST_COPILOT_CHIPS } from '../lib/cost';
+import { COST_COPILOT_CHIPS, askCostCopilot } from '../lib/cost';
 
 const SHORT: Record<string, string> = {
   'Why is spend Unknown?': 'Unknown?',
@@ -14,18 +14,7 @@ export default function CostAskChips() {
           type="button"
           className="cost-ask__link"
           title={question}
-          onClick={() => {
-            const params = new URLSearchParams(window.location.search);
-            const from = params.get('from') || '';
-            const to = params.get('to') || '';
-            const basis = params.get('basis') || 'actual';
-            window.dispatchEvent(new CustomEvent('opstrellis-cost-ask', {
-              detail: {
-                question,
-                context: `Period ${from && to ? `${from} to ${to}` : 'this month'}. Basis ${basis}. Source labelled CUR 2.0.`,
-              },
-            }));
-          }}
+          onClick={() => askCostCopilot(question)}
         >
           {SHORT[question] || question}
         </button>

@@ -38,8 +38,8 @@ export default function CostSavingsPage() {
       <div className="portal-page cost-analysis">
         <div className="cost-shell__head">
           <div>
-            <h1 className="portal-page__title">Cost savings</h1>
-            <p className="cost-shell__hint">Detected to verified, including Inconclusive. Overlapping verified reductions on one resource count once.</p>
+            <h1 className="portal-page__title">Savings tracking</h1>
+            <p className="cost-shell__hint">Measure outcomes after changes. Estimated savings, verified bill reduction, and released capacity stay separate.</p>
           </div>
         </div>
         <CostNav current="savings" />

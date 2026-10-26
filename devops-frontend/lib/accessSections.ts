@@ -30,7 +30,7 @@ export const SECTION_PAGES: { section: SectionKey; key: string; label: string }[
   { section: 'operations', key: 'maintenance', label: 'Maintenance' },
   { section: 'operations', key: 'reports', label: 'Reports' },
   { section: 'operations', key: 'webhooks', label: 'Webhooks' },
-  { section: 'cost', key: 'cost', label: 'Cost analysis' },
+  { section: 'cost', key: 'cost', label: 'Cost overview' },
   { section: 'infrastructure', key: 'projects', label: 'Projects' },
   { section: 'infrastructure', key: 'environments', label: 'Environments' },
   { section: 'infrastructure', key: 'cloud-accounts', label: 'Cloud accounts' },
