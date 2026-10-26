@@ -25,12 +25,26 @@ export function CostCloudBillingCard({
   const setup = costBillingSetup(cloud);
   const [showSteps, setShowSteps] = useState(false);
   return (
-    <section className="portal-surface" aria-label={`${setup.label} billing setup`}>
-      <h2 className="portal-surface__title">{setup.label} billing</h2>
-      <p className="portal-surface__subtitle">
-        {projectName ? `${projectName} uses ${setup.label}. ` : ''}
-        {setup.note}
-      </p>
+    <section className="portal-surface cost-sources-card" aria-label={`${setup.label} billing`}>
+      <header className="cost-sources-card__head">
+        <div>
+          <h2 className="portal-surface__title">{setup.label} billing</h2>
+          <p className="cost-sources-card__meta">
+            {projectName ? `${projectName} · ` : ''}Not imported
+          </p>
+        </div>
+        <div className="cost-setup__actions">
+          <Link href="/cloud-accounts" className="btn btn-secondary btn-sm">Open cloud accounts</Link>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            aria-expanded={showSteps}
+            onClick={() => setShowSteps((open) => !open)}
+          >
+            {showSteps ? 'Hide setup' : 'How setup works'}
+          </button>
+        </div>
+      </header>
       {accounts.length ? (
         <ul className="cost-pending">
           {accounts.map((account) => (
@@ -43,14 +57,6 @@ export function CostCloudBillingCard({
       ) : (
         <p className="cost-empty__note">{setup.emptyList}</p>
       )}
-      <button
-        type="button"
-        className="btn btn-secondary"
-        aria-expanded={showSteps}
-        onClick={() => setShowSteps((open) => !open)}
-      >
-        {showSteps ? 'Hide setup steps' : `How ${setup.label} setup works`}
-      </button>
       {showSteps ? (
         <ol className="cost-setup__steps">
           {setup.stages.map((step, index) => (

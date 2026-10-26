@@ -49,6 +49,7 @@ export default function CostConfigurationPage() {
   const [ruleService, setRuleService] = useState('');
   const [teamOptions, setTeamOptions] = useState<{ name: string; slug: string }[]>([]);
   const [serviceOptions, setServiceOptions] = useState<string[]>([]);
+  const [showAllocation, setShowAllocation] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -239,8 +240,8 @@ export default function CostConfigurationPage() {
   ]).filter((cloud) => cloud !== 'aws');
   const showAwsEnable = projectClouds.includes('aws') || (!projectClouds.length && (awsEligible.length > 0 || awsConnections.length > 0 || pendingClouds.length === 0));
   const hint = projectClouds.length === 1
-    ? costBillingSetup(projectClouds[0]).note
-    : (typeof data?.pilot === 'object' && data.pilot?.note) || costAskSourceLine(projectClouds);
+    ? costBillingSetup(projectClouds[0]).shortNote
+    : costAskSourceLine(projectClouds);
 
   const testConnection = async (connection: CostConnection) => {
     setActing(`test-${connection.id}`);
@@ -471,8 +472,23 @@ export default function CostConfigurationPage() {
           )}
         </section>
         ) : null}
-        <section className="portal-surface">
-          <h2 className="portal-surface__title">Allocation rules</h2>
+        <section className="portal-surface cost-sources-card">
+          <header className="cost-sources-card__head">
+            <div>
+              <h2 className="portal-surface__title">Allocation rules</h2>
+              <p className="cost-sources-card__meta">Optional. Editing does not rewrite billed history.</p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              aria-expanded={showAllocation}
+              onClick={() => setShowAllocation((open) => !open)}
+            >
+              {showAllocation ? 'Hide rules' : 'Show rules'}
+            </button>
+          </header>
+          {showAllocation ? (
+          <>
           <p className="portal-surface__subtitle">
             {data?.allocation_note || 'Rules are versioned. Editing stores a new effective date so previously billed days keep the ownership that was in force then.'}
           </p>
@@ -542,6 +558,8 @@ export default function CostConfigurationPage() {
               </tbody>
             </table>
           ) : <p className="sre-meta__empty">No explicit rules yet. Tags and connection defaults still apply.</p>}
+          </>
+          ) : null}
         </section>
         {showAwsEnable ? (
         <section className="portal-surface portal-surface--table">

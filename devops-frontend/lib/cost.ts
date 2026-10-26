@@ -1265,6 +1265,7 @@ export type CostBillingSetup = {
   connectLabel: string;
   emptyCopy: string;
   emptyList: string;
+  shortNote: string;
   note: string;
   stages: { title: string; copy: string }[];
 };
@@ -1280,7 +1281,8 @@ export function costBillingSetup(cloud: string): CostBillingSetup {
         headline: 'Connect GCP billing to see costs',
         connectLabel: 'Open GCP billing setup',
         emptyCopy: 'This project uses GCP. Cost will use Cloud Billing export to BigQuery. That export is not ingested yet, so spend stays Unknown. This product does not store billing credentials.',
-        emptyList: 'No GCP projects in this project yet. Assign one on Cloud accounts.',
+        emptyList: 'No GCP accounts assigned yet. Open Cloud accounts to add one.',
+        shortNote: 'GCP Cloud Billing export is not ingested yet. Spend stays Unknown.',
         note: 'GCP Cloud Billing export to BigQuery is not ingested yet. Spend stays Unknown. This product does not store billing credentials and does not pull BigQuery automatically.',
         stages: [
           { title: 'Choose a GCP project', copy: 'Pick a GCP project already assigned in OpsTrellis. Demo inventory stays out.' },
@@ -1297,7 +1299,8 @@ export function costBillingSetup(cloud: string): CostBillingSetup {
         headline: 'Connect Azure billing to see costs',
         connectLabel: 'Open Azure billing setup',
         emptyCopy: 'This project uses Azure. Cost will use a Cost Management export to a storage account. That export is not ingested yet, so spend stays Unknown. This product does not store billing credentials.',
-        emptyList: 'No Azure subscriptions in this project yet. Assign one on Cloud accounts.',
+        emptyList: 'No Azure subscriptions assigned yet. Open Cloud accounts to add one.',
+        shortNote: 'Azure Cost Management export is not ingested yet. Spend stays Unknown.',
         note: 'Azure Cost Management export to a storage account is not ingested yet. Spend stays Unknown. This product does not store billing credentials and does not pull Azure billing automatically.',
         stages: [
           { title: 'Choose a subscription', copy: 'Pick an Azure subscription already assigned in OpsTrellis. Demo inventory stays out.' },
@@ -1314,7 +1317,8 @@ export function costBillingSetup(cloud: string): CostBillingSetup {
         headline: 'Connect billing data to see costs',
         connectLabel: 'Connect billing source',
         emptyCopy: 'Add a billing source to see project and account spend. The sample dashboard is optional.',
-        emptyList: 'No AWS accounts in this project yet. Assign one on Cloud accounts.',
+        emptyList: 'No AWS accounts assigned yet. Open Cloud accounts to add one.',
+        shortNote: 'Enable Cost, then import labelled CUR 2.0. Incomplete stays Unknown.',
         note: 'Enable Cost, then import a labelled CUR 2.0 export. Collection is manual. Incomplete stays Unknown, never $0. This product does not store billing credentials.',
         stages: [
           { title: 'Choose account', copy: 'Pick a cloud account already assigned to a project you can see. Demo inventory accounts stay out.' },

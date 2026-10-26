@@ -12296,8 +12296,22 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   color: var(--cost-muted);
   font-size: 13px;
 }
-.cost-pending {
+.cost-sources-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
   margin: 0 0 12px;
+}
+.cost-sources-card__head .portal-surface__title { margin: 0; }
+.cost-sources-card__meta {
+  margin: 4px 0 0;
+  color: var(--cost-muted);
+  font-size: 13px;
+}
+.cost-pending {
+  margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
