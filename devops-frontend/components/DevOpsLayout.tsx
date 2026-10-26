@@ -243,6 +243,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [supportSeed, setSupportSeed] = useState('');
+  const [supportMode, setSupportMode] = useState<'help' | 'cost'>('help');
+  const [supportCostContext, setSupportCostContext] = useState('');
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
@@ -552,12 +554,17 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     setProfileOpen(false);
     setSupportOpen(false);
     setSupportSeed('');
+    setSupportMode('help');
+    setSupportCostContext('');
   }, [pathname]);
 
   useEffect(() => {
     const onAsk = (event: Event) => {
-      const question = (event as CustomEvent<{ question?: string }>).detail?.question || '';
+      const detail = (event as CustomEvent<{ question?: string; context?: string }>).detail || {};
+      const question = detail.question || '';
       if (!question) return;
+      setSupportMode('cost');
+      setSupportCostContext(detail.context || '');
       setSupportSeed(question);
       setSupportTab('chat');
       setSupportOpen(true);
@@ -658,6 +665,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const leafIsActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
     if (href === '/iam' || href === '/service-desk' || href === '/portal-access') return pathname === href;
+    if (href === '/cost') {
+      return pathname === '/cost' || pathname.startsWith('/cost/projects/') || pathname.startsWith('/cost/accounts/') || pathname.startsWith('/cost/cloud/');
+    }
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);
   };
@@ -725,7 +735,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const costNavItems: NavItem[] = [
     {
       href: '/cost',
-      label: 'Analysis',
+      label: 'Cost management',
       Icon: IconFileText,
       children: [
         { href: '/cost', label: 'Analysis' },
@@ -894,12 +904,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         <div className="devops-sidebar-new__group-row">
           <Link
             href={href}
-            className={`devops-sidebar-new__link ${leafIsActive(href) ? 'devops-sidebar-new__link--active' : groupActive ? 'devops-sidebar-new__link--current' : ''}`}
+            className={`devops-sidebar-new__link ${!hasChildren && leafIsActive(href) ? 'devops-sidebar-new__link--active' : groupActive ? 'devops-sidebar-new__link--current' : ''}`}
             onClick={() => {
               if (hasChildren) setOpenNavGroups((current) => ({ ...current, [href]: true }));
               setMobileMenuOpen(false);
             }}
-            aria-current={leafIsActive(href) ? 'page' : undefined}
+            aria-current={!hasChildren && leafIsActive(href) ? 'page' : undefined}
             aria-label={sidebarCollapsed ? label : undefined}
             data-tooltip={sidebarCollapsed ? label : undefined}
           >
@@ -1017,6 +1027,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               onClick={() => {
                 setNotifyOpen(false);
                 setProfileOpen(false);
+                setSupportMode('help');
+                setSupportCostContext('');
                 setSupportTab('docs');
                 setSupportOpen(true);
                 setMobileMenuOpen(false);
@@ -1233,6 +1245,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                     className="devops-navbar__profile-item"
                     onClick={() => {
                       setProfileOpen(false);
+                      setSupportMode('help');
+                      setSupportCostContext('');
                       setSupportOpen(true);
                     }}
                   >
@@ -1351,6 +1365,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         quickPrompts={supportQuickPromptsForPath(pathname)}
         seedQuestion={supportSeed}
         onSeedConsumed={() => setSupportSeed('')}
+        analysisMode={supportMode === 'cost'}
+        analysisContext={supportCostContext}
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}
         remapIncidentCitationLinks

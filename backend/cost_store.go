@@ -28,6 +28,9 @@ type costConnection struct {
 	WindowEnd          string     `json:"window_end,omitempty"`
 	WindowComplete     *bool      `json:"window_complete,omitempty"`
 	LastIngestedAt     *time.Time `json:"last_ingested_at,omitempty"`
+	LastTestAt         *time.Time `json:"last_test_at,omitempty"`
+	LastTestStatus     string     `json:"last_test_status,omitempty"`
+	LastTestNote       string     `json:"last_test_note,omitempty"`
 	Freshness          string     `json:"freshness"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
@@ -106,6 +109,7 @@ func listCostConnections(userID int) ([]costConnection, error) {
 		       cc.project_id, COALESCE(p.name, ''), COALESCE(p.code, ''), COALESCE(ca.environments_json, '[]'), cc.billing_source, cc.status,
 		       cc.billing_readiness, cc.inventory_readiness, cc.metrics_readiness,
 		       cc.created_at, cc.updated_at, cc.last_ingested_at,
+		       cc.last_test_at, COALESCE(cc.last_test_status, 'unknown'), COALESCE(cc.last_test_note, ''),
 		       COALESCE(rev.revision, ''), COALESCE(to_char(batch.window_start, 'YYYY-MM-DD'), ''),
 		       COALESCE(to_char(batch.window_end, 'YYYY-MM-DD'), ''), batch.complete
 		  FROM cost_connections cc
@@ -152,13 +156,14 @@ func listCostConnections(userID int) ([]costConnection, error) {
 func scanCostConnection(rows *sql.Rows) (*costConnection, error) {
 	var item costConnection
 	var complete sql.NullBool
-	var lastIngested sql.NullTime
+	var lastIngested, lastTest sql.NullTime
 	var envJSON string
 	err := rows.Scan(
 		&item.ID, &item.CloudAccountID, &item.AccountID, &item.DisplayName, &item.Provider, &item.TeamSlug,
 		&item.ProjectID, &item.ProjectName, &item.ProjectCode, &envJSON, &item.BillingSource, &item.Status,
 		&item.BillingReadiness, &item.InventoryReadiness, &item.MetricsReadiness,
-		&item.CreatedAt, &item.UpdatedAt, &lastIngested, &item.LatestRevision, &item.WindowStart, &item.WindowEnd, &complete,
+		&item.CreatedAt, &item.UpdatedAt, &lastIngested, &lastTest, &item.LastTestStatus, &item.LastTestNote,
+		&item.LatestRevision, &item.WindowStart, &item.WindowEnd, &complete,
 	)
 	if err != nil {
 		return nil, err
@@ -170,6 +175,10 @@ func scanCostConnection(rows *sql.Rows) (*costConnection, error) {
 	if lastIngested.Valid {
 		t := lastIngested.Time.UTC()
 		item.LastIngestedAt = &t
+	}
+	if lastTest.Valid {
+		t := lastTest.Time.UTC()
+		item.LastTestAt = &t
 	}
 	if complete.Valid {
 		v := complete.Bool
@@ -541,7 +550,10 @@ func evaluateCostBudgetsForSlice(slice *costWindowSlice) ([]costBudgetStatus, er
 		if budget.Basis == "" {
 			budget.Basis = slice.Basis
 		}
-		out = append(out, evaluateCostBudget(budget, slice.Lines, slice.Coverage))
+		status := evaluateCostBudget(budget, slice.Lines, slice.Coverage)
+		status.PeriodStart = slice.WindowStart
+		status.PeriodEnd = slice.WindowEnd
+		out = append(out, status)
 	}
 	return out, nil
 }
@@ -588,7 +600,9 @@ func buildCostOverview(userID int, basis, currency, fromRaw, toRaw string) (map[
 		"ai_proof":               costAIProofSummary(listCostAIProofs(userID)),
 		"line_count":             len(slice.Lines),
 		"kubernetes":             buildCostKubernetesCard(userID),
-		"note":                   "Cost is granted at project level. Actual and amortized are never added together. A replayed export does not add a second charge. Incomplete windows stay Unknown, never zero. Budgets never stop workloads. Overlapping savings are not summed. Acceptance is not permission to execute. Kubernetes cost is a breakdown of the cloud bill, never an extra line. Copilot never receives cloud account details, passwords, or role names.",
+		"freshness_detail":       costFreshnessDetail(slice.Connections, time.Now().UTC()),
+		"pilot":                  costPilotScope(),
+		"note":                   "Cost is granted at project level. Actual and amortized are never added together. A replayed export does not add a second charge. Incomplete windows stay Unknown, never zero. Budgets never stop workloads. Overlapping savings are not summed. Acceptance is not permission to execute. Kubernetes cost is a breakdown of the cloud bill, never an extra line. Copilot never receives cloud account details, passwords, or role names. Refreshing this page does not pull newer provider billing data.",
 	}, nil
 }
 
@@ -610,7 +624,8 @@ func buildCostExplorer(userID int, basis, currency, fromRaw, toRaw string, filte
 		"pauses_workloads": false,
 		"lines":            slice.Lines,
 		"empty":            len(slice.Lines) == 0,
-		"note":             "Explorer uses the same window, basis, and currency as Overview and CSV export. Latest revision for that window is billed once.",
+		"freshness_detail": costFreshnessDetail(slice.Connections, time.Now().UTC()),
+		"note":             "Explorer uses the same window, basis, and currency as Overview and CSV export. Latest revision for that window is billed once. Refreshing this page does not pull newer provider billing data.",
 	}, nil
 }
 
@@ -648,7 +663,8 @@ func buildCostServiceStrip(userID int, serviceName, basis, currency, fromRaw, to
 }
 
 func buildCostBudgets(userID int, basis, currency, fromRaw, toRaw string) (map[string]any, error) {
-	slice, err := loadCostWindowSlice(userID, basis, currency, fromRaw, toRaw, costLineQuery{})
+	periodStart, periodEnd := costBudgetPeriodWindow("calendar_month", time.Now().UTC())
+	slice, err := loadCostWindowSlice(userID, basis, currency, periodStart.Format("2006-01-02"), periodEnd.Format("2006-01-02"), costLineQuery{})
 	if err != nil {
 		return nil, err
 	}
@@ -657,16 +673,24 @@ func buildCostBudgets(userID int, basis, currency, fromRaw, toRaw string) (map[s
 		return nil, err
 	}
 	return map[string]any{
-		"status":           "ok",
-		"basis":            slice.Basis,
-		"currency":         slice.Currency,
-		"window_start":     slice.WindowStart,
-		"window_end":       slice.WindowEnd,
-		"coverage":         slice.Coverage,
+		"status":       "ok",
+		"basis":        slice.Basis,
+		"currency":     slice.Currency,
+		"window_start": slice.WindowStart,
+		"window_end":   slice.WindowEnd,
+		"coverage":     slice.Coverage,
+		"period":       "calendar_month",
+		"period_start": periodStart.Format("2006-01-02"),
+		"period_end":   periodEnd.Format("2006-01-02"),
+		"report_filter": map[string]any{
+			"from": fromRaw,
+			"to":   toRaw,
+			"note": "Analysis filters do not change the budget period.",
+		},
 		"budgets":          budgets,
 		"pauses_workloads": false,
 		"can_operate":      userHasCostOperateAnywhere(userID),
-		"note":             "Budgets warn in the portal. They never pause, drain, or resize workloads.",
+		"note":             "Budgets warn in the portal for their own calendar period. They never pause, drain, or resize workloads. Destination is Cost alerts, never listed emails.",
 	}, nil
 }
 

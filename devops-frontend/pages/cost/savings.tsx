@@ -2,7 +2,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostKpiStrip from '../../components/CostKpiStrip';
 import CostNav from '../../components/CostNav';
+import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { CostSavings, costQuery, fetchCostJson } from '../../lib/cost';
@@ -42,11 +44,28 @@ export default function CostSavingsPage() {
         </div>
         <CostNav current="savings" />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <div className="portal-pill-row">
-          <span className="portal-pill">Verified bill reduction {data?.verified_bill_reduction?.display || 'Unknown'}</span>
-          <span className="portal-pill">Executes No</span>
-          <span className="portal-pill">Pauses workloads No</span>
-        </div>
+        <CostKpiStrip
+          items={[
+            {
+              label: 'Estimated savings',
+              value: data?.estimated_savings?.display || 'Unknown',
+              hint: 'Potential, not verified',
+              tone: 'wait',
+            },
+            {
+              label: 'Verified bill reduction',
+              value: data?.verified_bill_reduction?.display || 'Unknown',
+              hint: 'Overlapping counts once',
+              tone: 'billed',
+            },
+            {
+              label: 'Released capacity',
+              value: data?.released_capacity?.display || 'Unknown',
+              hint: 'Not added to bill reduction',
+              tone: 'k8s',
+            },
+          ]}
+        />
         {loading ? <div className="empty-state">Loading savings…</div> : null}
         {!loading ? (
           <>
@@ -58,7 +77,7 @@ export default function CostSavingsPage() {
                 <table className="portal-table">
                   <thead>
                     <tr>
-                      <th>Calculation</th>
+                      <th>Finding</th>
                       <th>Lifecycle</th>
                       <th>Waiting</th>
                       <th>Change</th>
@@ -68,7 +87,7 @@ export default function CostSavingsPage() {
                     {(data?.waiting || []).map((row) => (
                       <tr key={row.calc_id}>
                         <td>
-                          <Link href={`/cost/optimization?calc=${encodeURIComponent(row.calc_id)}`}>{row.calc_id}</Link>
+                          <Link href={`/cost/optimization?calc=${encodeURIComponent(row.calc_id)}`}>{row.finding_type || row.waiting_for || 'Review'}</Link>
                           <div className="portal-surface__subtitle">{row.resource_id}</div>
                         </td>
                         <td>{row.lifecycle || row.status}</td>
@@ -88,7 +107,7 @@ export default function CostSavingsPage() {
                 <table className="portal-table">
                   <thead>
                     <tr>
-                      <th>Calculation</th>
+                      <th>Finding</th>
                       <th>Outcome</th>
                       <th>Bill reduction</th>
                       <th>Allocation reduction</th>
@@ -100,7 +119,7 @@ export default function CostSavingsPage() {
                     {(data?.outcomes || []).map((row) => (
                       <tr key={row.calc_id}>
                         <td>
-                          {row.calc_id}
+                          {row.finding_type || row.lifecycle || 'Outcome'}
                           <div className="portal-surface__subtitle">{row.note}</div>
                         </td>
                         <td>{row.lifecycle || row.verification}</td>
@@ -114,6 +133,10 @@ export default function CostSavingsPage() {
                 </table>
               )}
               <p className="portal-surface__subtitle">{data?.note}</p>
+              <CostTechnicalDetails>
+                {(data?.waiting || []).map((row) => <p key={row.calc_id}>{row.calc_id}</p>)}
+                {(data?.outcomes || []).map((row) => <p key={`out-${row.calc_id}`}>{row.calc_id}</p>)}
+              </CostTechnicalDetails>
             </section>
           </>
         ) : null}

@@ -101,9 +101,6 @@ func persistCostExport(in costExportIn) (*costExportResult, error) {
 	if existing, found, lookErr := lookupCostRevisionHash(conn.ID, hash); lookErr != nil {
 		return nil, lookErr
 	} else if found {
-		if _, err := DB.Exec(`UPDATE cost_connections SET last_ingested_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, conn.ID); err != nil {
-			return nil, err
-		}
 		updated, getErr := getCostConnection(in.UserID, conn.ID)
 		if getErr != nil {
 			return nil, getErr
@@ -248,6 +245,34 @@ func persistCostExport(in costExportIn) (*costExportResult, error) {
 		WindowStart: windowStart,
 		WindowEnd:   windowEnd,
 	}, nil
+}
+
+func testCostConnection(userID, id int) (map[string]any, error) {
+	conn, err := getCostConnection(userID, id)
+	if err != nil || conn == nil {
+		return nil, fmt.Errorf("cost connection not found")
+	}
+	status := "failed"
+	note := "No billed revision is stored yet. Import a labelled CUR export. This test did not pull provider billing."
+	if strings.TrimSpace(conn.LatestRevision) != "" {
+		status = "passed"
+		note = "Stored billed data is readable. This test did not pull newer provider billing data."
+	}
+	if _, err := DB.Exec(`
+		UPDATE cost_connections
+		   SET last_test_at = CURRENT_TIMESTAMP, last_test_status = $2, last_test_note = $3, updated_at = CURRENT_TIMESTAMP
+		 WHERE id = $1
+	`, conn.ID, status, note); err != nil {
+		return nil, err
+	}
+	updated, err := getCostConnection(userID, conn.ID)
+	if err != nil {
+		return nil, err
+	}
+	view := costCollectionView(*updated)
+	view["note"] = note
+	view["ingested"] = false
+	return view, nil
 }
 
 func lookupCostRevisionHash(connectionID int, hash string) (costBatchRow, bool, error) {

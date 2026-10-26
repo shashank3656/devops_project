@@ -323,8 +323,8 @@ func TestCostAnomalyNeedsTwoCompleteWindows(t *testing.T) {
 		&costWindowSlice{Coverage: "complete", Currency: "USD", Basis: "actual", WindowStart: "2026-09-01", WindowEnd: "2026-09-30", Lines: []costLineRow{{ResourceID: "i-1", Amount: "200.000000"}}},
 		&costWindowSlice{Coverage: "incomplete", Currency: "USD", Basis: "actual"},
 	)
-	if len(out) != 1 || out[0].LikeForLike || out[0].Delta["display"] != "Unknown" {
-		t.Fatalf("incomplete baseline must not look like a drop to zero: %+v", out)
+	if len(out) != 0 {
+		t.Fatalf("insufficient data must not appear as an evaluated row: %+v", out)
 	}
 }
 
@@ -1230,5 +1230,124 @@ func TestFilterAllocatedCostLinesFamilyAndUnallocated(t *testing.T) {
 	unallocated := filterAllocatedCostLines(lines, costLineQuery{Team: "unallocated"})
 	if len(unallocated) != 1 || strings.TrimSpace(unallocated[0].TeamSlug) != "" {
 		t.Fatalf("unallocated = %+v", unallocated)
+	}
+}
+
+func TestCostFreshnessDetailSeparatesRefreshFromBilling(t *testing.T) {
+	complete := true
+	ingested := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 10, 26, 15, 0, 0, 0, time.UTC)
+	detail := costFreshnessDetail([]costConnection{{
+		WindowEnd:      "2026-10-20",
+		WindowComplete: &complete,
+		LastIngestedAt: &ingested,
+	}}, now)
+	if detail["billed_through"] != "2026-10-20" {
+		t.Fatalf("billed through = %+v", detail["billed_through"])
+	}
+	if detail["last_successful_ingestion"] != ingested.Format(time.RFC3339) {
+		t.Fatalf("last ingest = %+v", detail["last_successful_ingestion"])
+	}
+	if detail["last_dashboard_refresh"] != now.Format(time.RFC3339) {
+		t.Fatalf("dashboard refresh = %+v", detail["last_dashboard_refresh"])
+	}
+	if detail["page_refresh_is_not_new_billing"] != true {
+		t.Fatal("page refresh must not imply newer provider billing")
+	}
+}
+
+func TestCostAllocationEffectiveDatesKeepHistory(t *testing.T) {
+	lines := []costLineRow{
+		{ResourceID: "i-1", UsageDate: "2026-09-15", Actual: "10.000000"},
+		{ResourceID: "i-1", UsageDate: "2026-10-15", Actual: "10.000000"},
+	}
+	rules := []costAllocationRule{
+		{ID: 1, MatchType: "resource", MatchValue: "i-1", TeamSlug: "old-team", Version: 1, EffectiveFrom: "2026-09-01", EffectiveTo: "2026-09-30"},
+		{ID: 2, MatchType: "resource", MatchValue: "i-1", TeamSlug: "new-team", Version: 2, EffectiveFrom: "2026-10-01", SupersedesRuleID: 1},
+	}
+	out := applyCostAllocation(lines, rules, nil)
+	if out[0].TeamSlug != "old-team" {
+		t.Fatalf("September line must keep old ownership: %+v", out[0])
+	}
+	if out[1].TeamSlug != "new-team" {
+		t.Fatalf("October line must use the new version: %+v", out[1])
+	}
+}
+
+func TestCostBudgetPeriodIgnoresReportFilter(t *testing.T) {
+	start, end := costBudgetPeriodWindow("calendar_month", time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC))
+	if start.Format("2006-01-02") != "2026-10-01" || end.Format("2006-01-02") != "2026-10-31" {
+		t.Fatalf("calendar month = %s %s", start, end)
+	}
+	status := evaluateCostBudget(costBudget{
+		Name: "ops", ScopeType: "all", Amount: "100.000000", Currency: "USD", Basis: "actual", WarnPercent: 50, OverPercent: 100,
+	}, []costLineRow{{Actual: "60.000000", Currency: "USD"}}, "complete")
+	if status.Alert != "warn" {
+		t.Fatalf("custom warn threshold: %+v", status.Alert)
+	}
+	if status.PausesWorkloads {
+		t.Fatal("budgets must never pause workloads")
+	}
+}
+
+func TestCostAlertReadinessBlockedWithoutCoverage(t *testing.T) {
+	blocked := costAlertStatus(true, "incomplete", "none")
+	if blocked["alerts_enabled"] != true || blocked["monitoring_ready"] != false || blocked["delivery_verified"] != false {
+		t.Fatalf("flags = %+v", blocked)
+	}
+	if blocked["evaluation_blocked"] != true || !strings.Contains(fmt.Sprint(blocked["blocked_reason"]), "complete billed window") {
+		t.Fatalf("blocked reason = %+v", blocked["blocked_reason"])
+	}
+	ready := costAlertStatus(true, "complete", "complete")
+	if ready["monitoring_ready"] != true || ready["evaluation_blocked"] != false {
+		t.Fatalf("ready flags = %+v", ready)
+	}
+}
+
+func TestCostPilotCollectionIsManual(t *testing.T) {
+	pilot := costPilotScope()
+	if pilot["automated_collection"] != false || pilot["stores_billing_credentials"] != false {
+		t.Fatalf("pilot = %+v", pilot)
+	}
+	view := costCollectionView(costConnection{ID: 1, BillingSource: "aws_cur_2"})
+	if view["schedule"] != "On demand" || view["next_run"] != "Not scheduled" {
+		t.Fatalf("collection = %+v", view)
+	}
+}
+
+func TestCostGroundedAnswerIncludesEvidence(t *testing.T) {
+	source := costAISafeSourceForWindow(costCalculation{
+		CalcID: "CALC-COST-DEADBEEF", Kind: "recommendation", Coverage: "complete", Amount: "10.000000",
+	}, "2026-10-01", "2026-10-26", "actual")
+	if !strings.Contains(source.Body, "2026-10-01 to 2026-10-26") || !strings.Contains(source.Body, "labelled CUR 2.0") {
+		t.Fatalf("evidence missing: %s", source.Body)
+	}
+	answer := buildGroundedAnswer("why is spend Unknown?", []groundedSource{source})
+	if !strings.Contains(answer.Reply, "Cost analysis") || !strings.Contains(answer.Reply, "CALC-COST-DEADBEEF") {
+		t.Fatalf("cost analysis reply = %s", answer.Reply)
+	}
+}
+
+func TestCostExplorerRollupMatchesOverviewSlice(t *testing.T) {
+	lines := []costLineRow{
+		{Actual: "10.000000", Amortized: "8.000000", Currency: "USD"},
+		{Actual: "5.000000", Amortized: "4.000000", Currency: "USD"},
+	}
+	actual, _, _, _ := rollupCostLines(lines, "actual")
+	amortized, _, _, _ := rollupCostLines(lines, "amortized")
+	if actual != "15.000000" || amortized != "12.000000" {
+		t.Fatalf("shared rollup actual=%s amortized=%s", actual, amortized)
+	}
+}
+
+func TestCostSavingsKeepEstimatedVerifiedAndCapacitySeparate(t *testing.T) {
+	estimated := sumNonOverlappingSavings([]costOpportunityGroup{{
+		GroupID: "a", Savings: costMoneyView("complete", "10.000000", "USD", "actual"),
+	}}, "USD", "actual")
+	verified := sumNonOverlappingSavings([]costOpportunityGroup{{
+		GroupID: "a", Savings: costMoneyView("complete", "4.000000", "USD", "actual"),
+	}}, "USD", "actual")
+	if estimated["display"] == verified["display"] {
+		t.Fatal("estimated savings must stay separate from verified bill reduction")
 	}
 }

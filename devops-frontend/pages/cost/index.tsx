@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import CostBudgetBar from '../../components/CostBudgetBar';
 import CostFirstRun from '../../components/CostFirstRun';
+import CostFreshnessStrip from '../../components/CostFreshnessStrip';
 import CostHero from '../../components/CostHero';
 import CostMixChart from '../../components/CostMixChart';
 import CostNav from '../../components/CostNav';
@@ -102,6 +103,7 @@ export default function CostOverviewPage() {
           </div>
         </div>
         <CostNav current="overview" analysis={filterOptions} visibleAccounts={visibleAccounts} totalAccounts={totalAccounts} />
+        <CostFreshnessStrip detail={data?.freshness_detail} />
         {error ? (
           <div className="alert alert-error" role="alert">
             {error}{' '}

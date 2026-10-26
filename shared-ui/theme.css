@@ -7363,17 +7363,16 @@ html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .devops-navbar .ig-
   width: auto;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__kicker,
 html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__kicker {
-  order: -1;
-  color: var(--ig-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
 }
 
@@ -7395,9 +7394,9 @@ html[data-theme] .devops-layout .ig-scope-bar:has(.ig-scope-bar__facts.is-visibl
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:first-child {
-  flex: 1 1 160px;
+  flex: 1 1 220px;
   min-width: 0;
-  max-width: 240px;
+  max-width: 420px;
   overflow: hidden;
 }
 
@@ -7427,7 +7426,7 @@ html[data-theme] .devops-layout .ig-scope-bar__control,
 html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__control {
   height: 36px;
   min-width: 132px;
-  max-width: 280px;
+  max-width: 420px;
   padding: 0 32px 0 36px;
   border: 0;
   border-radius: 999px;
@@ -7502,16 +7501,16 @@ html[data-theme] .ig-scope-bar__prod::before {
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:nth-child(2) {
-  flex: 0 0 148px;
-  width: 148px;
-  max-width: 148px;
+  flex: 1 1 180px;
+  width: auto;
+  max-width: 280px;
   overflow: hidden;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:nth-child(2) .ig-scope-bar__control {
-  width: 148px;
+  width: 100%;
   min-width: 0;
-  max-width: 148px;
+  max-width: 280px;
   background-color: #eaf8f2;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23148568' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   color: #196d58;
@@ -10266,13 +10265,24 @@ html[data-theme] .devops-layout .alert {
   overflow: auto;
 }
 
-html[data-theme] .devops-navbar__profile-label,
-html[data-theme] .ig-scope-bar select,
-html[data-theme] .ig-scope-bar__value {
+html[data-theme] .devops-navbar__profile-label {
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+html[data-theme] .ig-scope-bar select,
+html[data-theme] .ig-scope-bar__value {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-theme] .devops-layout .ig-scope-bar__field:hover,
+html[data-theme] .devops-layout .ig-scope-bar__field:focus-within {
+  overflow: visible;
+  z-index: 5;
+  max-width: min(100%, 520px);
 }
 
 html[data-theme] .devops-layout .ops-banner-stack {

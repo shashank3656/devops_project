@@ -2,7 +2,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostFirstRun from '../../components/CostFirstRun';
+import CostKpiStrip from '../../components/CostKpiStrip';
 import CostNav from '../../components/CostNav';
+import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import {
@@ -15,7 +18,9 @@ import {
   CostK8sWorkloads,
   costQuery,
   fetchCostJson,
+  formatCostWindowRange,
   readinessLabel,
+  resolvedCostWindow,
   sampleCostK8sSnapshot,
 } from '../../lib/cost';
 
@@ -182,9 +187,14 @@ export default function CostKubernetesPage() {
     }
   };
 
-  const windowLabel = workloads?.snapshot
-    ? `${workloads.snapshot.window_start} → ${workloads.snapshot.window_end}`
-    : 'Unknown window';
+  const selectedFrom = typeof router.query.from === 'string' ? router.query.from : '';
+  const selectedTo = typeof router.query.to === 'string' ? router.query.to : '';
+  const selectedWindow = resolvedCostWindow(selectedFrom, selectedTo);
+  const selectedPeriod = formatCostWindowRange(selectedWindow.from, selectedWindow.to) || 'This month';
+  const clusterWindow = workloads?.snapshot
+    ? (formatCostWindowRange(workloads.snapshot.window_start, workloads.snapshot.window_end) || `${workloads.snapshot.window_start} → ${workloads.snapshot.window_end}`)
+    : 'No cluster data for this period';
+  const billingBasis = (reconciliation?.basis || 'actual') === 'amortized' ? 'Amortized' : 'Actual';
 
   return (
     <DevOpsLayout>
@@ -193,7 +203,7 @@ export default function CostKubernetesPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">Kubernetes cost</h1>
-            <p className="cost-shell__hint">Breakdown of the cloud bill, never an extra line. List-price stays Estimated. This product does not install OpenCost.</p>
+            <p className="cost-shell__hint">Breakdown of the cloud bill, never an extra line. List-price estimates are not the invoice.</p>
           </div>
           <div className="portal-page__actions">
             {selected ? (
@@ -205,6 +215,23 @@ export default function CostKubernetesPage() {
           </div>
         </div>
         <CostNav current="kubernetes" />
+        <section className="cost-first-run" aria-label="Kubernetes Cost pilot">
+          <h2>One nonproduction cluster</h2>
+          <ol className="cost-first-run__steps">
+            <li>
+              <strong>Bind a nonprod cluster</strong>
+              <span>The pilot is one read-only nonproduction cluster. Production stays out. Cost does not install OpenCost.</span>
+            </li>
+            <li>
+              <strong>Collector current</strong>
+              <span>Private collector or labelled snapshot. Collector failure stays Unknown, never Healthy.</span>
+            </li>
+            <li>
+              <strong>Billing reconciled</strong>
+              <span>Mapped cluster cost is a breakdown of the cloud bill. It is never added as an extra line.</span>
+            </li>
+          </ol>
+        </section>
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-success" role="status">{notice}</div> : null}
         {token ? (
@@ -212,14 +239,24 @@ export default function CostKubernetesPage() {
             Collector token shown once: <code>{token}</code>. The API stores only a hash.
           </div>
         ) : null}
-        <div className="portal-pill-row">
-          <span className="portal-pill">USD · {reconciliation?.basis || 'actual'} · {windowLabel}</span>
-          <span className="portal-pill">List-price Estimated</span>
-          <span className="portal-pill">Pilot one nonprod cluster</span>
-          <span className="portal-pill">Installs OpenCost No</span>
-          <span className="portal-pill">Worker can edit No</span>
-          <span className="portal-pill">Added to cloud total No</span>
-        </div>
+        <dl className="cost-k8s-meta">
+          <div>
+            <dt>Selected period</dt>
+            <dd>{selectedPeriod}</dd>
+          </div>
+          <div>
+            <dt>Cluster data</dt>
+            <dd>{clusterWindow}</dd>
+          </div>
+          <div>
+            <dt>Billing basis</dt>
+            <dd>{billingBasis} invoice</dd>
+          </div>
+          <div>
+            <dt>Estimate source</dt>
+            <dd>List price, labelled Estimated — not the invoice</dd>
+          </div>
+        </dl>
         {(data?.clusters || []).length ? (
           <div className="portal-pill-row">
             <label>
@@ -245,6 +282,14 @@ export default function CostKubernetesPage() {
           ))}
         </div>
         {loading ? <div className="empty-state">Loading cluster bindings…</div> : null}
+        {!loading && tab === 'overview' && !(data?.clusters || []).length ? (
+          <CostFirstRun
+            canOperate={canOperate}
+            title="Connect a cluster to see Kubernetes cost"
+            primaryHref="/k8s"
+            primaryLabel="Open Kubernetes workspace"
+          />
+        ) : null}
         {!loading && tab === 'overview' ? (
           <>
             <section className="portal-surface">
@@ -301,11 +346,9 @@ export default function CostKubernetesPage() {
                   <thead>
                     <tr>
                       <th>Cluster</th>
-                      <th>Billed mapped</th>
-                      <th>Estimated</th>
-                      <th>Idle share</th>
-                      <th>Coverage</th>
-                      <th>Last refresh</th>
+                      <th>Billed cost</th>
+                      <th>Idle cost</th>
+                      <th>Collection</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -321,14 +364,16 @@ export default function CostKubernetesPage() {
                             <div className="portal-surface__subtitle">{row.project_code || row.project_name} · {row.environment} · {row.cloud || 'Unknown cloud'}</div>
                           </td>
                           <td>{active ? (reconciliation?.billed_mapped?.display || 'Unknown') : 'Unknown'}</td>
-                          <td>{active ? metricLabel(reconciliation?.estimated_total) : 'Needs more data'}</td>
-                          <td>{active ? (reconciliation?.idle_share?.display || 'Unknown') : 'Unknown'}</td>
-                          <td>{readinessLabel(row.inventory_readiness)} / {readinessLabel(row.metrics_readiness)} / {readinessLabel(row.allocation_readiness)} / {readinessLabel(row.billing_reconciled)}</td>
-                          <td>{row.collector_health === 'current' ? collectorLabel(row.collector_health) : 'Unknown'}</td>
+                          <td>{active ? metricLabel(reconciliation?.estimated_idle) : 'Needs more data'}</td>
+                          <td>
+                            <button type="button" className="btn btn-sm btn-secondary" onClick={() => setQuery({ id: String(row.id), tab: 'collection' })}>
+                              Collection health
+                            </button>
+                          </td>
                           <td>
                             <div className="portal-page__actions">
                               <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'validate')} disabled={acting === `${row.id}-validate`}>Validate</button>
-                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'fixture')} disabled={acting === `${row.id}-fixture` || !canOperate}>Least-privilege fixture</button>
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'fixture')} disabled={acting === `${row.id}-fixture` || !canOperate}>Least-privilege sample</button>
                               <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(row, 'sync')} disabled={acting === `${row.id}-sync` || !canOperate}>Refresh data</button>
                               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpenYaml(openYaml === row.id ? 0 : row.id)}>RBAC</button>
                             </div>
@@ -346,20 +391,40 @@ export default function CostKubernetesPage() {
                 </table>
               )}
             </section>
+            {selected ? (
             <section className="portal-surface">
               <h2 className="portal-surface__title">Scorecards</h2>
-              <p className="portal-surface__subtitle">USD · {reconciliation?.basis || 'actual'} · {windowLabel}. List-price is labelled Estimated. Missing stays Unknown.</p>
-              <div className="portal-pill-row">
-                <span className="portal-pill">Scoped billed {reconciliation?.billed_mapped?.display || 'Unknown'}</span>
-                <span className="portal-pill">Idle {metricLabel(reconciliation?.estimated_idle)}</span>
-                <span className="portal-pill">Shared {metricLabel(reconciliation?.estimated_shared)}</span>
-                <span className="portal-pill">Unallocated {metricLabel(reconciliation?.estimated_unallocated)}</span>
-                <span className="portal-pill">Allocated reduction {metricLabel(optimization?.allocated_reduction)}</span>
-                <span className="portal-pill">Potential bill savings {optimization?.bill_reduction?.display || 'Unknown'}</span>
-                <span className="portal-pill">Capacity released {optimization?.capacity_released?.display || 'Unknown'}</span>
-                <span className="portal-pill">Coverage {workloads?.coverage || 'none'}</span>
-              </div>
+              <p className="portal-surface__subtitle">Billed mapped cost is a breakdown of the cloud invoice. Idle and savings estimates use list price and are not added to the cloud total.</p>
+              <CostKpiStrip
+                items={[
+                  {
+                    label: 'Billed cost',
+                    value: reconciliation?.billed_mapped?.display || 'Unknown',
+                    hint: 'Mapped from the cloud bill',
+                    tone: reconciliation?.billed_mapped?.display && reconciliation.billed_mapped.display !== 'Unknown' ? 'billed' : 'unknown',
+                  },
+                  {
+                    label: 'Idle cost',
+                    value: metricLabel(reconciliation?.estimated_idle),
+                    hint: 'List-price estimate',
+                    tone: 'k8s',
+                  },
+                  {
+                    label: 'Allocation coverage',
+                    value: workloads?.coverage === 'complete' ? 'Complete' : workloads?.coverage === 'incomplete' ? 'Incomplete' : 'Unknown',
+                    hint: 'Missing stays Unknown',
+                    tone: workloads?.coverage === 'complete' ? 'billed' : 'unknown',
+                  },
+                  {
+                    label: 'Potential savings',
+                    value: optimization?.bill_reduction?.display || 'Unknown',
+                    hint: 'Does not execute',
+                    tone: optimization?.bill_reduction?.display && optimization.bill_reduction.display !== 'Unknown' ? 'wait' : 'unknown',
+                  },
+                ]}
+              />
             </section>
+            ) : null}
           </>
         ) : null}
         {!loading && tab === 'allocation' ? (
@@ -385,7 +450,7 @@ export default function CostKubernetesPage() {
               </div>
             </div>
             <div className="portal-pill-row">
-              <span className="portal-pill">USD · {reconciliation?.basis || 'actual'} · {windowLabel}</span>
+              <span className="portal-pill">USD · {reconciliation?.basis || 'actual'} · {clusterWindow}</span>
               <span className="portal-pill">Workload {metricLabel(reconciliation?.estimated_workload)}</span>
               <span className="portal-pill">Idle {metricLabel(reconciliation?.estimated_idle)}</span>
               <span className="portal-pill">Shared {metricLabel(reconciliation?.estimated_shared)}</span>
@@ -545,7 +610,7 @@ export default function CostKubernetesPage() {
                         <button type="button" className="btn btn-sm btn-secondary" onClick={() => setOpenRec(row)}>
                           {row.controller_name || row.workload_key}
                         </button>
-                        <div className="portal-surface__subtitle">{row.namespace} · {row.calc_id}</div>
+                        <div className="portal-surface__subtitle">{row.namespace}</div>
                       </td>
                       <td>{row.status}</td>
                       <td>{row.change_kind || row.finding_type}</td>
@@ -571,7 +636,9 @@ export default function CostKubernetesPage() {
                 <p className="portal-surface__subtitle">Allocated reduction: {metricLabel(openRec.allocation_reduction)}. This is Estimated/list price, not cash.</p>
                 <p className="portal-surface__subtitle">Potential bill savings: {openRec.bill_reduction?.display || 'Unknown'}.</p>
                 <p className="portal-surface__subtitle">Capacity released: {openRec.capacity_released?.display || 'Unknown'}.</p>
-                <p className="portal-surface__subtitle">{openRec.calculation || openRec.calc_id}</p>
+                <CostTechnicalDetails>
+                  <p>{openRec.calculation || openRec.calc_id}</p>
+                </CostTechnicalDetails>
                 {openRec.blocked_reason ? <p className="portal-surface__subtitle">{openRec.blocked_reason}</p> : null}
               </div>
             ) : null}
@@ -591,7 +658,7 @@ export default function CostKubernetesPage() {
               </label>
             </div>
             <div className="portal-pill-row">
-              <span className="portal-pill">USD · {reconciliation?.basis || 'actual'} · {windowLabel}</span>
+              <span className="portal-pill">USD · {reconciliation?.basis || 'actual'} · {clusterWindow}</span>
               <span className="portal-pill">Billed mapped {reconciliation?.billed_mapped?.display || 'Unknown'}</span>
               <span className="portal-pill">Billed unmapped {reconciliation?.billed_unmapped?.display || 'Unknown'}</span>
               <span className="portal-pill">Estimated total {metricLabel(reconciliation?.estimated_total)}</span>
@@ -623,6 +690,9 @@ export default function CostKubernetesPage() {
                 <span className="portal-pill">Last ingest {health?.last_ingested_at || 'Unknown'}</span>
                 <span className="portal-pill">Public scrape No</span>
                 <span className="portal-pill">Worker can edit No</span>
+                <span className="portal-pill">Installs OpenCost No</span>
+                <span className="portal-pill">Added to cloud total No</span>
+                <span className="portal-pill">Pilot one nonprod cluster</span>
               </div>
               {(health?.capability_gaps || selected?.capability_gaps || []).length ? (
                 <ul className="portal-surface__subtitle">

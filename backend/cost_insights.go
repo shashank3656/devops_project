@@ -94,6 +94,35 @@ type costInsights struct {
 	PriorWindowStart string                 `json:"prior_window_start,omitempty"`
 	PriorWindowEnd   string                 `json:"prior_window_end,omitempty"`
 	PriorCoverage    string                 `json:"prior_coverage,omitempty"`
+	WindowStart      string                 `json:"window_start,omitempty"`
+	WindowEnd        string                 `json:"window_end,omitempty"`
+	Coverage         string                 `json:"coverage,omitempty"`
+	Basis            string                 `json:"basis,omitempty"`
+	Currency         string                 `json:"currency,omitempty"`
+}
+
+func costAlertStatus(enabled bool, coverage, priorCoverage string) map[string]any {
+	monitoringReady := coverage == "complete" && priorCoverage == "complete"
+	blocked := ""
+	switch {
+	case !enabled:
+		blocked = "Cost alerts are off."
+	case coverage != "complete":
+		blocked = "No complete billed window. Evaluation is blocked."
+	case priorCoverage != "complete":
+		blocked = "Not enough comparable data. Evaluation is blocked."
+	default:
+		blocked = ""
+	}
+	deliveryNote := "No cost notification has been delivered yet."
+	return map[string]any{
+		"alerts_enabled":     enabled,
+		"monitoring_ready":   monitoringReady,
+		"delivery_verified":  false,
+		"evaluation_blocked": blocked != "",
+		"blocked_reason":     firstNonEmpty(blocked, deliveryNote),
+		"note":               "Alerts enabled is not monitoring ready. Delivery verified stays No until a Cost alert is sent. Emails are never listed.",
+	}
 }
 
 func costCalcID(parts ...string) string {
@@ -149,23 +178,8 @@ func priorLikeForLikeWindow(start, end time.Time) (time.Time, time.Time) {
 }
 
 func detectCostAnomalies(current, prior *costWindowSlice) []costAnomaly {
-	currency, basis := "USD", "actual"
-	windowStart, windowEnd := "", ""
-	if current != nil {
-		currency, basis = current.Currency, current.Basis
-		windowStart, windowEnd = current.WindowStart, current.WindowEnd
-	}
 	if current == nil || prior == nil || current.Coverage != "complete" || prior.Coverage != "complete" {
-		return []costAnomaly{{
-			CalcID:      costCalcID("anomaly", "incomplete", windowStart, windowEnd, basis),
-			Kind:        "like_for_like",
-			Current:     costMoneyView("incomplete", "", currency, basis),
-			Baseline:    costMoneyView("incomplete", "", currency, basis),
-			Delta:       costMoneyView("incomplete", "", currency, basis),
-			LikeForLike: false,
-			Coverage:    "incomplete",
-			Note:        "Like-for-like anomalies need two complete windows. Incomplete periods stay Unknown, never a drop to $0.",
-		}}
+		return []costAnomaly{}
 	}
 	priorByResource := map[string]costLineRow{}
 	for _, line := range prior.Lines {
@@ -565,6 +579,11 @@ func buildCostInsights(userID int, basis, currency, fromRaw, toRaw string, metri
 		PriorWindowStart: prior.WindowStart,
 		PriorWindowEnd:   prior.WindowEnd,
 		PriorCoverage:    prior.Coverage,
+		WindowStart:      current.WindowStart,
+		WindowEnd:        current.WindowEnd,
+		Coverage:         current.Coverage,
+		Basis:            current.Basis,
+		Currency:         current.Currency,
 	}, nil
 }
 

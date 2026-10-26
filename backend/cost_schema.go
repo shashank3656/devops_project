@@ -23,6 +23,9 @@ func migrateCostLedgerSchema() {
 	`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cost_connections_account ON cost_connections(cloud_account_id)`)
 	_, _ = DB.Exec(`ALTER TABLE cost_connections ADD COLUMN IF NOT EXISTS last_ingested_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE cost_connections ADD COLUMN IF NOT EXISTS last_test_at TIMESTAMP`)
+	_, _ = DB.Exec(`ALTER TABLE cost_connections ADD COLUMN IF NOT EXISTS last_test_status VARCHAR(32) NOT NULL DEFAULT 'unknown'`)
+	_, _ = DB.Exec(`ALTER TABLE cost_connections ADD COLUMN IF NOT EXISTS last_test_note TEXT NOT NULL DEFAULT ''`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS cost_ingestion_batches (
 			id SERIAL PRIMARY KEY,
@@ -102,6 +105,10 @@ func migrateCostLedgerSchema() {
 		)
 	`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_cost_allocation_priority ON cost_allocation_rules(priority, id)`)
+	_, _ = DB.Exec(`ALTER TABLE cost_allocation_rules ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1`)
+	_, _ = DB.Exec(`ALTER TABLE cost_allocation_rules ADD COLUMN IF NOT EXISTS effective_from DATE NOT NULL DEFAULT CURRENT_DATE`)
+	_, _ = DB.Exec(`ALTER TABLE cost_allocation_rules ADD COLUMN IF NOT EXISTS effective_to DATE`)
+	_, _ = DB.Exec(`ALTER TABLE cost_allocation_rules ADD COLUMN IF NOT EXISTS supersedes_rule_id INTEGER NOT NULL DEFAULT 0`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS cost_budgets (
 			id SERIAL PRIMARY KEY,
@@ -115,6 +122,11 @@ func migrateCostLedgerSchema() {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
+	_, _ = DB.Exec(`ALTER TABLE cost_budgets ADD COLUMN IF NOT EXISTS period VARCHAR(32) NOT NULL DEFAULT 'calendar_month'`)
+	_, _ = DB.Exec(`ALTER TABLE cost_budgets ADD COLUMN IF NOT EXISTS owner_slug TEXT NOT NULL DEFAULT ''`)
+	_, _ = DB.Exec(`ALTER TABLE cost_budgets ADD COLUMN IF NOT EXISTS warn_percent INTEGER NOT NULL DEFAULT 80`)
+	_, _ = DB.Exec(`ALTER TABLE cost_budgets ADD COLUMN IF NOT EXISTS over_percent INTEGER NOT NULL DEFAULT 100`)
+	_, _ = DB.Exec(`ALTER TABLE cost_budgets ADD COLUMN IF NOT EXISTS destination VARCHAR(32) NOT NULL DEFAULT 'cost_alerts'`)
 	_, _ = DB.Exec(`ALTER TABLE ops_notification_settings ADD COLUMN IF NOT EXISTS notify_cost BOOLEAN NOT NULL DEFAULT TRUE`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS cost_recommendation_reviews (

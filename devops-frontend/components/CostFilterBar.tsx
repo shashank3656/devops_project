@@ -86,6 +86,8 @@ export default function CostFilterBar({
   const lastMonth = costLastMonth();
   const window = resolvedCostWindow(from, to);
   const extraOn = Boolean(project || cloud || environment || freshness || importStatus || service || region || team || account || family);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const secondaryOn = Boolean(freshness || importStatus || service || region || team || account || family);
 
   const patch = (next: Record<string, string | undefined>) => {
     const query = { ...router.query };
@@ -184,72 +186,80 @@ export default function CostFilterBar({
             </label>
           </>
         ) : null}
-        {explorer ? (
-          <>
-            <DraftField label="Product" value={service} placeholder="Product" onCommit={(next) => patch({ service: next || undefined })} />
-            <DraftField label="Team" value={team} placeholder="Team" onCommit={(next) => patch({ team: next || undefined })} />
-            <DraftField label="Region" value={region} placeholder="Region" onCommit={(next) => patch({ region: next || undefined })} />
-          </>
-        ) : null}
-        {options || explorer ? (
-          <details className="cost-toolbar__more">
-            <summary>More</summary>
-            <div className="cost-toolbar__more-panel">
-              {options ? (
-                <>
-                  <label className="cost-toolbar__field">
-                    <span>Freshness</span>
-                    <select className="input" value={freshness} onChange={(event) => patch({ freshness: event.target.value || undefined })}>
-                      <option value="">Any freshness</option>
-                      {options.freshness.map((item) => (
-                        <option key={item} value={item}>{freshnessLabel(item)}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="cost-toolbar__field">
-                    <span>Import</span>
-                    <select className="input" value={importStatus} onChange={(event) => patch({ import: event.target.value || undefined })}>
-                      <option value="">Any import</option>
-                      {options.imports.map((item) => (
-                        <option key={item} value={item}>{importableLabel(item)}</option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              ) : null}
-              {explorer ? (
-                <DraftField label="Account" value={account} placeholder="Account" onCommit={(next) => patch({ account: next || undefined })} />
-              ) : null}
-            </div>
-          </details>
-        ) : null}
-        {extraOn ? (
-          <button
-            type="button"
-            className="btn btn-sm btn-secondary"
-            onClick={() => patch({
-              project: undefined,
-              cloud: undefined,
-              environment: undefined,
-              freshness: undefined,
-              import: undefined,
-              service: undefined,
-              region: undefined,
-              team: undefined,
-              account: undefined,
-              family: undefined,
-            })}
-          >
-            Clear
-          </button>
-        ) : null}
-        {onExport ? (
-          <button type="button" className="btn btn-sm btn-secondary" disabled={exporting} onClick={onExport}>
-            {exporting ? 'Exporting…' : 'CSV'}
-          </button>
-        ) : null}
-        <CostAskChips />
+        <div className="cost-toolbar__actions">
+          {options || explorer ? (
+            <button type="button" className={`btn btn-sm ${secondaryOn ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDrawerOpen(true)}>
+              More filters
+            </button>
+          ) : null}
+          {extraOn ? (
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => patch({
+                project: undefined,
+                cloud: undefined,
+                environment: undefined,
+                freshness: undefined,
+                import: undefined,
+                service: undefined,
+                region: undefined,
+                team: undefined,
+                account: undefined,
+                family: undefined,
+              })}
+            >
+              Clear
+            </button>
+          ) : null}
+          {onExport ? (
+            <button type="button" className="btn btn-sm btn-secondary" disabled={exporting} onClick={onExport}>
+              {exporting ? 'Exporting…' : 'CSV'}
+            </button>
+          ) : null}
+          <CostAskChips />
+        </div>
       </section>
+      {drawerOpen ? (
+        <div className="cost-drawer" role="presentation" onClick={() => setDrawerOpen(false)}>
+          <aside className="cost-drawer__panel" role="dialog" aria-label="More filters" onClick={(event) => event.stopPropagation()}>
+            <header className="cost-drawer__head">
+              <h2>More filters</h2>
+              <button type="button" className="btn btn-sm btn-secondary" onClick={() => setDrawerOpen(false)}>Done</button>
+            </header>
+            {explorer ? (
+              <>
+                <DraftField label="Product" value={service} placeholder="Product" onCommit={(next) => patch({ service: next || undefined })} />
+                <DraftField label="Team" value={team} placeholder="Team" onCommit={(next) => patch({ team: next || undefined })} />
+                <DraftField label="Region" value={region} placeholder="Region" onCommit={(next) => patch({ region: next || undefined })} />
+                <DraftField label="Account" value={account} placeholder="Account" onCommit={(next) => patch({ account: next || undefined })} />
+              </>
+            ) : null}
+            {options ? (
+              <>
+                <label className="cost-toolbar__field">
+                  <span>Freshness</span>
+                  <select className="input" value={freshness} onChange={(event) => patch({ freshness: event.target.value || undefined })}>
+                    <option value="">Any freshness</option>
+                    {options.freshness.map((item) => (
+                      <option key={item} value={item}>{freshnessLabel(item)}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="cost-toolbar__field">
+                  <span>Import</span>
+                  <select className="input" value={importStatus} onChange={(event) => patch({ import: event.target.value || undefined })}>
+                    <option value="">Any import</option>
+                    {options.imports.map((item) => (
+                      <option key={item} value={item}>{importableLabel(item)}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
+          </aside>
+        </div>
+      ) : null}
       {chips.length || typeof visibleAccounts === 'number' ? (
         <div className="cost-chips" aria-label="Active filters">
           {chips.map((chip) => (

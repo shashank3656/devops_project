@@ -2,7 +2,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostFirstRun from '../../components/CostFirstRun';
 import CostNav from '../../components/CostNav';
+import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { CostOptimization, CostRecommendation, costQuery, fetchCostJson } from '../../lib/cost';
@@ -93,7 +95,11 @@ export default function CostOptimizationPage() {
         </div>
         {loading ? <div className="empty-state">Loading recommendations…</div> : null}
         {!loading && !(data?.recommendations || []).length ? (
-          <div className="empty-state">No recommendations for this window. Import billed lines first. Rightsizing stays blocked until utilization exists.</div>
+          <CostFirstRun
+            canOperate={data?.can_operate}
+            title="No recommendations for this window"
+            primaryLabel="Ingest billed data"
+          />
         ) : null}
         {!loading && (data?.opportunity_groups || []).length ? (
           <section className="portal-surface portal-surface--table">
@@ -112,13 +118,18 @@ export default function CostOptimizationPage() {
                   <tr key={row.group_id}>
                     <td>{row.group_id}</td>
                     <td>{row.resource_id}</td>
-                    <td>{(row.calc_ids || []).join(', ')}</td>
+                    <td>{(row.calc_ids || []).length}</td>
                     <td>{row.savings?.display || 'Unknown'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <p className="portal-surface__subtitle">Mutually exclusive actions share a group. Those dollar amounts are not added together.</p>
+            <CostTechnicalDetails>
+              {(data?.opportunity_groups || []).map((row) => (
+                <p key={row.group_id}>{row.resource_id} · {(row.calc_ids || []).join(', ')}</p>
+              ))}
+            </CostTechnicalDetails>
           </section>
         ) : null}
         {!loading && (data?.recommendations || []).length ? (
@@ -139,7 +150,7 @@ export default function CostOptimizationPage() {
                   <tr key={row.calc_id}>
                     <td>
                       {row.finding_type}
-                      <div className="portal-surface__subtitle">{row.resource_id} · {row.calc_id}</div>
+                      <div className="portal-surface__subtitle">{row.resource_id}</div>
                     </td>
                     <td>{row.lifecycle || row.status}{row.waiting_for ? ` · ${row.waiting_for}` : ''}</td>
                     <td>{row.impact}</td>
@@ -156,10 +167,9 @@ export default function CostOptimizationPage() {
         ) : null}
         {open ? (
           <section className="portal-surface">
-            <h2 className="portal-surface__title">{open.calc_id}</h2>
+            <h2 className="portal-surface__title">{open.finding_type}</h2>
             <dl className="sre-meta">
               <div className="sre-meta__item"><dt>Evidence</dt><dd>{open.evidence}</dd></div>
-              <div className="sre-meta__item"><dt>Calculation</dt><dd>{open.calculation}</dd></div>
               <div className="sre-meta__item"><dt>Proposed action</dt><dd>{open.proposed_action}</dd></div>
               <div className="sre-meta__item"><dt>Verification</dt><dd>{open.verification || open.lifecycle || 'Not measured'}</dd></div>
               <div className="sre-meta__item"><dt>Bill reduction</dt><dd>{open.bill_reduction?.display || 'Unknown'}</dd></div>
@@ -191,7 +201,11 @@ export default function CostOptimizationPage() {
               <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || data?.can_operate === false} onClick={() => void act('verify', { result: 'inconclusive' })}>Mark Inconclusive</button>
               <button type="button" className="btn btn-secondary" disabled={!!acting || !reason || !reviewBy || data?.can_operate === false} onClick={() => void act('dismiss')}>Dismiss</button>
             </div>
-            <p className="portal-surface__subtitle">Linking uses an existing CHG. This page never resizes, deletes, or applies the change. Verification can be Inconclusive.</p>
+            <p className="portal-surface__subtitle">Linking uses an existing change. This page never resizes, deletes, or applies the change. Verification can be Inconclusive.</p>
+            <CostTechnicalDetails>
+              <p>{open.calc_id}</p>
+              <p>{open.calculation}</p>
+            </CostTechnicalDetails>
           </section>
         ) : null}
       </div>

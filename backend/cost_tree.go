@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"sort"
 	"strings"
+	"time"
 )
 
 type costGraphBar struct {
@@ -513,18 +514,19 @@ func buildCostTree(userID int, basis, currency, fromRaw, toRaw string) (map[stri
 		return nil, err
 	}
 	return map[string]any{
-		"status":       "ok",
-		"basis":        slice.Basis,
-		"currency":     slice.Currency,
-		"window_start": slice.WindowStart,
-		"window_end":   slice.WindowEnd,
-		"coverage":     slice.Coverage,
-		"freshness":    slice.Freshness,
-		"rbac":         "project",
-		"can_operate":  userHasCostOperateAnywhere(userID),
-		"projects":     buildCostTreeNodes(userID, slice),
-		"ai":           costAIPolicy(),
-		"note":         "Cost is granted at project level. Click an account for spend, importable sources, and suggestions. Kubernetes is a breakdown of this bill, never an extra line.",
+		"status":           "ok",
+		"basis":            slice.Basis,
+		"currency":         slice.Currency,
+		"window_start":     slice.WindowStart,
+		"window_end":       slice.WindowEnd,
+		"coverage":         slice.Coverage,
+		"freshness":        slice.Freshness,
+		"rbac":             "project",
+		"can_operate":      userHasCostOperateAnywhere(userID),
+		"projects":         buildCostTreeNodes(userID, slice),
+		"ai":               costAIPolicy(),
+		"freshness_detail": costFreshnessDetail(slice.Connections, time.Now().UTC()),
+		"note":             "Cost is granted at project level. Click an account for spend, importable sources, and suggestions. Kubernetes is a breakdown of this bill, never an extra line. Refreshing this page does not pull newer provider billing data.",
 	}, nil
 }
 
@@ -707,6 +709,7 @@ func decorateCostAccountDashboard(userID int, conn *costConnection, payload map[
 	payload["import_status"] = costImportStatus(*conn)
 	payload["stale_hint"] = costStaleHint(conn.Freshness)
 	payload["export_href"] = fmt.Sprintf("/api/cost/connections/%d/export", conn.ID)
+	payload["freshness_detail"] = costFreshnessDetail([]costConnection{*conn}, time.Now().UTC())
 	prior, priorStart, priorEnd := loadPriorAccountSlice(userID, slice, conn.AccountID)
 	priorLines := costLinesForAccount(prior.Lines, conn.AccountID)
 	payload["compare"] = costWindowCompare(

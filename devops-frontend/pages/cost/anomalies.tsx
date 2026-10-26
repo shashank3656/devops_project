@@ -1,7 +1,9 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostFirstRun from '../../components/CostFirstRun';
 import CostNav from '../../components/CostNav';
+import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { CostAnomalies, costQuery, fetchCostJson } from '../../lib/cost';
@@ -29,6 +31,9 @@ export default function CostAnomaliesPage() {
       .finally(() => setLoading(false));
   }, [apiUrl, router.isReady, basis, currency, from, to]);
 
+  const rows = (data?.anomalies || []).filter((row) => row.resource_id || row.like_for_like);
+  const insufficient = Boolean(data?.insufficient_data) || (!(data?.anomalies || []).length && (data?.prior_coverage || 'none') !== 'complete');
+
   return (
     <DevOpsLayout>
       <Head><title>Cost anomalies</title></Head>
@@ -36,28 +41,45 @@ export default function CostAnomaliesPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">Cost anomalies</h1>
-            <p className="cost-shell__hint">Like-for-like complete windows only. Incomplete stays Unknown, never a drop to $0.</p>
+            <p className="cost-shell__hint">Compared against the previous complete window. Incomplete stays Unknown, never a drop to $0.</p>
           </div>
         </div>
         <CostNav current="anomalies" />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <div className="portal-pill-row">
-          <span className="portal-pill">Basis {basis}</span>
-          <span className="portal-pill">Currency {currency}</span>
-          <span className="portal-pill">Cost alerts {data?.notify_cost ? 'On' : 'Off'}</span>
-          {data?.prior_window_start ? <span className="portal-pill">Prior {data.prior_window_start} to {data.prior_window_end}</span> : null}
-          <span className="portal-pill">Prior coverage {data?.prior_coverage || 'none'}</span>
-        </div>
+        <dl className="cost-k8s-meta" aria-label="Cost alert readiness">
+          <div>
+            <dt>Alerts enabled</dt>
+            <dd>{data?.alerts?.alerts_enabled ? 'On' : 'Off'}</dd>
+          </div>
+          <div>
+            <dt>Monitoring ready</dt>
+            <dd>{data?.alerts?.monitoring_ready ? 'Yes' : 'No'}</dd>
+          </div>
+          <div>
+            <dt>Delivery verified</dt>
+            <dd>{data?.alerts?.delivery_verified ? 'Yes' : 'No'}</dd>
+          </div>
+          <div>
+            <dt>Evaluation</dt>
+            <dd>{data?.alerts?.blocked_reason || (data?.alerts?.monitoring_ready ? 'Ready' : 'Unknown')}</dd>
+          </div>
+        </dl>
         {loading ? <div className="empty-state">Loading anomalies…</div> : null}
-        {!loading && !(data?.anomalies || []).length ? (
-          <div className="empty-state">No anomaly detections for this window. Import a prior complete month to compare like-for-like.</div>
+        {!loading && insufficient ? (
+          <CostFirstRun
+            canOperate
+            title="Not enough comparable data"
+            primaryLabel="Ingest billed data"
+          />
         ) : null}
-        {!loading && (data?.anomalies || []).length ? (
+        {!loading && !insufficient && !rows.length ? (
+          <div className="empty-state">No anomalies in this complete window.</div>
+        ) : null}
+        {!loading && rows.length ? (
           <section className="portal-surface portal-surface--table">
             <table className="portal-table">
               <thead>
                 <tr>
-                  <th>Calculation</th>
                   <th>Resource</th>
                   <th>Current</th>
                   <th>Baseline</th>
@@ -66,13 +88,11 @@ export default function CostAnomaliesPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.anomalies || []).map((row) => (
+                {rows.map((row) => (
                   <tr key={row.calc_id}>
                     <td>
-                      {row.calc_id}
-                      <div className="portal-surface__subtitle">{row.note}</div>
+                      {row.resource_id || 'Window'}{row.service ? ` · ${row.service}` : ''}
                     </td>
-                    <td>{row.resource_id || 'Window'}{row.service ? ` · ${row.service}` : ''}</td>
                     <td>{row.current?.display || 'Unknown'}</td>
                     <td>{row.baseline?.display || 'Unknown'}</td>
                     <td>{row.delta?.display || 'Unknown'}</td>
@@ -81,7 +101,12 @@ export default function CostAnomaliesPage() {
                 ))}
               </tbody>
             </table>
-            <p className="portal-surface__subtitle">{data?.note}</p>
+            <CostTechnicalDetails>
+              <p>{data?.note}</p>
+              {rows.map((row) => (
+                <p key={row.calc_id}>{row.resource_id || 'Window'} · {row.calc_id}</p>
+              ))}
+            </CostTechnicalDetails>
           </section>
         ) : null}
       </div>

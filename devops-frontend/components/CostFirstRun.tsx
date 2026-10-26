@@ -1,30 +1,39 @@
 import Link from 'next/link';
 
-export default function CostFirstRun({ canOperate }: { canOperate?: boolean }) {
+export default function CostFirstRun({
+  canOperate,
+  title = 'Set up Cost',
+  primaryHref = '/cost/configuration',
+  primaryLabel = 'Connect account',
+}: {
+  canOperate?: boolean;
+  title?: string;
+  primaryHref?: string;
+  primaryLabel?: string;
+}) {
+  const operate = canOperate !== false;
   return (
-    <section className="cost-first-run" aria-label="Enable Cost">
-      <h2>No Cost accounts in a project you can see</h2>
+    <section className="cost-first-run" aria-label="Set up Cost">
+      <h2>{title}</h2>
       <ol className="cost-first-run__steps">
         <li>
-          <strong>Assign to a project</strong>
-          <span>Put a cloud account in a project you can see. Demo inventory accounts stay out.</span>
-          <Link href="/cloud-accounts">Cloud accounts</Link>
+          <strong>Connect account</strong>
+          <span>Assign a cloud account to a project you can see, then enable Cost. Demo inventory accounts stay out.</span>
         </li>
         <li>
-          <strong>Enable Cost</strong>
-          <span>Cost visibility is project membership plus the Cost section.</span>
-          {canOperate === false
-            ? <span>Ask someone with Cost operate to enable.</span>
-            : <Link href="/cost/configuration">Enable Cost</Link>}
+          <strong>Validate source</strong>
+          <span>Confirm the billed window is complete. Incomplete stays Unknown, never $0.</span>
         </li>
         <li>
-          <strong>Import billed lines</strong>
-          <span>Spend stays Unknown until a complete revision exists. Incomplete is never $0.</span>
-          {canOperate === false
-            ? <span>Ask someone with Cost operate to import.</span>
-            : <Link href="/cost/configuration">Import</Link>}
+          <strong>Ingest billed data</strong>
+          <span>Import a labelled CUR export. Spend stays Unknown until a complete revision exists.</span>
         </li>
       </ol>
+      {operate ? (
+        <Link href={primaryHref} className="btn btn-primary">{primaryLabel}</Link>
+      ) : (
+        <p className="cost-first-run__note">Ask someone with Cost operate to connect an account and ingest billed data.</p>
+      )}
     </section>
   );
 }

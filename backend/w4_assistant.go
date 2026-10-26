@@ -209,7 +209,7 @@ func retrieveCostInsightSources(userID int, query string) []groundedSource {
 		if score <= 0 {
 			continue
 		}
-		source := costAISafeSource(item)
+		source := costAISafeSourceForWindow(item, insights.WindowStart, insights.WindowEnd, insights.Basis)
 		source.Score = score
 		if costAISafeSourceLeaks(source) {
 			continue
@@ -280,7 +280,18 @@ func buildGroundedAnswer(query string, sources []groundedSource) groundedAnswer 
 	}
 	citations := make([]groundedCitation, 0, len(sources))
 	var b strings.Builder
-	b.WriteString("From the catalog:\n")
+	costOnly := true
+	for _, source := range sources {
+		if source.Kind != "cost_calculation" {
+			costOnly = false
+			break
+		}
+	}
+	if costOnly {
+		b.WriteString("Cost analysis from stored calculations. Scope is billed AWS accounts you can see. Refreshing the page does not pull newer provider billing.\n")
+	} else {
+		b.WriteString("From the catalog:\n")
+	}
 	var rollback *groundedRollbackHint
 	for _, source := range sources {
 		citations = append(citations, groundedCitation{

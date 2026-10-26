@@ -23,6 +23,10 @@ export default function CostBudgetsPage() {
   const [scopeValue, setScopeValue] = useState('');
   const [amount, setAmount] = useState('');
   const [budgetBasis, setBudgetBasis] = useState(basis);
+  const [period, setPeriod] = useState('calendar_month');
+  const [ownerSlug, setOwnerSlug] = useState('');
+  const [warnPercent, setWarnPercent] = useState('80');
+  const [overPercent, setOverPercent] = useState('100');
 
   const load = () => {
     if (!router.isReady) return;
@@ -53,12 +57,17 @@ export default function CostBudgetsPage() {
           amount,
           currency,
           basis: budgetBasis,
+          period,
+          owner_slug: ownerSlug,
+          warn_percent: Number(warnPercent) || 80,
+          over_percent: Number(overPercent) || 100,
         }),
       });
-      setNotice('Budget stored. It never pauses or resizes workloads.');
+      setNotice('Budget stored for its own calendar period. Analysis filters do not change that lifecycle.');
       setName('');
       setScopeValue('');
       setAmount('');
+      setOwnerSlug('');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Budget could not be saved.');
@@ -88,7 +97,7 @@ export default function CostBudgetsPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">Cost budgets</h1>
-            <p className="cost-shell__hint">Remaining uses this window. Incomplete stays Unknown, never $0. Budgets never stop workloads.</p>
+            <p className="cost-shell__hint">Remaining uses the budget period, not the Analysis filter. Incomplete stays Unknown, never $0. Budgets never stop workloads.</p>
           </div>
         </div>
         <CostNav current="budgets" />
@@ -97,8 +106,9 @@ export default function CostBudgetsPage() {
         <div className="portal-pill-row">
           <span className="portal-pill">Currency {data?.currency || currency}</span>
           <span className="portal-pill">Coverage {data?.coverage || 'none'}</span>
-          {data?.window_start ? <span className="portal-pill">{data.window_start} to {data.window_end}</span> : null}
+          <span className="portal-pill">Budget period {data?.period_start || data?.window_start || 'Unknown'} to {data?.period_end || data?.window_end || 'Unknown'}</span>
           <span className="portal-pill">Pauses workloads No</span>
+          <span className="portal-pill">Destination Cost alerts</span>
         </div>
         <section className="portal-surface">
           <h2 className="portal-surface__title">Add a budget</h2>
@@ -128,6 +138,20 @@ export default function CostBudgetsPage() {
                 <option value="amortized">Amortized</option>
               </select>
             </label>
+            <label className="label">Period
+              <select className="input" value={period} onChange={(event) => setPeriod(event.target.value)}>
+                <option value="calendar_month">Calendar month</option>
+              </select>
+            </label>
+            <label className="label">Owner team
+              <input className="input" value={ownerSlug} onChange={(event) => setOwnerSlug(event.target.value)} placeholder="platform-team" />
+            </label>
+            <label className="label">Warn at %
+              <input className="input" value={warnPercent} onChange={(event) => setWarnPercent(event.target.value)} placeholder="80" />
+            </label>
+            <label className="label">Over at %
+              <input className="input" value={overPercent} onChange={(event) => setOverPercent(event.target.value)} placeholder="100" />
+            </label>
           </div>
           <button type="button" className="btn btn-primary" disabled={!name || !amount || !!acting || data?.can_operate === false} onClick={() => void createBudget()}>
             {acting === 'create' ? 'Saving…' : 'Save budget'}
@@ -155,9 +179,9 @@ export default function CostBudgetsPage() {
                   <tr key={row.id}>
                     <td>
                       {row.name}
-                      <div className="portal-surface__subtitle">{row.currency} {row.amount} · {row.basis}</div>
+                      <div className="portal-surface__subtitle">{row.currency} {row.amount} · {row.basis} · {row.period || 'calendar_month'} · warn {row.warn_percent || 80}% / over {row.over_percent || 100}%</div>
                     </td>
-                    <td>{row.scope_type}{row.scope_value ? ` · ${row.scope_value}` : ''}</td>
+                    <td>{row.scope_type}{row.scope_value ? ` · ${row.scope_value}` : ''}{row.owner_slug ? ` · owner ${row.owner_slug}` : ''}</td>
                     <td>{row.spent?.display || 'Unknown'}</td>
                     <td>{row.remaining?.display || 'Unknown'}</td>
                     <td>{budgetAlertLabel(row.alert)}</td>

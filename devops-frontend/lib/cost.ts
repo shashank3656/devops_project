@@ -139,6 +139,13 @@ export type CostBudgetStatus = {
   amount: string;
   currency: string;
   basis: string;
+  period?: string;
+  owner_slug?: string;
+  warn_percent?: number;
+  over_percent?: number;
+  destination?: string;
+  period_start?: string;
+  period_end?: string;
   spent: CostMoney;
   remaining: CostMoney;
   alert: string;
@@ -153,6 +160,51 @@ export type CostAllocationRule = {
   team_slug: string;
   service_name: string;
   priority: number;
+  version?: number;
+  effective_from?: string;
+  effective_to?: string;
+};
+
+export type CostFreshnessDetail = {
+  billed_through?: string | null;
+  last_successful_ingestion?: string | null;
+  last_dashboard_refresh?: string;
+  page_refresh_is_not_new_billing?: boolean;
+  note?: string;
+};
+
+export type CostAlertStatus = {
+  alerts_enabled?: boolean;
+  monitoring_ready?: boolean;
+  delivery_verified?: boolean;
+  evaluation_blocked?: boolean;
+  blocked_reason?: string;
+  note?: string;
+};
+
+export type CostCollection = {
+  connection_id?: number;
+  source?: string;
+  configuration?: string;
+  mode?: string;
+  schedule?: string;
+  next_run?: string;
+  retry_status?: string;
+  last_success?: string | null;
+  connection_test?: {
+    status?: string;
+    tested_at?: string | null;
+    note?: string;
+  };
+  note?: string;
+};
+
+export type CostPilotScope = {
+  label?: string;
+  mode?: string;
+  note?: string;
+  stores_billing_credentials?: boolean;
+  automated_collection?: boolean;
 };
 
 export type CostOverview = {
@@ -177,6 +229,7 @@ export type CostOverview = {
   connections: CostConnection[];
   line_count?: number;
   freshness?: string;
+  freshness_detail?: CostFreshnessDetail;
   ownership?: CostOwnership;
   forecast?: {
     method?: string;
@@ -216,6 +269,7 @@ export type CostAccountDashboard = {
   window_end?: string;
   coverage?: CostCoverage;
   freshness?: string;
+  freshness_detail?: CostFreshnessDetail;
   rbac?: string;
   cost_role?: string;
   can_operate?: boolean;
@@ -555,6 +609,7 @@ export type CostExplorer = {
   basis: string;
   currency: string;
   coverage: CostCoverage;
+  freshness_detail?: CostFreshnessDetail;
   total: CostMoney;
   unallocated: CostMoney;
   lines: CostLine[];
@@ -581,6 +636,10 @@ export type CostConfiguration = {
   }[];
   batches?: CostBatch[];
   rules?: CostAllocationRule[];
+  collection?: CostCollection[];
+  pilot?: CostPilotScope | string;
+  freshness_detail?: CostFreshnessDetail;
+  allocation_note?: string;
   can_operate?: boolean;
   ai_proof?: {
     safe?: number;
@@ -597,6 +656,10 @@ export type CostBudgets = {
   coverage?: CostCoverage;
   window_start?: string;
   window_end?: string;
+  period?: string;
+  period_start?: string;
+  period_end?: string;
+  report_filter?: { from?: string; to?: string; note?: string };
   budgets: CostBudgetStatus[];
   pauses_workloads: boolean;
   can_operate?: boolean;
@@ -665,10 +728,12 @@ export type CostAnomalies = {
   basis: string;
   currency: string;
   anomalies: CostAnomaly[];
+  insufficient_data?: boolean;
   prior_window_start?: string;
   prior_window_end?: string;
   prior_coverage?: string;
   notify_cost?: boolean;
+  alerts?: CostAlertStatus;
   note?: string;
 };
 
@@ -688,7 +753,9 @@ export type CostSavings = {
   currency: string;
   waiting: CostRecommendation[];
   outcomes: CostRecommendation[];
+  estimated_savings?: CostMoney;
   verified_bill_reduction: CostMoney;
+  released_capacity?: CostMoney & { note?: string };
   executes: boolean;
   pauses_workloads: boolean;
   note?: string;
@@ -708,9 +775,8 @@ export type CostServiceStrip = {
 };
 
 export const COST_COPILOT_CHIPS = [
-  'Why is this Unknown?',
-  'Explain CALC-COST IDs',
-  'What does incomplete coverage mean?',
+  'Why is spend Unknown?',
+  'Why is coverage incomplete?',
 ];
 
 export function formatCostDate(value: Date) {
@@ -1089,6 +1155,20 @@ export function resolvedCostWindow(from: string, to: string) {
   if (from) return { from, to: thisMonth.to };
   if (to) return { from: thisMonth.from, to };
   return thisMonth;
+}
+
+export function validateCostAllocation(matchType: string, matchValue: string, team: string, service: string) {
+  const value = matchValue.trim();
+  const teamSlug = team.trim();
+  const serviceName = service.trim();
+  if (!value) return 'Match value is required.';
+  if (value.includes('@') || teamSlug.includes('@') || serviceName.includes('@')) return 'Allocation rule cannot include an email.';
+  if (matchType === 'account' && !/^[0-9]{12}$/.test(value)) return 'Account identifier must be 12 digits.';
+  if (matchType === 'product' && value.length < 3) return 'Product name is too short.';
+  if (matchType === 'resource' && (value.length < 3 || /\s/.test(value))) return 'Resource identifier is not valid.';
+  if (teamSlug && (teamSlug.length < 2 || /[\s/]/.test(teamSlug))) return 'Team is not valid.';
+  if (serviceName && (serviceName.length < 2 || /\s/.test(serviceName))) return 'Service name is not valid.';
+  return '';
 }
 
 export function budgetBarPercent(row: CostBudgetStatus): number | null {

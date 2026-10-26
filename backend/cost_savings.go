@@ -525,9 +525,15 @@ func buildCostSavings(userID int, basis, currency, fromRaw, toRaw string) (map[s
 		"currency":                currency,
 		"waiting":                 waiting,
 		"outcomes":                verified,
+		"estimated_savings":       insights.NonOverlapping,
 		"verified_bill_reduction": sumNonOverlappingSavings(cappedList, currency, basis),
-		"pauses_workloads":        false,
-		"executes":                false,
-		"note":                    "Acceptance is not permission to execute. Verification can be Inconclusive. Overlapping verified savings on one resource count once. Allocation reduction, bill reduction, and cost avoidance are never added together.",
+		"released_capacity": map[string]any{
+			"display":  "Unknown",
+			"coverage": "incomplete",
+			"note":     "Released capacity is a Kubernetes estimate and is never added to verified bill reduction.",
+		},
+		"pauses_workloads": false,
+		"executes":         false,
+		"note":             "Acceptance is not permission to execute. Verification can be Inconclusive. Overlapping verified savings on one resource count once. Estimated savings, verified bill reduction, and released capacity stay separate.",
 	}, nil
 }

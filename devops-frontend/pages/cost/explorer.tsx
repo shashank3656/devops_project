@@ -1,6 +1,8 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostFirstRun from '../../components/CostFirstRun';
+import CostFreshnessStrip from '../../components/CostFreshnessStrip';
 import CostNav from '../../components/CostNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -58,14 +60,19 @@ export default function CostExplorerPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">Cost explorer</h1>
-            <p className="cost-shell__hint">Same window and basis as Analysis. Actual and amortized stay on separate columns. Press Enter to apply a text filter.</p>
+            <p className="cost-shell__hint">Same window and basis as Analysis. Actual and amortized stay on separate columns.</p>
           </div>
         </div>
         <CostNav current="explorer" exporting={exporting} onExport={() => void exportCSV()} />
+        <CostFreshnessStrip detail={data?.freshness_detail} />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {loading ? <div className="empty-state">Loading billed lines…</div> : null}
         {!loading && data?.empty ? (
-          <div className="empty-state">No billed lines for this slice. Import a fixture on Configuration, or widen the filters. Coverage stays Unknown until a complete revision exists.</div>
+          <CostFirstRun
+            canOperate
+            title="No billed lines for this slice"
+            primaryLabel="Ingest billed data"
+          />
         ) : null}
         {!loading && data && !data.empty ? (
           <section className="portal-surface portal-surface--table">

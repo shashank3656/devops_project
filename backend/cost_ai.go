@@ -128,10 +128,14 @@ func copilotModelUserContent(body copilotRequest) string {
 }
 
 func copilotCostSystemPrompt() string {
-	return "You are the OpsTrellis ops copilot. Answer only from the provided Change, Incident, runbook, and Cost calculation citations. Name those IDs including CALC-COST-*. Never invent dollar amounts or SKUs that are not on a calculation ID. Never apply Terraform, Helm, or cluster changes. Never ask for or repeat cloud account IDs, IAM role names, passwords, tokens, ARNs, kubeconfigs, emails, or people names. Cost suggestions cite CALC-COST IDs, coverage, and labelled amounts only."
+	return "You are the OpsTrellis Cost analysis assistant, not Help. Answer only from the provided Cost calculation citations. For each recommendation name the billed scope, period, source (labelled CUR 2.0), and CALC-COST ID. Never invent dollar amounts or SKUs that are not on a calculation ID. Never apply Terraform, Helm, or cluster changes. Never ask for or repeat cloud account IDs, IAM role names, passwords, tokens, ARNs, kubeconfigs, emails, or people names. Refreshing the page does not pull newer provider billing."
 }
 
 func costAISafeSource(item costCalculation) groundedSource {
+	return costAISafeSourceForWindow(item, "", "", "actual")
+}
+
+func costAISafeSourceForWindow(item costCalculation, windowStart, windowEnd, basis string) groundedSource {
 	amount := "Unknown"
 	if item.Coverage == "complete" && strings.TrimSpace(item.Amount) != "" {
 		amount = formatCostDisplay(item.Amount, "USD")
@@ -140,13 +144,30 @@ func costAISafeSource(item costCalculation) groundedSource {
 	if family == "other" {
 		family = "cost"
 	}
+	period := "Unknown window"
+	if strings.TrimSpace(windowStart) != "" && strings.TrimSpace(windowEnd) != "" {
+		period = windowStart + " to " + windowEnd
+	}
+	if strings.TrimSpace(basis) == "" {
+		basis = "actual"
+	}
+	body := strings.TrimSpace(strings.Join([]string{
+		item.CalcID,
+		"kind " + item.Kind,
+		"scope billed AWS CUR for projects you can see",
+		"period " + period,
+		"basis " + basis,
+		"source labelled CUR 2.0",
+		"coverage " + item.Coverage,
+		"amount " + amount,
+	}, " "))
 	return groundedSource{
 		Kind:    "cost_calculation",
 		Number:  item.CalcID,
 		Title:   item.Kind,
 		Href:    citationHRef("cost_calculation", 0, item.CalcID),
 		Service: family,
-		Body:    strings.TrimSpace(item.CalcID + " kind " + item.Kind + " coverage " + item.Coverage + " amount " + amount),
+		Body:    body,
 	}
 }
 

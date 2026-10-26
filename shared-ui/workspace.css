@@ -306,7 +306,7 @@
 
 .ig-scope-bar__control {
   height: 32px;
-  max-width: 220px;
+  max-width: 420px;
   padding: 0 8px;
   border: 1px solid var(--ig-border, rgba(255, 255, 255, 0.12));
   border-radius: 8px;

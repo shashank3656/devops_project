@@ -71,6 +71,91 @@ func costWindowAllowed(start, end, now time.Time) error {
 	return nil
 }
 
+func costFreshnessDetail(connections []costConnection, now time.Time) map[string]any {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
+	billedThrough := ""
+	var lastIngest *time.Time
+	for _, conn := range connections {
+		if conn.WindowComplete != nil && *conn.WindowComplete && strings.TrimSpace(conn.WindowEnd) != "" {
+			if conn.WindowEnd > billedThrough {
+				billedThrough = conn.WindowEnd
+			}
+		}
+		if conn.LastIngestedAt != nil && (lastIngest == nil || conn.LastIngestedAt.After(*lastIngest)) {
+			lastIngest = conn.LastIngestedAt
+		}
+	}
+	lastIngestValue := any(nil)
+	if lastIngest != nil {
+		lastIngestValue = lastIngest.UTC().Format(time.RFC3339)
+	}
+	billedValue := any(nil)
+	if billedThrough != "" {
+		billedValue = billedThrough
+	}
+	return map[string]any{
+		"billed_through":                  billedValue,
+		"last_successful_ingestion":       lastIngestValue,
+		"last_dashboard_refresh":          now.Format(time.RFC3339),
+		"page_refresh_is_not_new_billing": true,
+		"note":                            "Refreshing this page does not pull newer provider billing data.",
+	}
+}
+
+func costPilotScope() map[string]any {
+	return map[string]any{
+		"label":                      "AWS CUR 2.0 labelled import",
+		"mode":                       "manual",
+		"note":                       "Pilot: paste a labelled CUR 2.0 export or ingest a sample bill. This product does not store billing credentials and does not pull CUR from AWS automatically.",
+		"stores_billing_credentials": false,
+		"automated_collection":       false,
+	}
+}
+
+func costCollectionView(conn costConnection) map[string]any {
+	lastSuccess := any(nil)
+	if conn.LastIngestedAt != nil {
+		lastSuccess = conn.LastIngestedAt.UTC().Format(time.RFC3339)
+	}
+	testStatus := strings.TrimSpace(conn.LastTestStatus)
+	if testStatus == "" {
+		testStatus = "unknown"
+	}
+	retry := "idle"
+	if testStatus == "failed" {
+		retry = "waiting for operator"
+	}
+	source := strings.TrimSpace(conn.BillingSource)
+	if source == "" {
+		source = "aws_cur_2"
+	}
+	return map[string]any{
+		"connection_id": conn.ID,
+		"source":        source,
+		"configuration": source + " labelled import",
+		"mode":          "manual",
+		"schedule":      "On demand",
+		"next_run":      "Not scheduled",
+		"retry_status":  retry,
+		"last_success":  lastSuccess,
+		"connection_test": map[string]any{
+			"status":    testStatus,
+			"tested_at": timeOrNil(conn.LastTestAt),
+			"note":      firstNonEmpty(conn.LastTestNote, "Test reads stored billed data. It does not pull newer provider billing."),
+		},
+	}
+}
+
+func timeOrNil(value *time.Time) any {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339)
+}
+
 func costFreshness(last *time.Time, windowEnd time.Time, complete bool, now time.Time) string {
 	if last == nil || last.IsZero() {
 		return "unknown"

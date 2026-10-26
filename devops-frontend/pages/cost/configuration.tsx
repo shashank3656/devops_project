@@ -1,10 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import CostFirstRun from '../../components/CostFirstRun';
+import CostFreshnessStrip from '../../components/CostFreshnessStrip';
 import CostNav from '../../components/CostNav';
+import CostSearchSelect from '../../components/CostSearchSelect';
+import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { CostConfiguration, CostConnection, fetchCostJson, freshnessLabel, readinessLabel, sampleCUR2 } from '../../lib/cost';
+import { COST_TOKEN_KEY, CostConfiguration, CostConnection, fetchCostJson, freshnessLabel, readinessLabel, sampleCUR2, validateCostAllocation } from '../../lib/cost';
 
 export default function CostConfigurationPage() {
   const apiUrl = useApiUrl();
@@ -21,6 +25,8 @@ export default function CostConfigurationPage() {
   const [matchValue, setMatchValue] = useState('');
   const [ruleTeam, setRuleTeam] = useState('');
   const [ruleService, setRuleService] = useState('');
+  const [teamOptions, setTeamOptions] = useState<{ name: string; slug: string }[]>([]);
+  const [serviceOptions, setServiceOptions] = useState<string[]>([]);
 
   const load = () => {
     setLoading(true);
@@ -36,8 +42,44 @@ export default function CostConfigurationPage() {
       .finally(() => setLoading(false));
   };
 
+  const teamChoices = useMemo(() => {
+    const map = new Map<string, { value: string; label: string }>();
+    teamOptions.forEach((row) => {
+      const value = row.slug || row.name;
+      if (value) map.set(value, { value, label: row.name || row.slug });
+    });
+    (data?.connections || []).forEach((row) => {
+      if (row.team_slug && !map.has(row.team_slug)) {
+        map.set(row.team_slug, { value: row.team_slug, label: row.team_slug });
+      }
+    });
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [teamOptions, data]);
+
+  const serviceChoices = useMemo(
+    () => serviceOptions.map((name) => ({ value: name, label: name })),
+    [serviceOptions],
+  );
+
   useEffect(() => {
     load();
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const token = typeof window === 'undefined' ? '' : localStorage.getItem(COST_TOKEN_KEY) || '';
+    const headers = { Authorization: token ? `Bearer ${token}` : '' };
+    fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => (res.ok ? res.json() : {})).then((payload) => {
+      const rows = Array.isArray(payload?.teams) ? payload.teams : [];
+      setTeamOptions(rows.map((row: { name?: string; slug?: string }) => ({
+        name: String(row.name || '').trim(),
+        slug: String(row.slug || '').trim(),
+      })).filter((row: { name: string }) => row.name));
+    }).catch(() => setTeamOptions([]));
+    fetch(`${apiUrl}/api/devops/services?view=summary`, { headers }).then((res) => (res.ok ? res.json() : {})).then((payload) => {
+      const rows = Array.isArray(payload?.services) ? payload.services : Array.isArray(payload?.items) ? payload.items : [];
+      const names = rows.map((row: { service?: string; name?: string }) => String(row.service || row.name || '').trim()).filter(Boolean);
+      setServiceOptions([...new Set(names)].sort());
+    }).catch(() => setServiceOptions([]));
   }, [apiUrl]);
 
   const enable = async () => {
@@ -48,7 +90,7 @@ export default function CostConfigurationPage() {
         method: 'POST',
         body: JSON.stringify({ cloud_account_id: Number(accountId) }),
       });
-      setNotice('Cost is enabled on that account. Billing stays Unknown until a fixture or export is imported.');
+      setNotice('Cost is enabled on that account. Spend stays Unknown until billed data is imported.');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Cost could not be enabled.');
@@ -90,6 +132,11 @@ export default function CostConfigurationPage() {
   };
 
   const addRule = async () => {
+    const invalid = validateCostAllocation(matchType, matchValue, ruleTeam, ruleService);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     setActing('rule');
     setNotice('');
     try {
@@ -128,6 +175,23 @@ export default function CostConfigurationPage() {
     }
   };
 
+  const testConnection = async (connection: CostConnection) => {
+    setActing(`test-${connection.id}`);
+    setNotice('');
+    try {
+      const payload = await fetchCostJson<{ collection?: { note?: string } }>(apiUrl, `/api/cost/connections/${connection.id}/test`, {
+        method: 'POST',
+        body: '{}',
+      });
+      setNotice(payload.collection?.note || 'Connection test finished. Newer provider billing was not pulled.');
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Connection test could not run.');
+    } finally {
+      setActing('');
+    }
+  };
+
   const importFixture = async (connection: CostConnection, complete: boolean) => {
     setActing(`${connection.id}-${complete ? 'complete' : 'incomplete'}`);
     setNotice('');
@@ -137,11 +201,11 @@ export default function CostConfigurationPage() {
         body: JSON.stringify({ complete }),
       });
       setNotice(data.note || (complete
-        ? 'Complete fixture imported. Overview can show billed actual or amortized, never both added together.'
-        : 'Incomplete fixture imported. Overview stays Unknown for that window.'));
+        ? 'Complete billed data imported. Overview can show billed actual or amortized, never both added together.'
+        : 'Incomplete billed data imported. Overview stays Unknown for that window.'));
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Fixture could not be imported.');
+      setError(err instanceof Error ? err.message : 'Billed data could not be imported.');
     } finally {
       setActing('');
     }
@@ -154,10 +218,15 @@ export default function CostConfigurationPage() {
         <div className="cost-shell__head">
           <div>
             <h1 className="portal-page__title">Cost configuration</h1>
-            <p className="cost-shell__hint">Enable Cost on an existing AWS account in a project you can see. This page does not store billing credentials.</p>
+            <p className="cost-shell__hint">
+              {typeof data?.pilot === 'object' && data.pilot?.note
+                ? data.pilot.note
+                : 'Pilot: labelled AWS CUR 2.0 import. This page does not store billing credentials and does not pull CUR automatically.'}
+            </p>
           </div>
         </div>
         <CostNav current="configuration" />
+        <CostFreshnessStrip detail={data?.freshness_detail} />
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-info" role="status">{notice}</div> : null}
         <section className="portal-surface">
@@ -167,13 +236,18 @@ export default function CostConfigurationPage() {
           {!loading && data?.can_operate === false ? (
             <div className="empty-state">You can view spend. Cost operate is required to enable or import.</div>
           ) : null}
-          {!loading && data?.can_operate !== false && !(data?.eligible || []).length ? (
-            <div className="empty-state">No eligible AWS accounts in a project you can see. Assign the account to a project first, or Cost is already enabled on the ones you can see.</div>
+          {!loading && data?.can_operate !== false && !(data?.eligible || []).length && !(data?.connections || []).length ? (
+            <CostFirstRun canOperate title="No AWS accounts in a project you can see" primaryHref="/cloud-accounts" primaryLabel="Open cloud accounts" />
+          ) : null}
+          {!loading && data?.can_operate !== false && !(data?.eligible || []).length && (data?.connections || []).length ? (
+            <div className="empty-state">
+              Cost is already enabled on every AWS account you can operate. Ingest billed data on a connection below.
+            </div>
           ) : null}
           {data?.ai_proof ? (
-            <p className="portal-surface__subtitle">
-              Copilot proofs: {data.ai_proof.safe ?? 0} safe, {data.ai_proof.blocked ?? 0} blocked. {data.ai_proof.note}
-            </p>
+            <CostTechnicalDetails>
+              <p>Assistant checks: {data.ai_proof.safe ?? 0} allowed, {data.ai_proof.blocked ?? 0} blocked. {data.ai_proof.note}</p>
+            </CostTechnicalDetails>
           ) : null}
           {(data?.eligible || []).length && data?.can_operate !== false ? (
             <>
@@ -193,6 +267,49 @@ export default function CostConfigurationPage() {
           ) : null}
         </section>
         <section className="portal-surface portal-surface--table">
+          <h2 className="portal-surface__title">Collection</h2>
+          <p className="portal-surface__subtitle">On-demand labelled import only. Schedule stays Not scheduled until automated collection exists.</p>
+          {!(data?.collection || []).length ? (
+            <div className="empty-state">Enable Cost on an account to see source configuration and last success.</div>
+          ) : (
+            <table className="portal-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Test</th>
+                  <th>Schedule</th>
+                  <th>Last success</th>
+                  <th>Next run</th>
+                  <th>Retry</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.collection || []).map((row) => {
+                  const connection = (data?.connections || []).find((item) => item.id === row.connection_id);
+                  return (
+                    <tr key={row.connection_id}>
+                      <td>{row.configuration || row.source}</td>
+                      <td>{row.connection_test?.status || 'Unknown'}</td>
+                      <td>{row.schedule || 'On demand'}</td>
+                      <td>{row.last_success ? new Date(row.last_success).toLocaleString() : 'Unknown'}</td>
+                      <td>{row.next_run || 'Not scheduled'}</td>
+                      <td>{row.retry_status || 'idle'}</td>
+                      <td>
+                        {connection ? (
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={!!acting || data?.can_operate === false} onClick={() => void testConnection(connection)}>
+                            Test connection
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
+        <section className="portal-surface portal-surface--table">
           <h2 className="portal-surface__title">Connections</h2>
           {!(data?.connections || []).length ? (
             <div className="empty-state">No Cost connections yet.</div>
@@ -205,7 +322,7 @@ export default function CostConfigurationPage() {
                   <th>Inventory</th>
                   <th>Metrics</th>
                   <th>Freshness</th>
-                  <th>Fixture</th>
+                  <th>Billed data</th>
                 </tr>
               </thead>
               <tbody>
@@ -221,10 +338,10 @@ export default function CostConfigurationPage() {
                     <td>{freshnessLabel(row.freshness)}</td>
                     <td>
                       <button type="button" className="btn btn-secondary btn-sm" disabled={!!acting || data?.can_operate === false} onClick={() => void importFixture(row, true)}>
-                        Import complete
+                        Import complete bill
                       </button>{' '}
                       <button type="button" className="btn btn-secondary btn-sm" disabled={!!acting || data?.can_operate === false} onClick={() => void importFixture(row, false)}>
-                        Import incomplete
+                        Import incomplete bill
                       </button>
                     </td>
                   </tr>
@@ -275,7 +392,7 @@ export default function CostConfigurationPage() {
         <section className="portal-surface">
           <h2 className="portal-surface__title">Allocation rules</h2>
           <p className="portal-surface__subtitle">
-            Explicit resource, then product, then account, then CUR team tag, then the connection default, then Unallocated. Rules apply at query time and do not rewrite the ledger.
+            {data?.allocation_note || 'Rules are versioned. Editing stores a new effective date so previously billed days keep the ownership that was in force then.'}
           </p>
           <div className="portal-form-grid">
             <label className="label">Match
@@ -286,14 +403,29 @@ export default function CostConfigurationPage() {
               </select>
             </label>
             <label className="label">Value
-              <input className="input" value={matchValue} onChange={(event) => setMatchValue(event.target.value)} placeholder="i-0costc2api01" />
+              <input
+                className="input"
+                value={matchValue}
+                onChange={(event) => setMatchValue(event.target.value)}
+                placeholder={matchType === 'account' ? '12-digit account' : matchType === 'product' ? 'Product name' : 'Resource identifier'}
+              />
             </label>
-            <label className="label">Team
-              <input className="input" value={ruleTeam} onChange={(event) => setRuleTeam(event.target.value)} placeholder="platform-team" />
-            </label>
-            <label className="label">Portal service
-              <input className="input" value={ruleService} onChange={(event) => setRuleService(event.target.value)} placeholder="payments-api" />
-            </label>
+            <CostSearchSelect
+              id="cost-team"
+              label="Team"
+              value={ruleTeam}
+              onChange={setRuleTeam}
+              options={teamChoices}
+              placeholder="Search teams you can use"
+            />
+            <CostSearchSelect
+              id="cost-service"
+              label="Portal service"
+              value={ruleService}
+              onChange={setRuleService}
+              options={serviceChoices}
+              placeholder="Search services you can see"
+            />
           </div>
           <button type="button" className="btn btn-primary" disabled={!matchValue || !!acting || data?.can_operate === false} onClick={() => void addRule()}>
             {acting === 'rule' ? 'Saving…' : 'Save rule'}
@@ -306,6 +438,7 @@ export default function CostConfigurationPage() {
                   <th>Value</th>
                   <th>Team</th>
                   <th>Portal service</th>
+                  <th>Effective</th>
                   <th></th>
                 </tr>
               </thead>
@@ -316,6 +449,7 @@ export default function CostConfigurationPage() {
                     <td>{row.match_value}</td>
                     <td>{row.team_slug || 'Unallocated'}</td>
                     <td>{row.service_name || 'Unmapped'}</td>
+                    <td>{row.effective_from || 'Current'}{row.version ? ` · v${row.version}` : ''}</td>
                     <td>
                       <button type="button" className="btn btn-secondary btn-sm" disabled={!!acting || data?.can_operate === false} onClick={() => void removeRule(row.id)}>
                         Remove

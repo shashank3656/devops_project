@@ -36,13 +36,23 @@ interface SupportHubProps {
   remapIncidentCitationLinks?: boolean;
   seedQuestion?: string;
   onSeedConsumed?: () => void;
+  analysisMode?: boolean;
+  analysisContext?: string;
 }
 
 function matchesRoute(article: SupportArticle, currentPath: string): boolean {
   return article.routePrefixes.some((prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`) || currentPath.startsWith(prefix));
 }
 
-function buildGreeting(portalName: string, currentTitle: string, article: SupportArticle | null): ChatMessage {
+function buildGreeting(portalName: string, currentTitle: string, article: SupportArticle | null, analysisMode?: boolean, analysisContext?: string): ChatMessage {
+  if (analysisMode) {
+    return {
+      id: 'greeting',
+      role: 'assistant',
+      text: `This is Cost analysis, not Help. Answers cite billed scope, period, source evidence, and stored calculations.${analysisContext ? ` ${analysisContext}` : ''} Refreshing the page does not pull newer provider billing.`,
+      actions: article?.actions,
+    };
+  }
   const contextLine = article
     ? `You are on ${currentTitle}. A good place to start is "${article.title}".`
     : `You are on ${currentTitle}. Ask me about this page or common ${portalName} workflows.`;
@@ -134,6 +144,8 @@ export default function SupportHub({
   remapIncidentCitationLinks = false,
   seedQuestion,
   onSeedConsumed,
+  analysisMode = false,
+  analysisContext = '',
 }: SupportHubProps) {
   const [activeTab, setActiveTab] = useState<SupportTab>(initialTab);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -151,11 +163,11 @@ export default function SupportHub({
 
   useEffect(() => {
     if (!open) return;
-    setMessages([buildGreeting(portalName, currentTitle, contextArticle)]);
+    setMessages([buildGreeting(portalName, currentTitle, contextArticle, analysisMode, analysisContext)]);
     setInput('');
     setDocsQuery('');
     setSelectedCategory('All');
-  }, [open, portalName, currentTitle, contextArticle]);
+  }, [open, portalName, currentTitle, contextArticle, analysisMode, analysisContext]);
 
   useEffect(() => {
     if (!open) return;
@@ -245,7 +257,11 @@ export default function SupportHub({
         path: currentPath,
         title: currentTitle,
         portal: portalName,
-        context: { article: contextArticle?.title },
+        context: {
+          article: contextArticle?.title,
+          cost_analysis: analysisMode,
+          cost_context: analysisContext,
+        },
       }),
     })
       .then((res) => (res.ok ? res.json() : null))
@@ -272,18 +288,18 @@ export default function SupportHub({
   return (
     <>
       <div className="portal-assistant-overlay portal-assistant-overlay--open" onClick={onClose} />
-      <aside className="portal-assistant portal-assistant--open" role="dialog" aria-modal="true" aria-label={`${portalName} support assistant`}>
+      <aside className="portal-assistant portal-assistant--open" role="dialog" aria-modal="true" aria-label={analysisMode ? `${portalName} cost analysis` : `${portalName} support assistant`}>
         <div className="portal-assistant__header">
           <div>
-            <span className="portal-assistant__eyebrow">OpsTrellis Support</span>
-            <h2 className="portal-assistant__title">{portalName} assistant</h2>
-            <p className="portal-assistant__subtitle">Docs for this page.</p>
+            <span className="portal-assistant__eyebrow">{analysisMode ? 'Cost analysis' : 'OpsTrellis Support'}</span>
+            <h2 className="portal-assistant__title">{analysisMode ? 'Cost analysis assistant' : `${portalName} assistant`}</h2>
+            <p className="portal-assistant__subtitle">{analysisMode ? 'Billed scope, period, source evidence, and stored calculations.' : 'Docs for this page.'}</p>
           </div>
           <button ref={closeButtonRef} type="button" className="portal-assistant__close" onClick={onClose}>Close</button>
         </div>
         <div className="portal-assistant__tabs" role="tablist" aria-label="Support assistant tabs">
-          <button type="button" className={`portal-assistant__tab ${activeTab === 'chat' ? 'portal-assistant__tab--active' : ''}`} onClick={() => setActiveTab('chat')}>Support chat</button>
-          <button type="button" className={`portal-assistant__tab ${activeTab === 'docs' ? 'portal-assistant__tab--active' : ''}`} onClick={() => setActiveTab('docs')}>Documentation</button>
+          <button type="button" className={`portal-assistant__tab ${activeTab === 'chat' ? 'portal-assistant__tab--active' : ''}`} onClick={() => setActiveTab('chat')}>{analysisMode ? 'Cost analysis' : 'Support chat'}</button>
+          <button type="button" className={`portal-assistant__tab ${activeTab === 'docs' ? 'portal-assistant__tab--active' : ''}`} onClick={() => setActiveTab('docs')}>Help</button>
         </div>
         {activeTab === 'chat' ? (
           <div className="portal-assistant__body portal-assistant__body--chat">

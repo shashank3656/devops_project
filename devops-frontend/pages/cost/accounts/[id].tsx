@@ -2,9 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CostFreshnessStrip from '../../../components/CostFreshnessStrip';
 import CostKpiStrip from '../../../components/CostKpiStrip';
 import CostMixChart from '../../../components/CostMixChart';
 import CostNav from '../../../components/CostNav';
+import CostTechnicalDetails from '../../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import { CostAccountDashboard, budgetAlertLabel, costQuery, costToneForDisplay, costUnknownReason, downloadCostCSV, fetchCostCSV, fetchCostJson, importableLabel } from '../../../lib/cost';
@@ -65,6 +67,7 @@ export default function CostAccountDashboardPage() {
             { label: title },
           ]}
         />
+        <CostFreshnessStrip detail={data?.freshness_detail} />
         {error ? (
           <div className="alert alert-error" role="alert">
             {error}{' '}
@@ -209,7 +212,7 @@ export default function CostAccountDashboardPage() {
                   <span className="portal-surface__eyebrow">Suggestions</span>
                   <h2 className="portal-surface__title">Stored calculations, not actions</h2>
                   <p className="portal-surface__subtitle">
-                    Acceptance is not permission to execute. Copilot can cite CALC-COST IDs only.
+                    Acceptance is not permission to execute. Suggestions never resize or delete resources.
                   </p>
                 </div>
                 <Link href="/cost/optimization" className="btn btn-secondary btn-sm">Open optimization</Link>
@@ -218,9 +221,8 @@ export default function CostAccountDashboardPage() {
                 <table className="portal-table">
                   <thead>
                     <tr>
-                      <th>Calculation</th>
-                      <th>Family</th>
                       <th>Finding</th>
+                      <th>Family</th>
                       <th>Savings</th>
                       <th>Status</th>
                     </tr>
@@ -228,9 +230,8 @@ export default function CostAccountDashboardPage() {
                   <tbody>
                     {(data.suggestions || []).map((row) => (
                       <tr key={row.calc_id}>
-                        <td><Link href={row.href || '/cost/optimization'}>{row.calc_id}</Link></td>
+                        <td><Link href={row.href || '/cost/optimization'}>{row.finding_type}</Link></td>
                         <td>{row.family || 'Other'}</td>
-                        <td>{row.finding_type}</td>
                         <td>{row.savings_high?.display || 'Unknown'}</td>
                         <td>{row.blocked_reason || row.lifecycle || row.status}</td>
                       </tr>
@@ -240,6 +241,13 @@ export default function CostAccountDashboardPage() {
               ) : (
                 <p className="sre-meta__empty">No suggestions for this account yet. Import a complete window first.</p>
               )}
+              {(data.suggestions || []).length ? (
+                <CostTechnicalDetails>
+                  {(data.suggestions || []).map((row) => (
+                    <p key={row.calc_id}>{row.finding_type} · {row.calc_id}</p>
+                  ))}
+                </CostTechnicalDetails>
+              ) : null}
             </section>
             <p className="portal-surface__subtitle">{data.kubernetes?.note}</p>
             <p className="portal-surface__subtitle">{data.ai?.note || data.note}</p>

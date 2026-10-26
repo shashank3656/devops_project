@@ -322,18 +322,22 @@ func serveCostBudgets(w http.ResponseWriter, r *http.Request, userID int, parts 
 				return
 			}
 			var body struct {
-				Name       string `json:"name"`
-				ScopeType  string `json:"scope_type"`
-				ScopeValue string `json:"scope_value"`
-				Amount     string `json:"amount"`
-				Currency   string `json:"currency"`
-				Basis      string `json:"basis"`
+				Name        string `json:"name"`
+				ScopeType   string `json:"scope_type"`
+				ScopeValue  string `json:"scope_value"`
+				Amount      string `json:"amount"`
+				Currency    string `json:"currency"`
+				Basis       string `json:"basis"`
+				Period      string `json:"period"`
+				OwnerSlug   string `json:"owner_slug"`
+				WarnPercent int    `json:"warn_percent"`
+				OverPercent int    `json:"over_percent"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 				return
 			}
-			budget, err := createCostBudget(userID, body.Name, body.ScopeType, body.ScopeValue, body.Amount, body.Currency, body.Basis)
+			budget, err := createCostBudget(userID, body.Name, body.ScopeType, body.ScopeValue, body.Amount, body.Currency, body.Basis, body.Period, body.OwnerSlug, body.WarnPercent, body.OverPercent)
 			if err != nil {
 				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 				return
@@ -387,12 +391,14 @@ func serveCostAnomalies(w http.ResponseWriter, r *http.Request, userID int) {
 		"basis":              basis,
 		"currency":           currency,
 		"anomalies":          insights.Anomalies,
+		"insufficient_data":  insights.PriorCoverage != "complete",
 		"prior_window_start": insights.PriorWindowStart,
 		"prior_window_end":   insights.PriorWindowEnd,
 		"prior_coverage":     insights.PriorCoverage,
 		"notify_cost":        insights.NotifyCost,
+		"alerts":             costAlertStatus(insights.NotifyCost, insights.Coverage, insights.PriorCoverage),
 		"pauses_workloads":   false,
-		"note":               "Like-for-like anomalies need two complete windows. Incomplete coverage stays Unknown, never a drop to $0.",
+		"note":               "Like-for-like anomalies need two complete windows. Incomplete coverage stays Unknown, never a drop to $0. Alerts enabled is not monitoring ready.",
 	})
 }
 
@@ -583,18 +589,25 @@ func serveCostConfiguration(w http.ResponseWriter, r *http.Request, userID int) 
 		writeAPIError(w, r, http.StatusInternalServerError, "Allocation rules could not be loaded.", err)
 		return
 	}
+	collections := []map[string]any{}
+	for _, conn := range connections {
+		collections = append(collections, costCollectionView(conn))
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":      "ok",
-		"connections": connections,
-		"eligible":    eligible,
-		"batches":     batches,
-		"rules":       rules,
-		"pilot":       "AWS CUR 2.0",
-		"rbac":        "project",
-		"can_operate": userHasCostOperateAnywhere(userID),
-		"ai":          costAIPolicy(),
-		"ai_proof":    costAIProofSummary(listCostAIProofs(userID)),
-		"note":        "Enable Cost on an existing AWS account that already belongs to a project you can see. Cost visibility is project membership plus the Cost section. Import a labelled AWS CUR 2.0 export. Replay keeps one billed total. Demo inventory accounts are ignored. Allocation is applied at query time. Copilot never receives account IDs, passwords, or role names.",
+		"status":           "ok",
+		"connections":      connections,
+		"eligible":         eligible,
+		"batches":          batches,
+		"rules":            currentCostAllocationRules(rules, ""),
+		"allocation_note":  "Rules are versioned. Editing stores a new effective date so previously billed days keep the ownership that was in force then.",
+		"pilot":            costPilotScope(),
+		"collection":       collections,
+		"freshness_detail": costFreshnessDetail(connections, time.Now().UTC()),
+		"rbac":             "project",
+		"can_operate":      userHasCostOperateAnywhere(userID),
+		"ai":               costAIPolicy(),
+		"ai_proof":         costAIProofSummary(listCostAIProofs(userID)),
+		"note":             "Pilot: labelled AWS CUR 2.0 import. This product does not store billing credentials and does not pull CUR automatically. Enable Cost on an existing AWS account in a project you can see. Replay keeps one billed total. Demo inventory accounts are ignored.",
 	})
 }
 
@@ -707,6 +720,21 @@ func serveCostConnections(w http.ResponseWriter, r *http.Request, userID int, pa
 		})
 	case "import":
 		serveCostImport(w, r, userID, id)
+	case "test":
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w, r, http.MethodPost)
+			return
+		}
+		if !requireCostOperateOnConnection(w, r, userID, id) {
+			return
+		}
+		result, testErr := testCostConnection(userID, id)
+		if testErr != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "Connection test could not run.", testErr)
+			return
+		}
+		AppendAuditLog(&userID, "cost_connection_test", "cost_connection", strconv.Itoa(id), "")
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "collection": result, "ingested": false})
 	default:
 		writeAPIError(w, r, http.StatusNotFound, "Unknown Cost route.", nil)
 	}
