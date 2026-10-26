@@ -631,6 +631,7 @@ export type CostExplorer = {
   window_end?: string;
   ownership?: CostOwnership;
   pauses_workloads?: boolean;
+  can_operate?: boolean;
   note?: string;
 };
 
@@ -1218,7 +1219,7 @@ export function uniqueCostClouds(values: string[]): CostCloudId[] {
   return out;
 }
 
-export function parseCostProjectClouds(project: { clouds?: unknown; cloud?: string }): string[] {
+export function parseCostProjectClouds(project: { clouds?: unknown; cloud?: string }): CostCloudId[] {
   if (Array.isArray(project.clouds)) {
     return uniqueCostClouds(project.clouds.map((item) => String(item || '')));
   }

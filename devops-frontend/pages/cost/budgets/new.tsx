@@ -44,9 +44,7 @@ export default function CreateCostBudgetPage() {
           over_percent: Number(overPercent) || 100,
         }),
       });
-      const query = { ...router.query, saved: '1' };
-      delete query.sample;
-      void router.push({ pathname: '/cost/budgets', query });
+      void router.push(costHref('/cost/budgets', router.query, { saved: '1' }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Budget could not be saved.');
       setActing(false);
