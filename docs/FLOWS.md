@@ -279,7 +279,7 @@ Adding a project from this control also creates the group’s project link. Choo
 
 **Operations → Webhooks** (`/operations/webhooks`) is the inbound source list.
 
-Filters: search, use (change, alert, grafana, alertmanager, generic log), project (including any project), and status Ready or Off. Clear resets them.
+Filters: search, use (change, alert, grafana, alertmanager, generic log, Zenduty), project (including any project), and status Ready or Off. Clear resets them.
 
 Each row has **Sample**. It opens one example: the URL, copy URL, copy sample, and the JSON body. The change sample and the incident sample are different. The secret is not in the sample and is not on the page. The header name `X-CI-Secret` is shown so the caller knows which header to set.
 
@@ -292,7 +292,7 @@ Inbound calls that still create records:
 | `POST /api/webhooks/change` | Creates or updates a change |
 | `POST /api/webhooks/alerts` | Creates or updates an incident |
 | `POST /api/webhooks/iam-access` | Records the IAM grant after the access file is applied |
-| `POST /api/webhooks/irm` and `POST /api/webhooks/pagerduty` | Ack or resolve the matching incident |
+| `POST /api/webhooks/irm`, `POST /api/webhooks/pagerduty`, and `POST /api/webhooks/zenduty` | Create or update the matching incident |
 | `POST /api/webhooks/flags` | Creates a flag change |
 | `POST /api/webhooks/watch-metrics` | Feeds the change watcher |
 | `POST /api/webhooks/ci` | Terraform plan and apply news on an infrastructure ticket |

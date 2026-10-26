@@ -20,6 +20,8 @@ func normalizeIRMProvider(value string) string {
 		return "grafana"
 	case "opsgenie", "og":
 		return "opsgenie"
+	case "zenduty", "zd":
+		return "zenduty"
 	default:
 		return ""
 	}
@@ -64,11 +66,11 @@ func findIncidentByExternalRef(provider, externalID string) (*requestIncident, e
 func mapExternalIncidentStatus(provider, raw string) string {
 	value := strings.TrimSpace(strings.ToLower(raw))
 	switch value {
-	case "acknowledged", "ack", "acknowledged_by_user":
+	case "acknowledged", "ack", "acknowledge", "acknowledged_by_user", "incident.acknowledged", "1":
 		return "acknowledged"
-	case "resolved", "ok", "closed", "complete":
+	case "resolved", "ok", "closed", "complete", "resolve", "incident.resolved", "incident.closed", "2":
 		return "resolved"
-	case "triggered", "firing", "open", "unresolved":
+	case "triggered", "firing", "open", "unresolved", "create", "incident.triggered", "0":
 		return "open"
 	}
 	if provider == "grafana" && (value == "alerting" || value == "pending") {
@@ -170,6 +172,47 @@ func parseOpsgenieIRM(body []byte) (provider, externalID, status, title, service
 	return "opsgenie", externalID, status, title, service, fingerprint, true
 }
 
+func parseZendutyIRM(body []byte) (provider, externalID, status, title, service, fingerprint string, ok bool) {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return "", "", "", "", "", "", false
+	}
+	payload, _ := raw["payload"].(map[string]interface{})
+	incident, _ := raw["incident"].(map[string]interface{})
+	if incident == nil && payload != nil {
+		incident, _ = payload["incident"].(map[string]interface{})
+		if incident == nil && stringFromAny(payload["unique_id"]) != "" {
+			incident = payload
+		}
+	}
+	if incident == nil {
+		if data, ok := raw["data"].(map[string]interface{}); ok {
+			incident = data
+		}
+	}
+	if incident == nil {
+		return "", "", "", "", "", "", false
+	}
+	externalID = firstNonEmpty(stringFromAny(incident["unique_id"]), stringFromAny(incident["incident_unique_id"]), stringFromAny(raw["incident_unique_id"]))
+	if externalID == "" {
+		return "", "", "", "", "", "", false
+	}
+	status = firstNonEmpty(stringFromAny(raw["event_type"]), stringFromAny(raw["event"]), stringFromAny(incident["status"]))
+	if payload != nil {
+		status = firstNonEmpty(status, stringFromAny(payload["event_type"]))
+	}
+	status = strings.TrimPrefix(strings.ToLower(status), "incident.")
+	title = firstNonEmpty(stringFromAny(incident["title"]), stringFromAny(incident["summary"]), stringFromAny(raw["message"]))
+	if svc, ok := incident["service"].(map[string]interface{}); ok {
+		service = firstNonEmpty(stringFromAny(svc["name"]), stringFromAny(svc["unique_id"]))
+	}
+	if service == "" {
+		service = stringFromAny(incident["service"])
+	}
+	fingerprint = "zenduty/" + externalID
+	return "zenduty", externalID, status, title, service, fingerprint, true
+}
+
 func parseIRMWebhook(body []byte, hint string) (provider, externalID, status, title, service, fingerprint string, ok bool) {
 	hint = normalizeIRMProvider(hint)
 	if hint == "pagerduty" || hint == "" {
@@ -187,7 +230,28 @@ func parseIRMWebhook(body []byte, hint string) (provider, externalID, status, ti
 			return provider, externalID, status, title, service, fingerprint, true
 		}
 	}
+	if hint == "zenduty" || hint == "" {
+		if provider, externalID, status, title, service, fingerprint, ok = parseZendutyIRM(body); ok {
+			return provider, externalID, status, title, service, fingerprint, true
+		}
+	}
 	return "", "", "", "", "", "", false
+}
+
+func irmWebhookHint(r *http.Request) string {
+	path := strings.TrimRight(r.URL.Path, "/")
+	switch {
+	case strings.HasPrefix(path, "/api/webhooks/irm/"):
+		return strings.TrimPrefix(path, "/api/webhooks/irm/")
+	case path == "/api/webhooks/pagerduty":
+		return "pagerduty"
+	case path == "/api/webhooks/zenduty":
+		return "zenduty"
+	}
+	if q := strings.TrimSpace(r.URL.Query().Get("provider")); q != "" {
+		return q
+	}
+	return r.Header.Get("X-IRM-Provider")
 }
 
 func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
@@ -210,14 +274,7 @@ func irmWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusUnauthorized, "invalid secret", nil)
 		return
 	}
-	hint := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/webhooks/irm"), "/")
-	if hint == "" {
-		hint = r.URL.Query().Get("provider")
-	}
-	if hint == "" {
-		hint = r.Header.Get("X-IRM-Provider")
-	}
-	provider, externalID, status, title, service, fingerprint, ok := parseIRMWebhook(body, hint)
+	provider, externalID, status, title, service, fingerprint, ok := parseIRMWebhook(body, irmWebhookHint(r))
 	if !ok {
 		writeAPIError(w, r, http.StatusBadRequest, "unrecognized irm payload", nil)
 		return
@@ -296,6 +353,8 @@ func pushIncidentToExternalIRM(item requestIncident) {
 		pushGrafanaIncident(item)
 	case "opsgenie":
 		pushOpsgenieIncident(item)
+	case "zenduty":
+		pushZendutyIncident(item)
 	}
 }
 
@@ -397,6 +456,38 @@ func pushOpsgenieIncident(item requestIncident) {
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
+}
+
+func pushZendutyIncident(item requestIncident) {
+	key := os.Getenv("ZENDUTY_API_KEY")
+	if key == "" {
+		return
+	}
+	action := ""
+	switch item.Status {
+	case "acknowledged", "investigating", "mitigating":
+		action = "acknowledge"
+	case "resolved", "closed", "cancelled":
+		action = "resolve"
+	default:
+		return
+	}
+	req, err := http.NewRequest(http.MethodPost, "https://www.zenduty.com/api/incidents/"+urlPathEscape(item.ExternalID)+"/"+action+"/", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Token "+key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Printf("[IRM] zenduty push failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode >= 300 {
+		log.Printf("[IRM] zenduty push status=%d id=%s", resp.StatusCode, item.ExternalID)
+	}
 }
 
 func urlPathEscape(value string) string {

@@ -32,6 +32,10 @@ func normalizeInboundSourceKind(kind string) string {
 		return "generic_log"
 	case "alert", "alerts":
 		return "alert"
+	case "zenduty", "zd":
+		return "zenduty"
+	case "pagerduty", "pd":
+		return "pagerduty"
 	default:
 		return ""
 	}
@@ -50,7 +54,7 @@ func listEnabledInboundWebhookSecrets(kind string) []string {
 		  AND (
 		    $1 = ''
 		    OR kind = $1
-		    OR ($1 IN ('alert', 'grafana', 'alertmanager', 'generic_log') AND kind IN ('alert', 'grafana', 'alertmanager', 'generic_log'))
+		    OR ($1 IN ('alert', 'grafana', 'alertmanager', 'generic_log', 'zenduty', 'pagerduty') AND kind IN ('alert', 'grafana', 'alertmanager', 'generic_log', 'zenduty', 'pagerduty'))
 		    OR ($1 = 'change' AND kind = 'change')
 		  )
 	`, normalized)
@@ -110,7 +114,7 @@ func createInboundWebhookSource(kind, name, secret string, projectID *int) (*inb
 	kind = normalizeInboundSourceKind(kind)
 	name = strings.TrimSpace(name)
 	if kind == "" {
-		return nil, errInboundSource("kind must be change, grafana, alertmanager, generic_log, or alert")
+		return nil, errInboundSource("kind must be change, grafana, alertmanager, generic_log, alert, or zenduty")
 	}
 	if name == "" {
 		return nil, errInboundSource("name is required")

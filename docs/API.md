@@ -550,11 +550,11 @@ See the **Manual / webhook body** above. Extra fields CI usually sends: `files[]
 
 Secret: `ALERT_WEBHOOK_SECRET` (plus `CI_WEBHOOK_SECRET` and inbound sources of kind `alert` / `grafana` / `alertmanager` / `generic_log`).
 
-Accepts Grafana, Alertmanager, or a generic `{ fingerprint, severity, title, message, service, environment, status, labels }` body. Firing with the same fingerprint updates the same INC. Resolving marks it resolved. If a CHG for that service is still in its watch window, `suspected_change_id` is set. Labels `pagerduty_incident` / `grafana_alert_uid` / `opsgenie_alert` attach the IRM id.
+Accepts Grafana, Alertmanager, or a generic `{ fingerprint, severity, title, message, service, environment, status, labels }` body. Firing with the same fingerprint updates the same INC. Resolving marks it resolved. If a CHG for that service is still in its watch window, `suspected_change_id` is set. Labels `pagerduty_incident` / `grafana_alert_uid` / `opsgenie_alert` / `zenduty_incident` attach the IRM id.
 
 ### `POST /api/webhooks/irm` and `/api/webhooks/irm/:provider`
 
-Same alert secrets. PagerDuty, Grafana IRM, or Opsgenie payloads ack/resolve the matching INC (or open one). OpsTrellis also writes back on DevOps incident PATCH when `PAGERDUTY_API_KEY` / `GRAFANA_IRM_URL` / `OPSGENIE_API_KEY` are set.
+Same alert secrets. PagerDuty, Grafana IRM, Opsgenie, or Zenduty payloads create a matching INC on first event, then ack/resolve the same fingerprint. Dedicated aliases: `/api/webhooks/pagerduty`, `/api/webhooks/zenduty`. OpsTrellis writes back on DevOps incident PATCH when `PAGERDUTY_API_KEY` / `GRAFANA_IRM_URL` / `OPSGENIE_API_KEY` / `ZENDUTY_API_KEY` are set.
 
 ### `POST /mcp` and `GET /mcp`
 

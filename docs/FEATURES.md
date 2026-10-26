@@ -433,7 +433,7 @@ See **Kubernetes workspace (NF-02)** above for navigation and secure onboarding.
 | GitHub | `POST /api/webhooks/github` | PR events for Deploy intel briefs and check runs. |
 | Slack / Teams commands | `POST /api/webhooks/slack`, `/api/webhooks/teams` | ChatOps: on-call, status. |
 | Outbound events | Admin webhooks | OpsTrellis POSTs request/change/incident events to Slack or HTTP. |
-| IRM sync | `POST /api/webhooks/irm` | PagerDuty / Grafana IRM / Opsgenie ack-resolve writes back to the same INC fingerprint. |
+| IRM sync | `POST /api/webhooks/irm` | PagerDuty / Grafana IRM / Opsgenie / Zenduty create or ack-resolve the same INC fingerprint. |
 
 ---
 
@@ -446,7 +446,7 @@ Admin **People → SSO** turns on OIDC for User and DevOps. The login pages alre
 CI posts a GitHub Actions OIDC token to `POST /api/auth/workload/github` or a GitLab CI OIDC token to `POST /api/auth/workload/gitlab` (audience default `opstrellis`; `setuops` is still accepted). Self-hosted GitLab can set `GITLAB_OIDC_ISSUER` / `GITLAB_OIDC_JWKS_URL`. After verify, OpsTrellis can assume `AWS_WORKLOAD_ROLE_ARN` with the repo as subject (see W7). DevOps **Health → Identity** lists static keys, the last cloud-role exchange (no secrets), and recent verified tokens.
 
 ### Bidirectional incidents
-Alert labels `pagerduty_incident` / `grafana_alert_uid` attach an external id. Ack or resolve in OpsTrellis pushes to PagerDuty / Grafana IRM / Opsgenie. Those tools POST the same status to `/api/webhooks/irm` or `/api/webhooks/pagerduty`.
+Alert labels `pagerduty_incident` / `grafana_alert_uid` / `zenduty_incident` attach an external id. Ack or resolve in OpsTrellis pushes to PagerDuty / Grafana IRM / Opsgenie / Zenduty when that API key is set. Those tools POST the same status to `/api/webhooks/irm`, `/api/webhooks/pagerduty`, or `/api/webhooks/zenduty`. A new Zenduty incident opens a portal INC; later ack/resolve events update that same INC.
 
 ### SBOM / provenance on each CHG
 `POST /api/webhooks/change` accepts `sbom_url`, `attestation_url`, `image_digest`, optional `signed` / `provenance`. Detail pages and the Deploy intel repo last-change card show Signed or Unsigned. The Changes catalog webhook sample includes `summary`, `status`, and SBOM fields; see [CICD.md](./CICD.md) for single- and two-phase GitHub Actions jobs.

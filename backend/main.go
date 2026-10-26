@@ -1092,6 +1092,7 @@ func main() {
 	http.HandleFunc("/api/webhooks/irm", irmWebhookHandler)
 	http.HandleFunc("/api/webhooks/irm/", irmWebhookHandler)
 	http.HandleFunc("/api/webhooks/pagerduty", irmWebhookHandler)
+	http.HandleFunc("/api/webhooks/zenduty", irmWebhookHandler)
 	http.HandleFunc("/api/webhooks/flags", flagWebhookHandler)
 	http.HandleFunc("/api/otlp/v1/metrics", otlpMetricsHandler)
 	http.HandleFunc("/v1/metrics", otlpMetricsHandler)
