@@ -139,7 +139,7 @@ export default function CostBudgetsPage() {
               <div><dt>Delivery verified</dt><dd>{anomalies?.alerts?.delivery_verified ? 'Yes' : 'No'}</dd></div>
               <div><dt>Evaluation</dt><dd>{anomalies?.alerts?.blocked_reason || (anomalies?.alerts?.monitoring_ready ? 'Ready' : 'Unknown')}</dd></div>
             </dl>
-            {Boolean(anomalies?.insufficient_data) || (!(anomalies?.anomalies || []).length && (anomalies?.prior_coverage || 'none') !== 'complete') ? (
+            {(Boolean(anomalies?.insufficient_data) || (!(anomalies?.anomalies || []).length && (anomalies?.prior_coverage || 'none') !== 'complete')) ? (
               <CostFirstRun canOperate title="Not enough comparable data" primaryLabel="Ingest billed data" />
             ) : (anomalies?.anomalies || []).length ? (
               <section className="portal-surface portal-surface--table">
@@ -175,6 +175,7 @@ export default function CostBudgetsPage() {
           </>
         ) : null}
         {tab === 'budgets' ? (
+          <>
         <section className="portal-surface">
           <h2 className="portal-surface__title">Add a budget</h2>
           <div className="portal-form-grid">
@@ -262,6 +263,7 @@ export default function CostBudgetsPage() {
             <p className="portal-surface__subtitle">{data?.note}</p>
           </section>
         ) : null}
+          </>
         ) : null}
       </div>
     </DevOpsLayout>
