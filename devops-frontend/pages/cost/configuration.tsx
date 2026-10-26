@@ -343,6 +343,7 @@ export default function CostConfigurationPage() {
           <CostFirstRun canOperate title="No cloud accounts in a project you can see" primaryHref="/cloud-accounts" primaryLabel="Open cloud accounts" />
         ) : null}
         {showAwsEnable ? (
+        <>
         <section className="portal-surface portal-surface--table">
           <h2 className="portal-surface__title">Collection</h2>
           <p className="portal-surface__subtitle">On-demand labelled import only. Schedule stays Not scheduled until automated collection exists.</p>
@@ -427,6 +428,7 @@ export default function CostConfigurationPage() {
             </table>
           )}
         </section>
+        </>
         ) : null}
         {showAwsEnable ? (
         <section className="portal-surface">
