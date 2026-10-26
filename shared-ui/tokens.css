@@ -59,13 +59,13 @@ html[data-theme='light'] {
   --ig-font: var(--font-roboto), sans-serif;
   --ig-mono: var(--font-mono);
 
-  --ig-text-xs: 12px;
-  --ig-text-sm: 13px;
-  --ig-text-md: 15px;
-  --ig-text-lg: 18px;
-  --ig-text-xl: 20px;
-  --ig-text-2xl: 26px;
-  --ig-text-3xl: 34px;
+  --ig-text-xs: 11px;
+  --ig-text-sm: 12px;
+  --ig-text-md: 13px;
+  --ig-text-lg: 14px;
+  --ig-text-xl: 16px;
+  --ig-text-2xl: 20px;
+  --ig-text-3xl: 24px;
 
   --ig-space-1: 4px;
   --ig-space-2: 8px;

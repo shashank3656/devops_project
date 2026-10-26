@@ -28,14 +28,17 @@ export default function RecordDocuments({
 }: {
   apiUrl: string;
   kind: RecordDocumentKind;
-  recordId: number;
+  recordId: number | string;
 }) {
   const [items, setItems] = useState<RecordDocument[]>([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const path = `/api/devops/${kind}/${recordId}/documents`;
+  const numericId = typeof recordId === 'number' ? recordId : Number(recordId);
+  const path = Number.isSafeInteger(numericId) && numericId > 0
+    ? `/api/devops/${kind}/${numericId}/documents`
+    : '';
 
   function authHeaders() {
     return { Authorization: `Bearer ${localStorage.getItem(DEVOPS_TOKEN_KEY) || ''}` };
@@ -43,7 +46,7 @@ export default function RecordDocuments({
 
   async function load() {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || !recordId) return;
+    if (!token || !path) return;
     setLoading(true);
     setError('');
     try {
@@ -69,7 +72,7 @@ export default function RecordDocuments({
 
   async function upload(file: File) {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token || !recordId) return;
+    if (!token || !path) return;
     setUploading(true);
     setError('');
     setNotice('');
@@ -101,7 +104,7 @@ export default function RecordDocuments({
 
   async function download(item: RecordDocument) {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) return;
+    if (!token || !path) return;
     setError('');
     try {
       const response = await fetch(`${apiUrl}${path}/${item.id}`, { headers: authHeaders() });
@@ -125,7 +128,7 @@ export default function RecordDocuments({
 
   async function remove(item: RecordDocument) {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) return;
+    if (!token || !path) return;
     setError('');
     try {
       const response = await fetch(`${apiUrl}${path}/${item.id}`, {

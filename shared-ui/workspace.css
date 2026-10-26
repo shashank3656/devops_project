@@ -16,10 +16,10 @@
 }
 
 .ig-page-header h1 {
-  font-size: 28px;
-  letter-spacing: -0.04em;
-  line-height: 1.15;
-  margin: 0 0 8px;
+  font-size: var(--ig-text-2xl, 20px);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  margin: 0 0 6px;
 }
 
 .ig-page-header p,
@@ -522,18 +522,18 @@
 .desk-landing h1,
 .desk-landing h2 {
   margin: 0;
-  font-size: 32px;
+  font-size: var(--ig-text-2xl, 20px);
   font-weight: 600;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
   color: var(--ig-text);
 }
 
 .desk-landing p {
   margin: 0;
   color: var(--ig-muted);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: var(--ig-text-md, 13px);
+  line-height: 1.45;
 }
 
 .desk-language__panel {
