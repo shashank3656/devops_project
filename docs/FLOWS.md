@@ -283,7 +283,7 @@ Filters: search, use (change, alert, grafana, alertmanager, generic log, Zenduty
 
 Each row has **Sample**. It opens one example: the URL, copy URL, copy sample, and the JSON body. The change sample and the incident sample are different. The secret is not in the sample and is not on the page. The header name `X-CI-Secret` is shown so the caller knows which header to set.
 
-**New** (`/operations/webhooks/new`) adds a source. The stored value is a hash. The raw secret is not returned later.
+**New** (`/operations/webhooks/new`) adds a source. Generate an X-CI-Secret, copy it, then send that value in the `X-CI-Secret` header. The value is shown for five minutes on that page only. Later GET lists return `has_secret` and never the secret.
 
 Inbound calls that still create records:
 

@@ -95,7 +95,7 @@ export default function WebhooksPage() {
   }, [apiUrl]);
 
   useEffect(() => {
-    if (router.query.created === '1') setNotice('Webhook saved. Send the secret in the X-CI-Secret header. It will not be shown again.');
+    if (router.query.created === '1') setNotice('Webhook saved. Send the copied value in the X-CI-Secret header. It cannot be shown again.');
   }, [router.query.created]);
 
   async function copy(label: string, value: string) {

@@ -167,7 +167,7 @@ Primary nav: Home, Approvals, Requests, People, Projects, Catalog, More. Mobile 
 | Feature | Page | How it works |
 | --- | --- | --- |
 | Outbound webhooks | `/webhooks`, `/webhooks/new` | Slack / generic HTTP destinations for request and change events. |
-| Inbound sources | `/webhooks/inbound/new` | Extra secrets for change/alert webhooks besides env vars. Stored hashed; used by `inboundWebhookAuthorized`. |
+| Inbound sources | `/webhooks/inbound/new` | Extra secrets for change/alert webhooks besides env vars. Shown once for five minutes; later lists return `has_secret` only. |
 | Changes (read) | `/changes`, `/changes/[id]` | `GET /api/admin/changes`. Full catalog. No create. |
 | Incidents (read) | `/incidents`, `/incidents/[id]` | `GET /api/admin/incidents`. Full catalog. No create. |
 | Deploy intel feed | `/deploy-intelligence` | `GET /api/admin/deploy-intelligence/feed`. Read-only stream of briefs. |
@@ -208,7 +208,7 @@ Primary nav: Home, Requests, **ITSM**, then (managers only) Deployments, Kuberne
 | --- | --- | --- |
 | Catalog | `/changes` | `GET /api/devops/changes`. Filters: `project_id`, `environment`, `status`, `q`, `change_type`. Webhook sample is on this page. |
 | New change | `/changes/new` | `POST /api/devops/changes`. Title required. Service from Services catalog. Assigned to = all portal users (`GET /api/devops/users?audience=portal`). No environment field (filled from service map or stored as `unspecified`). No files field. Priority, risk, planned window, impact, backout. If repo/sha empty, backend sets `repo=manual` and `sha=manual-{nano}`. |
-| Change detail | `/changes/[id]` | `GET /api/devops/changes/:id` includes **delivery** (repo, SHA, pipeline links, rollout/promote state). Actions: Resolve, Close, Fail, Cancel, Reopen, CAB approve. Resolve/close blocked while linked incidents are open. A clean watch auto-resolves. |
+| Change detail | `/changes/[id]` | `GET /api/devops/changes/:id` includes **delivery** (repo, SHA, pipeline links, rollout/promote state). Actions: Resolve, Close, Fail, Cancel, Reopen, CAB approve. Documents upload to the Incidents S3 bucket. Resolve/close blocked while linked incidents are open. A clean watch auto-resolves. |
 | Services catalog | `/services` | `GET /api/devops/services`. Feeds the CHG dropdown. |
 | Add service | `/services/new` | `POST /api/devops/services`. Name + project (and optional default env). |
 | Service detail | `/services/[id]` | `GET /api/devops/services/:id`. |
@@ -356,9 +356,9 @@ Service desk links incidents, changes, and problems. The record pages are facts 
 | --- | --- | --- |
 | Open incidents | `/incidents` | `GET /api/devops/incidents`. Priority P1–P4, ServiceNow states, assignment group vs assignee, and response/resolve SLA clocks. |
 | New incident | `/incidents/new` | `POST /api/devops/incidents`. Caller, category/subcategory, optional parent INC, impact × urgency, work note vs customer comment. |
-| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. SLA clocks, journal, child incidents, major-incident conference. The first time it becomes major, Slack is posted and today’s on-call roster is paged. |
+| Edit / assign | `/incidents/[id]/edit` | `PATCH /api/devops/incidents/:id`. SLA clocks, journal, S3 document upload, child incidents, major-incident conference. The first time it becomes major, Slack is posted and today’s on-call roster is paged. |
 | Incident workspace | `/incident-workspace` | Shared notes while an INC is major. |
-| Problems | `/problems`, `/problems/new`, `/problems/[id]` | Search and state filter on the list. Known error is a checkbox on the record. Recurring alerts still open a problem after three hits. |
+| Problems | `/problems`, `/problems/new`, `/problems/[id]` | Search and state filter on the list. Known error is a checkbox on the record. Recurring alerts still open a problem after three hits. Documents upload to the Incidents S3 bucket. |
 | Knowledge | `/knowledge`, `/knowledge/[id]` | Publish a KB article once the problem is a known error or has a workaround (`POST /api/devops/problems/:id/knowledge`). |
 
 Alert-created incidents skip the form: Grafana POSTs `/api/webhooks/alerts`. Same fingerprint updates the existing INC.
@@ -417,7 +417,7 @@ See **Kubernetes workspace (NF-02)** above for navigation and secure onboarding.
 | On-call | `/on-call`, `/on-call/onboard`, `/on-call/projects` | Calendar, onboard a project’s teams, day click shows that day’s team and users, cover requests email both people. See [FLOWS.md](./FLOWS.md#on-call). |
 | IAM access | `/iam`, `/iam/request`, `/iam/approvals` | Access request `AR-…`. DevOps approves. The grant is recorded only after `POST /api/webhooks/iam-access`. See [FLOWS.md](./FLOWS.md#iam-access). |
 | Maintenance windows | `/maintenance`, `/maintenance/new`, `/maintenance/[id]` | Manager, then DevOps manager, then admin. Approve and Reject on the current step only. See [FLOWS.md](./FLOWS.md#maintenance). |
-| Inbound webhook sources | `/operations/webhooks` | Filter the list. Sample shows one example and never the secret. |
+| Inbound webhook sources | `/operations/webhooks` | Filter the list. Generate an X-CI-Secret, copy it, and send that value in the header. After five minutes the value cannot be shown again. Sample never includes the secret. |
 | Saved views | lists | `GET/POST /api/devops/saved-views`. Persist filters. |
 
 ---

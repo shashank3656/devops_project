@@ -12533,3 +12533,49 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
     transition: none;
   }
 }
+
+.webhook-secret-reveal {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.webhook-secret-reveal__value {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #192238;
+  color: #f5f7fc;
+  font-size: 13px;
+}
+
+.webhook-secret-reveal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.webhook-secret-reveal__timer {
+  color: #58677f;
+  font-size: 13px;
+}
+
+.record-docs {
+  margin-top: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.record-docs__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.record-docs__actions {
+  display: flex;
+  gap: 8px;
+}

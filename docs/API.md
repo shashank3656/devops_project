@@ -199,7 +199,7 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | POST | `/api/admin/sso/sync` | admin | — | Run directory sync now. |
 | GET | `/api/admin/sso/audit` | admin | — | SSO audit entries. |
 | GET | `/api/admin/inbound-sources` | admin | — | Extra inbound secrets (kinds: `change`, `alert`, `grafana`, …). |
-| POST | `/api/admin/inbound-sources` | admin | `{ kind, name, secret }` | Add a source. Secret is stored hashed. |
+| POST | `/api/admin/inbound-sources` | admin | `{ kind, name, secret }` or `{ kind, name, generate: true }` | Add a source. Create response includes `secret` and `reveal_seconds` (300) once. GET lists return `has_secret` only. |
 | PATCH/DELETE | `/api/admin/inbound-sources/:id` | admin | — | Disable or remove. |
 | GET | `/api/admin/changes` | admin | same filters as DevOps list | Full CHG catalog (read). |
 | GET | `/api/admin/changes/:id` | admin | — | One CHG (read). Includes cost delta, policy status, `blast_radius`, and live-vs-CHG `drift`. |
@@ -263,6 +263,8 @@ JSON: `{ "error": "<message>", "status": "error" }`. Common codes: `400` bad inp
 | GET | `/api/devops/changes?mode=preview` | manager | — | Next `change_number` for the form. |
 | POST | `/api/devops/changes` | manager | see body below | Manual create. Title required. Environment not required. |
 | GET | `/api/devops/changes/:id` | manager | — | `{ change, change_brief, linked_incidents, blast_radius, drift, delivery }`. |
+| GET/POST | `/api/devops/changes/:id/documents` | devops | multipart `file` | List or upload a file to the Incidents S3 bucket. |
+| GET/DELETE | `/api/devops/changes/:id/documents/:docId` | devops | — | Download or remove. |
 | PATCH | `/api/devops/changes/:id` | manager | `{ status }` | Move status (`resolved`, `closed`, `failed`, `cancelled`, `implementing` / `reopen`). Blocked if linked incidents are still open. |
 | POST | `/api/devops/changes/:id/resolve` | manager | — | Watch/deploy succeeded. |
 | POST | `/api/devops/changes/:id/close` | manager | — | Formal close. Prefer after resolved. |
@@ -332,6 +334,8 @@ Omit `environment` so `service_map` can fill service / project / env. If `repo` 
 | POST | `/api/devops/incidents` | manager | `{ title, severity, source, request_id, caller_user_id, category, subcategory, parent_incident_id, … }` | Manual INC. `request_id` optional. Sets P1–P4 SLA clocks. |
 | GET | `/api/devops/incidents/:id` | manager | — | Incident plus `rollback`, `review`, `postmortem`, `journal`, children, and SLA. |
 | PATCH | `/api/devops/incidents/:id` | manager | status / owner / catalogs / conference | Update. In Progress meets response SLA; Resolved meets resolve SLA. |
+| GET/POST | `/api/devops/incidents/:id/documents` | manager | multipart `file` | List or upload a file to the Incidents S3 bucket. Metadata only in Postgres. |
+| GET/DELETE | `/api/devops/incidents/:id/documents/:docId` | manager | — | Download or remove. Download streams from S3. |
 | GET/POST | `/api/devops/incidents/:id/journal` | manager | `{ kind, body }` | Work note (`work_note`) or customer comment (`comment`). |
 | GET/POST | `/api/devops/incidents/:id/review` | manager | — | Read or generate a PIR draft from the INC timeline. Does not create a new ticket. Completed reviews are left alone. |
 | POST | `/api/devops/incidents/:id/rollback` | manager | — | Record emergency CHG to the linked change `previous_sha`. Does not apply. |
@@ -341,6 +345,8 @@ Omit `environment` so `service_map` can fill service / project / env. If `repo` 
 | GET | `/api/devops/problems` | devops | — | Problem records. |
 | POST | `/api/devops/problems` | manager | problem fields | Create. |
 | GET | `/api/devops/problems/:id` | manager | — | Detail + journal + linked KB. |
+| GET/POST | `/api/devops/problems/:id/documents` | manager | multipart `file` | List or upload a file to the Incidents S3 bucket. |
+| GET/DELETE | `/api/devops/problems/:id/documents/:docId` | manager | — | Download or remove. |
 | POST | `/api/devops/problems/:id/journal` | manager | `{ kind, body }` | Work note or customer comment. |
 | POST | `/api/devops/problems/:id/knowledge` | manager | — | Publish a KB article from a known error. |
 | GET | `/api/devops/knowledge` | devops | — | Knowledge articles. |

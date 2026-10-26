@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
+import RecordDocuments from '../../components/RecordDocuments';
 import ExecutionStage from '../../components/ExecutionStage';
 import {
   buildPortalApiUrl,
@@ -232,6 +233,7 @@ export default function ChangeDetailPage() {
         {item ? (
           <>
             <ChangeDetailPanel item={item} actions={detailActions} />
+            {resourceId ? <RecordDocuments apiUrl={apiUrl} kind="changes" recordId={resourceId} /> : null}
             <ResourceContextPanel
               apiUrl={apiUrl}
               token={token}

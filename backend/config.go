@@ -68,6 +68,10 @@ var (
 	OpenTelemetryInsecure      = getEnvBool("OTEL_EXPORTER_OTLP_INSECURE", true)
 	OpenTelemetrySampleRatio   = getEnvFloat("OTEL_TRACES_SAMPLER_RATIO", 1.0)
 	OpenTelemetryMetricSeconds = getEnvDurationSeconds("OTEL_METRICS_EXPORT_INTERVAL_SECONDS", 30*time.Second)
+
+	// RecordDocsS3Bucket stores incident, change, and problem files. Postgres holds metadata only.
+	RecordDocsS3Bucket = getEnv("RECORD_DOCS_S3_BUCKET", "")
+	RecordDocsS3Prefix = getEnv("RECORD_DOCS_S3_PREFIX", "Incidents")
 )
 
 func init() {
@@ -108,6 +112,8 @@ func reloadConfigFromEnv() {
 	OpenTelemetryInsecure = getEnvBool("OTEL_EXPORTER_OTLP_INSECURE", true)
 	OpenTelemetrySampleRatio = getEnvFloat("OTEL_TRACES_SAMPLER_RATIO", 1.0)
 	OpenTelemetryMetricSeconds = getEnvDurationSeconds("OTEL_METRICS_EXPORT_INTERVAL_SECONDS", 30*time.Second)
+	RecordDocsS3Bucket = getEnv("RECORD_DOCS_S3_BUCKET", "")
+	RecordDocsS3Prefix = getEnv("RECORD_DOCS_S3_PREFIX", "Incidents")
 }
 
 func applyRedisURLFromEnv() {

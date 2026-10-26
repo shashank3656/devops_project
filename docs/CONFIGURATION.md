@@ -56,6 +56,8 @@ docker compose --env-file config/.env --profile dev up -d --build
 | `OTEL_*` | OpenTelemetry tracing and metrics |
 | `AWS_WORKLOAD_ROLE_ARN` | Optional IAM role assumed after GitHub/GitLab OIDC verify (repo as subject) |
 | `GCP_WORKLOAD_SERVICE_ACCOUNT` | Optional GCP SA recorded after OIDC verify; no GCP key is minted |
+| `RECORD_DOCS_S3_BUCKET` | S3 bucket for incident, change, and problem files. Postgres stores metadata only. Upload fails if unset. |
+| `RECORD_DOCS_S3_PREFIX` | Optional key prefix. Default `Incidents`. |
 
 ### Kubernetes cluster connections (DevOps)
 
