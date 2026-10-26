@@ -9,11 +9,25 @@ import { PageHeader } from '@infragate/ui';
 
 const TOKEN_KEY = 'devops_token';
 const USER_KEY = 'devops_user';
+const REVEAL_MS = 5 * 60 * 1000;
 
 interface ProjectOption {
   id: number;
   name: string;
   code?: string;
+}
+
+function generateCISecret() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+function formatRemain(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 export default function NewWebhookPage() {
@@ -26,6 +40,11 @@ export default function NewWebhookPage() {
   const [projectId, setProjectId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [revealUntil, setRevealUntil] = useState(0);
+  const [remainMs, setRemainMs] = useState(REVEAL_MS);
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -48,19 +67,62 @@ export default function NewWebhookPage() {
       .catch(() => setProjects([]));
   }, [apiUrl, router]);
 
+  useEffect(() => {
+    if (!revealUntil) return undefined;
+    const tick = () => {
+      const left = revealUntil - Date.now();
+      if (left <= 0) {
+        setSecret('');
+        setRevealUntil(0);
+        setRemainMs(0);
+        setHidden(true);
+        return;
+      }
+      setRemainMs(left);
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [revealUntil]);
+
+  function startReveal(value: string) {
+    setSecret(value);
+    setHidden(false);
+    setRevealUntil(Date.now() + REVEAL_MS);
+    setRemainMs(REVEAL_MS);
+  }
+
+  function generate() {
+    startReveal(generateCISecret());
+    setCopied(false);
+    setError('');
+  }
+
+  async function copySecret() {
+    if (!secret) return;
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   async function createSecret(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) {
       setError('Enter a name.');
       return;
     }
-    if (!secret.trim()) {
-      setError('Enter an X-CI-Secret. It is sent once and is not shown again.');
+    if (hidden && !secret.trim()) {
+      setError('Generate a new X-CI-Secret. The previous value can no longer be shown.');
       return;
     }
     setSaving(true);
     setError('');
     try {
+      const generated = !secret.trim();
       const response = await fetch(`${apiUrl}/api/devops/inbound-sources`, {
         method: 'POST',
         headers: {
@@ -70,7 +132,8 @@ export default function NewWebhookPage() {
         body: JSON.stringify({
           name: name.trim(),
           kind,
-          secret,
+          secret: secret.trim(),
+          generate: generated,
           project_id: projectId ? Number(projectId) : null,
         }),
       });
@@ -84,13 +147,17 @@ export default function NewWebhookPage() {
       if (!response.ok) {
         throw new Error(typeof body.error === 'string' ? body.error : 'Could not save the webhook');
       }
-      await router.push('/operations/webhooks?created=1');
+      const revealed = typeof body.secret === 'string' ? body.secret.trim() : secret.trim();
+      if (revealed) startReveal(revealed);
+      setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the webhook');
     } finally {
       setSaving(false);
     }
   }
+
+  const showingSecret = Boolean(secret) && !hidden;
 
   return (
     <DevOpsLayout>
@@ -99,39 +166,78 @@ export default function NewWebhookPage() {
         <PageHeader
           eyebrow="Operations"
           title="Create webhook"
-          subtitle="One secret per caller. A change secret opens a change. An incident, Grafana, Alertmanager, or log secret opens an incident."
+          subtitle="Generate an X-CI-Secret, copy it, then send that value in the X-CI-Secret header. After five minutes it cannot be shown again."
           actions={<Link href="/operations/webhooks" className="btn btn-secondary">Back to webhooks</Link>}
         />
         {error ? <div className="alert alert-error">{error}</div> : null}
-        <form className="portal-surface portal-form-grid" onSubmit={(event) => void createSecret(event)}>
-          <label className="label">
-            Name
-            <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Checkout deploy" required />
-          </label>
-          <label className="label">
-            Use
-            <select className="input" value={kind} onChange={(event) => setKind(event.target.value as WebhookUse)}>
-              {WEBHOOK_USES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-          </label>
-          <label className="label">
-            X-CI-Secret
-            <input className="input" type="password" autoComplete="new-password" value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Paste a secret for this caller" required />
-          </label>
-          <label className="label">
-            Project
-            <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-              <option value="">Any project</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>{project.code || project.name}</option>
-              ))}
-            </select>
-          </label>
-          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
-            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Create webhook'}</button>
-            <Link href="/operations/webhooks" className="btn btn-secondary">Cancel</Link>
+        {saved ? <div className="alert alert-success">Webhook saved. Copy the secret now if you have not already.</div> : null}
+        {showingSecret ? (
+          <div className="portal-surface webhook-secret-reveal">
+            <p className="portal-surface__subtitle">X-CI-Secret</p>
+            <code className="webhook-secret-reveal__value">{secret}</code>
+            <div className="webhook-secret-reveal__actions">
+              <button type="button" className="btn btn-primary" onClick={() => void copySecret()}>
+                {copied ? 'Copied' : 'Copy secret'}
+              </button>
+              <span className="webhook-secret-reveal__timer">Visible for {formatRemain(remainMs)}</span>
+            </div>
+            <p className="chg-detail__hint">Send that value in the X-CI-Secret header. Lists and later visits will not show it.</p>
           </div>
-        </form>
+        ) : null}
+        {hidden ? (
+          <div className="alert">This value can no longer be shown. Send the copied secret in the X-CI-Secret header.</div>
+        ) : null}
+        {saved ? (
+          <div style={{ marginTop: 16 }}>
+            <Link href="/operations/webhooks" className="btn btn-primary">Back to webhooks</Link>
+          </div>
+        ) : (
+          <form className="portal-surface portal-form-grid" onSubmit={(event) => void createSecret(event)}>
+            <label className="label">
+              Name
+              <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Checkout deploy" required />
+            </label>
+            <label className="label">
+              Use
+              <select className="input" value={kind} onChange={(event) => setKind(event.target.value as WebhookUse)}>
+                {WEBHOOK_USES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </label>
+            <div className="label" style={{ gridColumn: '1 / -1' }}>
+              X-CI-Secret
+              {showingSecret ? (
+                <input className="input" type="text" readOnly value={secret} />
+              ) : (
+                <input className="input" type="password" autoComplete="new-password" value="" readOnly placeholder="Generate a secret, then copy it" />
+              )}
+              <div className="webhook-secret-reveal__actions" style={{ marginTop: 8 }}>
+                <button type="button" className="btn btn-secondary" onClick={generate} disabled={saving}>
+                  Generate
+                </button>
+                {showingSecret ? (
+                  <span className="chg-detail__hint">Copy it before {formatRemain(remainMs)} runs out.</span>
+                ) : (
+                  <span className="chg-detail__hint">Generate a value, copy it, then create the webhook.</span>
+                )}
+              </div>
+            </div>
+            <label className="label">
+              Project
+              <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                <option value="">Any project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.code || project.name}</option>
+                ))}
+              </select>
+            </label>
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
+              <button type="submit" className="btn btn-primary" disabled={saving || (!secret.trim() && hidden)}>
+                {saving ? 'Saving...' : 'Create webhook'}
+              </button>
+              <Link href="/operations/webhooks" className="btn btn-secondary">Cancel</Link>
+            </div>
+          </form>
+        )}
       </div>
     </DevOpsLayout>
   );

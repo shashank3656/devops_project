@@ -204,6 +204,7 @@ Auth: User / Admin / DevOps send `Authorization: Bearer …`. Admin may send `X-
 | POST | `/api/webhooks/flags` | `CHANGE_WEBHOOK_SECRET` |
 | POST | `/api/otlp/v1/metrics` | change / alert secret |
 | POST | `/api/webhooks/irm` | `ALERT_WEBHOOK_SECRET` |
+| POST | `/api/webhooks/zenduty` | `ALERT_WEBHOOK_SECRET` |
 | POST | `/api/webhooks/alerts` | `ALERT_WEBHOOK_SECRET` |
 | POST | `/api/webhooks/watch-metrics` | alert / CI secret |
 | POST | `/api/webhooks/ci` | `CI_WEBHOOK_SECRET` |

@@ -22,6 +22,16 @@ type Member = { user_id: number; username: string; role: string };
 type K8sLevel = 'none' | 'read' | 'write';
 type K8sLink = { project_id: number; name: string; k8s_access: K8sLevel };
 type K8sProject = { id: number; name: string };
+type CostLevel = 'view' | 'operate';
+type CostLink = { project_id: number; name: string; cost_access: CostLevel };
+
+function asCostLevel(value: unknown): CostLevel {
+  return value === 'view' ? 'view' : 'operate';
+}
+
+function costLinkKey(links: CostLink[]): string {
+  return links.map((link) => `${link.project_id}:${link.cost_access}`).sort().join('|');
+}
 
 function asK8sLevel(value: unknown): K8sLevel {
   return value === 'none' || value === 'write' || value === 'read' ? value : 'read';
@@ -62,6 +72,12 @@ export default function GroupAccessPage() {
   const [addProjectId, setAddProjectId] = useState('');
   const [addProjectLevel, setAddProjectLevel] = useState<K8sLevel>('read');
   const [savingK8s, setSavingK8s] = useState(false);
+  const [costLinks, setCostLinks] = useState<CostLink[]>([]);
+  const [savedCostKey, setSavedCostKey] = useState('');
+  const [costProjects, setCostProjects] = useState<K8sProject[]>([]);
+  const [addCostProjectId, setAddCostProjectId] = useState('');
+  const [addCostLevel, setAddCostLevel] = useState<CostLevel>('view');
+  const [savingCost, setSavingCost] = useState(false);
 
   useEffect(() => {
     if (!router.isReady || !Number.isFinite(teamId) || teamId <= 0) return;
@@ -117,6 +133,25 @@ export default function GroupAccessPage() {
         setSavedLinkKey(linkKey(mapped));
         const projects = Array.isArray(body?.projects) ? body.projects : [];
         setK8sProjects(projects.map((project: { id: number; name: string }) => ({
+          id: Number(project.id) || 0,
+          name: typeof project.name === 'string' && project.name ? project.name : 'Project',
+        })));
+      })
+      .catch(() => undefined);
+    fetch(`${apiUrl}/api/admin/teams/${teamId}/cost-access`, { headers: sessionAuthHeaders() })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || cancel) return;
+        const links = Array.isArray(body?.links) ? body.links : [];
+        const mapped = links.map((link: { project_id: number; name: string; cost_access: string }) => ({
+          project_id: Number(link.project_id) || 0,
+          name: typeof link.name === 'string' && link.name ? link.name : 'Project',
+          cost_access: asCostLevel(link.cost_access),
+        }));
+        setCostLinks(mapped);
+        setSavedCostKey(costLinkKey(mapped));
+        const projects = Array.isArray(body?.projects) ? body.projects : [];
+        setCostProjects(projects.map((project: { id: number; name: string }) => ({
           id: Number(project.id) || 0,
           name: typeof project.name === 'string' && project.name ? project.name : 'Project',
         })));
@@ -258,6 +293,49 @@ export default function GroupAccessPage() {
     setAddProjectLevel('read');
   }
 
+  function queueCostProject() {
+    const projectId = Number(addCostProjectId);
+    const project = costProjects.find((item) => item.id === projectId) || k8sProjects.find((item) => item.id === projectId);
+    if (!project || costLinks.some((link) => link.project_id === project.id)) return;
+    setCostLinks((current) => [...current, { project_id: project.id, name: project.name, cost_access: addCostLevel }]);
+    setAddCostProjectId('');
+    setAddCostLevel('view');
+  }
+
+  async function saveCostAccess() {
+    if (!team) return;
+    setSavingCost(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/teams/${team.id}/cost-access`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...sessionAuthHeaders() },
+        body: JSON.stringify({
+          projects: costLinks.map((link) => ({ project_id: link.project_id, cost_access: link.cost_access })),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof body?.error === 'string' ? body.error : 'Cost access was not saved.');
+        return;
+      }
+      const links = Array.isArray(body?.links) ? body.links : [];
+      const mapped = links.map((link: { project_id: number; name: string; cost_access: string }) => ({
+        project_id: Number(link.project_id) || 0,
+        name: typeof link.name === 'string' && link.name ? link.name : 'Project',
+        cost_access: asCostLevel(link.cost_access),
+      }));
+      setCostLinks(mapped);
+      setSavedCostKey(costLinkKey(mapped));
+      setNotice('Cost access saved.');
+    } catch {
+      setError('Cost access was not saved.');
+    } finally {
+      setSavingCost(false);
+    }
+  }
+
   async function saveKubernetes() {
     if (!team) return;
     setSavingK8s(true);
@@ -372,6 +450,7 @@ export default function GroupAccessPage() {
   const dirty = !sameGrants(draft, saved) || !custom;
   const defaultsDirty = defaultEnv !== savedEnv || defaultCloud !== savedCloud;
   const k8sDirty = teamK8s !== savedK8s || linkKey(k8sLinks) !== savedLinkKey;
+  const costDirty = costLinkKey(costLinks) !== savedCostKey;
 
   return (
     <>
@@ -529,6 +608,64 @@ export default function GroupAccessPage() {
                     </select>
                   </label>
                   <button type="button" className="btn btn-secondary" disabled={!addProjectId} onClick={queueProject}>
+                    Add project
+                  </button>
+                </div>
+              </section>
+              <section className="portal-surface group-card group-card--wide">
+                <div className="group-card__head">
+                  <div>
+                    <h2 className="access-form__title">Cost{costDirty ? ' · Unsaved' : ''}</h2>
+                    <p className="access-hint">
+                      View can see project spend and graphs. Operate can enable Cost, import billed lines, and accept or dismiss suggestions. The Cost section still has to be on. This never sends account numbers, passwords, or role names to Copilot.
+                    </p>
+                  </div>
+                  <button type="button" className="btn btn-primary" disabled={!costDirty || savingCost} onClick={() => void saveCostAccess()}>
+                    {savingCost ? 'Saving…' : 'Save Cost'}
+                  </button>
+                </div>
+                {costLinks.length ? (
+                  <ul className="access-menu" aria-label="Project Cost access">
+                    {costLinks.map((link) => (
+                      <li key={link.project_id}>
+                        <label className="label" htmlFor={`cost-project-${link.project_id}`}>{link.name}
+                          <select
+                            id={`cost-project-${link.project_id}`}
+                            className="input"
+                            value={link.cost_access}
+                            onChange={(event) => {
+                              const next = asCostLevel(event.target.value);
+                              setCostLinks((current) => current.map((item) => (
+                                item.project_id === link.project_id ? { ...item, cost_access: next } : item
+                              )));
+                            }}
+                          >
+                            <option value="view">View</option>
+                            <option value="operate">Operate</option>
+                          </select>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="access-hint">This group is not linked to a project yet.</p>
+                )}
+                <div className="group-add">
+                  <label className="label" htmlFor="add-cost-project">Project
+                    <select id="add-cost-project" className="input" value={addCostProjectId} onChange={(event) => setAddCostProjectId(event.target.value)}>
+                      <option value="">Choose a project</option>
+                      {(costProjects.length ? costProjects : k8sProjects).map((project) => (
+                        <option key={project.id} value={project.id}>{project.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="label" htmlFor="add-cost-level">Access
+                    <select id="add-cost-level" className="input" value={addCostLevel} onChange={(event) => setAddCostLevel(asCostLevel(event.target.value))}>
+                      <option value="view">View</option>
+                      <option value="operate">Operate</option>
+                    </select>
+                  </label>
+                  <button type="button" className="btn btn-secondary" disabled={!addCostProjectId} onClick={queueCostProject}>
                     Add project
                   </button>
                 </div>

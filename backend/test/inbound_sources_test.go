@@ -22,3 +22,20 @@ func TestInboundSourceJSONOmitsSecret(t *testing.T) {
 		t.Fatalf("secret leaked in json: %s", raw)
 	}
 }
+
+func TestGenerateInboundWebhookSecret(t *testing.T) {
+	first, err := generateInboundWebhookSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := generateInboundWebhookSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 64 || len(second) != 64 {
+		t.Fatalf("secret length first=%d second=%d", len(first), len(second))
+	}
+	if first == second {
+		t.Fatal("generated secrets were identical")
+	}
+}

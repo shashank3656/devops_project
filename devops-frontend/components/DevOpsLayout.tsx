@@ -21,9 +21,10 @@ import {
   IconUser,
 } from './Icons';
 import { SupportHub } from '@infragate/ui';
-import { supportArticles, supportQuickPrompts } from '../lib/supportContent';
+import { supportArticles, supportQuickPromptsForPath } from '../lib/supportContent';
 import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { expireSession, readAccessDenied, rememberAccessDenied } from '../lib/sessionExpiry';
+import { costHref } from '../lib/cost';
 import { isRecordDetailPath } from '../lib/scopeHref';
 import { readSubmissionResult, type SubmissionResult } from '../lib/submissionResult';
 import { buildBreadcrumbs } from '../lib/breadcrumbs';
@@ -84,6 +85,20 @@ const PAGE_TITLES: Record<string, string> = {
   '/environments': 'Environments',
   '/reports-automation': 'Reports and automation',
   '/on-call': 'On-call',
+  '/on-call/handovers': 'Handovers',
+  '/certificates': 'Certificates & domains',
+  '/cost': 'Cost overview',
+  '/cost/accounts': 'Account spend',
+  '/cost/projects': 'Project spend',
+  '/cost/cloud': 'Cloud account spend',
+  '/cost/explorer': 'Explorer',
+  '/cost/optimization': 'Optimization',
+  '/cost/anomalies': 'Budgets & alerts',
+  '/cost/budgets': 'Budgets & alerts',
+  '/cost/budgets/new': 'Create budget',
+  '/cost/savings': 'Savings',
+  '/cost/kubernetes': 'Kubernetes cost',
+  '/cost/configuration': 'Data sources',
   '/operations/webhooks': 'Webhooks',
   '/maintenance': 'Maintenance',
   '/service-desk': 'Service desk',
@@ -229,6 +244,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
+  const [supportSeed, setSupportSeed] = useState('');
+  const [supportMode, setSupportMode] = useState<'help' | 'cost'>('help');
+  const [supportCostContext, setSupportCostContext] = useState('');
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
@@ -537,7 +555,25 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     setNotifyOpen(false);
     setProfileOpen(false);
     setSupportOpen(false);
+    setSupportSeed('');
+    setSupportMode('help');
+    setSupportCostContext('');
   }, [pathname]);
+
+  useEffect(() => {
+    const onAsk = (event: Event) => {
+      const detail = (event as CustomEvent<{ question?: string; context?: string }>).detail || {};
+      const question = detail.question || '';
+      if (!question) return;
+      setSupportMode('cost');
+      setSupportCostContext(detail.context || '');
+      setSupportSeed(question);
+      setSupportTab('chat');
+      setSupportOpen(true);
+    };
+    window.addEventListener('opstrellis-cost-ask', onAsk as EventListener);
+    return () => window.removeEventListener('opstrellis-cost-ask', onAsk as EventListener);
+  }, []);
 
   useEffect(() => {
     if (!notifyOpen && !profileOpen) return;
@@ -631,6 +667,12 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const leafIsActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
     if (href === '/iam' || href === '/service-desk' || href === '/portal-access') return pathname === href;
+    if (href === '/cost') {
+      return pathname === '/cost' || pathname.startsWith('/cost/projects/') || pathname.startsWith('/cost/accounts/') || pathname.startsWith('/cost/cloud/');
+    }
+    if (href === '/cost/budgets') {
+      return pathname === '/cost/budgets' || pathname.startsWith('/cost/budgets/') || pathname === '/cost/anomalies';
+    }
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
     return pathname === href || pathname.startsWith(`${href}/`);
   };
@@ -651,7 +693,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   ];
   const operationsNavItems: NavItem[] = isManager
     ? [
-        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/on-call', label: 'On-call', Icon: IconBell, children: [
+          { href: '/on-call', label: 'Roster' },
+          { href: '/on-call/handovers', label: 'Handovers' },
+        ] },
+        { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
@@ -668,7 +714,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         },
       ]
     : [
-        { href: '/on-call', label: 'On-call', Icon: IconBell },
+        { href: '/on-call', label: 'On-call', Icon: IconBell, children: [
+          { href: '/on-call', label: 'Roster' },
+          { href: '/on-call/handovers', label: 'Handovers' },
+        ] },
+        { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
@@ -687,6 +737,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       { href: '/iam/policy', label: 'Policy' },
     ],
   };
+  const costNavItems: NavItem[] = [
+    { href: '/cost', label: 'Overview', Icon: IconFileText },
+    { href: '/cost/explorer', label: 'Explorer', Icon: IconFileText },
+    { href: '/cost/optimization', label: 'Optimization', Icon: IconFileText },
+    { href: '/cost/budgets', label: 'Budgets & alerts', Icon: IconFileText },
+    { href: '/cost/savings', label: 'Savings', Icon: IconFileText },
+    { href: '/cost/kubernetes', label: 'Kubernetes', Icon: IconK8s },
+    { href: '/cost/configuration', label: 'Data sources', Icon: IconFileText },
+  ];
   const infrastructureNavItems: NavItem[] = [
     { href: '/projects', label: 'Projects', Icon: IconProjects },
     { href: '/environments', label: 'Environments', Icon: IconK8s },
@@ -743,6 +802,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       items: [{ href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle }],
     });
   }
+  if (grants.cost) sidebarSections.push({ title: 'Cost', items: visibleNav(costNavItems) });
   if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
   if (grants.security) sidebarSections.push({ title: 'Security', items: visibleNav(securityNavItems) });
   if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });
@@ -840,13 +900,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       <div key={href} className="devops-sidebar-new__expandable">
         <div className="devops-sidebar-new__group-row">
           <Link
-            href={href}
-            className={`devops-sidebar-new__link ${leafIsActive(href) ? 'devops-sidebar-new__link--active' : groupActive ? 'devops-sidebar-new__link--current' : ''}`}
+            href={href.startsWith('/cost') ? costHref(href, router.query) : href}
+            className={`devops-sidebar-new__link ${!hasChildren && leafIsActive(href) ? 'devops-sidebar-new__link--active' : groupActive ? 'devops-sidebar-new__link--current' : ''}`}
             onClick={() => {
               if (hasChildren) setOpenNavGroups((current) => ({ ...current, [href]: true }));
               setMobileMenuOpen(false);
             }}
-            aria-current={leafIsActive(href) ? 'page' : undefined}
+            aria-current={!hasChildren && leafIsActive(href) ? 'page' : undefined}
             aria-label={sidebarCollapsed ? label : undefined}
             data-tooltip={sidebarCollapsed ? label : undefined}
           >
@@ -871,7 +931,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
             {children!.map((child) => (
               <Link
                 key={child.href}
-                href={child.href}
+                href={child.href.startsWith('/cost') ? costHref(child.href, router.query) : child.href}
                 className={`devops-sidebar-new__sublink ${leafIsActive(child.href) ? 'devops-sidebar-new__sublink--active' : ''}`}
                 onClick={() => setMobileMenuOpen(false)}
                 aria-current={leafIsActive(child.href) ? 'page' : undefined}
@@ -964,6 +1024,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               onClick={() => {
                 setNotifyOpen(false);
                 setProfileOpen(false);
+                setSupportMode('help');
+                setSupportCostContext('');
                 setSupportTab('docs');
                 setSupportOpen(true);
                 setMobileMenuOpen(false);
@@ -1180,6 +1242,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                     className="devops-navbar__profile-item"
                     onClick={() => {
                       setProfileOpen(false);
+                      setSupportMode('help');
+                      setSupportCostContext('');
                       setSupportOpen(true);
                     }}
                   >
@@ -1275,6 +1339,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'create-change', label: 'Create change request', href: '/changes/new', hint: 'Open a change' },
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar', hint: 'Scheduled changes' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes', hint: 'What shipped' },
+          { id: 'cost', label: 'Cost', href: '/cost', hint: 'Operating bill and request estimates' },
           { id: 'services', label: 'Service inventory', href: '/services', hint: 'Production services, observability, and findings' },
           { id: 'add-service', label: 'Add service', href: '/services/new', hint: 'Register a service' },
           { id: 'operator-activity', label: 'Operator activity', href: '/activity', hint: 'Recent operator actions' },
@@ -1294,7 +1359,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         currentPath={pathname}
         currentTitle={pageTitle}
         articles={supportArticles}
-        quickPrompts={supportQuickPrompts}
+        quickPrompts={supportQuickPromptsForPath(pathname)}
+        seedQuestion={supportSeed}
+        onSeedConsumed={() => setSupportSeed('')}
+        analysisMode={supportMode === 'cost'}
+        analysisContext={supportCostContext}
         apiUrl={apiUrl}
         token={typeof window === 'undefined' ? null : localStorage.getItem(DEVOPS_TOKEN_KEY)}
         remapIncidentCitationLinks

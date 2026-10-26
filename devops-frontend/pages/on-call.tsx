@@ -1,5 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -152,6 +153,7 @@ function todayKey(timeZone: string): string {
 
 export default function OnCallPage() {
   const apiUrl = useApiUrl();
+  const router = useRouter();
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [month, setMonth] = useState(currentMonth('Asia/Kolkata'));
   const [projects, setProjects] = useState<RosterProject[]>([]);
@@ -292,6 +294,40 @@ export default function OnCallPage() {
     }
   };
 
+  const openHandover = async (row: RosterRow) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetch(`${apiUrl}/api/oncall/handovers/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          team_id: row.shift.team_id,
+          project_id: row.project.id,
+          shift_date: row.day.date,
+          timezone,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'The handover could not be opened.');
+        return;
+      }
+      const id = Number(data.handover?.id);
+      if (id > 0) {
+        await router.push(`/on-call/handovers/${id}`);
+        return;
+      }
+      setError('The handover could not be opened.');
+    } catch {
+      setError('The handover could not be opened.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const decide = async (requestId: number, decision: 'approve' | 'decline') => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token || !requestId) return;
@@ -331,7 +367,8 @@ export default function OnCallPage() {
             <p className="portal-page__subtitle">The project and environment at the top limit this page. Project and Team below only filter the roster you are looking at. Setup follows Project, then Teams, then People, then Review coverage.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/on-call/onboard" className="btn btn-primary">Onboard project</Link>
+            <Link href="/on-call/handovers" className="btn btn-primary">Handovers</Link>
+            <Link href="/on-call/onboard" className="btn btn-secondary">Onboard project</Link>
             <Link href="/on-call/projects" className="btn btn-secondary">Projects</Link>
           </div>
         </div>
@@ -506,6 +543,9 @@ export default function OnCallPage() {
                               {people.length ? people.map((person) => person.name).join(', ') : 'No one on this team'}
                             </td>
                             <td>
+                              <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void openHandover(row)}>
+                                Open handover
+                              </button>
                               {canRequest(row) ? (
                                 <button
                                   type="button"

@@ -70,7 +70,8 @@ export default function ScopeBar({
         <span className="ig-scope-bar__label">Workspace environment</span>
         <select
           className="ig-scope-bar__control"
-          aria-label="Workspace environment"
+          title={environmentName || 'All environments'}
+          aria-label={`Workspace environment ${environmentName || 'All environments'}`}
           value={environmentName}
           onChange={(event) => onChange({ environment: event.target.value })}
         >

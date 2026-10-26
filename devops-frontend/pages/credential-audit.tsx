@@ -398,7 +398,7 @@ export default function CredentialAuditPage() {
                     <span className="portal-surface__eyebrow">Expiry Tracker</span>
                     <h2 className="portal-surface__title">Expiry watchlist</h2>
                     <p className="portal-surface__subtitle">
-                      Focus on what needs rotation or follow-up now. Use the audit log only when you need the raw evidence trail.
+                      Focus on stored credential and secret review windows. Public TLS endpoints and domain registration expiry live in <Link href="/certificates">Certificates & domains</Link>.
                     </p>
                   </div>
                 </div>

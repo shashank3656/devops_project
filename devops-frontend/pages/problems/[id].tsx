@@ -6,6 +6,7 @@ import { buildPortalApiUrl, CopyButton, parsePortalNumericId, portalFetch } from
 import DevOpsLayout from '../../components/DevOpsLayout';
 import ITSMClock from '../../components/ITSMClock';
 import ITSMJournal from '../../components/ITSMJournal';
+import RecordDocuments from '../../components/RecordDocuments';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { ITSMJournalEntry, ITSM_PRIORITIES, IncidentSLA, PROBLEM_STATES, normalizeJournal, normalizeSLA, priorityLabel, problemStateLabel } from '../../lib/itsm';
 
@@ -260,6 +261,7 @@ export default function ProblemDetailPage() {
               </select>
               </label>
             </div>
+            {resourceId ? <RecordDocuments apiUrl={apiUrl} kind="problems" recordId={resourceId} /> : null}
             <ITSMJournal
               apiUrl={apiUrl}
               path={`/api/devops/problems/${id}/journal`}

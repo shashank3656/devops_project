@@ -1,10 +1,11 @@
-export type SectionKey = 'requests' | 'daily' | 'operations' | 'infrastructure' | 'security' | 'records';
+export type SectionKey = 'requests' | 'daily' | 'operations' | 'cost' | 'infrastructure' | 'security' | 'records';
 export type SectionGrants = Record<SectionKey, boolean> & { pages: Record<string, boolean> };
 
 export const ACCESS_SECTIONS: { key: SectionKey; label: string }[] = [
   { key: 'requests', label: 'Requests' },
   { key: 'daily', label: 'Daily' },
   { key: 'operations', label: 'Operations' },
+  { key: 'cost', label: 'Cost' },
   { key: 'infrastructure', label: 'Infrastructure' },
   { key: 'security', label: 'Security' },
   { key: 'records', label: 'Records' },
@@ -25,9 +26,11 @@ export const SECTION_PAGES: { section: SectionKey; key: string; label: string }[
   { section: 'daily', key: 'knowledge', label: 'Knowledge' },
   { section: 'daily', key: 'services', label: 'Service inventory' },
   { section: 'operations', key: 'on-call', label: 'On-call' },
+  { section: 'operations', key: 'certificates', label: 'Certificates & domains' },
   { section: 'operations', key: 'maintenance', label: 'Maintenance' },
   { section: 'operations', key: 'reports', label: 'Reports' },
   { section: 'operations', key: 'webhooks', label: 'Webhooks' },
+  { section: 'cost', key: 'cost', label: 'Cost overview' },
   { section: 'infrastructure', key: 'projects', label: 'Projects' },
   { section: 'infrastructure', key: 'environments', label: 'Environments' },
   { section: 'infrastructure', key: 'cloud-accounts', label: 'Cloud accounts' },
@@ -54,6 +57,7 @@ export function emptyGrants(): SectionGrants {
     requests: false,
     daily: false,
     operations: false,
+    cost: false,
     infrastructure: false,
     security: false,
     records: false,
@@ -80,6 +84,7 @@ export function grantsForTeam(team: { team_type?: string; grants?: Partial<Secti
       requests: false,
       daily: true,
       operations: true,
+      cost: true,
       infrastructure: true,
       security: true,
       records: false,
@@ -90,6 +95,7 @@ export function grantsForTeam(team: { team_type?: string; grants?: Partial<Secti
     requests: true,
     daily: false,
     operations: false,
+    cost: false,
     infrastructure: false,
     security: false,
     records: false,
@@ -100,6 +106,9 @@ export function grantsForTeam(team: { team_type?: string; grants?: Partial<Secti
 export function grantsFrom(saved: Partial<SectionGrants> | undefined): SectionGrants {
   const grants = emptyGrants();
   for (const section of ACCESS_SECTIONS) grants[section.key] = Boolean(saved?.[section.key]);
+  if (!saved || !Object.prototype.hasOwnProperty.call(saved, 'cost')) {
+    grants.cost = Boolean(saved?.operations) && saved?.pages?.cost !== false;
+  }
   return withPages(grants, saved?.pages);
 }
 

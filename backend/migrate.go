@@ -1550,6 +1550,8 @@ func MigrateDatabase() error {
 	migrateOncallCoverageSchema()
 	migrateOncallScheduleSchema()
 	migrateOncallDutySchema()
+	migrateOncallHandoverSchema()
+	migrateExpiryAssetSchema()
 	migrateMaintenanceNoticeSchema()
 	migrateMaintenanceWindowSchema()
 	migrateAPIIdempotencySchema()
@@ -1557,6 +1559,8 @@ func MigrateDatabase() error {
 	migrateK8sAccessSchema()
 	migrateSREObservabilitySchema()
 	migrateSecurityVulnSchema()
+	migrateCostLedgerSchema()
+	migrateRecordDocumentsSchema()
 
 	log.Println("Database schema is up to date")
 	return nil

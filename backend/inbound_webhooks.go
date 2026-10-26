@@ -166,7 +166,7 @@ func listEnabledInboundCredentials(kind string) []inboundCredential {
 		  AND (
 		    $1 = ''
 		    OR kind = $1
-		    OR ($1 IN ('alert', 'grafana', 'alertmanager', 'generic_log') AND kind IN ('alert', 'grafana', 'alertmanager', 'generic_log'))
+		    OR ($1 IN ('alert', 'grafana', 'alertmanager', 'generic_log', 'zenduty', 'pagerduty') AND kind IN ('alert', 'grafana', 'alertmanager', 'generic_log', 'zenduty', 'pagerduty'))
 		    OR ($1 = 'change' AND kind = 'change')
 		  )
 	`, normalized)
@@ -601,6 +601,9 @@ func extractAlertExternalRef(labels map[string]string, raw map[string]interface{
 	}
 	if id := firstNonEmpty(labels["opsgenie_alert"], labels["opsgenie_id"], stringFromAny(raw["opsgenie_id"])); id != "" {
 		return "opsgenie", id
+	}
+	if id := firstNonEmpty(labels["zenduty_incident"], labels["zenduty_id"], stringFromAny(raw["zenduty_incident"])); id != "" {
+		return "zenduty", id
 	}
 	return "", ""
 }

@@ -6,6 +6,7 @@ import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import ITSMClock from '../../../components/ITSMClock';
 import ITSMJournal from '../../../components/ITSMJournal';
+import RecordDocuments from '../../../components/RecordDocuments';
 import { FALLBACK_ITSM_CATEGORIES, INCIDENT_STATES, ITSMCategory, ITSMJournalEntry, IncidentSLA, ITSM_PRIORITIES, incidentCanFinish, incidentStateValue, normalizeCategories, normalizeJournal, normalizeSLA, severityToPriority, subcategoriesFor } from '../../../lib/itsm';
 import { asRecord, getString } from '../../../lib/payload';
 import { expireSession } from '../../../lib/sessionExpiry';
@@ -760,12 +761,15 @@ export default function EditIncidentPage() {
                 </button>
               </div>
               {incidentId ? (
-                <ITSMJournal
-                  apiUrl={apiUrl}
-                  path={`/api/devops/incidents/${incidentId}/journal`}
-                  entries={journal}
-                  onPosted={setJournal}
-                />
+                <>
+                  <RecordDocuments apiUrl={apiUrl} kind="incidents" recordId={incidentId} />
+                  <ITSMJournal
+                    apiUrl={apiUrl}
+                    path={`/api/devops/incidents/${incidentId}/journal`}
+                    entries={journal}
+                    onPosted={setJournal}
+                  />
+                </>
               ) : null}
           </section>
         )}

@@ -8,7 +8,7 @@ func TestDefaultSectionGrantsFollowGroupKind(t *testing.T) {
 		t.Fatalf("portal default = %+v", portal)
 	}
 	devops := defaultSectionGrants("devops")
-	if devops.Requests || !devops.Daily || !devops.Operations || !devops.Infrastructure || !devops.Security || devops.Records {
+	if devops.Requests || !devops.Daily || !devops.Operations || !devops.Cost || !devops.Infrastructure || !devops.Security || devops.Records {
 		t.Fatalf("devops default = %+v", devops)
 	}
 }
@@ -32,24 +32,31 @@ func TestSectionGrantsMergeAndAdmin(t *testing.T) {
 
 func TestSectionForPath(t *testing.T) {
 	cases := map[string]string{
-		"/api/admin/users":                "portal",
-		"/api/admin/teams/4/grants":       "portal",
-		"/api/history":                    "requests",
-		"/api/request":                    "requests-or-daily",
-		"/api/oncall/days":                "operations",
-		"/api/devops/inbound-sources":     "operations",
-		"/api/devops/projects":            "projects",
-		"/api/devops/environment-catalog": "catalog",
-		"/api/devops/k8s-pods":            "infrastructure",
-		"/api/scans/jobs":                 "security",
-		"/api/devops/security/overview":   "security",
-		"/api/devops/evidence":            "records",
-		"/api/devops/me":                  "",
-		"/api/webhooks/github":            "",
-		"/api/deployments/callbacks":      "",
-		"/api/security/agent/enroll":      "",
-		"/api/security/webhooks/github":   "",
-		"/health":                         "",
+		"/api/admin/users":                   "portal",
+		"/api/admin/teams/4/grants":          "portal",
+		"/api/history":                       "requests",
+		"/api/request":                       "requests-or-daily",
+		"/api/oncall/days":                   "operations",
+		"/api/oncall/handovers":              "operations",
+		"/api/expiry/assets":                 "operations",
+		"/api/cost/overview":                 "cost",
+		"/api/cost/tree":                     "cost",
+		"/api/cost/connections":              "cost",
+		"/api/devops/inbound-sources":        "operations",
+		"/api/devops/projects":               "projects",
+		"/api/devops/environment-catalog":    "catalog",
+		"/api/devops/k8s-pods":               "infrastructure",
+		"/api/scans/jobs":                    "security",
+		"/api/devops/security/overview":      "security",
+		"/api/devops/evidence":               "records",
+		"/api/devops/me":                     "",
+		"/api/webhooks/github":               "",
+		"/api/deployments/callbacks":         "",
+		"/api/security/agent/enroll":         "",
+		"/api/security/webhooks/github":      "",
+		"/api/expiry/collector/observations": "",
+		"/api/cost/collector/snapshots":      "",
+		"/health":                            "",
 	}
 	for path, want := range cases {
 		if got := sectionForPath(path); got != want {
@@ -76,5 +83,20 @@ func TestInfrastructurePageCanBeIAMOnly(t *testing.T) {
 	}
 	if !defaultSectionGrants("devops").allowsPage("kubernetes") {
 		t.Fatal("a group without page grants should keep every page in the section")
+	}
+}
+
+func TestCostSectionInheritsFromOperationsUntilSaved(t *testing.T) {
+	inherited, err := decodeSectionGrants([]byte(`{"operations":true,"pages":{"cost":true}}`))
+	if err != nil || !inherited.Cost {
+		t.Fatalf("inherit on = %+v err=%v", inherited, err)
+	}
+	denied, err := decodeSectionGrants([]byte(`{"operations":true,"pages":{"cost":false}}`))
+	if err != nil || denied.Cost {
+		t.Fatalf("inherit off = %+v err=%v", denied, err)
+	}
+	explicit, err := decodeSectionGrants([]byte(`{"operations":false,"cost":true}`))
+	if err != nil || !explicit.Cost || explicit.Operations {
+		t.Fatalf("explicit cost = %+v err=%v", explicit, err)
 	}
 }

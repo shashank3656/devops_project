@@ -111,7 +111,7 @@ export default function DevOpsLogin() {
     }
     const account = meData.user;
     const grants = portalGrants(account);
-    const canEnter = grants.requests || grants.daily || grants.operations || grants.infrastructure || grants.security || grants.records || grants.portalAccess;
+    const canEnter = grants.requests || grants.daily || grants.operations || grants.cost || grants.infrastructure || grants.security || grants.records || grants.portalAccess;
     if (!canEnter) {
       setError('Sign-in was not accepted.');
       return;

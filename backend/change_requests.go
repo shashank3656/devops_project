@@ -995,6 +995,10 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "not authorized for this project", nil)
 		return
 	}
+	if len(parts) >= 2 && strings.EqualFold(parts[1], "documents") {
+		serveRecordDocuments(w, r, "change", id, userID, parts[2:])
+		return
+	}
 	if len(parts) == 2 {
 		action := strings.ToLower(strings.TrimSpace(parts[1]))
 		if action == "rollback" {

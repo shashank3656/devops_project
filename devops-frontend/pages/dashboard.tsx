@@ -156,7 +156,7 @@ export default function DevOpsDashboard() {
               error={needsProject ? '' : error || ''}
               onRetry={() => loadWorkspace()}
               emptyTitle={needsProject ? 'Select a project' : "You're all caught up"}
-              emptyBody={needsProject ? 'Approvals, assigned incidents, failed requests, and coverage gaps stay with the project you choose.' : 'Approvals, assigned incidents, failed requests, and coverage gaps will show up here.'}
+              emptyBody={needsProject ? 'Approvals, assigned incidents, handovers, failed requests, and coverage gaps stay with the project you choose.' : 'Approvals, assigned incidents, handovers, failed requests, and coverage gaps will show up here.'}
             />
             <details className="access-hint">
               <summary>How these words are used</summary>

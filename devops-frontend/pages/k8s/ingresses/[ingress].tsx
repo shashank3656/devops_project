@@ -280,6 +280,14 @@ export default function DevOpsK8sIngressDetailPage() {
               >
                 Back to ingress
               </Link>
+              {ingress?.host && ingress.host !== 'internal.example.com' && !ingress.host.endsWith('.local') ? (
+                <Link
+                  className="btn btn-secondary"
+                  href={`/certificates/new?hostname=${encodeURIComponent(ingress.host)}&project_id=${encodeURIComponent(scopeProjectId)}&environment=${encodeURIComponent(environment)}`}
+                >
+                  Register for expiry
+                </Link>
+              ) : null}
               <button type="button" className="btn btn-secondary" onClick={() => setRefreshKey((value) => value + 1)}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </button>

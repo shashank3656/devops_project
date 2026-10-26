@@ -96,6 +96,7 @@ export default function PortalTeamsPage() {
               { value: 'requests', label: 'Requests' },
               { value: 'daily', label: 'Daily' },
               { value: 'operations', label: 'Operations' },
+              { value: 'cost', label: 'Cost' },
               { value: 'infrastructure', label: 'Infrastructure' },
               { value: 'security', label: 'Security' },
               { value: 'records', label: 'Records' },

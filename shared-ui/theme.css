@@ -50,6 +50,11 @@ html[data-theme] {
   --text-primary: var(--ig-text);
   --text-secondary: var(--ig-text-2);
   --text-muted: var(--ig-muted);
+  --text-base: var(--ig-text-md);
+  --text-sm: var(--ig-text-sm);
+  --text-lg: var(--ig-text-lg);
+  --text-xl: var(--ig-text-xl);
+  --text-2xl: var(--ig-text-2xl);
   --border-color: var(--ig-border);
   --border-light: var(--ig-border);
   --card-bg: var(--ig-surface);
@@ -71,9 +76,9 @@ html[data-theme] {
 html[data-theme] body {
   font-family: var(--ig-font);
   font-size: var(--ig-text-md);
-  line-height: 1.55;
-  letter-spacing: normal;
-  word-spacing: 0.04em;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  word-spacing: normal;
   background: var(--ig-bg);
   color: var(--ig-text-2);
   -webkit-font-smoothing: antialiased;
@@ -136,12 +141,14 @@ html[data-theme] .page-header__title,
 html[data-theme] .home-hero__title,
 html[data-theme] .launchpad-hero__title,
 html[data-theme] .portal-profile-hero__title,
-html[data-theme] .request-builder__title {
+html[data-theme] .request-builder__title,
+html[data-theme] .devops-navbar__title,
+html[data-theme] .credential-audit-title {
   font-family: var(--ig-font);
-  font-size: clamp(22px, 2.2vw, 28px);
+  font-size: clamp(18px, 1.5vw, 22px);
   font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.025em;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
   text-transform: none;
   text-shadow: none;
   color: var(--ig-text);
@@ -171,9 +178,9 @@ html[data-theme] .history-filter-label,
 html[data-theme] .devops-kpi-card__label,
 html[data-theme] .devops-section-label {
   font-family: var(--ig-font);
-  font-size: 12px;
+  font-size: var(--ig-text-xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ig-muted);
 }
@@ -280,8 +287,8 @@ html[data-theme] .btn {
   padding: 0 16px;
   border: 1px solid transparent;
   border-radius: 4px;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--ig-text-md);
+  font-weight: 600;
   letter-spacing: 0;
   word-spacing: normal;
   text-transform: none;
@@ -383,7 +390,7 @@ html[data-theme] .filters-bar .select {
   font-synthesis: none;
   border-radius: 6px;
   color: var(--ig-text);
-  font-size: 13px;
+  font-size: var(--ig-text-md);
   letter-spacing: normal;
   box-shadow: none;
   transition: border-color var(--ig-duration) var(--ig-ease), box-shadow var(--ig-duration) var(--ig-ease);
@@ -592,7 +599,7 @@ html[data-theme] .user-sidebar-shell__brand-word,
 html[data-theme] .admin-sidebar-shell__brand-word,
 html[data-theme] .devops-sidebar-new__brand-word {
   font-family: var(--ig-font);
-  font-size: 15px;
+  font-size: var(--ig-text-md);
   font-weight: 500;
   letter-spacing: -0.01em;
   text-transform: none;
@@ -608,7 +615,7 @@ html[data-theme] .devops-sidebar-new__brand-word--primary {
 }
 
 html[data-theme] .devops-sidebar-new__brand-word--primary {
-  font-size: 22px;
+  font-size: var(--ig-text-xl);
   letter-spacing: -0.02em;
 }
 
@@ -1467,10 +1474,10 @@ html[data-theme] .login-page__logo {
 html[data-theme] .login-page__title {
   margin: 0 0 12px;
   font-family: var(--ig-font);
-  font-size: clamp(28px, 3vw, 38px);
+  font-size: clamp(22px, 2.4vw, 28px);
   font-weight: 600;
-  line-height: 1.12;
-  letter-spacing: -0.035em;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
   text-transform: none;
   text-shadow: none;
   color: #f5f7fa;
@@ -1480,8 +1487,8 @@ html[data-theme] .login-page__tagline {
   margin: 0;
   max-width: 420px;
   font-family: var(--ig-font);
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--ig-text-md);
+  line-height: 1.5;
   letter-spacing: normal;
   text-transform: none;
   color: rgba(236, 239, 243, 0.68);
@@ -2790,7 +2797,7 @@ html[data-theme] .ig-table th {
   background: var(--ig-surface);
   box-shadow: inset 0 -1px 0 var(--ig-border);
   color: var(--ig-muted);
-  font-size: 13px;
+  font-size: var(--ig-text-xs);
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
@@ -7363,17 +7370,16 @@ html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .devops-navbar .ig-
   width: auto;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__kicker,
 html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__kicker {
-  order: -1;
-  color: var(--ig-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
   white-space: nowrap;
 }
 
@@ -7395,9 +7401,9 @@ html[data-theme] .devops-layout .ig-scope-bar:has(.ig-scope-bar__facts.is-visibl
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:first-child {
-  flex: 1 1 160px;
+  flex: 1 1 220px;
   min-width: 0;
-  max-width: 240px;
+  max-width: 420px;
   overflow: hidden;
 }
 
@@ -7427,7 +7433,7 @@ html[data-theme] .devops-layout .ig-scope-bar__control,
 html[data-theme] .devops-main-wrapper-new:has(.desk-landing) .ig-scope-bar__control {
   height: 36px;
   min-width: 132px;
-  max-width: 280px;
+  max-width: 420px;
   padding: 0 32px 0 36px;
   border: 0;
   border-radius: 999px;
@@ -7502,16 +7508,16 @@ html[data-theme] .ig-scope-bar__prod::before {
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:nth-child(2) {
-  flex: 0 0 148px;
-  width: 148px;
-  max-width: 148px;
+  flex: 1 1 180px;
+  width: auto;
+  max-width: 280px;
   overflow: hidden;
 }
 
 html[data-theme] .devops-layout .ig-scope-bar__field:nth-child(2) .ig-scope-bar__control {
-  width: 148px;
+  width: 100%;
   min-width: 0;
-  max-width: 148px;
+  max-width: 280px;
   background-color: #eaf8f2;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23148568' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   color: #196d58;
@@ -7779,7 +7785,7 @@ html[data-theme] .login-page .input:focus-visible {
 html[data-theme] .login-page .input {
   height: 46px;
   padding: 0 14px;
-  font-size: 15px;
+  font-size: var(--ig-text-md);
 }
 
 html[data-theme] .login-page .input::placeholder {
@@ -7806,7 +7812,7 @@ html[data-theme] .login-page__submit {
   min-height: 48px;
   margin-top: 8px;
   border-radius: 12px;
-  font-size: 15px;
+  font-size: var(--ig-text-md);
   font-weight: 600;
   text-decoration: none;
   background: var(--ot-violet);
@@ -8407,7 +8413,7 @@ html[data-theme] .devops-layout .devops-sidebar-new--collapsed .devops-sidebar-n
 
 .iam-sheet h2 {
   margin: 0 0 4px;
-  font-size: 15px;
+  font-size: var(--ig-text-lg);
 }
 
 .iam-sheet .label {
@@ -8709,7 +8715,7 @@ html[data-theme] .devops-layout .request-note .input {
 .request-facts strong {
   display: block;
   margin-top: 4px;
-  font-size: 15px;
+  font-size: var(--ig-text-lg);
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -9423,7 +9429,7 @@ html[data-theme] .devops-layout .cloud-state-panel {
 }
 
 html[data-theme] .devops-layout .cloud-state-panel__title {
-  font-size: 15px;
+  font-size: var(--ig-text-lg);
   margin: 0;
 }
 
@@ -9802,7 +9808,7 @@ html[data-theme] .devops-layout .onboard-advanced > summary {
   gap: 6px;
   padding: 0 18px;
   color: var(--ig-text);
-  font-size: 15px;
+  font-size: var(--ig-text-lg);
   font-weight: 600;
   cursor: pointer;
 }
@@ -10266,13 +10272,24 @@ html[data-theme] .devops-layout .alert {
   overflow: auto;
 }
 
-html[data-theme] .devops-navbar__profile-label,
-html[data-theme] .ig-scope-bar select,
-html[data-theme] .ig-scope-bar__value {
+html[data-theme] .devops-navbar__profile-label {
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+html[data-theme] .ig-scope-bar select,
+html[data-theme] .ig-scope-bar__value {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html[data-theme] .devops-layout .ig-scope-bar__field:hover,
+html[data-theme] .devops-layout .ig-scope-bar__field:focus-within {
+  overflow: visible;
+  z-index: 5;
+  max-width: min(100%, 520px);
 }
 
 html[data-theme] .devops-layout .ops-banner-stack {
@@ -11011,7 +11028,7 @@ html[data-theme] .devops-layout :is(input, select, textarea, button, a):focus-vi
 
 .sre-empty strong {
   color: #17233b;
-  font-size: 15px;
+  font-size: var(--ig-text-lg);
 }
 
 .sre-empty p,

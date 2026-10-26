@@ -27,6 +27,72 @@ import { useApiUrl } from '../context/ApiUrlContext';
 
 const TOKEN_KEY = 'devops_token';
 
+type WaitingHandover = {
+  id: number;
+  team_name: string;
+  shift_date: string;
+  state: string;
+  incoming_name: string;
+  outgoing_name: string;
+};
+
+function HandoverWaitingPanel({ apiUrl }: { apiUrl: string }) {
+  const [items, setItems] = useState<WaitingHandover[]>([]);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    let cancel = false;
+    fetch(`${apiUrl}/api/oncall/handovers?waiting=me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (cancel) return;
+        if (!response.ok) {
+          setMessage(typeof data.error === 'string' ? data.error : 'Handovers waiting for you could not be loaded.');
+          setItems([]);
+          return;
+        }
+        setMessage('');
+        setItems(Array.isArray(data.handovers) ? data.handovers : []);
+      })
+      .catch(() => {
+        if (!cancel) {
+          setMessage('Handovers waiting for you could not be loaded.');
+          setItems([]);
+        }
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [apiUrl]);
+
+  return (
+    <section className="portal-surface" aria-label="Handovers waiting for you">
+      <div className="portal-surface__header">
+        <div>
+          <h2 className="portal-surface__title">Waiting for me</h2>
+          <p className="portal-surface__subtitle">On-call handovers that still need you to submit or acknowledge. Acknowledgement can reassign open incidents when that option is on. Status is not changed to Fixed.</p>
+        </div>
+        <Link href="/on-call/handovers" className="btn btn-secondary btn-sm">All handovers</Link>
+      </div>
+      {message ? <p className="access-hint">{message}</p> : null}
+      {items.length ? (
+        <ul className="handover-cards">
+          {items.map((row) => (
+            <li key={row.id}>
+              <Link href={`/on-call/handovers/${row.id}`}>
+                {row.state === 'submitted' ? 'Acknowledge' : 'Submit'} {row.team_name}
+              </Link>
+              {' · '}{row.shift_date} · {row.outgoing_name} to {row.incoming_name}
+            </li>
+          ))}
+        </ul>
+      ) : !message ? <p>No handover is waiting for you.</p> : null}
+    </section>
+  );
+}
+
 const PLAIN_KIND: Record<WorkKind, string> = {
   deployment: 'Releases',
   incident: 'Incidents',
@@ -287,6 +353,7 @@ export function MyWorkDesk({
         </div>
         <Link href="/service-desk" className="btn btn-secondary">Open service desk</Link>
       </header>
+      <HandoverWaitingPanel apiUrl={apiUrl} />
       <section className="ops-actions-3" aria-label="What this page is for">
         <article className="ops-jump ops-jump--mint">
           <strong>See what is waiting</strong>

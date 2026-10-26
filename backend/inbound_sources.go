@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -20,6 +22,16 @@ type inboundWebhookSource struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+const inboundWebhookSecretRevealSeconds = 300
+
+func generateInboundWebhookSecret() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
 func normalizeInboundSourceKind(kind string) string {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "change":
@@ -32,6 +44,10 @@ func normalizeInboundSourceKind(kind string) string {
 		return "generic_log"
 	case "alert", "alerts":
 		return "alert"
+	case "zenduty", "zd":
+		return "zenduty"
+	case "pagerduty", "pd":
+		return "pagerduty"
 	default:
 		return ""
 	}
@@ -50,7 +66,7 @@ func listEnabledInboundWebhookSecrets(kind string) []string {
 		  AND (
 		    $1 = ''
 		    OR kind = $1
-		    OR ($1 IN ('alert', 'grafana', 'alertmanager', 'generic_log') AND kind IN ('alert', 'grafana', 'alertmanager', 'generic_log'))
+		    OR ($1 IN ('alert', 'grafana', 'alertmanager', 'generic_log', 'zenduty', 'pagerduty') AND kind IN ('alert', 'grafana', 'alertmanager', 'generic_log', 'zenduty', 'pagerduty'))
 		    OR ($1 = 'change' AND kind = 'change')
 		  )
 	`, normalized)
@@ -110,7 +126,7 @@ func createInboundWebhookSource(kind, name, secret string, projectID *int) (*inb
 	kind = normalizeInboundSourceKind(kind)
 	name = strings.TrimSpace(name)
 	if kind == "" {
-		return nil, errInboundSource("kind must be change, grafana, alertmanager, generic_log, or alert")
+		return nil, errInboundSource("kind must be change, grafana, alertmanager, generic_log, alert, or zenduty")
 	}
 	if name == "" {
 		return nil, errInboundSource("name is required")
@@ -221,13 +237,23 @@ func serveInboundSources(w http.ResponseWriter, r *http.Request) {
 			Kind      string `json:"kind"`
 			Name      string `json:"name"`
 			Secret    string `json:"secret"`
+			Generate  bool   `json:"generate"`
 			ProjectID *int   `json:"project_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 			return
 		}
-		item, err := createInboundWebhookSource(body.Kind, body.Name, body.Secret, body.ProjectID)
+		plaintext := strings.TrimSpace(body.Secret)
+		if plaintext == "" && body.Generate {
+			generated, err := generateInboundWebhookSecret()
+			if err != nil {
+				writeAPIError(w, r, http.StatusInternalServerError, "unable to generate secret", err)
+				return
+			}
+			plaintext = generated
+		}
+		item, err := createInboundWebhookSource(body.Kind, body.Name, plaintext, body.ProjectID)
 		if err != nil {
 			if _, ok := err.(inboundSourceError); ok {
 				writeAPIError(w, r, http.StatusBadRequest, err.Error(), nil)
@@ -237,7 +263,13 @@ func serveInboundSources(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		encodeInboundSourceJSON(w, map[string]any{"source": item, "status": "ok"})
+		encodeInboundSourceJSON(w, map[string]any{
+			"source":         item,
+			"secret":         plaintext,
+			"reveal_seconds": inboundWebhookSecretRevealSeconds,
+			"note":           "Send this value in the X-CI-Secret header. Copy it now; it cannot be shown again after five minutes.",
+			"status":         "ok",
+		})
 	default:
 		writeMethodNotAllowed(w, r)
 	}

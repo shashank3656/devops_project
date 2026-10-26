@@ -4,6 +4,7 @@ export const WEBHOOK_USES = [
   { id: 'grafana', label: 'Grafana', path: '/api/webhooks/alerts' },
   { id: 'alertmanager', label: 'Alertmanager', path: '/api/webhooks/alerts' },
   { id: 'generic_log', label: 'Logs', path: '/api/webhooks/alerts' },
+  { id: 'zenduty', label: 'Zenduty', path: '/api/webhooks/zenduty' },
 ] as const;
 
 export type WebhookUse = (typeof WEBHOOK_USES)[number]['id'];
@@ -21,7 +22,9 @@ export function webhookUsePath(kind: string) {
 }
 
 export function webhookSample(kind: string) {
-  return kind === 'change' ? WEBHOOK_CHANGE_SAMPLE : WEBHOOK_INCIDENT_SAMPLE;
+  if (kind === 'change') return WEBHOOK_CHANGE_SAMPLE;
+  if (kind === 'zenduty') return WEBHOOK_ZENDUTY_SAMPLE;
+  return WEBHOOK_INCIDENT_SAMPLE;
 }
 
 export const WEBHOOK_CHANGE_SAMPLE = `{
@@ -44,4 +47,14 @@ export const WEBHOOK_INCIDENT_SAMPLE = `{
   "severity": "high",
   "status": "firing",
   "project_code": "checkout"
+}`;
+
+export const WEBHOOK_ZENDUTY_SAMPLE = `{
+  "payload": { "event_type": "create" },
+  "incident": {
+    "unique_id": "inc_sample",
+    "title": "Checkout error rate",
+    "status": 0,
+    "service": { "name": "checkout" }
+  }
 }`;

@@ -953,6 +953,10 @@ func adminTeamsRouter(w http.ResponseWriter, r *http.Request) {
 		adminTeamK8sAccessHandler(w, r)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "cost-access" {
+		adminTeamCostAccessHandler(w, r)
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "members" {
 		if r.Method == "POST" {
 			adminTeamMembersAddHandler(w, r)

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -55,7 +54,7 @@ func copilotHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func answerCopilot(body copilotRequest) (string, string) {
-	if reply, ok := callCopilotModel(body); ok {
+	if reply, ok := callCopilotModel(0, body); ok {
 		return reply, "model"
 	}
 	return fallbackCopilotReply(body), "fallback"
@@ -92,7 +91,8 @@ func fallbackCopilotReply(body copilotRequest) string {
 	return "Ask about PR production impact, blocked promotions, incidents, or the current page."
 }
 
-func callCopilotModel(body copilotRequest) (string, bool) {
+func callCopilotModel(userID int, body copilotRequest) (string, bool) {
+	_ = userID
 	apiKey := strings.TrimSpace(os.Getenv("COPILOT_API_KEY"))
 	if apiKey == "" {
 		apiKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
@@ -108,12 +108,11 @@ func callCopilotModel(body copilotRequest) (string, bool) {
 	if model == "" {
 		model = "gpt-4o-mini"
 	}
-	contextJSON, _ := json.Marshal(body.Context)
 	payload := map[string]interface{}{
 		"model": model,
 		"messages": []copilotMessage{
-			{Role: "system", Content: "You are the OpsTrellis ops copilot. Answer only from the provided Change, Incident, and runbook citations. Name those IDs. Suggest a previous SHA when present. Never apply Terraform, Helm, or cluster changes."},
-			{Role: "user", Content: fmt.Sprintf("Portal: %s\nPage: %s %s\nQuestion: %s\nContext: %s", body.Portal, body.Title, body.Path, body.Query, string(contextJSON))},
+			{Role: "system", Content: copilotCostSystemPrompt()},
+			{Role: "user", Content: copilotModelUserContent(body)},
 		},
 		"temperature": 0.2,
 	}

@@ -56,6 +56,9 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
   const [teamId, setTeamId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
+  const [remindMinutes, setRemindMinutes] = useState('30');
+  const [escalateMinutes, setEscalateMinutes] = useState('15');
+  const [reassignIncidents, setReassignIncidents] = useState(false);
   const [days, setDays] = useState<Record<string, string>>({});
   const [today, setToday] = useState('');
   const [loading, setLoading] = useState(scheduleId > 0);
@@ -122,6 +125,9 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
         setTeamId(schedule.team_id ? String(schedule.team_id) : '');
         setProjectId(schedule.project_id ? String(schedule.project_id) : '');
         setTimezone(schedule.timezone || 'Asia/Kolkata');
+        setRemindMinutes(String(schedule.handover_remind_minutes || 30));
+        setEscalateMinutes(String(schedule.handover_escalate_minutes || 15));
+        setReassignIncidents(Boolean(schedule.reassign_incidents_on_ack));
         setToday(String(schedule.today || ''));
         const next: Record<string, string> = {};
         (Array.isArray(schedule.days) ? schedule.days : []).forEach((day: { day?: string; user_id?: number }) => {
@@ -185,6 +191,9 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
           team_id: Number(teamId),
           project_id: Number(projectId),
           timezone,
+          handover_remind_minutes: Number(remindMinutes) || 30,
+          handover_escalate_minutes: Number(escalateMinutes) || 15,
+          reassign_incidents_on_ack: reassignIncidents,
           days: payloadDays,
         }),
       });
@@ -212,7 +221,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
           <div>
             <span className="portal-page__eyebrow">On-call</span>
             <h1 className="portal-page__title">{title}</h1>
-            <p className="portal-page__subtitle">Monday through Sunday is the rotation order. The timezone is when each day starts. Leave a day empty for a coverage gap. Handover for a single day is requested on the On-call roster.</p>
+            <p className="portal-page__subtitle">Monday through Sunday is the rotation order. The timezone is when each day starts. Leave a day empty for a coverage gap. Handover reminder, overdue windows, and incident reassignment on acknowledgement are per team. Reassignment does not mark incidents Fixed.</p>
           </div>
           <Link href="/on-call" className="btn btn-secondary">Back to on-call</Link>
         </div>
@@ -244,7 +253,20 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
                     {timezones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
                   </select>
                 </label>
+                <label>
+                  Remind before shift end (minutes)
+                  <input className="input" type="number" min={5} max={120} value={remindMinutes} onChange={(event) => setRemindMinutes(event.target.value)} />
+                </label>
+                <label>
+                  Escalate after shift end (minutes)
+                  <input className="input" type="number" min={5} max={120} value={escalateMinutes} onChange={(event) => setEscalateMinutes(event.target.value)} />
+                </label>
               </div>
+              <p className="access-hint">Default is 30 minutes before shift end for the outgoing draft, then 15 minutes after for acknowledgement overdue.</p>
+              <label className="catalog-editor__toggle-label">
+                <input type="checkbox" checked={reassignIncidents} onChange={(event) => setReassignIncidents(event.target.checked)} />
+                <span>On acknowledgement, reassign open incidents on the handover to the incoming person. Status is not changed to Fixed.</span>
+              </label>
               <ul className="svc-tree">
                 {WEEKDAYS.map((day) => (
                   <li key={day} className="svc-tree__row">

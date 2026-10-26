@@ -383,6 +383,15 @@ func devopsProblemDetailHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid problem id", err)
 		return
 	}
+	if len(parts) >= 2 && strings.EqualFold(parts[1], "documents") {
+		item, lookupErr := getProblemByID(id)
+		if lookupErr != nil || item == nil {
+			writeAPIError(w, r, http.StatusNotFound, "problem not found", lookupErr)
+			return
+		}
+		serveRecordDocuments(w, r, "problem", id, userID, parts[2:])
+		return
+	}
 	if len(parts) == 2 && strings.EqualFold(parts[1], "journal") {
 		handleITSMJournal(w, r, "problem", id, userID)
 		return

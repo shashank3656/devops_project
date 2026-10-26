@@ -17,13 +17,13 @@ type groundedCitation struct {
 }
 
 type groundedRollbackHint struct {
-	ChangeID      int    `json:"change_id,omitempty"`
-	ChangeNumber  string `json:"change_number,omitempty"`
-	IncidentID    int    `json:"incident_id,omitempty"`
+	ChangeID       int    `json:"change_id,omitempty"`
+	ChangeNumber   string `json:"change_number,omitempty"`
+	IncidentID     int    `json:"incident_id,omitempty"`
 	IncidentNumber string `json:"incident_number,omitempty"`
-	PreviousSHA   string `json:"previous_sha,omitempty"`
-	Allowed       bool   `json:"allowed"`
-	Reason        string `json:"reason,omitempty"`
+	PreviousSHA    string `json:"previous_sha,omitempty"`
+	Allowed        bool   `json:"allowed"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 type groundedSource struct {
@@ -39,16 +39,17 @@ type groundedSource struct {
 }
 
 type groundedAnswer struct {
-	Reply    string                `json:"reply"`
-	Citations []groundedCitation   `json:"citations"`
-	Rollback *groundedRollbackHint `json:"rollback,omitempty"`
-	Source   string                `json:"source"`
+	Reply     string                `json:"reply"`
+	Citations []groundedCitation    `json:"citations"`
+	Rollback  *groundedRollbackHint `json:"rollback,omitempty"`
+	Source    string                `json:"source"`
 }
 
 var (
-	chgNumberPattern = regexp.MustCompile(`(?i)\bCHG0*([0-9]+)\b`)
-	incNumberPattern = regexp.MustCompile(`(?i)\bINC0*([0-9]+)\b`)
-	applyPattern     = regexp.MustCompile(`(?i)\b(terraform\s+apply|kubectl\s+apply|helm\s+upgrade|destroy\s+prod|apply\s+this\s+plan)\b`)
+	chgNumberPattern  = regexp.MustCompile(`(?i)\bCHG0*([0-9]+)\b`)
+	incNumberPattern  = regexp.MustCompile(`(?i)\bINC0*([0-9]+)\b`)
+	calcNumberPattern = regexp.MustCompile(`(?i)\bCALC-COST-([A-F0-9]+)\b`)
+	applyPattern      = regexp.MustCompile(`(?i)\b(terraform\s+apply|kubectl\s+apply|helm\s+upgrade|destroy\s+prod|apply\s+this\s+plan)\b`)
 )
 
 func queryAsksToApply(query string) bool {
@@ -63,9 +64,21 @@ func citationHRef(kind string, id int, number string) string {
 		return fmt.Sprintf("/incidents/%d", id)
 	case "runbook":
 		return "/runbooks"
+	case "cost_calculation":
+		return "/cost/optimization?calc=" + number
 	default:
 		return ""
 	}
+}
+
+func costQueryRelated(query string) bool {
+	value := strings.ToLower(query)
+	for _, token := range []string{"cost", "spend", "anomaly", "saving", "rightsiz", "calc-cost", "forecast", "unallocated", "operating bill", "kubernetes", "capacity", "request-only"} {
+		if strings.Contains(value, token) {
+			return true
+		}
+	}
+	return calcNumberPattern.MatchString(query)
 }
 
 func retrieveGroundedSources(query string, projectIDs map[int]struct{}) []groundedSource {
@@ -171,6 +184,45 @@ func retrieveGroundedSources(query string, projectIDs map[int]struct{}) []ground
 	return out
 }
 
+func retrieveCostInsightSources(userID int, query string) []groundedSource {
+	if userID <= 0 || !costQueryRelated(query) {
+		return nil
+	}
+	insights, err := buildCostInsights(userID, "actual", "USD", "", "", costMetricsContext{})
+	if err != nil || insights == nil {
+		return nil
+	}
+	want := map[string]struct{}{}
+	for _, match := range calcNumberPattern.FindAllString(query, -1) {
+		want[strings.ToUpper(match)] = struct{}{}
+	}
+	tokens := tokenizeQuery(query)
+	out := []groundedSource{}
+	for _, item := range insights.Calculations {
+		score := scoreGroundedFields(tokens, item.CalcID, item.Kind, item.ResourceID, item.Note, item.Amount)
+		if _, ok := want[strings.ToUpper(item.CalcID)]; ok {
+			score += 20
+		}
+		if score <= 0 && len(want) == 0 && costQueryRelated(query) {
+			score = 1
+		}
+		if score <= 0 {
+			continue
+		}
+		source := costAISafeSourceForWindow(item, insights.WindowStart, insights.WindowEnd, insights.Basis)
+		source.Score = score
+		if costAISafeSourceLeaks(source) {
+			continue
+		}
+		out = append(out, source)
+	}
+	sortGroundedSources(out)
+	if len(out) > 6 {
+		out = out[:6]
+	}
+	return out
+}
+
 func containsProjectID(ids map[int]struct{}, id int) bool {
 	_, ok := ids[id]
 	return ok
@@ -222,13 +274,24 @@ func buildGroundedAnswer(query string, sources []groundedSource) groundedAnswer 
 	}
 	if len(sources) == 0 {
 		return groundedAnswer{
-			Reply:  "I can only answer from a Change, Incident, or runbook that already exists. Name a CHG, INC, service, or SHA.",
+			Reply:  "I can only answer from a Change, Incident, runbook, or Cost calculation ID that already exists. Name a CHG, INC, CALC-COST, service, or SHA.",
 			Source: "grounded",
 		}
 	}
 	citations := make([]groundedCitation, 0, len(sources))
 	var b strings.Builder
-	b.WriteString("From the catalog:\n")
+	costOnly := true
+	for _, source := range sources {
+		if source.Kind != "cost_calculation" {
+			costOnly = false
+			break
+		}
+	}
+	if costOnly {
+		b.WriteString("Cost analysis from stored calculations. Scope is billed AWS accounts you can see. Refreshing the page does not pull newer provider billing.\n")
+	} else {
+		b.WriteString("From the catalog:\n")
+	}
 	var rollback *groundedRollbackHint
 	for _, source := range sources {
 		citations = append(citations, groundedCitation{
@@ -280,11 +343,17 @@ func answerGroundedCopilot(body copilotRequest, userID int, portal string) groun
 		projectIDs = projectIDSet(visibleProjectIDsForUser(userID))
 	}
 	sources := retrieveGroundedSources(firstNonEmpty(body.Query, body.Title), projectIDs)
+	sources = append(sources, retrieveCostInsightSources(userID, firstNonEmpty(body.Query, body.Title))...)
+	sortGroundedSources(sources)
+	if len(sources) > 8 {
+		sources = sources[:8]
+	}
 	answer := buildGroundedAnswer(body.Query, sources)
+	recordCostAIProof(userID, body)
 	if len(answer.Citations) == 0 {
 		return answer
 	}
-	if reply, ok := callCopilotModel(copilotRequest{
+	if reply, ok := callCopilotModel(userID, copilotRequest{
 		Query:  body.Query,
 		Path:   body.Path,
 		Title:  body.Title,

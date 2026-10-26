@@ -75,6 +75,28 @@ func TestNormalizeIRMProvider(t *testing.T) {
 	if normalizeIRMProvider("grafana_oncall") != "grafana" {
 		t.Fatal("grafana")
 	}
+	if normalizeIRMProvider("zd") != "zenduty" {
+		t.Fatal("zenduty")
+	}
+}
+
+func TestParseIRMZendutyCreatesIncidentPayload(t *testing.T) {
+	body := []byte(`{"payload":{"event_type":"create"},"incident":{"unique_id":"inc_9f","title":"api 5xx","status":0,"service":{"name":"checkout"}}}`)
+	provider, id, status, title, service, fingerprint, ok := parseIRMWebhook(body, "zenduty")
+	if !ok || provider != "zenduty" || id != "inc_9f" {
+		t.Fatalf("parse failed provider=%s id=%s ok=%t", provider, id, ok)
+	}
+	if mapExternalIncidentStatus(provider, status) != "open" {
+		t.Fatalf("status %s", status)
+	}
+	if title != "api 5xx" || service != "checkout" || fingerprint != "zenduty/inc_9f" {
+		t.Fatalf("title=%s service=%s fingerprint=%s", title, service, fingerprint)
+	}
+	resolved := []byte(`{"event_type":"incident.resolved","incident":{"unique_id":"inc_9f","title":"api 5xx","status":2}}`)
+	_, _, resolveStatus, _, _, _, ok := parseIRMWebhook(resolved, "zenduty")
+	if !ok || mapExternalIncidentStatus("zenduty", resolveStatus) != "resolved" {
+		t.Fatalf("resolve status %s ok=%t", resolveStatus, ok)
+	}
 }
 
 func TestMCPToolsAreReadOnly(t *testing.T) {
