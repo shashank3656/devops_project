@@ -611,6 +611,11 @@ func maybeOnboardDeployIntelForProjectRepo(project GitOpsCatalogProject) {
 	if owner == "" || name == "" {
 		return
 	}
+	owner, name, err := verifyGitHubRepositoryForOnboard(owner, name)
+	if err != nil {
+		log.Printf("[deploy-intel] skip auto-onboard %s/%s from project %d: %v", project.GitHubOwner, project.GitHubRepo, project.ID, err)
+		return
+	}
 	base := strings.TrimSpace(project.BaseBranch)
 	if base == "" {
 		base = BaseBranch

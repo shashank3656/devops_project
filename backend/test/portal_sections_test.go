@@ -49,6 +49,7 @@ func TestSectionForPath(t *testing.T) {
 		"/api/scans/jobs":                    "security",
 		"/api/devops/security/overview":      "security",
 		"/api/devops/evidence":               "records",
+		"/api/devops/pipelines":              "records-or-infrastructure",
 		"/api/devops/me":                     "",
 		"/api/webhooks/github":               "",
 		"/api/deployments/callbacks":         "",
@@ -78,7 +79,7 @@ func TestInfrastructurePageCanBeIAMOnly(t *testing.T) {
 	if !grants.allows("infrastructure") || !grants.allowsPage("iam") || grants.allowsPage("kubernetes") {
 		t.Fatalf("page grants = %+v", grants)
 	}
-	if pageForPath("/api/devops/iam/access-requests") != "iam" || pageForPath("/api/devops/k8s-pods") != "kubernetes" {
+	if pageForPath("/api/devops/iam/access-requests") != "iam" || pageForPath("/api/devops/k8s-pods") != "kubernetes" || pageForPath("/api/devops/pipelines") != "releases" {
 		t.Fatal("page path mapping changed")
 	}
 	if !defaultSectionGrants("devops").allowsPage("kubernetes") {

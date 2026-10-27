@@ -100,7 +100,7 @@ func pageForPath(path string) string {
 		return "kubernetes"
 	case strings.HasPrefix(path, "/api/devops/projects"), strings.HasPrefix(path, "/api/devops/project-"):
 		return "projects"
-	case strings.HasPrefix(path, "/api/devops/promotions"), strings.HasPrefix(path, "/api/deployments/"):
+	case strings.HasPrefix(path, "/api/devops/promotions"), strings.HasPrefix(path, "/api/deployments/"), strings.HasPrefix(path, "/api/devops/pipelines"):
 		return "releases"
 	case path == "/api/devops/environment-catalog":
 		return "environments"
@@ -151,6 +151,8 @@ func (g sectionGrants) allows(section string) bool {
 		return g.Daily || g.Operations
 	case "desk-or-requests":
 		return g.Daily || g.Requests
+	case "records-or-infrastructure":
+		return g.Records || g.Infrastructure
 	default:
 		return false
 	}
@@ -238,6 +240,8 @@ func sectionForPath(path string) string {
 		return "security"
 	case strings.HasPrefix(path, "/api/sre/"):
 		return "sre"
+	case strings.HasPrefix(path, "/api/devops/pipelines"):
+		return "records-or-infrastructure"
 	case strings.HasPrefix(path, "/api/devops/previews"),
 		strings.HasPrefix(path, "/api/devops/scorecards"),
 		strings.HasPrefix(path, "/api/devops/evidence"),

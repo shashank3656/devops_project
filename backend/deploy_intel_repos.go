@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/google/go-github/v61/github"
 )
+
+var errGitHubRepoNotFound = errors.New("Repository not found")
+
+var lookupGitHubRepository = lookupGitHubRepositoryLive
 
 var deployIntelFutureCapabilities = []string{
 	"deploy_frequency_by_service",
@@ -88,6 +93,66 @@ func normalizeRepoIdentity(owner, name string) (string, string) {
 		name = parts[1]
 	}
 	return owner, name
+}
+
+func lookupGitHubRepositoryLive(owner, name string) (canonicalOwner, canonicalName string, exists bool, err error) {
+	owner, name = normalizeRepoIdentity(owner, name)
+	if owner == "" || name == "" {
+		return "", "", false, fmt.Errorf("owner and repository name are required")
+	}
+	if strings.TrimSpace(GitHubToken) == "" {
+		return "", "", false, fmt.Errorf("The repository could not be verified on GitHub.")
+	}
+	client, clientErr := newGitHubClient()
+	if clientErr != nil || client == nil {
+		return "", "", false, fmt.Errorf("The repository could not be verified on GitHub.")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	repo, resp, getErr := client.Repositories.Get(ctx, owner, name)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	if status == 0 {
+		status = githubStatusCode(getErr)
+	}
+	if status == http.StatusNotFound || isGitHubNotFound(getErr) {
+		return owner, name, false, nil
+	}
+	if getErr != nil {
+		return "", "", false, fmt.Errorf("The repository could not be verified on GitHub.")
+	}
+	if repo != nil {
+		if login := strings.TrimSpace(repo.GetOwner().GetLogin()); login != "" {
+			owner = login
+		}
+		if repoName := strings.TrimSpace(repo.GetName()); repoName != "" {
+			name = repoName
+		}
+	}
+	return owner, name, true, nil
+}
+
+func verifyGitHubRepositoryForOnboard(owner, name string) (string, string, error) {
+	owner, name = normalizeRepoIdentity(owner, name)
+	if owner == "" || name == "" {
+		return "", "", fmt.Errorf("owner and repository name are required")
+	}
+	canonicalOwner, canonicalName, exists, err := lookupGitHubRepository(owner, name)
+	if err != nil {
+		return "", "", err
+	}
+	if !exists {
+		return "", "", errGitHubRepoNotFound
+	}
+	if strings.TrimSpace(canonicalOwner) != "" {
+		owner = canonicalOwner
+	}
+	if strings.TrimSpace(canonicalName) != "" {
+		name = canonicalName
+	}
+	return owner, name, nil
 }
 
 func getDeployIntelRepo(owner, name string) (*deployIntelRepo, error) {
@@ -607,11 +672,20 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 			body.BaseBranch = identity.BaseBranch
 		}
 	}
+	owner, name, err := verifyGitHubRepositoryForOnboard(body.Owner, body.Name)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, errGitHubRepoNotFound) {
+			status = http.StatusNotFound
+		}
+		writeAPIError(w, r, status, err.Error(), err)
+		return
+	}
 	enabled := true
 	if body.Enabled != nil {
 		enabled = *body.Enabled
 	}
-	repo, err := upsertDeployIntelRepo(body.Owner, body.Name, body.BaseBranch, body.Notes, enabled)
+	repo, err := upsertDeployIntelRepo(owner, name, body.BaseBranch, body.Notes, enabled)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
 		return

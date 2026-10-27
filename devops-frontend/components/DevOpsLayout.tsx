@@ -159,6 +159,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/activity': 'Operator activity',
   '/deploy-intelligence': 'Deploy intelligence',
   '/deploy-intelligence/onboard': 'Onboard repository',
+  '/pipelines': 'Pipelines',
   '/gate-approvals': 'Promotion history',
   '/notification-settings': 'Alert Settings',
   '/approval-notification-analytics': 'Analytics',
@@ -786,6 +787,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     iamNavItem,
     { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
     { href: '/promotions', label: 'Releases', Icon: IconFileText },
+    { href: '/pipelines', label: 'Pipelines', Icon: IconFileText },
   ];
   const securityNavItems: NavItem[] = isManager
     ? [
@@ -801,7 +803,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       ];
   const recordsNavItems: NavItem[] = isManager || Boolean(user?.grants?.records)
     ? [
-        { href: '/previews', label: 'Previews', Icon: IconFileText },
+        ...((isManager || Boolean(user?.grants?.infrastructure)) ? [] : [{ href: '/pipelines', label: 'Pipelines', Icon: IconFileText }]),
         { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
         { href: '/evidence', label: 'Evidence', Icon: IconFileText },
         { href: '/templates', label: 'Request templates', Icon: IconTemplates },
@@ -1399,6 +1401,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'create-problem', label: 'Create problem', href: '/problems/new', hint: 'Open a problem' },
           { id: 'knowledge', label: 'Knowledge', href: '/knowledge', hint: 'Articles' },
           { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence', hint: 'Deploy signals' },
+          { id: 'pipelines', label: 'Pipelines', href: '/pipelines', hint: 'CI runs posted onto changes' },
         ].filter((command) => !user || pathAllowed(command.href, grants))}
       />
       <SupportHub

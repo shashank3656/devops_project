@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import DeliveryHubNav from '../../components/DeliveryHubNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
@@ -94,6 +95,7 @@ export default function DeployIntelligenceIndexPage() {
             Onboard
           </Link>
         </header>
+        <DeliveryHubNav active="repos" />
 
         {error ? <div className="alert alert-error">{error}</div> : null}
 

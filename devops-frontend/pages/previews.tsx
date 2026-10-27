@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { sessionRole } from '../components/deskClient';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -111,6 +112,7 @@ export default function PreviewsCatalogPage() {
             </p>
           </div>
         </div>
+        <DeliveryHubNav active="previews" />
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
         {loading ? <div className="empty-state">Loading previews…</div> : null}

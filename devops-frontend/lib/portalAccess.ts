@@ -89,6 +89,7 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/approval-center', key: 'tickets' },
   { prefix: '/approval-sla', key: 'tickets' },
   { prefix: '/deploy-intelligence', key: 'releases' },
+  { prefix: '/pipelines', key: 'releases' },
   { prefix: '/gitops-projects', key: 'releases' },
   { prefix: '/gitops-control', key: 'releases' },
   { prefix: '/gate-approvals', key: 'releases' },
@@ -202,14 +203,14 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'environments', grants.manager)) prefixes.push('/environments');
     if (pageOn(grants, 'cloud-accounts', grants.manager)) prefixes.push('/cloud-accounts');
     if (pageOn(grants, 'cloud-inventory', grants.manager)) prefixes.push('/cloud-resources');
-    if (pageOn(grants, 'releases', grants.manager)) prefixes.push('/promotions', '/deploy-intelligence', '/gitops-projects', '/gitops-control', '/release-notes', '/project-operations');
+    if (pageOn(grants, 'releases', grants.manager)) prefixes.push('/promotions', '/deploy-intelligence', '/pipelines', '/gitops-projects', '/gitops-control', '/release-notes', '/project-operations');
     if (grants.manager) prefixes.push('/gate-approvals', '/gate-policies');
   }
   if (grants.security) {
     prefixes.push('/security');
     if (pageOn(grants, 'secrets', grants.manager)) prefixes.push('/credential-audit');
   }
-  if (grants.records) prefixes.push('/previews', '/scorecards', '/evidence', '/templates');
+  if (grants.records) prefixes.push('/previews', '/pipelines', '/scorecards', '/evidence', '/templates');
   if (grants.portalAccess) {
     prefixes.push(
       '/portal-access',
@@ -217,6 +218,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
       '/approval-sla',
       '/change-calendar',
       '/deploy-intelligence',
+      '/pipelines',
       '/gitops-projects',
       '/gitops-control',
       '/gate-approvals',
@@ -237,6 +239,7 @@ export function accessRequirement(pathname: string): string {
   if (matches(pathname, '/change-calendar')) return 'Needs Daily access, including change requests.';
   if (
     matches(pathname, '/deploy-intelligence')
+    || matches(pathname, '/pipelines')
     || matches(pathname, '/gitops-projects')
     || matches(pathname, '/gitops-control')
     || matches(pathname, '/gate-approvals')
