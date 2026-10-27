@@ -472,6 +472,20 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Catalog: onboard repos first, then drill into owner/repo for PR analysis.
 	if owner == "" || repo == "" {
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("view")), "pull-requests") {
+			limit := 12
+			if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+				if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+					limit = n
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			encodeJSON(w, map[string]interface{}{
+				"status": "ok",
+				"events": listDeliveryOpenPullRequests(limit),
+			})
+			return
+		}
 		summaries, err := listDeployIntelRepoSummaries()
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
@@ -534,7 +548,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		repoSummary = buildDeployIntelRepoSummary(*rec)
 	}
 
-	var events []repoDeployEvent
+	events := []repoDeployEvent{}
 	var githubFetch deployIntelGitHubFetch
 	var err error
 	if section == "open" {
@@ -582,7 +596,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-	} else {
+	} else if section != "settings" {
 		events, err = listRepoDeployEvents(owner, repo, limit)
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
@@ -590,19 +604,19 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	insights, insightErr := buildDeployIntelRepoInsights(owner, repo, baseBranch)
-	if insightErr != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "request failed", insightErr)
-		return
+	if section == "open" && githubFetch.Listed > 0 && strings.TrimSpace(r.URL.Query().Get("only")) != "1" {
+		repoSummary.OpenPRCount = githubFetch.TotalOpen
+		if githubFetch.Error == "" {
+			repoSummary.GitHubAccess = "connected"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	payload := map[string]interface{}{
-		"status":   "ok",
-		"repo":     repoSummary,
-		"section":  section,
-		"events":   events,
-		"insights": insights,
+		"status":  "ok",
+		"repo":    repoSummary,
+		"section": section,
+		"events":  events,
 		"onboarded_repo": map[string]interface{}{
 			"owner":     owner,
 			"name":      repo,

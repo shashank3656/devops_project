@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/go-github/v61/github"
@@ -414,7 +415,7 @@ func shallowOpenPRBrief(owner, name string, pr *github.PullRequest) prImpactBrie
 	brief.Additions = pr.GetAdditions()
 	brief.Deletions = pr.GetDeletions()
 	brief.ChangedFilesHint(pr.GetChangedFiles())
-	brief.Summary = "Loading commit and diff stats from GitHub…"
+	brief.Summary = firstNonEmpty(brief.Title, fmt.Sprintf("Open pull request #%d", number))
 	return brief
 }
 
@@ -435,10 +436,9 @@ func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner
 		if req != nil {
 			brief.RequestID = req.ID
 		}
-		if number > 0 && client != nil {
-			enrichOpenPRBriefStats(ctx, client, owner, name, number, &brief, req)
-		} else {
-			scorePRImpact(&brief, req)
+		scorePRImpact(&brief, req)
+		if strings.TrimSpace(brief.Summary) == "" || strings.HasPrefix(brief.Summary, "Loading") {
+			brief.Summary = firstNonEmpty(brief.Title, fmt.Sprintf("Open pull request #%d", number))
 		}
 	}
 	brief.MergeState = "open"
@@ -509,6 +509,26 @@ func repoDeployStats(owner, name string) (mergeCount, highRisk30d int, lastMerge
 	return mergeCount, highRisk30d, lastMerged
 }
 
+type githubInspectCache struct {
+	Count  int
+	Access string
+	At     time.Time
+}
+
+var githubInspectStore sync.Map
+
+const githubInspectTTL = 45 * time.Second
+
+func githubInspectKey(owner, name string) string {
+	return strings.ToLower(strings.Trim(owner+"/"+name, "/"))
+}
+
+func rememberGitHubInspect(owner, name string, count int, access string) {
+	owner, name = normalizeRepoIdentity(owner, name)
+	now := time.Now().UTC()
+	githubInspectStore.Store(githubInspectKey(owner, name), githubInspectCache{Count: count, Access: access, At: now})
+}
+
 func inspectDeployIntelGitHub(owner, name string) (openCount int, access string, fetchedAt *time.Time) {
 	owner, name = normalizeRepoIdentity(owner, name)
 	if GitHubToken == "" {
@@ -521,17 +541,36 @@ func inspectDeployIntelGitHub(owner, name string) (openCount int, access string,
 	if !deployIntelGitHubAccessAllowed(owner, name) {
 		return 0, "failed", nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if cached, ok := githubInspectStore.Load(githubInspectKey(owner, name)); ok {
+		item := cached.(githubInspectCache)
+		if time.Since(item.At) < githubInspectTTL {
+			at := item.At
+			return item.Count, item.Access, &at
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	client, err := newGitHubClient()
 	if err != nil || client == nil {
 		return 0, "failed", nil
 	}
-	_, total, _, err := fetchGitHubOpenPullRequests(ctx, client, owner, name, deployIntelMaxOpenPRList)
+	query := fmt.Sprintf("repo:%s/%s is:pr is:open", owner, name)
+	result, resp, err := client.Search.Issues(ctx, query, &github.SearchOptions{ListOptions: github.ListOptions{PerPage: 1}})
 	if err != nil {
-		return 0, "failed", nil
+		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound) {
+			rememberGitHubInspect(owner, name, 0, "failed")
+			return 0, "failed", nil
+		}
+		now := time.Now().UTC()
+		rememberGitHubInspect(owner, name, 0, "connected")
+		return 0, "connected", &now
+	}
+	total := 0
+	if result != nil {
+		total = result.GetTotal()
 	}
 	now := time.Now().UTC()
+	rememberGitHubInspect(owner, name, total, "connected")
 	return total, "connected", &now
 }
 
@@ -579,7 +618,6 @@ func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 	default:
 		summary.SetupSummary = fmt.Sprintf("GitHub is connected and merge tracking is configured for %s.", item.BaseBranch)
 	}
-	summary.LastChange = lastChangeForRepo(item.Owner, item.Name)
 	return summary
 }
 
@@ -633,11 +671,59 @@ func listDeployIntelRepoSummaries() ([]deployIntelRepoSummary, error) {
 			return nil, err
 		}
 	}
-	out := make([]deployIntelRepoSummary, 0, len(repos))
-	for _, item := range repos {
-		out = append(out, buildDeployIntelRepoSummary(item))
+	out := make([]deployIntelRepoSummary, len(repos))
+	var wg sync.WaitGroup
+	for i, item := range repos {
+		wg.Add(1)
+		go func(i int, item deployIntelRepo) {
+			defer wg.Done()
+			out[i] = buildDeployIntelRepoSummary(item)
+		}(i, item)
 	}
+	wg.Wait()
 	return out, nil
+}
+
+func listDeliveryOpenPullRequests(limitPerRepo int) []repoDeployEvent {
+	repos, err := listDeployIntelRepos()
+	if err != nil || len(repos) == 0 {
+		return []repoDeployEvent{}
+	}
+	if limitPerRepo <= 0 || limitPerRepo > 20 {
+		limitPerRepo = 12
+	}
+	if len(repos) > 8 {
+		repos = repos[:8]
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	out := make([]repoDeployEvent, 0, len(repos)*limitPerRepo)
+	for _, item := range repos {
+		if !item.Enabled {
+			continue
+		}
+		wg.Add(1)
+		go func(item deployIntelRepo) {
+			defer wg.Done()
+			base := strings.TrimSpace(item.BaseBranch)
+			if base == "" {
+				base = "main"
+			}
+			events, _, err := listOpenPullRequestsAnalyzed(item.Owner, item.Name, openPRListOptions{
+				Limit:          limitPerRepo,
+				ProductionBase: base,
+				BaseBranchOnly: true,
+			})
+			if err != nil || len(events) == 0 {
+				return
+			}
+			mu.Lock()
+			out = append(out, events...)
+			mu.Unlock()
+		}(item)
+	}
+	wg.Wait()
+	return out
 }
 
 func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([]repoDeployEvent, deployIntelGitHubFetch, error) {
@@ -659,9 +745,9 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 	if opts.Limit <= 0 || opts.Limit > deployIntelMaxOpenPRList {
 		opts.Limit = deployIntelMaxOpenPRList
 	}
-	timeout := 90 * time.Second
+	timeout := 20 * time.Second
 	if opts.BatchDeep {
-		timeout = 120 * time.Second
+		timeout = 45 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -669,6 +755,18 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 	if err != nil || client == nil {
 		meta.Error = "GitHub client is not available."
 		return nil, meta, fmt.Errorf("github client unavailable")
+	}
+	if opts.Only && opts.DeepPR > 0 {
+		pr, _, getErr := client.PullRequests.Get(ctx, owner, name, opts.DeepPR)
+		if getErr != nil || pr == nil {
+			meta.Error = "The pull request could not be loaded from GitHub."
+			return nil, meta, getErr
+		}
+		ev := attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(ctx, client, owner, name, pr, true), true)
+		meta.FetchedAt = time.Now().UTC().Format(time.RFC3339)
+		meta.Listed = 1
+		meta.TotalOpen = 1
+		return []repoDeployEvent{ev}, meta, nil
 	}
 	fetchCap := opts.Limit
 	if opts.BaseBranchOnly || !opts.IncludeDrafts {
@@ -692,6 +790,7 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 	meta.Listed = len(filtered)
 	meta.TotalOpen = len(filtered)
 	meta.Truncated = truncated || len(filtered) >= opts.Limit
+	rememberGitHubInspect(owner, name, meta.TotalOpen, "connected")
 	out := make([]repoDeployEvent, 0, len(filtered))
 	batchDeepRemaining := 0
 	if opts.BatchDeep {

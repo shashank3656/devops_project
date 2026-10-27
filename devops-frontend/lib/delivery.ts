@@ -30,7 +30,7 @@ export function formatRisk(score?: number, level?: string) {
 }
 
 export function formatCI(summary?: DeliveryCISummary | null, checks?: DeliveryCheck[] | null) {
-  if (summary?.label) {
+  if (summary?.label && summary.label !== 'No checks yet') {
     const failed = summary.failed || 0;
     const pending = summary.pending || 0;
     const passed = summary.passed || 0;
@@ -38,7 +38,7 @@ export function formatCI(summary?: DeliveryCISummary | null, checks?: DeliveryCh
     return { label: summary.label, tone };
   }
   const list = Array.isArray(checks) ? checks : [];
-  if (!list.length) return { label: 'No checks yet', tone: 'unknown' };
+  if (!list.length) return { label: '—', tone: 'unknown' };
   let failed = 0;
   let pending = 0;
   let passed = 0;

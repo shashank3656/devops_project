@@ -713,8 +713,6 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         || pathname.startsWith('/deploy-intelligence/')
         || pathname === '/pull-requests'
         || pathname === '/pipelines'
-        || pathname === '/previews'
-        || pathname.startsWith('/previews/')
       );
     }
     return pathname === href || pathname.startsWith(`${href}/`);

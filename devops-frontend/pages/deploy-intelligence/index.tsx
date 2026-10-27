@@ -45,11 +45,7 @@ export default function DeployIntelligenceIndexPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
-  const [stateFilter, setStateFilter] = useState<'all' | 'connected' | 'attention'>('all');
-  const [editingKey, setEditingKey] = useState('');
-  const [draftOwner, setDraftOwner] = useState('');
-  const [draftName, setDraftName] = useState('');
-  const [draftBase, setDraftBase] = useState('main');
+  const [stateFilter, setStateFilter] = useState<'all' | 'connected' | 'failed' | 'setup'>('all');
   const [savingKey, setSavingKey] = useState('');
   const [openMenu, setOpenMenu] = useState('');
 
@@ -78,48 +74,6 @@ export default function DeployIntelligenceIndexPage() {
   useEffect(() => {
     void load();
   }, [apiUrl]);
-
-  const startEdit = (repo: RepoSummary) => {
-    setOpenMenu('');
-    setEditingKey(repoKey(repo));
-    setDraftOwner(repo.owner);
-    setDraftName(repo.name);
-    setDraftBase(repo.base_branch || 'main');
-  };
-
-  const saveEdit = async (repo: RepoSummary) => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) return;
-    const key = repoKey(repo);
-    setSavingKey(key);
-    setError('');
-    setNotice('');
-    try {
-      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          owner: repo.owner,
-          name: repo.name,
-          next_owner: draftOwner,
-          next_name: draftName,
-          base_branch: draftBase,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(typeof data?.error === 'string' ? data.error : 'The repository could not be updated');
-        return;
-      }
-      setEditingKey('');
-      setNotice('Catalog entry updated. GitHub was not renamed.');
-      await load();
-    } catch {
-      setError('The repository could not be updated');
-    } finally {
-      setSavingKey('');
-    }
-  };
 
   const disconnectRepo = async (repo: RepoSummary) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -155,15 +109,16 @@ export default function DeployIntelligenceIndexPage() {
   };
 
   const connectedCount = repos.filter((repo) => repo.github_access === 'connected').length;
+  const failedCount = repos.filter((repo) => repo.github_access === 'failed').length;
+  const setupCount = repos.filter((repo) => repo.merge_tracking !== 'configured').length;
   const reviewCount = repos.reduce((sum, repo) => sum + (repo.open_pr_count || 0), 0);
-  const attentionCount = repos.filter((repo) => repo.needs_attention || repo.merge_tracking !== 'configured' || repo.github_access !== 'connected').length;
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return repos.filter((repo) => {
-      const attention = repo.needs_attention || repo.merge_tracking !== 'configured' || repo.github_access !== 'connected';
       if (stateFilter === 'connected' && repo.github_access !== 'connected') return false;
-      if (stateFilter === 'attention' && !attention) return false;
+      if (stateFilter === 'failed' && repo.github_access !== 'failed') return false;
+      if (stateFilter === 'setup' && repo.merge_tracking === 'configured') return false;
       if (!needle) return true;
       return `${repo.owner}/${repo.name} ${repo.base_branch}`.toLowerCase().includes(needle);
     });
@@ -190,53 +145,41 @@ export default function DeployIntelligenceIndexPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
-        <div className="delivery-stats" role="group" aria-label="Delivery summary">
-          <article className="delivery-stat">
-            <span className="delivery-stat__label">Connected repositories</span>
-            <strong className="delivery-stat__value">{loading ? '—' : connectedCount}</strong>
-            <p className="delivery-stat__hint">GitHub listed pull requests successfully.</p>
-          </article>
-          <article className="delivery-stat">
-            <span className="delivery-stat__label">PRs needing review</span>
-            <strong className="delivery-stat__value">{loading ? '—' : reviewCount}</strong>
-            <p className="delivery-stat__hint">Open pull requests on connected repositories.</p>
-          </article>
-          <article className="delivery-stat">
-            <span className="delivery-stat__label">Connections needing attention</span>
-            <strong className="delivery-stat__value">{loading ? '—' : attentionCount}</strong>
-            <p className="delivery-stat__hint">GitHub failed, paused, or merge tracking is not configured.</p>
-          </article>
-        </div>
-
-        <div className="delivery-toolbar">
+        <div className="delivery-toolbar delivery-toolbar--pipe">
           <label className="delivery-search">
-            <span className="delivery-search__label">Find repository</span>
             <input
               className="delivery-search__input"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Owner or name"
+              placeholder="Find repository"
+              aria-label="Find repository"
               autoComplete="off"
               spellCheck={false}
             />
           </label>
-          <div className="delivery-filters" role="group" aria-label="Repository state">
+          <div className="delivery-filters delivery-filters--pipe" role="group" aria-label="Repository state">
             {(
               [
-                ['all', `All (${repos.length})`],
-                ['connected', `Connected (${connectedCount})`],
-                ['attention', `Needs attention (${attentionCount})`],
+                ['all', 'All', repos.length, 'all'],
+                ['connected', 'Connected', connectedCount, 'succeeded'],
+                ['failed', 'GitHub failed', failedCount, 'failed'],
+                ['setup', 'Needs setup', setupCount, 'stale'],
               ] as const
-            ).map(([value, label]) => (
+            ).map(([value, label, count, tone]) => (
               <button
                 key={value}
                 type="button"
-                className={`delivery-filter${stateFilter === value ? ' is-active' : ''}`}
+                className={`delivery-filter delivery-filter--${tone}${stateFilter === value ? ' is-active' : ''}`}
                 onClick={() => setStateFilter(value)}
               >
                 {label}
+                <strong>{loading ? '—' : count}</strong>
               </button>
             ))}
+            <Link href="/pull-requests" className="delivery-filter delivery-filter--running">
+              Open PRs
+              <strong>{loading ? '—' : reviewCount}</strong>
+            </Link>
           </div>
         </div>
 
@@ -267,50 +210,21 @@ export default function DeployIntelligenceIndexPage() {
                 <tbody>
                   {visible.map((repo) => {
                     const key = repoKey(repo);
-                    const editing = editingKey === key;
                     const busy = savingKey === key;
                     const access = githubAccessLabel(repo.github_access);
                     const tracking = mergeTrackingLabel(repo.merge_tracking);
                     const needsSetup = repo.merge_tracking !== 'configured';
+                    const settingsHref = `/deploy-intelligence/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}?section=settings`;
                     return (
                       <tr key={key}>
                         <td>
-                          {editing ? (
-                            <form
-                              className="portal-page__actions"
-                              onSubmit={(event) => {
-                                event.preventDefault();
-                                void saveEdit(repo);
-                              }}
-                            >
-                              <label className="label" style={{ margin: 0 }}>
-                                Owner
-                                <input className="input" value={draftOwner} onChange={(event) => setDraftOwner(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={busy} />
-                              </label>
-                              <label className="label" style={{ margin: 0 }}>
-                                Repository
-                                <input className="input" value={draftName} onChange={(event) => setDraftName(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={busy} />
-                              </label>
-                              <label className="label" style={{ margin: 0 }}>
-                                Base
-                                <input className="input" value={draftBase} onChange={(event) => setDraftBase(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={busy} />
-                              </label>
-                              <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !draftOwner.trim() || !draftName.trim()}>
-                                {busy ? 'Saving…' : 'Save'}
-                              </button>
-                              <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setEditingKey('')}>
-                                Cancel
-                              </button>
-                            </form>
-                          ) : (
-                            <Link
-                              href={`/deploy-intelligence/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`}
-                              className="delivery-repo-link"
-                            >
-                              <span className="delivery-repo-link__name">{repo.name}</span>
-                              <span className="delivery-repo-link__meta">{repo.owner} · {repo.base_branch || 'main'}</span>
-                            </Link>
-                          )}
+                          <Link
+                            href={`/deploy-intelligence/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`}
+                            className="delivery-repo-link"
+                          >
+                            <span className="delivery-repo-link__name">{repo.name}</span>
+                            <span className="delivery-repo-link__meta">{repo.owner} · {repo.base_branch || 'main'}</span>
+                          </Link>
                         </td>
                         <td>
                           <span className={`delivery-status delivery-status--${access.tone}`}>{access.label}</span>
@@ -319,12 +233,7 @@ export default function DeployIntelligenceIndexPage() {
                           {needsSetup ? (
                             <div className="delivery-setup">
                               <span className={`delivery-status delivery-status--${tracking.tone}`}>Merge tracking not configured</span>
-                              <Link
-                                href={`/deploy-intelligence/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}?section=settings`}
-                                className="delivery-setup__action"
-                              >
-                                Complete setup
-                              </Link>
+                              <Link href={settingsHref} className="delivery-setup__action">Complete setup</Link>
                             </div>
                           ) : (
                             <span className={`delivery-status delivery-status--${tracking.tone}`}>{tracking.label}</span>
@@ -332,26 +241,22 @@ export default function DeployIntelligenceIndexPage() {
                         </td>
                         <td>{repo.open_pr_count}</td>
                         <td>{formatWhen(repo.last_sync_at || repo.last_merged_at)}</td>
-                        {canManage && !editing ? (
+                        {canManage ? (
                           <td className="delivery-table__actions">
                             <details
-                              className="delivery-menu"
+                              className="delivery-menu delivery-menu--icon"
                               open={openMenu === key}
                               onToggle={(event) => setOpenMenu((event.target as HTMLDetailsElement).open ? key : '')}
                             >
                               <summary aria-label={`Actions for ${repo.name}`}>⋯</summary>
                               <div className="delivery-menu__panel">
-                                <button type="button" disabled={busy} onClick={() => startEdit(repo)}>Edit catalog</button>
-                                {needsSetup ? (
-                                  <Link href={`/deploy-intelligence/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}?section=settings`}>
-                                    Complete setup
-                                  </Link>
-                                ) : null}
+                                <Link href={`${settingsHref}&edit=1`}>Edit catalog</Link>
+                                {needsSetup ? <Link href={settingsHref}>Complete setup</Link> : null}
                                 <button type="button" disabled={busy} onClick={() => void disconnectRepo(repo)}>Disconnect</button>
                               </div>
                             </details>
                           </td>
-                        ) : canManage ? <td /> : null}
+                        ) : null}
                       </tr>
                     );
                   })}

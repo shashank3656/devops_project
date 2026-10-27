@@ -115,31 +115,31 @@ export default function DeployIntelligenceRepoPage() {
   const [suggestingTicket, setSuggestingTicket] = useState(false);
   const [ticketMessage, setTicketMessage] = useState('');
   const [query, setQuery] = useState('');
-  const [editing, setEditing] = useState(false);
   const [draftOwner, setDraftOwner] = useState('');
   const [draftName, setDraftName] = useState('');
   const [draftBase, setDraftBase] = useState('main');
   const [saving, setSaving] = useState(false);
 
-  const load = async (options?: { prNumber?: number; post?: boolean; keepSelection?: boolean }) => {
+  const load = async (options?: { prNumber?: number; post?: boolean; keepSelection?: boolean; quiet?: boolean }) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token || !owner || !repo) return;
-    setLoading(true);
+    if (!options?.quiet) setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams({
         owner,
         repo,
-        limit: '100',
-        section: section === 'settings' ? 'open' : section,
+        limit: '30',
+        section,
       });
-      if (section === 'open' || section === 'settings') {
+      if (section === 'open') {
         params.set('fetch_github', '1');
         if (includeDrafts) params.set('include_drafts', '1');
       }
       if (options?.prNumber && options.prNumber > 0) {
         if (options.post) params.set('refresh_pr', String(options.prNumber));
         else params.set('pr_number', String(options.prNumber));
+        if (options.quiet && !options.post) params.set('only', '1');
       }
       const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -149,21 +149,32 @@ export default function DeployIntelligenceRepoPage() {
         setError(data?.error || 'Failed to load pull requests');
         return;
       }
-      setRepoMeta(data?.repo || null);
+      setRepoMeta((current) => data?.repo || current);
       const nextEvents: DeployEvent[] = Array.isArray(data?.events) ? data.events : [];
-      setEvents(nextEvents);
-      setGithubMeta((data?.github as GitHubFetchMeta) || null);
-      setGithubError(typeof data?.github_error === 'string' ? data.github_error : '');
-      if (options?.prNumber && options.prNumber > 0) {
+      if (options?.quiet && options.prNumber) {
         const match = nextEvents.find((item) => item.pr_number === options.prNumber);
-        if (match) setSelected(match);
-      } else if (!options?.keepSelection) {
-        setSelected(null);
+        if (match) {
+          setEvents((current) => {
+            const exists = current.some((item) => item.pr_number === match.pr_number);
+            return exists ? current.map((item) => (item.pr_number === match.pr_number ? match : item)) : [match, ...current];
+          });
+          setSelected(match);
+        }
+      } else {
+        setEvents(nextEvents);
+        if (options?.prNumber && options.prNumber > 0) {
+          const match = nextEvents.find((item) => item.pr_number === options.prNumber);
+          if (match) setSelected(match);
+        } else if (!options?.keepSelection) {
+          setSelected(null);
+        }
       }
+      if (data?.github) setGithubMeta(data.github as GitHubFetchMeta);
+      setGithubError(typeof data?.github_error === 'string' ? data.github_error : '');
     } catch {
       setError('Failed to load pull requests');
     } finally {
-      setLoading(false);
+      if (!options?.quiet) setLoading(false);
       setRefreshing(false);
       setPosting(false);
     }
@@ -175,7 +186,17 @@ export default function DeployIntelligenceRepoPage() {
     if (requested === 'merges' || requested === 'settings' || requested === 'open') {
       setSection(requested);
     }
-  }, [router.isReady, router.query.section]);
+    if (router.query.edit === '1') {
+      setSection('settings');
+    }
+  }, [router.isReady, router.query.section, router.query.edit]);
+
+  useEffect(() => {
+    if (!owner || !repo) return;
+    setDraftOwner(owner);
+    setDraftName(repo);
+    setDraftBase(repoMeta?.base_branch || 'main');
+  }, [owner, repo, repoMeta?.base_branch]);
 
   useEffect(() => {
     if (!router.isReady || !owner || !repo) return;
@@ -203,7 +224,7 @@ export default function DeployIntelligenceRepoPage() {
   const reviewEvent = (item: DeployEvent) => {
     setSelected(item);
     setTicketMessage('');
-    if (section === 'open') void load({ prNumber: item.pr_number, keepSelection: true });
+    if (section === 'open') void load({ prNumber: item.pr_number, keepSelection: true, quiet: true });
   };
 
   const postGitHubComment = async (item: DeployEvent) => {
@@ -293,9 +314,8 @@ export default function DeployIntelligenceRepoPage() {
         setError(typeof data?.error === 'string' ? data.error : 'The repository could not be updated');
         return;
       }
-      setEditing(false);
       setNotice('Catalog entry updated. GitHub was not renamed.');
-      await router.replace(`/deploy-intelligence/${encodeURIComponent(draftOwner)}/${encodeURIComponent(draftName)}`);
+      await router.replace(`/deploy-intelligence/${encodeURIComponent(draftOwner)}/${encodeURIComponent(draftName)}?section=settings`);
     } catch {
       setError('The repository could not be updated');
     } finally {
@@ -352,7 +372,7 @@ export default function DeployIntelligenceRepoPage() {
             </p>
           </div>
           {canManage ? (
-            <details className="delivery-menu">
+            <details className="delivery-menu delivery-menu--icon">
               <summary aria-label="Repository actions">⋯</summary>
               <div className="delivery-menu__panel">
                 <button
@@ -361,8 +381,12 @@ export default function DeployIntelligenceRepoPage() {
                     setDraftOwner(owner);
                     setDraftName(repo);
                     setDraftBase(repoMeta?.base_branch || 'main');
-                    setEditing(true);
                     setSection('settings');
+                    void router.replace(
+                      `/deploy-intelligence/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}?section=settings&edit=1`,
+                      undefined,
+                      { shallow: true },
+                    );
                   }}
                 >
                   Edit catalog
@@ -402,14 +426,14 @@ export default function DeployIntelligenceRepoPage() {
         ) : null}
 
         {section !== 'settings' ? (
-          <div className="delivery-toolbar">
+          <div className="delivery-toolbar delivery-toolbar--repo">
             <label className="delivery-search">
-              <span className="delivery-search__label">Find pull request</span>
               <input
                 className="delivery-search__input"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Title, number, or author"
+                placeholder="Find pull request"
+                aria-label="Find pull request"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -420,7 +444,7 @@ export default function DeployIntelligenceRepoPage() {
                 Include drafts
               </label>
             ) : (
-              <details className="delivery-menu">
+              <details className="delivery-menu delivery-menu--action">
                 <summary>Import merged PR</summary>
                 <div className="delivery-menu__panel delivery-menu__panel--form">
                   <label className="label">
@@ -471,28 +495,33 @@ export default function DeployIntelligenceRepoPage() {
             ) : (
               <p className="delivery-empty">Merges into {repoMeta?.base_branch || 'main'} are captured automatically.</p>
             )}
-            {editing ? (
+            {canManage ? (
               <form
-                className="portal-page__actions"
+                className="delivery-form"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void saveEdit();
                 }}
               >
+                <h2 className="delivery-panel__title">Catalog</h2>
+                <p className="delivery-lede">Updates the OpsTrellis watch list only. GitHub is not renamed.</p>
                 <label className="label">
                   Owner
-                  <input className="input" value={draftOwner} onChange={(event) => setDraftOwner(event.target.value.replace(/\s+/g, ''))} />
+                  <input className="input" value={draftOwner} onChange={(event) => setDraftOwner(event.target.value.replace(/\s+/g, ''))} autoComplete="off" />
                 </label>
                 <label className="label">
                   Repository
-                  <input className="input" value={draftName} onChange={(event) => setDraftName(event.target.value.replace(/\s+/g, ''))} />
+                  <input className="input" value={draftName} onChange={(event) => setDraftName(event.target.value.replace(/\s+/g, ''))} autoComplete="off" />
                 </label>
                 <label className="label">
                   Base branch
-                  <input className="input" value={draftBase} onChange={(event) => setDraftBase(event.target.value.replace(/\s+/g, ''))} />
+                  <input className="input" value={draftBase} onChange={(event) => setDraftBase(event.target.value.replace(/\s+/g, ''))} autoComplete="off" />
                 </label>
-                <button type="submit" className="btn btn-primary" disabled={saving}>Save catalog</button>
-                <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+                <div className="portal-page__actions">
+                  <button type="submit" className="btn btn-primary" disabled={saving || !draftOwner.trim() || !draftName.trim()}>
+                    {saving ? 'Saving…' : 'Save catalog'}
+                  </button>
+                </div>
               </form>
             ) : null}
           </section>
@@ -623,13 +652,20 @@ export default function DeployIntelligenceRepoPage() {
             <section>
               <h3>Checks</h3>
               <p><span className={`delivery-status delivery-status--${checks.tone}`}>{checks.label}</span></p>
-              <ul>
-                {(selected.open_pr?.checks || []).map((check) => (
-                  <li key={check.key || check.label}>
-                    {check.label}: {check.status || 'unknown'}{check.detail ? ` — ${check.detail}` : ''}
-                  </li>
-                ))}
-              </ul>
+              {(selected.open_pr?.checks || []).length ? (
+                <ul>
+                  {(selected.open_pr?.checks || []).map((check) => {
+                    const status = check.status === 'ok' ? 'passed' : (check.status || 'unknown');
+                    return (
+                      <li key={check.key || check.label}>
+                        {check.label}: {status}{check.detail ? ` — ${check.detail}` : ''}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p>No GitHub checks on this commit.</p>
+              )}
               {selected.open_pr?.review_detail ? <p>{selected.open_pr.review_detail}</p> : null}
             </section>
             <section>

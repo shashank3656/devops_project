@@ -59,6 +59,7 @@ type deployIntelOpenPRMeta struct {
 type openPRListOptions struct {
 	Limit          int
 	DeepPR         int
+	Only           bool
 	ProductionBase string
 	BaseBranchOnly bool
 	IncludeDrafts  bool
@@ -95,6 +96,9 @@ func parseOpenPRListOptions(r *http.Request, productionBase string) openPRListOp
 	}
 	if strings.TrimSpace(r.URL.Query().Get("batch_deep")) == "1" {
 		opts.BatchDeep = true
+	}
+	if strings.TrimSpace(r.URL.Query().Get("only")) == "1" {
+		opts.Only = true
 	}
 	return opts
 }
@@ -191,12 +195,27 @@ func formatCISummaryLabel(summary deployIntelCISummary) string {
 	return strings.Join(parts, " · ")
 }
 
-func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner, name, ref string) ([]deployIntelRequiredCheck, deployIntelCISummary) {
-	out := []deployIntelRequiredCheck{
-		{Key: "plan_review", Label: checkInfragatePlanReview, Required: true, Present: false, Status: "unknown"},
-		{Key: "policy", Label: checkInfragatePolicy, Required: true, Present: false, Status: "unknown"},
-		{Key: "deploy_intel", Label: checkInfragateDeployIntel, Required: false, Present: false, Status: "unknown"},
+func isOpsTrellisCheckName(name string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "infragate/")
+}
+
+func githubCheckDetail(outcome string) string {
+	switch outcome {
+	case "ok":
+		return "Passed on the head commit."
+	case "failed":
+		return "Failed on the head commit."
+	case "pending":
+		return "Still running."
+	case "skipped":
+		return "Skipped."
+	default:
+		return "State is unknown."
 	}
+}
+
+func listGitHubChecksOnRef(ctx context.Context, client *github.Client, owner, name, ref string) ([]deployIntelRequiredCheck, deployIntelCISummary) {
+	out := make([]deployIntelRequiredCheck, 0)
 	summary := deployIntelCISummary{Label: "No checks yet"}
 	if client == nil || ref == "" {
 		return out, summary
@@ -205,20 +224,21 @@ func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner,
 		ListOptions: github.ListOptions{PerPage: 100},
 	})
 	if err != nil || runs == nil {
-		for i := range out {
-			out[i].Status = "unknown"
-			out[i].Detail = "Could not load check runs from GitHub."
-		}
 		summary.Label = "Checks unknown"
 		return out, summary
 	}
-	latest := map[string]string{}
+	seen := map[string]bool{}
 	for _, run := range runs.CheckRuns {
 		if run == nil || run.Name == nil {
 			continue
 		}
+		label := strings.TrimSpace(run.GetName())
+		key := strings.ToLower(label)
+		if label == "" || seen[key] || isOpsTrellisCheckName(label) {
+			continue
+		}
+		seen[key] = true
 		outcome := githubCheckOutcome(run.GetConclusion(), run.GetStatus())
-		latest[strings.ToLower(strings.TrimSpace(run.GetName()))] = outcome
 		switch outcome {
 		case "ok":
 			summary.Passed++
@@ -229,33 +249,17 @@ func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner,
 		case "skipped":
 			summary.Skipped++
 		}
-	}
-	summary.Label = formatCISummaryLabel(summary)
-	for i := range out {
-		key := strings.ToLower(out[i].Label)
-		if state, ok := latest[key]; ok {
-			out[i].Present = true
-			out[i].Status = state
-			switch state {
-			case "ok":
-				out[i].Detail = "Check passed on head commit."
-			case "failed":
-				out[i].Detail = "Check failed on head commit."
-			case "pending":
-				out[i].Detail = "Check is still running."
-			case "skipped":
-				out[i].Detail = "Check was skipped."
-			default:
-				out[i].Detail = "Check state is unknown."
-			}
-		} else if out[i].Required {
-			out[i].Status = "pending"
-			out[i].Detail = "Not reported on latest commit."
-		} else {
-			out[i].Status = "unknown"
-			out[i].Detail = "Change brief not posted yet."
+		if len(out) < 24 {
+			out = append(out, deployIntelRequiredCheck{
+				Key:     key,
+				Label:   label,
+				Present: true,
+				Status:  outcome,
+				Detail:  githubCheckDetail(outcome),
+			})
 		}
 	}
+	summary.Label = formatCISummaryLabel(summary)
 	return out, summary
 }
 
@@ -331,11 +335,6 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 	}
 	meta := &deployIntelOpenPRMeta{
 		IsDraft: pr.GetDraft(),
-		Checks: []deployIntelRequiredCheck{
-			{Key: "plan_review", Label: checkInfragatePlanReview, Required: true, Status: "unknown"},
-			{Key: "policy", Label: checkInfragatePolicy, Required: true, Status: "unknown"},
-			{Key: "deploy_intel", Label: checkInfragateDeployIntel, Required: false, Status: "unknown"},
-		},
 	}
 	if t := pr.GetCreatedAt(); !t.IsZero() {
 		created := t.Time
@@ -366,9 +365,11 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 	if pr.GetHead() != nil {
 		head = pr.GetHead().GetRef()
 	}
-	meta.PreviewEnvironments = findPreviewEnvironmentsForBranch(head)
-	if client != nil && pr.GetHead() != nil && strings.TrimSpace(pr.GetHead().GetSHA()) != "" {
-		meta.Checks, meta.CI = listInfragateChecksOnRef(ctx, client, owner, name, pr.GetHead().GetSHA())
+	if deep {
+		meta.PreviewEnvironments = findPreviewEnvironmentsForBranch(head)
+		if client != nil && pr.GetHead() != nil && strings.TrimSpace(pr.GetHead().GetSHA()) != "" {
+			meta.Checks, meta.CI = listGitHubChecksOnRef(ctx, client, owner, name, pr.GetHead().GetSHA())
+		}
 	}
 	hasTicket := ev.RequestID != nil && *ev.RequestID > 0
 	if !hasTicket && (strings.EqualFold(ev.RiskLevel, "high") || ev.Score >= 70) {

@@ -47,4 +47,7 @@ func TestGithubCheckOutcomeAndCILabel(t *testing.T) {
 	if formatCISummaryLabel(deployIntelCISummary{}) != "No checks yet" {
 		t.Fatal("empty checks stay unknown")
 	}
+	if !isOpsTrellisCheckName("infragate/plan-review") || isOpsTrellisCheckName("ci / test") {
+		t.Fatal("infragate checks stay internal")
+	}
 }

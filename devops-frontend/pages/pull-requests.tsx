@@ -9,15 +9,11 @@ import { formatCI, formatReviewAge, formatRisk, type DeliveryCheck, type Deliver
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
-interface CatalogRepo {
-  owner: string;
-  name: string;
-  open_pr_count?: number;
-}
-
 interface OpenPR {
-  owner: string;
-  repo: string;
+  owner?: string;
+  repo?: string;
+  repo_owner?: string;
+  repo_name?: string;
   pr_number: number;
   title: string;
   author: string;
@@ -51,32 +47,19 @@ export default function PullRequestsPage() {
       setLoading(true);
       setError('');
       try {
-        const catalogRes = await fetch(`${apiUrl}/api/devops/deploy-intelligence`, {
+        const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence?view=pull-requests&limit=12`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const catalog = await catalogRes.json().catch(() => ({}));
-        if (!catalogRes.ok) throw new Error(catalog?.error || 'Failed to load repositories');
-        const repos: CatalogRepo[] = Array.isArray(catalog?.repos) ? catalog.repos.slice(0, 8) : [];
-        const lists = await Promise.all(repos.map(async (repo) => {
-          const params = new URLSearchParams({
-            owner: repo.owner,
-            repo: repo.name,
-            section: 'open',
-            fetch_github: '1',
-            limit: '20',
-          });
-          const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence?${params}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          const data = await res.json().catch(() => ({}));
-          const events = Array.isArray(data?.events) ? data.events : [];
-          return events.map((event: OpenPR) => ({
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Failed to load pull requests');
+        const events = Array.isArray(data?.events) ? data.events : [];
+        if (!cancelled) {
+          setItems(events.map((event: OpenPR) => ({
             ...event,
-            owner: repo.owner,
-            repo: repo.name,
-          }));
-        }));
-        if (!cancelled) setItems(lists.flat());
+            owner: event.owner || event.repo_owner,
+            repo: event.repo || event.repo_name,
+          })));
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load pull requests');
       } finally {

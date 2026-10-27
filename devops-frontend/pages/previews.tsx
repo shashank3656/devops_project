@@ -2,7 +2,6 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { sessionRole } from '../components/deskClient';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -106,12 +105,11 @@ export default function PreviewsCatalogPage() {
       <div className="delivery-shell">
         <header className="delivery-head">
           <div>
-            <p className="delivery-kicker">Delivery</p>
+            <p className="delivery-kicker">Changes</p>
             <h1 className="delivery-title">Preview environments</h1>
             <p className="delivery-lede">Review preview hosts for open PRs. Estimated cost is recorded on the change, not the cloud bill.</p>
           </div>
         </header>
-        <DeliveryHubNav active="previews" />
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
         {loading ? <p className="delivery-empty">Loading previews…</p> : null}
