@@ -133,13 +133,15 @@ export default function PullRequestsPage() {
                     const risk = formatRisk(item.score, item.risk_level);
                     const ci = formatCI(item.open_pr?.ci, item.open_pr?.checks);
                     const age = formatReviewAge(item.open_pr?.age_days, item.open_pr?.review_sla);
-                    const href = `/deploy-intelligence/${encodeURIComponent(item.owner)}/${encodeURIComponent(item.repo)}?pr=${item.pr_number}`;
+                    const owner = item.owner || item.repo_owner || '';
+                    const repo = item.repo || item.repo_name || '';
+                    const href = `/deploy-intelligence/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}?pr=${item.pr_number}`;
                     return (
-                      <tr key={`${item.owner}/${item.repo}#${item.pr_number}`}>
+                      <tr key={`${owner}/${repo}#${item.pr_number}`}>
                         <td>
                           <Link href={href} className="delivery-pr-link">
                             <span className="delivery-pr-link__title">{item.title || `Pull request #${item.pr_number}`}</span>
-                            <span className="delivery-pr-link__meta">#{item.pr_number} · {item.repo} · {item.author || 'Unknown'}</span>
+                            <span className="delivery-pr-link__meta">#{item.pr_number} · {repo || 'Unknown'} · {item.author || 'Unknown'}</span>
                           </Link>
                         </td>
                         <td>
