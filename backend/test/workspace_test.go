@@ -90,15 +90,6 @@ func TestBuildWorkspacePayloadWithoutDB(t *testing.T) {
 	}
 }
 
-func TestWorkspaceScorecardQueueWithoutDB(t *testing.T) {
-	saved := DB
-	DB = nil
-	defer func() { DB = saved }()
-	if got := workspaceScorecardQueue(""); len(got) != 0 {
-		t.Fatalf("expected empty scorecard queue without DB, got %d", len(got))
-	}
-}
-
 func TestWorkspaceDeliveryClassification(t *testing.T) {
 	if !workspaceChangeIsFailed("FAILED") {
 		t.Fatal("failed CHG must be classified as failed")

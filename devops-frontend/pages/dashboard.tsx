@@ -183,7 +183,7 @@ export default function DevOpsDashboard() {
               error={error || ''}
               onRetry={() => loadWorkspace()}
               emptyTitle="You're all caught up"
-              emptyBody="Approvals, assigned incidents, handovers, failed requests, coverage gaps, and service setup gaps show up here. Stale demo breaches stay on the ticket, not in this feed."
+              emptyBody="Approvals, assigned incidents, handovers, failed requests, and coverage gaps show up here. Stale demo breaches stay on the ticket, not in this feed. Scorecard gaps stay on Scorecards."
             />
             <details className="access-hint">
               <summary>How these words are used</summary>
