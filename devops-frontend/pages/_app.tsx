@@ -25,7 +25,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <link rel="manifest" href="/manifest.json" />
         <title>{DEVOPS_SITE_NAME}</title>
         <meta name="application-name" content={DEVOPS_SITE_NAME} />
-        <meta name="theme-color" content="#0d9488" />
+        <meta name="theme-color" content="#121A31" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
       </Head>
       <ConfirmProvider>

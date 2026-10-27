@@ -137,6 +137,7 @@ export const KNOWN_PAGES: ReadonlySet<string> = new Set([
   '/runbooks/[id]/edit',
   '/runbooks/new',
   '/scorecards',
+  '/slos',
   '/security/cloud-scan',
   '/security/findings',
   '/security/vulnerabilities',

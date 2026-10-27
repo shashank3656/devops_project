@@ -75,7 +75,7 @@ export default function ScopeBar({
           value={environmentName}
           onChange={(event) => onChange({ environment: event.target.value })}
         >
-          <option value="">All environments</option>
+          <option value="">All envs</option>
           {environments.map((environment) => (
             <option key={environment} value={environment}>
               {environment}

@@ -27,7 +27,7 @@ interface ApprovalRequest {
   cloud: string;
   service: string;
   status: string;
-  due_status?: '' | 'overdue' | 'due_soon';
+  due_status?: '' | 'overdue' | 'due_soon' | 'stale';
   created_at: string;
   created_by_username?: string;
 }
@@ -39,6 +39,7 @@ function ticketHref(request: ApprovalRequest): string {
 const DUE_CHIPS: Record<string, { tone: string; label: string }> = {
   overdue: { tone: 'danger', label: 'Overdue' },
   due_soon: { tone: 'medium', label: 'Due soon' },
+  stale: { tone: 'medium', label: 'Stale' },
 };
 
 const reviewColumns: DataTableColumn<ApprovalRequest>[] = [

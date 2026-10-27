@@ -111,7 +111,12 @@ export default function ProblemsPage() {
           </form>
           {loading ? <div className="empty-state">Loading problems...</div> : null}
           {!loading && !visible.length ? (
-            <div className="empty-state">{filtering ? 'No problems match this filter.' : 'No recurring problems yet.'}</div>
+            <div className="empty-state">
+              <p>{filtering ? 'No problems match this filter.' : 'No recurring problems yet. Mark a closed incident as recurring or create a problem for root cause.'}</p>
+              {!filtering ? (
+                <Link href="/problems/new" className="btn btn-primary btn-sm">Create problem</Link>
+              ) : null}
+            </div>
           ) : null}
           {visible.length ? (
             <table className="templates-table">

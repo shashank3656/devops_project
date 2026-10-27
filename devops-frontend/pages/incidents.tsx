@@ -6,7 +6,7 @@ import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
-import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentCanFinish, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel } from '../lib/itsm';
+import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentCanFinish, incidentStateLabel, incidentStateValue, normalizeSLA, priorityLabel, severityToPriority, slaClockLabel, slaClockTone } from '../lib/itsm';
 import { asRecord, getString } from '../lib/payload';
 import { expireSession } from '../lib/sessionExpiry';
 import BlockedAction from '../components/BlockedAction';
@@ -14,10 +14,18 @@ import BlockedAction from '../components/BlockedAction';
 type IncidentView = { severity: string; status: string; environment: string; mine: string };
 
 const INCIDENT_VIEW_PRESETS: SavedView<IncidentView>[] = [
+  { name: 'Active & owned', filters: { severity: '', status: 'in_progress', environment: '', mine: '1' } },
   { name: 'Assigned to me', filters: { severity: '', status: '', environment: '', mine: '1' } },
   { name: 'Open incidents', filters: { severity: '', status: 'new', environment: '', mine: '' } },
   { name: 'My production incidents', filters: { severity: '', status: '', environment: 'prod', mine: '1' } },
 ];
+
+function slaBadgeClass(tone: ReturnType<typeof slaClockTone>): string | undefined {
+  if (tone === 'danger') return 'ig-badge ig-badge--danger';
+  if (tone === 'stale') return 'ig-badge ig-badge--medium';
+  if (tone === 'ok') return 'ig-badge ig-badge--ok';
+  return undefined;
+}
 
 function incidentStateBadge(status: string): string {
   const value = status.toLowerCase();
@@ -35,6 +43,15 @@ function currentUsername(): string {
   } catch {
     return '';
   }
+}
+
+function incidentNeedsAck(status: string): boolean {
+  return incidentStateValue(status) === 'new';
+}
+
+function incidentPageable(severity: string): boolean {
+  const key = severityToPriority(severity);
+  return key === 'p1' || key === 'p2';
 }
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -338,11 +355,21 @@ export default function DevOpsIncidentsPage() {
     };
   }, [filteredIncidents]);
 
-  const finishIncident = async (incident: Incident, action: 'close' | 'cancel') => {
+  const queueIncidentAction = async (incident: Incident, action: 'acknowledge' | 'page' | 'close' | 'cancel') => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       clearSessionAndRedirect();
       return;
+    }
+    let body: Record<string, string> = {};
+    if (action === 'close') {
+      if (!incident.owner_user_id) {
+        setError('Assign an owner before closing this incident.');
+        return;
+      }
+      const note = window.prompt('Recovery notes are required to close this incident.');
+      if (!note || !note.trim()) return;
+      body = { note: note.trim() };
     }
     setFinishingId(incident.id);
     setError('');
@@ -351,7 +378,7 @@ export default function DevOpsIncidentsPage() {
       const response = await fetch(`${apiUrl}/api/devops/incidents/${incident.id}/${action}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify(body),
       });
       if (response.status === 401 || response.status === 403) {
         clearSessionAndRedirect();
@@ -361,9 +388,14 @@ export default function DevOpsIncidentsPage() {
       if (!response.ok) {
         throw new Error(getString(data.error, 'Could not update the incident'));
       }
-      const nextStatus = action === 'close' ? 'closed' : 'cancelled';
-      setIncidents((current) => current.map((item) => (item.id === incident.id ? { ...item, status: nextStatus } : item)));
-      setNotice(action === 'close' ? 'Incident closed.' : 'Incident cancelled.');
+      const saved = data.incident ? normalizeIncident(data.incident) : incident;
+      setIncidents((current) => current.map((item) => (item.id === incident.id ? { ...item, ...saved } : item)));
+      if (action === 'acknowledge') setNotice('Incident acknowledged. Response SLA is now running.');
+      else if (action === 'page') {
+        const page = data.page && typeof data.page === 'object' ? data.page as { paged?: boolean; count?: number; team?: string } : {};
+        setNotice(page.paged ? `On-call paged${page.team ? ` for ${page.team}` : ''}${typeof page.count === 'number' ? ` · ${page.count} people` : ''}.` : 'No on-call page was sent. Coverage may be missing or this priority is below P2.');
+      } else if (action === 'close') setNotice('Incident closed.');
+      else setNotice('Incident cancelled.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update the incident');
     } finally {
@@ -400,7 +432,7 @@ export default function DevOpsIncidentsPage() {
         align: 'right',
         className: 'ig-col-num',
         cell: (incident) => (
-          <span className={incident.sla?.response_breached ? 'ig-badge ig-badge--danger' : undefined}>
+          <span className={slaBadgeClass(slaClockTone(incident.sla, 'response'))}>
             {slaClockLabel(incident.sla, 'response')}
           </span>
         ),
@@ -411,7 +443,7 @@ export default function DevOpsIncidentsPage() {
         align: 'right',
         className: 'ig-col-num',
         cell: (incident) => (
-          <span className={incident.sla?.resolve_breached ? 'ig-badge ig-badge--danger' : undefined}>
+          <span className={slaBadgeClass(slaClockTone(incident.sla, 'resolve'))}>
             {slaClockLabel(incident.sla, 'resolve')}
           </span>
         ),
@@ -421,6 +453,39 @@ export default function DevOpsIncidentsPage() {
         header: 'Action',
         cell: (incident) => (
           <div className="portal-page__actions">
+            {incidentNeedsAck(incident.status) ? (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={finishingId === incident.id}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void queueIncidentAction(incident, 'acknowledge');
+                }}
+              >
+                Acknowledge
+              </button>
+            ) : null}
+            {incidentPageable(incident.severity) && incidentCanFinish(incident.status) ? (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={finishingId === incident.id}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void queueIncidentAction(incident, 'page');
+                }}
+              >
+                Page
+              </button>
+            ) : null}
+            <Link
+              className="btn btn-secondary btn-sm"
+              href={`/incident-workspace?incident_id=${incident.id}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              Workspace
+            </Link>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -436,10 +501,11 @@ export default function DevOpsIncidentsPage() {
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
-                  disabled={finishingId === incident.id}
+                  disabled={finishingId === incident.id || !incident.owner_user_id}
+                  title={!incident.owner_user_id ? 'Assign an owner before closing this incident.' : 'Close with recovery notes'}
                   onClick={(event) => {
                     event.stopPropagation();
-                    void finishIncident(incident, 'close');
+                    void queueIncidentAction(incident, 'close');
                   }}
                 >
                   Close
@@ -450,13 +516,32 @@ export default function DevOpsIncidentsPage() {
                   disabled={finishingId === incident.id}
                   onClick={(event) => {
                     event.stopPropagation();
-                    void finishIncident(incident, 'cancel');
+                    void queueIncidentAction(incident, 'cancel');
                   }}
                 >
                   Cancel
                 </button>
               </>
-            ) : null}
+            ) : (
+              <>
+                {incidentPageable(incident.severity) ? (
+                  <Link
+                    className="btn btn-secondary btn-sm"
+                    href={`/incident-workspace?incident_id=${incident.id}`}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    Complete postmortem
+                  </Link>
+                ) : null}
+                <Link
+                  className="btn btn-secondary btn-sm"
+                  href={`/problems/new?incident_id=${incident.id}&title=${encodeURIComponent(incident.summary || incident.incident_number || '')}`}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  Mark recurring
+                </Link>
+              </>
+            )}
           </div>
         ),
       },
@@ -804,7 +889,10 @@ export default function DevOpsIncidentsPage() {
             loading={loading}
             empty={
               <div className="empty-state">
-                {hasActiveFilters ? 'No incidents match the current filters.' : 'No incidents recorded yet.'}
+                <p>{hasActiveFilters ? 'No incidents match the current filters.' : 'No incidents recorded yet. Acknowledging assigns you and starts the response clock.'}</p>
+                {!hasActiveFilters ? (
+                  <Link href="/incidents/new" className="btn btn-primary btn-sm">Create incident</Link>
+                ) : null}
               </div>
             }
             onRowOpen={(incident) => setPreview(incident)}
@@ -819,7 +907,12 @@ export default function DevOpsIncidentsPage() {
           title={preview ? getIncidentReference(preview) : 'Incident'}
           subtitle={preview ? [preview.project_name || 'Project unknown', preview.request_env || 'Environment unknown', preview.request_service || 'Service unknown'].join(' · ') : undefined}
           headerActions={preview ? <CopyButton value={getIncidentReference(preview)} label="incident reference" /> : null}
-          footer={preview ? <Link className="btn btn-primary" href={`/incidents/${preview.id}/edit`}>Open incident</Link> : null}
+          footer={preview ? (
+            <div className="portal-page__actions">
+              <Link className="btn btn-secondary" href={`/incident-workspace?incident_id=${preview.id}`}>Open workspace</Link>
+              <Link className="btn btn-primary" href={`/incidents/${preview.id}/edit`}>Open incident</Link>
+            </div>
+          ) : null}
         >
           {preview ? (
             <div className="portal-stack">

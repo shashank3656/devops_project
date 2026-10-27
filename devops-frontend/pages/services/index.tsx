@@ -102,6 +102,7 @@ export default function ServiceInventoryPage() {
   const [ownerTeamId, setOwnerTeamId] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [findingsFilter, setFindingsFilter] = useState('');
+  const [evaluatingId, setEvaluatingId] = useState<number | null>(null);
   const [filtersReady, setFiltersReady] = useState(false);
   const projectFilter = router.isReady ? firstQuery(router.query.project_id) : '';
 
@@ -183,6 +184,28 @@ export default function ServiceInventoryPage() {
   const incompleteCount = items.filter(needsSetup).length;
   const openFindings = items.reduce((sum, item) => sum + openFindingCount(item), 0);
 
+  const evaluateService = async (item: ServiceRow) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setEvaluatingId(item.id);
+    setError('');
+    try {
+      const response = await fetch(`${apiUrl}/api/devops/services/${item.id}/monitoring/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ environment: item.environment || '' }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 202) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Evaluation did not start');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Evaluation did not start');
+    } finally {
+      setEvaluatingId(null);
+    }
+  };
+
   const search = (event: FormEvent) => {
     event.preventDefault();
     const first = rows[0];
@@ -212,10 +235,10 @@ export default function ServiceInventoryPage() {
       id: 'service',
       header: 'Service',
       cell: (item) => (
-        <div className="ig-cell-stack">
+        <Link className="ig-cell-stack ig-cell-link" href={serviceDetailHref(item.id, router.query)}>
           <span className="ig-cell-title">{item.service || 'Unknown'}</span>
           <span className="ig-cell-meta">{(item.repo || '').trim() || 'Repository not connected'}</span>
-        </div>
+        </Link>
       ),
     },
     {
@@ -237,9 +260,11 @@ export default function ServiceInventoryPage() {
       id: 'findings',
       header: 'Findings',
       cell: (item) => (
-        openFindingCount(item)
-          ? `${item.open_critical || 0} critical / ${item.open_warning || 0} warning`
-          : 'None recorded'
+        openFindingCount(item) ? (
+          <Link className="ig-cell-link" href={`/security/findings?open=1`}>
+            {item.open_critical || 0} critical / {item.open_warning || 0} warning
+          </Link>
+        ) : 'None recorded'
       ),
     },
     {
@@ -252,6 +277,17 @@ export default function ServiceInventoryPage() {
           </span>
           <span className="ig-cell-title">{item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : 'Unknown'}</span>
           <span className="ig-cell-meta">{scheduleModeCopy(item.schedule_minutes)}</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={evaluatingId === item.id}
+            onClick={(event) => {
+              event.stopPropagation();
+              void evaluateService(item);
+            }}
+          >
+            {evaluatingId === item.id ? 'Evaluating…' : 'Evaluate now'}
+          </button>
         </div>
       ),
     },
@@ -266,7 +302,7 @@ export default function ServiceInventoryPage() {
         </div>
       ),
     },
-  ], []);
+  ], [evaluatingId, router.query]);
 
   return (
     <DevOpsLayout>
@@ -294,11 +330,11 @@ export default function ServiceInventoryPage() {
             <strong>{loading || error ? 'Unknown' : incompleteCount}</strong>
             <small>Owner and repository missing</small>
           </article>
-          <article className="ops-mini ops-mini--blue">
+          <Link href="/security/findings?open=1" className="ops-mini ops-mini--blue">
             <span>Open findings</span>
             <strong>{loading || error ? 'Unknown' : openFindings}</strong>
             <small>Critical and warning on this inventory</small>
-          </article>
+          </Link>
         </section>
         <section className="portal-surface">
           <div className="portal-surface__header">
@@ -370,6 +406,11 @@ export default function ServiceInventoryPage() {
                 <EmptyState
                   title={filtering ? 'No services match these filters' : 'No production services yet'}
                   body={filtering ? 'Clear filters to see the full inventory.' : 'Add a service to this inventory. Change and incident requests pick from this list.'}
+                  action={filtering ? undefined : (
+                    <Link href={projectFilter ? `/services/new?project_id=${projectFilter}` : '/services/new'} className="btn btn-primary btn-sm">
+                      Add service
+                    </Link>
+                  )}
                 />
               }
             />

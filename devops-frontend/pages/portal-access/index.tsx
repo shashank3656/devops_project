@@ -10,6 +10,7 @@ export default function PortalAccessPage() {
   const apiUrl = useApiUrl();
   const [people, setPeople] = useState<number | null>(null);
   const [groups, setGroups] = useState<number | null>(null);
+  const [accessRequests, setAccessRequests] = useState<{ id: number; username: string; team?: string; project?: string; access_needed?: string; reason?: string; created_at?: string }[]>([]);
 
   useEffect(() => {
     const headers = sessionAuthHeaders();
@@ -21,6 +22,10 @@ export default function PortalAccessPage() {
       .then((response) => (response.ok ? response.json() : null))
       .then((body) => setGroups(Array.isArray(body?.teams) ? body.teams.length : null))
       .catch(() => setGroups(null));
+    fetch(`${apiUrl}/api/admin/access-requests`, { headers })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => setAccessRequests(Array.isArray(body?.requests) ? body.requests : []))
+      .catch(() => setAccessRequests([]));
   }, [apiUrl]);
 
   const count = (value: number | null, noun: string) => (value === null ? noun : `${value} ${noun}`);
@@ -53,6 +58,27 @@ export default function PortalAccessPage() {
                 </Link>
               ))}
             </section>
+          <section className="ops-card" aria-label="Access requests">
+            <div className="ops-card__head">
+              <h2>Access requests</h2>
+              <span>{accessRequests.length ? `${accessRequests.length} waiting` : 'None waiting'}</span>
+            </div>
+            <p>These come from the login form. They are not sign-ups. Add the person under People, then put them in a group.</p>
+            {accessRequests.length ? (
+              <ul>
+                {accessRequests.map((item) => (
+                  <li key={item.id}>
+                    <strong>{item.username}</strong>
+                    {' · '}
+                    {[item.team, item.project, item.access_needed].filter(Boolean).join(' · ') || 'No extra detail'}
+                    {item.reason ? <div>{item.reason}</div> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No pending access requests.</p>
+            )}
+          </section>
         </div>
       </DevOpsLayout>
     </>

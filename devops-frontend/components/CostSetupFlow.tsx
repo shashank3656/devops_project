@@ -155,6 +155,9 @@ export default function CostSetupFlow({
           <p className="cost-empty__note">Ask someone with Cost operate to connect a billing source for this project cloud.</p>
         )}
         {sampleHref ? <Link href={sampleHref} className="btn btn-secondary">View sample dashboard</Link> : null}
+        <Link href="/projects/new" className="btn btn-secondary">Onboard a project</Link>
+        <Link href="/cloud-accounts" className="btn btn-secondary">Connect cloud</Link>
+        <Link href="/k8s" className="btn btn-secondary">Onboard cluster</Link>
         <button
           type="button"
           className="btn btn-secondary"

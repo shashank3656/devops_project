@@ -170,6 +170,7 @@ export default function OnCallPage() {
   const [saving, setSaving] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [selectedDate, setSelectedDate] = useState('');
+  const [criticalServices, setCriticalServices] = useState<{ id: number; service: string; team?: string; project_id?: number }[]>([]);
 
   useEffect(() => {
     try {
@@ -217,9 +218,22 @@ export default function OnCallPage() {
           return { ...project, days, rosters } as RosterProject;
         }));
         setProjects(boards);
+        const servicesRes = await fetch(`${apiUrl}/api/devops/services`, { headers });
+        const servicesBody = servicesRes.ok ? await servicesRes.json().catch(() => ({})) : {};
+        const catalog = Array.isArray(servicesBody?.services) ? servicesBody.services : [];
+        setCriticalServices(catalog
+          .filter((item: { criticality?: string }) => String(item.criticality || '').toLowerCase() === 'mission_critical')
+          .map((item: { id?: number; service?: string; team?: string; project_id?: number }) => ({
+            id: typeof item.id === 'number' ? item.id : 0,
+            service: String(item.service || '').trim(),
+            team: String(item.team || '').trim(),
+            project_id: typeof item.project_id === 'number' ? item.project_id : undefined,
+          }))
+          .filter((item: { id: number; service: string }) => item.id > 0 && item.service));
       })
       .catch((err) => {
         setProjects([]);
+        setCriticalServices([]);
         setError(err instanceof Error ? err.message : 'Failed to load on-call');
       })
       .finally(() => setLoading(false));
@@ -251,6 +265,15 @@ export default function OnCallPage() {
     day.teams.filter((shift) => matches(project, shift)).map((shift) => ({ project, day, shift }))
   )));
   const todayRows = rows.filter((row) => row.day.today);
+  const criticalGaps = criticalServices.filter((item) => {
+    const serviceTeam = (item.team || '').trim().toLowerCase();
+    if (!serviceTeam) return false;
+    return todayRows.some((row) => {
+      if (item.project_id && row.project.id !== item.project_id) return false;
+      const teamName = (row.shift.team_name || '').trim().toLowerCase();
+      return teamName === serviceTeam && !row.shift.user_id;
+    });
+  });
   const pending = rows.filter((row) => row.shift.status === 'pending');
   const todayDate = todayKey(timezone);
   const canRequest = (row: RosterRow) => row.shift.user_id > 0 && row.day.date >= todayDate && row.shift.status !== 'pending' && (isManager || (me > 0 && me === row.shift.user_id));
@@ -379,6 +402,20 @@ export default function OnCallPage() {
           </div>
         ) : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
+        {!loading && criticalGaps.length ? (
+          <div className="alert" role="status">
+            Mission Critical coverage gap today:{' '}
+            {criticalGaps.map((item, index) => (
+              <span key={item.id}>
+                {index > 0 ? ', ' : ''}
+                <Link href={`/services/${item.id}`}>{item.service}</Link>
+              </span>
+            ))}
+            . Page from the incident queue after you open a P1/P2.
+            {' '}
+            <Link href="/incidents?severity=p1">Open incidents</Link>
+          </div>
+        ) : null}
         <section className="portal-surface">
           <div className="oncall-filters">
             <label>

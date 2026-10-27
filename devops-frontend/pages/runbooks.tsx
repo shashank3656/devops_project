@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, EmptyState, useConfirm, type DataTableColumn } from '@infragate/ui';
@@ -508,6 +509,9 @@ export default function DevOpsRunbooksPage() {
                       ? 'Try clearing the project or service filter.'
                       : 'Create a runbook to attach recovery steps to a project service.'
                   }
+                  action={hasLibraryFilters ? undefined : (
+                    <Link href="/runbooks/new" className="btn btn-primary btn-sm">Create runbook</Link>
+                  )}
                 />
               }
             />

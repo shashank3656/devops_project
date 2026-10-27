@@ -64,6 +64,16 @@ type ServiceSibling = {
   project_id?: number;
 };
 
+type ServiceSLO = {
+  id: number;
+  service?: string;
+  environment?: string;
+  samples?: number;
+  burned?: boolean;
+  budget_remaining?: number;
+  freeze_reason?: string;
+};
+
 const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'resources', label: 'Resources' },
@@ -118,6 +128,8 @@ export default function Service360({
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [grants, setGrants] = useState<AccessRow[]>([]);
   const [siblings, setSiblings] = useState<ServiceSibling[]>([]);
+  const [consumers, setConsumers] = useState<ServiceSibling[]>([]);
+  const [slo, setSlo] = useState<ServiceSLO | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadedAt, setLoadedAt] = useState('');
@@ -135,7 +147,9 @@ export default function Service360({
       fetch(`${apiUrl}/api/devops/cloud/resources?${projectQuery}q=${encodeURIComponent(serviceName)}&limit=50`, { headers }).then((res) => (res.ok ? res.json() : Promise.reject(new Error('Resources could not be loaded.')))),
       fetch(`${apiUrl}/api/devops/iam/access-requests?scope=desk`, { headers }).then((res) => (res.ok ? res.json() : { requests: [] })),
       fetch(`${apiUrl}/api/devops/services?${projectQuery}q=${encodeURIComponent(serviceName)}`, { headers }).then((res) => (res.ok ? res.json() : { services: [] })),
-    ]).then(([changeBody, incidentBody, resourceBody, accessBody, serviceBody]) => {
+      fetch(`${apiUrl}/api/devops/services?${projectQuery}`, { headers }).then((res) => (res.ok ? res.json() : { services: [] })),
+      fetch(`${apiUrl}/api/devops/slos?${projectQuery}`, { headers }).then((res) => (res.ok ? res.json() : { slos: [] })),
+    ]).then(([changeBody, incidentBody, resourceBody, accessBody, serviceBody, catalogBody, sloBody]) => {
       const changeRows = Array.isArray(changeBody?.changes) ? changeBody.changes : Array.isArray(changeBody?.items) ? changeBody.items : [];
       setChanges(changeRows.filter((item: ChangeRow) => sameService(item.service, serviceName) && (!projectId || !item.project_id || item.project_id === projectId)));
       const incidentRows = Array.isArray(incidentBody?.incidents) ? incidentBody.incidents : [];
@@ -166,11 +180,23 @@ export default function Service360({
       }));
       const serviceRows = Array.isArray(serviceBody?.services) ? serviceBody.services : [];
       setSiblings(serviceRows.filter((item: ServiceSibling) => sameService(item.service, serviceName) && (!projectId || !item.project_id || item.project_id === projectId)));
+      const catalog = Array.isArray(catalogBody?.services) ? catalogBody.services as ServiceSibling[] : [];
+      const repoKey = (repo || '').trim().toLowerCase();
+      const teamKey = (ownerTeam || '').trim().toLowerCase();
+      setConsumers(catalog.filter((item) => {
+        if (sameService(item.service, serviceName)) return false;
+        if (projectId && item.project_id && item.project_id !== projectId) return false;
+        const sameRepo = repoKey && (item.repo || '').trim().toLowerCase() === repoKey;
+        const sameTeam = teamKey && (item.team || '').trim().toLowerCase() === teamKey;
+        return Boolean(sameRepo || sameTeam);
+      }).slice(0, 8));
+      const sloRows = Array.isArray(sloBody?.slos) ? sloBody.slos as ServiceSLO[] : [];
+      setSlo(sloRows.find((item) => sameService(item.service, serviceName) && (!environment || !item.environment || item.environment.toLowerCase() === environment.toLowerCase())) || sloRows.find((item) => sameService(item.service, serviceName)) || null);
       setLoadedAt(new Date().toISOString());
     }).catch((err) => {
       setError(err instanceof Error ? err.message : 'Service context could not be loaded.');
     }).finally(() => setLoading(false));
-  }, [apiUrl, projectId, reload, serviceName, token]);
+  }, [apiUrl, environment, ownerTeam, projectId, reload, repo, serviceName, token]);
 
   const comparison = useMemo(() => {
     const names = ['dev', 'uat', 'prod'];
@@ -252,7 +278,39 @@ export default function Service360({
               <span>Access needing attention</span>
               <strong>{loading || error ? 'Unknown' : String(accessAttention.length)}</strong>
             </button>
+            <div className="service-360__fact">
+              <span>SLO</span>
+              <strong>
+                {loading || error
+                  ? 'Unknown'
+                  : !slo
+                    ? 'Unknown'
+                    : (slo.samples || 0) <= 0
+                      ? 'Unknown'
+                      : slo.burned
+                        ? (slo.freeze_reason || 'Burning')
+                        : 'Inside budget'}
+              </strong>
+              <small><Link href="/slos">Open SLO objects</Link></small>
+            </div>
+            <div className="service-360__fact">
+              <span>One-hop consumers</span>
+              <strong>{loading || error ? 'Unknown' : consumers.length ? String(consumers.length) : 'None recorded'}</strong>
+              <small>Same team or repository. Not a proven call graph.</small>
+            </div>
           </div>
+          {!loading && consumers.length ? (
+            <p className="access-hint">
+              Nearby services:{' '}
+              {consumers.map((item, index) => (
+                <span key={item.id}>
+                  {index > 0 ? ' · ' : ''}
+                  {item.id ? <Link href={`/services/${item.id}`}>{item.service || 'Service'}</Link> : (item.service || 'Service')}
+                  {item.environment ? ` (${item.environment})` : ''}
+                </span>
+              ))}
+            </p>
+          ) : null}
           {overview}
         </>
       ) : null}

@@ -663,7 +663,17 @@ export default function IncidentWorkspacePage() {
                       <div className="portal-surface incident-workspace__subsurface">
                         <h3 className="portal-surface__title incident-workspace__section-title">Helpful runbooks</h3>
                         {detail.runbooks.length === 0 ? (
-                          <div className="empty-state incident-workspace__empty-inline">No runbooks linked to this project yet.</div>
+                          <div className="empty-state incident-workspace__empty-inline">
+                            No runbooks linked to this project yet.{' '}
+                            <Link
+                              href={detail.incident.request_service
+                                ? `/runbooks/new?service=${encodeURIComponent(detail.incident.request_service)}`
+                                : '/runbooks/new'}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              Start runbook
+                            </Link>
+                          </div>
                         ) : (
                           <div className="incident-workspace__resource-list">
                             {detail.runbooks.map((runbook) => (

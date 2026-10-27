@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -214,6 +215,7 @@ func workspaceNeedsYou(portal, projectID string, viewerID int) []workspaceQueueI
 	items = append(items, workspaceChangeQueue(portal, projectID, viewerID, false)...)
 	if portal != "user" {
 		items = append(items, workspaceRiskyPRQueue(portal, false)...)
+		items = append(items, workspaceScorecardQueue(projectID)...)
 	}
 
 	if envFreezes := workspaceEnvironmentFreezeQueue(portal, viewerID); len(envFreezes) > 0 {
@@ -231,6 +233,60 @@ func workspaceNeedsYou(portal, projectID string, viewerID int) []workspaceQueueI
 	}
 
 	return capWorkspaceQueue(items, 12)
+}
+
+func workspaceScorecardQueue(projectID string) []workspaceQueueItem {
+	items := make([]workspaceQueueItem, 0, 3)
+	if DB == nil {
+		return items
+	}
+	services, err := listServiceMap(workspaceProjectID(projectID), "", "")
+	if err != nil || len(services) == 0 {
+		return items
+	}
+	for _, svc := range services {
+		team := strings.TrimSpace(svc.Team)
+		missingOwner := team == "" || strings.EqualFold(team, "Unknown")
+		missingRepo := strings.TrimSpace(svc.Repo) == ""
+		missingRunbook := strings.TrimSpace(svc.RunbookURL) == ""
+		if !missingOwner && !missingRepo && !missingRunbook {
+			continue
+		}
+		parts := make([]string, 0, 3)
+		if missingOwner {
+			parts = append(parts, "owner")
+		}
+		if missingRepo {
+			parts = append(parts, "repository")
+		}
+		if missingRunbook {
+			parts = append(parts, "runbook")
+		}
+		href := "/services"
+		if svc.ID > 0 {
+			href = fmt.Sprintf("/services/%d", svc.ID)
+		}
+		action := "Complete setup"
+		if missingRunbook && !missingOwner && !missingRepo {
+			action = "Add runbook"
+			href = "/runbooks/new?service=" + url.QueryEscape(svc.Service)
+		} else if missingOwner && !missingRepo && !missingRunbook {
+			action = "Assign owner"
+		}
+		items = append(items, workspaceQueueItem{
+			ID:     fmt.Sprintf("scorecard-%d", svc.ID),
+			Kind:   "scorecard",
+			Title:  firstNonEmpty(svc.Service, "Service"),
+			Meta:   "Missing " + strings.Join(parts, " and "),
+			Href:   href,
+			Action: action,
+			Tone:   "medium",
+		})
+		if len(items) >= 3 {
+			break
+		}
+	}
+	return items
 }
 
 func workspaceFailedDeliveries(portal, projectID string, viewerID int) []workspaceQueueItem {

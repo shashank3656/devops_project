@@ -119,14 +119,33 @@ export function normalizeJournal(value: unknown): ITSMJournalEntry[] {
   });
 }
 
+function staleRemaining(value: string): boolean {
+  const text = value.trim().toLowerCase();
+  if (!text) return false;
+  if (text === 'stale') return true;
+  const hours = text.match(/breached\s+(\d+)h/);
+  return Boolean(hours && Number(hours[1]) >= 72);
+}
+
 export function slaClockLabel(sla: IncidentSLA | null | undefined, kind: 'response' | 'resolve'): string {
   if (!sla) return '—';
   if (kind === 'response') {
     if (sla.responded_at) return 'Met';
-    return sla.response_remaining || (sla.response_breached ? 'Breached' : '—');
+    const remaining = sla.response_remaining || (sla.response_breached ? 'Breached' : '—');
+    return staleRemaining(remaining) ? 'Stale' : remaining;
   }
   if (sla.resolved_at) return 'Met';
-  return sla.resolve_remaining || (sla.resolve_breached ? 'Breached' : '—');
+  const remaining = sla.resolve_remaining || (sla.resolve_breached ? 'Breached' : '—');
+  return staleRemaining(remaining) ? 'Stale' : remaining;
+}
+
+export function slaClockTone(sla: IncidentSLA | null | undefined, kind: 'response' | 'resolve'): 'ok' | 'danger' | 'stale' | 'neutral' {
+  const label = slaClockLabel(sla, kind);
+  if (label === 'Met') return 'ok';
+  if (label === 'Stale') return 'stale';
+  const breached = kind === 'response' ? sla?.response_breached : sla?.resolve_breached;
+  if (breached || /^breached/i.test(label)) return 'danger';
+  return 'neutral';
 }
 
 export function severityToPriority(value: string): string {

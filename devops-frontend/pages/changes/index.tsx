@@ -412,7 +412,8 @@ export default function ChangesCatalogPage() {
             onSelectionChange={setSelectedKeys}
             empty={
               <div className="empty-state">
-                No changes yet. Create one here or point a CI job at the webhook when code merges to main.
+                <p>No changes yet. Create from a pull request, or point a CI job at the webhook when code merges to main. A linked PR does not complete or deploy.</p>
+                <Link href="/changes/new" className="btn btn-primary btn-sm">Create from PR</Link>
               </div>
             }
             onOpen={(item) => setPreview(item)}

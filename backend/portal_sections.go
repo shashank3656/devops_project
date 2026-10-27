@@ -228,6 +228,7 @@ func sectionForPath(path string) string {
 	case strings.HasPrefix(path, "/api/devops/credential-audit"),
 		strings.HasPrefix(path, "/api/devops/expiry-tracker/"),
 		strings.HasPrefix(path, "/api/devops/security"),
+		strings.HasPrefix(path, "/api/devops/monitor-findings"),
 		strings.HasPrefix(path, "/api/scans/"),
 		strings.HasPrefix(path, "/api/findings"),
 		strings.HasPrefix(path, "/api/security/"),

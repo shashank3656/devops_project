@@ -1,1 +1,1 @@
-export const DEVOPS_SITE_NAME = 'DevOps';
+export const DEVOPS_SITE_NAME = 'OpsTrellis';

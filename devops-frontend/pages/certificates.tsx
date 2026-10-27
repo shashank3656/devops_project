@@ -292,7 +292,12 @@ export default function CertificatesPage() {
             </>
           ) : null}
           {tab !== 'history' && tab !== 'collectors' && loading ? <div className="empty-state">Loading registered endpoints and domains…</div> : null}
-          {tab !== 'history' && tab !== 'collectors' && !loading && !rows.length ? <div className="empty-state">No matching assets. Register an authorized public endpoint or domain. Hosted checks never collect private keys.</div> : null}
+          {tab !== 'history' && tab !== 'collectors' && !loading && !rows.length ? (
+            <div className="empty-state">
+              <p>No matching assets. Register an authorized public endpoint or domain. Hosted checks never collect private keys. Empty coverage stays Unknown.</p>
+              <Link href="/certificates/new" className="btn btn-primary btn-sm">Register asset</Link>
+            </div>
+          ) : null}
           {tab !== 'history' && tab !== 'collectors' && !loading && rows.length ? (
             <div className="table-wrap">
               <table className="templates-table">

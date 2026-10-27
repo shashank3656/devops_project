@@ -22,7 +22,7 @@ import {
 } from './Icons';
 import { SupportHub } from '@infragate/ui';
 import { supportArticles, supportQuickPromptsForPath } from '../lib/supportContent';
-import { homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
+import { accessRequirement, homeFor, pageAllowed, pathAllowed, portalGrants } from '../lib/portalAccess';
 import { expireSession, readAccessDenied, rememberAccessDenied } from '../lib/sessionExpiry';
 import { costHref } from '../lib/cost';
 import { isRecordDetailPath } from '../lib/scopeHref';
@@ -63,20 +63,26 @@ interface DevopsUser {
   maintenance_approver?: boolean;
 }
 
-function getProfileInitials(): string {
-  if (typeof window === 'undefined') return 'D';
+function readStoredUser(): DevopsUser | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(DEVOPS_USER_KEY);
-    if (!raw) return 'D';
-    const user = JSON.parse(raw) as { username?: string; email?: string };
-    const name = user?.username || user?.email || '';
-    if (!name) return 'D';
-    const parts = name.trim().split(/[\s@.]/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
-    return name.slice(0, 2).toUpperCase();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DevopsUser;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
   } catch {
-    return 'D';
+    return null;
   }
+}
+
+function getProfileInitials(): string {
+  const user = readStoredUser();
+  const name = user?.username || user?.email || '';
+  if (!name) return 'D';
+  const parts = name.trim().split(/[\s@.]/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
+  return name.slice(0, 2).toUpperCase();
 }
 
 const PAGE_TITLES: Record<string, string> = {
@@ -143,6 +149,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/release-notes': 'Release notes',
   '/previews': 'Preview environments',
   '/scorecards': 'Scorecards',
+  '/slos': 'SLOs',
   '/evidence': 'Evidence',
   '/services': 'Service inventory',
   '/services/new': 'Add service',
@@ -233,6 +240,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const pathname = router.pathname;
   const [user, setUser] = useState<DevopsUser | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [sessionError, setSessionError] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingCountKnown, setPendingCountKnown] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -364,8 +372,22 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       clearSessionAndRedirect();
       return;
     }
+    const stored = readStoredUser();
+    if (stored) {
+      setUser(stored);
+      setSessionReady(true);
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      controller.abort();
+      setSessionReady(true);
+      if (!readStoredUser()) {
+        setSessionError('Session check timed out. Retry, or sign in again.');
+      }
+    }, 8000);
     fetch(`${apiUrl}/api/devops/me`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
     })
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) {
@@ -373,8 +395,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           return null;
         }
         if (!response.ok) {
+          setSessionError(`Session could not be confirmed (${response.status}). The page is still usable with the stored account.`);
           return {};
         }
+        setSessionError('');
         return response.json().catch(() => null);
       })
       .then((data) => {
@@ -384,12 +408,19 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           if (typeof data.token === 'string' && data.token.trim()) {
             localStorage.setItem(DEVOPS_TOKEN_KEY, data.token.trim());
           }
-          setSessionReady(true);
-          return;
         }
-        if (data !== null) setSessionReady(true);
+        setSessionReady(true);
       })
-      .catch(() => setSessionReady(true));
+      .catch((error: Error) => {
+        if (error?.name === 'AbortError') return;
+        setSessionReady(true);
+        if (!readStoredUser()) setSessionError('Session could not be confirmed. Retry, or sign in again.');
+      })
+      .finally(() => window.clearTimeout(timer));
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [apiUrl, clearSessionAndRedirect]);
 
   useEffect(() => {
@@ -690,6 +721,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       children: serviceDeskChildren,
     },
     { href: '/services', label: 'Service inventory', Icon: IconProjects },
+    { href: '/slos', label: 'SLOs', Icon: IconFileText },
   ];
   const operationsNavItems: NavItem[] = isManager
     ? [
@@ -776,6 +808,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       ]
     : [];
   const grants = portalGrants(user);
+  if ((grants.portalAccess || grants.manager) && grants.records && pathAllowed('/scorecards', grants)) {
+    dailyNavItems.push({ href: '/scorecards', label: 'Scorecards', Icon: IconFileText });
+  }
+  if ((grants.portalAccess || grants.manager) && grants.operations && pathAllowed('/on-call', grants)) {
+    dailyNavItems.push({ href: '/on-call', label: 'On-call', Icon: IconBell });
+  }
+  if ((grants.portalAccess || grants.manager) && grants.cost && pathAllowed('/cost', grants)) {
+    dailyNavItems.push({ href: '/cost', label: 'Cost overview', Icon: IconFileText });
+  }
   const visibleNav = (items: NavItem[]): NavItem[] => items.flatMap((item) => {
     if (!pathAllowed(item.href, grants) && !pageAllowed(item.href, grants)) return [];
     if (!pathAllowed(item.href, grants)) return [];
@@ -837,7 +878,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     if (pathAllowed(pathname, next) || (user.maintenance_approver && (pathname === '/maintenance' || pathname.startsWith('/maintenance/')))) return;
     const dest = homeFor(next);
     if (pathname !== dest) {
-      rememberAccessDenied(getPageTitle(pathname));
+      rememberAccessDenied(`${getPageTitle(pathname)}. ${accessRequirement(pathname)}`);
       void router.replace(dest);
     }
   }, [sessionReady, user, pathname, router]);
@@ -845,7 +886,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const pageTitle = getPageTitle(pathname);
   const crumbProject = scopeProjects.find((item) => String(item.id) === scope.projectId);
   const breadcrumbs = buildBreadcrumbs(pathname, router.isReady ? router.asPath : pathname, PAGE_TITLES);
-  const roleLabel = !sessionReady
+  const roleLabel = !user
     ? ''
     : grants.portalAccess
     ? 'Admin'
@@ -854,8 +895,8 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     : grants.daily
     ? 'Operator'
     : 'Requester';
-  const statusLabel = !sessionReady
-    ? 'Checking session'
+  const statusLabel = !user
+    ? 'Signing in'
     : isManager
     ? !pendingCountKnown
       ? 'Checking approvals'
@@ -983,10 +1024,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         </div>
         <div className="devops-sidebar-new__body">
           <nav className="devops-sidebar-new__nav" aria-label="Primary">
-            {sessionReady
+            {user
               ? sidebarSections.filter((section) => section.items.length > 0).map((section) => {
                   const active = section.items.some((item) => itemIsActive(item));
-                  const open = sidebarCollapsed || (openSections[section.title] === undefined ? active : openSections[section.title]);
+                  const defaultOpen = section.title === 'Daily' || section.title === 'Requests' || section.title === 'Portal Access' || active;
+                  const open = sidebarCollapsed || (openSections[section.title] === undefined ? defaultOpen : openSections[section.title]);
                   return (
                     <div key={section.title}>
                       {!sidebarCollapsed ? (
@@ -1213,13 +1255,13 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 aria-haspopup="menu"
                 aria-expanded={profileOpen}
                 aria-controls="devops-profile-menu"
-                aria-busy={!sessionReady || undefined}
-                aria-label={sessionReady ? `Account menu for ${user?.username || 'your account'}` : 'Account menu, checking session'}
+                aria-busy={!user || undefined}
+                aria-label={user ? `Account menu for ${user?.username || 'your account'}` : 'Account menu, signing in'}
               >
-                <span className="devops-navbar__avatar" aria-hidden="true">{sessionReady ? profileInitials : ''}</span>
+                <span className="devops-navbar__avatar" aria-hidden="true">{user ? profileInitials : ''}</span>
                 <span className="devops-navbar__profile-copy">
                   <span className="devops-navbar__profile-label">
-                    {sessionReady ? user?.username || 'Signed in' : <span className="ot-skeleton ot-skeleton--text" />}
+                    {user ? user.username || 'Signed in' : <span className="ot-skeleton ot-skeleton--text" />}
                   </span>
                   {roleLabel ? <span className="devops-navbar__role">{roleLabel}</span> : null}
                 </span>
@@ -1230,7 +1272,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               {profileOpen ? (
                 <div className="devops-navbar__profile-menu" id="devops-profile-menu" role="menu" aria-label="Account" ref={profileMenuRef}>
                   <div className="devops-navbar__profile-head" role="presentation">
-                    <strong>{sessionReady ? user?.username || 'Signed in' : 'Checking session…'}</strong>
+                    <strong>{user ? user.username || 'Signed in' : 'Signing in…'}</strong>
                     <span>{roleLabel || 'Role loading'}</span>
                   </div>
                   <Link href="/profile" role="menuitem" className="devops-navbar__profile-item" onClick={() => setProfileOpen(false)}>
@@ -1269,7 +1311,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           <div className="ops-banner-stack">
             {accessNotice ? (
               <div className="alert sd-alert" role="status">
-                <span>{accessNotice} is not available for your role. You were returned here. Ask an administrator if you need that page.</span>
+                <span>{accessNotice} It is not available for this account. You were returned here. Ask an administrator if you need that page.</span>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAccessNotice('')}>Dismiss</button>
               </div>
             ) : null}
@@ -1302,8 +1344,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           </span>
         </div>
         <main id="main-content" tabIndex={-1} className="devops-main-new ig-page">
-          {sessionReady ? null : <p className="v3-muted">Checking session…</p>}
-          {sessionReady && keyboardHelp ? (
+          {sessionError ? (
+            <div className="alert alert-error" role="alert">
+              <span>{sessionError}</span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.location.reload()}>
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {keyboardHelp ? (
             <div className="devops-keyboard-hint" role="status">
               <span>{keyboardHelp}</span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setKeyboardHelp('')}>
@@ -1311,7 +1360,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
               </button>
             </div>
           ) : null}
-          {sessionReady ? <PortalErrorBoundary>{children}</PortalErrorBoundary> : null}
+          <PortalErrorBoundary>{children}</PortalErrorBoundary>
         </main>
       </div>
       <MobileTabBar
@@ -1341,6 +1390,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'release-notes', label: 'Release notes', href: '/release-notes', hint: 'What shipped' },
           { id: 'cost', label: 'Cost', href: '/cost', hint: 'Operating bill and request estimates' },
           { id: 'services', label: 'Service inventory', href: '/services', hint: 'Production services, observability, and findings' },
+          { id: 'slos', label: 'Service SLOs', href: '/slos', hint: 'Error and latency budgets' },
           { id: 'add-service', label: 'Add service', href: '/services/new', hint: 'Register a service' },
           { id: 'operator-activity', label: 'Operator activity', href: '/activity', hint: 'Recent operator actions' },
           { id: 'incidents', label: 'Incidents', href: '/incidents', hint: 'Open incidents' },
@@ -1349,7 +1399,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'create-problem', label: 'Create problem', href: '/problems/new', hint: 'Open a problem' },
           { id: 'knowledge', label: 'Knowledge', href: '/knowledge', hint: 'Articles' },
           { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence', hint: 'Deploy signals' },
-        ]}
+        ].filter((command) => !user || pathAllowed(command.href, grants))}
       />
       <SupportHub
         open={supportOpen}

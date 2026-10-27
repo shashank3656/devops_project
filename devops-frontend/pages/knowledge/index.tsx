@@ -54,7 +54,12 @@ export default function KnowledgeIndexPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
           {loading ? <div className="empty-state">Loading knowledge...</div> : null}
-          {!loading && !items.length ? <div className="empty-state">No knowledge articles yet. Publish one from a known-error problem.</div> : null}
+          {!loading && !items.length ? (
+            <div className="empty-state">
+              <p>No knowledge articles yet. Publish one from a known-error problem.</p>
+              <Link href="/problems/new" className="btn btn-primary btn-sm">Create a known-error problem</Link>
+            </div>
+          ) : null}
           {items.length ? (
             <table className="templates-table">
               <thead>

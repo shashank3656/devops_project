@@ -1339,6 +1339,123 @@ func listMonitorFindings(serviceID int, environment, severity, lifecycle string)
 	return out, nil
 }
 
+type monitorFindingListItem struct {
+	ID            int     `json:"id"`
+	ServiceID     int     `json:"service_id"`
+	Service       string  `json:"service"`
+	ProjectID     *int    `json:"project_id,omitempty"`
+	ProjectName   string  `json:"project_name,omitempty"`
+	MonitorID     int     `json:"monitor_id,omitempty"`
+	Environment   string  `json:"environment"`
+	Severity      string  `json:"severity"`
+	Lifecycle     string  `json:"lifecycle"`
+	Title         string  `json:"title"`
+	Explanation   string  `json:"explanation"`
+	Observed      string  `json:"observed"`
+	Expected      string  `json:"expected"`
+	SourceType    string  `json:"source_type"`
+	FirstSeenAt   string  `json:"first_seen_at"`
+	LastSeenAt    string  `json:"last_seen_at"`
+	LastEvaluated *string `json:"last_evaluated_at,omitempty"`
+	IncidentID    int     `json:"incident_id,omitempty"`
+}
+
+func listVisibleMonitorFindings(userID int, severity, lifecycle, environment string) ([]monitorFindingListItem, error) {
+	if DB == nil {
+		return []monitorFindingListItem{}, nil
+	}
+	severity = strings.ToLower(strings.TrimSpace(severity))
+	lifecycle = strings.ToLower(strings.TrimSpace(lifecycle))
+	environment = strings.TrimSpace(environment)
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT f.id, f.service_id, COALESCE(s.service,''), s.project_id, COALESCE(p.name,''), f.monitor_id, COALESCE(f.environment,''),
+		       COALESCE(f.severity,''), COALESCE(f.lifecycle,''), COALESCE(f.title,''), COALESCE(f.explanation,''), COALESCE(f.observed,''),
+		       COALESCE(f.expected,''), COALESCE(f.source_type,''), f.first_seen_at, f.last_seen_at, f.last_evaluated_at, COALESCE(f.incident_id,0)
+		FROM monitor_findings f
+		JOIN service_map s ON s.id = f.service_id
+		LEFT JOIN projects p ON p.id = s.project_id
+		WHERE ($1 = '' OR LOWER(f.severity) = $1)
+		  AND ($2 = '' OR LOWER(f.lifecycle) = $2)
+		  AND ($3 = '' OR LOWER(f.environment) = LOWER($3))
+		ORDER BY CASE LOWER(f.severity) WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, f.last_seen_at DESC, f.id DESC
+		LIMIT 200
+	`, severity, lifecycle, environment)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []monitorFindingListItem{}, nil
+		}
+		return nil, err
+	}
+	defer cancel()
+	defer rows.Close()
+	seeAll := callerSeesEveryProject(userID)
+	visible := map[int]bool{}
+	if !seeAll {
+		set, visErr := getVisibleProjectIDSetForUser(userID)
+		if visErr != nil {
+			return nil, visErr
+		}
+		visible = set
+	}
+	out := []monitorFindingListItem{}
+	for rows.Next() {
+		var item monitorFindingListItem
+		var projectID sql.NullInt64
+		var monitorID sql.NullInt64
+		var first, last time.Time
+		var evaluated sql.NullTime
+		if err := rows.Scan(&item.ID, &item.ServiceID, &item.Service, &projectID, &item.ProjectName, &monitorID, &item.Environment, &item.Severity, &item.Lifecycle, &item.Title, &item.Explanation, &item.Observed, &item.Expected, &item.SourceType, &first, &last, &evaluated, &item.IncidentID); err != nil {
+			return nil, err
+		}
+		if projectID.Valid {
+			pid := int(projectID.Int64)
+			item.ProjectID = &pid
+			if !seeAll && !visible[pid] {
+				continue
+			}
+		} else if !seeAll {
+			continue
+		}
+		if monitorID.Valid {
+			item.MonitorID = int(monitorID.Int64)
+		}
+		item.FirstSeenAt = first.UTC().Format(time.RFC3339)
+		item.LastSeenAt = last.UTC().Format(time.RFC3339)
+		if evaluated.Valid {
+			stamp := evaluated.Time.UTC().Format(time.RFC3339)
+			item.LastEvaluated = &stamp
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func devopsMonitorFindingsHandler(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		handleOptions(w, r)
+		return
+	}
+	userID, ok := requireDevopsUser(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	lifecycle := strings.TrimSpace(r.URL.Query().Get("lifecycle"))
+	if lifecycle == "" && r.URL.Query().Get("open") == "1" {
+		lifecycle = lifecycleOpen
+	}
+	items, err := listVisibleMonitorFindings(userID, r.URL.Query().Get("severity"), lifecycle, r.URL.Query().Get("environment"))
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "failed to list findings", err)
+		return
+	}
+	_ = writeJSONResponse(w, http.StatusOK, map[string]any{"findings": items, "status": "ok"})
+}
+
 func findingIncidentLink(current, next int) int {
 	if next <= 0 || current > 0 {
 		return current

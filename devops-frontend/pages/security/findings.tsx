@@ -1,12 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { actorId, deskCall, sessionRole } from '../../components/deskClient';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { canCloseFinding, nextFindingAction, textField } from '../../lib/securityDesk';
 import { asRecord } from '../../lib/payload';
 import { deskCanWrite } from '../../shared-ui/deskRules';
+import { EmptyState } from '@infragate/ui';
 
 interface LoadedFinding {
   id: number;
@@ -20,6 +22,30 @@ interface LoadedFinding {
   resourceId: string;
 }
 
+interface MonitorFindingRow {
+  id: number;
+  service_id: number;
+  service: string;
+  project_name?: string;
+  environment: string;
+  severity: string;
+  lifecycle: string;
+  title: string;
+  last_seen_at?: string;
+  last_evaluated_at?: string;
+  incident_id?: number;
+}
+
+interface CloudFindingRow {
+  id: number;
+  project_id: number;
+  check_id: string;
+  resource_id: string;
+  state: string;
+  latest_result: string;
+  coverage: string;
+}
+
 function safeStatus(status: number): string {
   if (status === 404) return 'That finding was not found in this project.';
   if (status === 403) return 'This action is not permitted.';
@@ -28,9 +54,15 @@ function safeStatus(status: number): string {
 
 export default function FindingsPage() {
   const apiUrl = useApiUrl();
+  const router = useRouter();
   const [canWrite, setCanWrite] = useState(false);
   const [findingId, setFindingId] = useState('');
   const [finding, setFinding] = useState<LoadedFinding | null>(null);
+  const [monitorFindings, setMonitorFindings] = useState<MonitorFindingRow[]>([]);
+  const [cloudFindings, setCloudFindings] = useState<CloudFindingRow[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [lifecycle, setLifecycle] = useState('open');
+  const [severity, setSeverity] = useState('');
   const [owner, setOwner] = useState('Unknown');
   const [expiry, setExpiry] = useState('Unknown');
   const [serviceId, setServiceId] = useState('');
@@ -48,17 +80,58 @@ export default function FindingsPage() {
     setCanWrite(deskCanWrite(sessionRole()));
   }, []);
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    const open = String(router.query.open || '') === '1';
+    const sev = typeof router.query.severity === 'string' ? router.query.severity : '';
+    const life = typeof router.query.lifecycle === 'string' ? router.query.lifecycle : open ? 'open' : 'open';
+    const id = typeof router.query.finding_id === 'string' ? router.query.finding_id : '';
+    setSeverity(sev);
+    setLifecycle(life);
+    if (id) setFindingId(id.replace(/\D/g, ''));
+  }, [router.isReady, router.query.finding_id, router.query.lifecycle, router.query.open, router.query.severity]);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const token = localStorage.getItem('devops_token');
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    const monitorQuery = new URLSearchParams();
+    if (lifecycle) monitorQuery.set('lifecycle', lifecycle);
+    if (severity) monitorQuery.set('severity', severity);
+    const cloudQuery = new URLSearchParams();
+    if (lifecycle === 'open') cloudQuery.set('open', '1');
+    else if (lifecycle) cloudQuery.set('state', lifecycle);
+    setListLoading(true);
+    Promise.all([
+      fetch(`${apiUrl}/api/devops/monitor-findings?${monitorQuery.toString()}`, { headers }).then((res) => (res.ok ? res.json() : { findings: [] })),
+      fetch(`${apiUrl}/api/findings?${cloudQuery.toString()}`, { headers }).then((res) => (res.ok ? res.json() : { findings: [] })),
+    ])
+      .then(([monitorBody, cloudBody]) => {
+        setMonitorFindings(Array.isArray(monitorBody?.findings) ? monitorBody.findings : []);
+        const cloudRows = Array.isArray(cloudBody?.findings) ? cloudBody.findings : Array.isArray(cloudBody) ? cloudBody : [];
+        setCloudFindings(cloudRows.filter((item: { id?: number }) => typeof item.id === 'number'));
+      })
+      .catch(() => {
+        setMonitorFindings([]);
+        setCloudFindings([]);
+      })
+      .finally(() => setListLoading(false));
+  }, [apiUrl, lifecycle, router.isReady, severity]);
+
+  const visibleMonitor = useMemo(() => monitorFindings, [monitorFindings]);
+
   const gate = finding ? canCloseFinding(finding.coverage, finding.rescanState, finding.latestResult) : { allowed: false, reason: 'Load a finding before choosing a next action.' };
   const action = finding ? nextFindingAction(finding.state, finding.coverage, finding.rescanState, finding.latestResult) : 'Load a finding to see evidence, owner, and the next action.';
 
-  async function loadFinding() {
+  async function loadFindingFor(id: string) {
     setError('');
     setNotice('');
     setFinding(null);
     setOwner('Unknown');
     setExpiry('Unknown');
-    if (!findingId) return;
-    const result = await deskCall(apiUrl, `/api/findings?finding_id=${encodeURIComponent(findingId)}`, 'GET');
+    if (!id) return;
+    const result = await deskCall(apiUrl, `/api/findings?finding_id=${encodeURIComponent(id)}`, 'GET');
     if (result.status !== 200) {
       setError(safeStatus(result.status));
       return;
@@ -96,6 +169,10 @@ export default function FindingsPage() {
     const due = textField(body, 'due_at');
     if (due) setExpiry(due);
     setNotice('Owner recorded. Assignment is not acknowledgement and it is not cloud access.');
+  }
+
+  async function loadFinding() {
+    await loadFindingFor(findingId);
   }
 
   async function recordException() {
@@ -152,11 +229,98 @@ export default function FindingsPage() {
         <header className="portal-page__header">
           <div>
             <h1 className="portal-page__title">Findings</h1>
-            <p className="portal-page__subtitle">Evidence, owner, and the next action stay in view. An exception is not cloud access.</p>
+            <p className="portal-page__subtitle">Open monitor and cloud findings. Empty coverage stays Unknown, never Secure. An exception is not cloud access.</p>
           </div>
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert">{notice}</div> : null}
+        <section className="portal-surface">
+          <div className="portal-surface__header">
+            <div>
+              <h2 className="portal-surface__title">Open findings</h2>
+              <p className="portal-surface__subtitle">Filter the inventory. ID lookup stays below for a specific cloud finding.</p>
+            </div>
+          </div>
+          <form className="iam-filters" onSubmit={(event) => event.preventDefault()}>
+            <label>
+              Lifecycle
+              <select className="input" value={lifecycle} onChange={(event) => setLifecycle(event.target.value)}>
+                <option value="open">Open</option>
+                <option value="acknowledged">Acknowledged</option>
+                <option value="">All</option>
+              </select>
+            </label>
+            <label>
+              Severity
+              <select className="input" value={severity} onChange={(event) => setSeverity(event.target.value)}>
+                <option value="">All severities</option>
+                <option value="critical">Critical</option>
+                <option value="warning">Warning</option>
+              </select>
+            </label>
+          </form>
+          {listLoading ? <div className="empty-state">Loading findings...</div> : null}
+          {!listLoading && !visibleMonitor.length && !cloudFindings.length ? (
+            <EmptyState
+              title="No findings in this view"
+              body="Missing telemetry stays Unknown, never Secure. Open a service monitor or run a cloud scan to record findings."
+              action={<Link href="/services" className="btn btn-primary btn-sm">Open service inventory</Link>}
+            />
+          ) : null}
+          {visibleMonitor.length ? (
+            <table className="templates-table">
+              <thead>
+                <tr>
+                  <th>Finding</th>
+                  <th>Service</th>
+                  <th>Severity</th>
+                  <th>State</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleMonitor.map((item) => (
+                  <tr key={`monitor-${item.id}`}>
+                    <td>
+                      <strong>{item.title || `Finding ${item.id}`}</strong>
+                      <div className="ig-cell-meta">{item.environment || 'Environment unknown'}</div>
+                    </td>
+                    <td>
+                      {item.service_id ? (
+                        <Link href={`/services/${item.service_id}`}>{item.service || `Service ${item.service_id}`}</Link>
+                      ) : (item.service || 'Unknown')}
+                    </td>
+                    <td>{item.severity || 'Unknown'}</td>
+                    <td>{item.lifecycle || 'Unknown'}</td>
+                    <td>{item.last_evaluated_at || item.last_seen_at || 'Unknown'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+          {cloudFindings.length ? (
+            <table className="templates-table" style={{ marginTop: 16 }}>
+              <thead>
+                <tr>
+                  <th>Cloud finding</th>
+                  <th>Resource</th>
+                  <th>State</th>
+                  <th>Coverage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cloudFindings.map((item) => (
+                  <tr key={`cloud-${item.id}`} style={{ cursor: 'pointer' }} onClick={() => { setFindingId(String(item.id)); void loadFindingFor(String(item.id)); }}>
+                    <td><strong>#{item.id}</strong> · {item.check_id || 'Unknown check'}</td>
+                    <td>{item.resource_id || 'Unknown'}</td>
+                    <td>{item.state || 'Unknown'}</td>
+                    <td>{item.coverage || 'Unknown'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </section>
         <form className="portal-surface" onSubmit={(event) => { event.preventDefault(); void loadFinding(); }}>
           <label className="label">Finding id
             <input className="input" value={findingId} onChange={(event) => setFindingId(event.target.value.replace(/\D/g, ''))} inputMode="numeric" />

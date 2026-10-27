@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { ScorecardTable } from '@infragate/ui';
@@ -23,6 +24,7 @@ interface DoraMetric {
 }
 
 interface Scorecard {
+  service_id?: number;
   service: string;
   environment?: string;
   team?: string;
@@ -70,6 +72,7 @@ export default function ScorecardsPage() {
             <h1 className="portal-page__title">Scorecards</h1>
             <p className="portal-page__subtitle">Readiness is the share of known checks: owner, SLO, open incidents, runbook, last change, live drift, and 30-day change-failure rate. A missing sample is Unknown and is left out of the percentage. It is never counted as healthy.</p>
           </div>
+          <Link href="/slos" className="btn btn-secondary">Open SLOs</Link>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         <section className="portal-surface">
@@ -77,7 +80,7 @@ export default function ScorecardsPage() {
             variant="devops"
             rows={items}
             loading={loading}
-            empty={<div className="empty-state">Add services to see scorecards.</div>}
+            empty={<div className="empty-state">Add services to see scorecards. Fix-gap links appear after a service is scored. <Link href="/services/new" className="btn btn-primary btn-sm">Add service</Link></div>}
           />
         </section>
       </div>

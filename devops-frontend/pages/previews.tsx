@@ -61,7 +61,10 @@ export default function PreviewsCatalogPage() {
         {error ? <div className="alert alert-error">{error}</div> : null}
         {loading ? <div className="empty-state">Loading previews…</div> : null}
         {!loading && items.length === 0 ? (
-          <div className="empty-state">No preview environments yet. Open a PR against an onboarded repo.</div>
+          <div className="empty-state">
+            <p>No preview environments yet. Open a PR against an onboarded repo. Merge or close tears the preview down.</p>
+            <Link href="/deploy-intelligence/onboard" className="btn btn-primary btn-sm">Onboard a repository</Link>
+          </div>
         ) : null}
         {items.length > 0 ? (
           <section className="portal-surface">

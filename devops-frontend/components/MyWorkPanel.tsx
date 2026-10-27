@@ -209,6 +209,7 @@ export function MyWorkDesk({
   const { scope, updateScope } = useWorkspaceScope();
   const chosen = workspaceScopeChoice(projectId, environment, scope.projectId, scope.environment);
   const [environments, setEnvironments] = useState<string[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: number; name: string; code?: string }>>([]);
   const [pageView, setPageView] = useState<WorkView>(hiddenWorkView());
   const [workView, setWorkView] = useState<WorkView>(hiddenWorkView());
   const [serviceView, setServiceView] = useState<WorkView>(hiddenWorkView());
@@ -303,6 +304,29 @@ export function MyWorkDesk({
   }
 
   useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    let cancel = false;
+    fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (cancel) return;
+        const rows = Array.isArray(body?.projects) ? body.projects : [];
+        setProjects(rows.map((row: { id?: number; name?: string; code?: string }) => ({
+          id: Number(row.id) || 0,
+          name: String(row.name || '').trim() || 'Project',
+          code: String(row.code || '').trim(),
+        })).filter((row: { id: number }) => row.id > 0));
+      })
+      .catch(() => {
+        if (!cancel) setProjects([]);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [apiUrl]);
+
+  useEffect(() => {
     if (!/^[1-9]\d*$/.test(chosen.projectId)) {
       setEnvironments([]);
       return;
@@ -373,9 +397,26 @@ export function MyWorkDesk({
           <h2>{missingProject ? 'Choose a project to start' : 'Choose one environment to see your work'}</h2>
           <p>
             {missingProject
-              ? 'Use the Project menu in the top bar. My work can list items only after a project is selected.'
+              ? 'All projects in the top bar is valid for Overview and the service desk. My work still needs one project, then one environment, because it lists only items assigned to you.'
               : 'All environments is too broad for a personal list. Pick the environment you are working in, then your assigned items appear here.'}
           </p>
+          {missingProject && projects.length > 0 ? (
+            <div className="work-kinds" role="group" aria-label="Choose a project">
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => updateScope({ projectId: String(project.id) })}
+                >
+                  Select {project.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {missingProject && projects.length === 0 ? (
+            <Link href="/projects/new" className="btn btn-primary">Onboard a project</Link>
+          ) : null}
           {missingEnvironment && environments.length > 0 ? (
             <div className="work-kinds" role="group" aria-label="Choose an environment">
               {environments.map((name) => (

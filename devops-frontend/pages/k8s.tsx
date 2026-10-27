@@ -283,23 +283,31 @@ export default function DevOpsK8sClustersPage() {
             ) : visibleClusters.length === 0 ? (
               <div className="portal-table-state portal-table-state--empty">
                 <div className="portal-table-state__icon" aria-hidden>⋯</div>
-                <h3 className="portal-table-state__title">No K8s clusters match the current filters</h3>
+                <h3 className="portal-table-state__title">
+                  {clusterCatalog.length === 0 ? 'No K8s clusters yet' : 'No K8s clusters match the current filters'}
+                </h3>
                 <p className="portal-table-state__copy">
-                  Clear the current filters or onboard a new cluster to start building this workspace.
+                  {clusterCatalog.length === 0
+                    ? 'Connect a cloud account, then onboard a cluster. Kubernetes cost is a breakdown of the cloud bill, never an extra line.'
+                    : 'Clear the current filters or onboard a new cluster to start building this workspace.'}
                 </p>
                 <div className="portal-table-state__actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      setSearch('');
-                      setProjectId('');
-                      setCloud('');
-                      setEnvironment('');
-                    }}
-                  >
-                    Clear filters
-                  </button>
+                  {clusterCatalog.length === 0 ? (
+                    <Link href="/cloud-accounts" className="btn btn-secondary">Connect cloud</Link>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setSearch('');
+                        setProjectId('');
+                        setCloud('');
+                        setEnvironment('');
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
                   {catalog?.k8s_access === 'write' ? (
                     <Link href={buildK8sHref('/k8s/onboard/new', { project_id: projectId, environment })} className="btn btn-primary">
                       Onboard cluster

@@ -541,6 +541,37 @@ export default function NewChangeRequestPage() {
                 </dl>
               </fieldset>
               <fieldset className="form-section">
+                <legend className="form-section__title">Create from pull request</legend>
+                <p className="form-section__copy">Repo is filled from the selected service. A commit SHA is entered separately and is never generated here. Submitting still creates a change request, not a deploy.</p>
+                <div className="portal-form-grid">
+                  <label className="label">
+                    Repo
+                    <input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} placeholder="Filled from the selected service" />
+                  </label>
+                  <label className="label">
+                    Pull request
+                    <input
+                      className="input"
+                      value={prNumber}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setPrNumber(next);
+                        if (!title.trim() && next.trim()) setTitle(`Merge PR #${next.trim()}`);
+                      }}
+                      placeholder="1842"
+                    />
+                  </label>
+                  <label className="label">
+                    Pull request URL
+                    <input className="input" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://github.com/acme/payments-api/pull/1842" />
+                  </label>
+                  <label className="label">
+                    Commit SHA <span className="onboard-optional">Optional</span>
+                    <input className="input" value={sha} onChange={(event) => setSha(event.target.value)} placeholder="Commit SHA, if you already have one" />
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset className="form-section">
                 <legend className="form-section__title">Change</legend>
                 <div className="portal-form-grid">
                   <label className="label">
@@ -617,28 +648,7 @@ export default function NewChangeRequestPage() {
                   </label>
                 </div>
               </fieldset>
-              <details className="onboard-advanced" open={Boolean(sha || prNumber || prUrl) || undefined}>
-                <summary>Code reference <span className="onboard-optional">Optional</span></summary>
-                <p className="form-section__copy">Repo is filled from the selected service. Add a commit or pull request if you already have one.</p>
-                <div className="portal-form-grid">
-                  <label className="label">
-                    Repo
-                    <input className="input" value={repo} onChange={(event) => setRepo(event.target.value)} placeholder="Filled from the selected service" />
-                  </label>
-                  <label className="label">
-                    Commit SHA
-                    <input className="input" value={sha} onChange={(event) => setSha(event.target.value)} placeholder="Commit SHA, if you already have one" />
-                  </label>
-                  <label className="label">
-                    Pull request
-                    <input className="input" value={prNumber} onChange={(event) => setPrNumber(event.target.value)} placeholder="1842" />
-                  </label>
-                  <label className="label">
-                    Pull request URL
-                    <input className="input" value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://github.com/acme/payments-api/pull/1842" />
-                  </label>
-                </div>
-              </details>
+              <p className="form-section__meta">A linked PR does not complete or deploy this change. Approval is not execution.</p>
               <p className="form-section__meta">Submitting saves the request. It does not deploy. The window uses {zoneLabel || 'this browser’s timezone'}. A later material edit invalidates an existing approval. Approval is not execution.</p>
               <div className="portal-form-actions">
                 <BlockedAction

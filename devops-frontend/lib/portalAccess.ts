@@ -85,10 +85,19 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/service-desk', key: 'service-desk' },
   { prefix: '/incidents', key: 'incidents' },
   { prefix: '/changes', key: 'changes' },
+  { prefix: '/change-calendar', key: 'changes' },
+  { prefix: '/approval-center', key: 'tickets' },
+  { prefix: '/approval-sla', key: 'tickets' },
+  { prefix: '/deploy-intelligence', key: 'releases' },
+  { prefix: '/gitops-projects', key: 'releases' },
+  { prefix: '/gitops-control', key: 'releases' },
+  { prefix: '/gate-approvals', key: 'releases' },
+  { prefix: '/gate-policies', key: 'releases' },
   { prefix: '/problems', key: 'problems' },
   { prefix: '/tickets', key: 'tickets' },
   { prefix: '/knowledge', key: 'knowledge' },
   { prefix: '/services', key: 'services' },
+  { prefix: '/slos', key: 'services' },
   { prefix: '/on-call', key: 'on-call' },
   { prefix: '/certificates', key: 'certificates' },
   { prefix: '/cost', key: 'cost' },
@@ -168,11 +177,12 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'my-work', true)) prefixes.push('/my-work');
     if (pageOn(grants, 'service-desk', true)) prefixes.push('/service-desk');
     if (pageOn(grants, 'incidents', true)) prefixes.push('/incidents');
-    if (pageOn(grants, 'changes', true)) prefixes.push('/changes');
+    if (pageOn(grants, 'changes', true)) prefixes.push('/changes', '/change-calendar');
+    prefixes.push('/incident-workspace', '/activity');
     if (pageOn(grants, 'problems', true)) prefixes.push('/problems');
     if (pageOn(grants, 'tickets', true)) prefixes.push('/tickets');
     if (pageOn(grants, 'knowledge', true)) prefixes.push('/knowledge');
-    if (pageOn(grants, 'services', true)) prefixes.push('/services');
+    if (pageOn(grants, 'services', true)) prefixes.push('/services', '/slos');
   }
   if (grants.cost) {
     if (pageOn(grants, 'cost', true)) prefixes.push('/cost');
@@ -183,7 +193,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'maintenance', true)) prefixes.push('/maintenance');
     if (pageOn(grants, 'reports', true)) prefixes.push('/reports-automation');
     if (pageOn(grants, 'webhooks', true)) prefixes.push('/operations/webhooks');
-    if (grants.manager) prefixes.push('/runbooks', '/notification-settings', '/retry-center', '/approval-notification-analytics');
+    if (grants.manager) prefixes.push('/runbooks', '/notification-settings', '/retry-center', '/approval-notification-analytics', '/approval-center', '/approval-sla');
   }
   if (grants.infrastructure) {
     if (pageOn(grants, 'iam', true)) prefixes.push('/iam');
@@ -192,13 +202,51 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'environments', grants.manager)) prefixes.push('/environments');
     if (pageOn(grants, 'cloud-accounts', grants.manager)) prefixes.push('/cloud-accounts');
     if (pageOn(grants, 'cloud-inventory', grants.manager)) prefixes.push('/cloud-resources');
-    if (pageOn(grants, 'releases', grants.manager)) prefixes.push('/promotions');
+    if (pageOn(grants, 'releases', grants.manager)) prefixes.push('/promotions', '/deploy-intelligence', '/gitops-projects', '/gitops-control', '/release-notes', '/project-operations');
+    if (grants.manager) prefixes.push('/gate-approvals', '/gate-policies');
   }
   if (grants.security) {
     prefixes.push('/security');
     if (pageOn(grants, 'secrets', grants.manager)) prefixes.push('/credential-audit');
   }
   if (grants.records) prefixes.push('/previews', '/scorecards', '/evidence', '/templates');
-  if (grants.portalAccess) prefixes.push('/portal-access');
+  if (grants.portalAccess) {
+    prefixes.push(
+      '/portal-access',
+      '/approval-center',
+      '/approval-sla',
+      '/change-calendar',
+      '/deploy-intelligence',
+      '/gitops-projects',
+      '/gitops-control',
+      '/gate-approvals',
+      '/gate-policies',
+      '/release-notes',
+      '/activity',
+      '/incident-workspace',
+      '/project-operations',
+    );
+  }
   return prefixes.some((prefix) => matches(pathname, prefix)) && pageAllowed(pathname, grants);
+}
+
+export function accessRequirement(pathname: string): string {
+  if (matches(pathname, '/approval-center') || matches(pathname, '/approval-sla')) {
+    return 'Needs the manager grant.';
+  }
+  if (matches(pathname, '/change-calendar')) return 'Needs Daily access, including change requests.';
+  if (
+    matches(pathname, '/deploy-intelligence')
+    || matches(pathname, '/gitops-projects')
+    || matches(pathname, '/gitops-control')
+    || matches(pathname, '/gate-approvals')
+    || matches(pathname, '/gate-policies')
+  ) {
+    return 'Needs Infrastructure access.';
+  }
+  if (matches(pathname, '/scorecards')) return 'Needs Records access.';
+  if (matches(pathname, '/slos')) return 'Needs Daily access, including services.';
+  if (matches(pathname, '/cost')) return 'Needs the Cost grant.';
+  if (matches(pathname, '/portal-access')) return 'Needs portal administrator access.';
+  return 'This page is not included for your group.';
 }

@@ -11,6 +11,7 @@ import (
 )
 
 type serviceScorecard struct {
+	ServiceID      int              `json:"service_id,omitempty"`
 	Service        string           `json:"service"`
 	Environment    string           `json:"environment,omitempty"`
 	Repo           string           `json:"repo,omitempty"`
@@ -45,6 +46,7 @@ func buildServiceScorecards(projectID int, environment string) ([]serviceScoreca
 	out := make([]serviceScorecard, 0, len(services))
 	for _, svc := range services {
 		card := serviceScorecard{
+			ServiceID:   svc.ID,
 			Service:     svc.Service,
 			Environment: svc.Environment,
 			Repo:        svc.Repo,
