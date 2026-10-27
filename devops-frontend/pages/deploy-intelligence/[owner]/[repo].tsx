@@ -197,8 +197,8 @@ export default function DeployIntelligenceRepoPage() {
   const tracking = mergeTrackingLabel(repoMeta?.merge_tracking);
   const openCount = repoMeta?.open_pr_count ?? (section === 'open' ? events.length : 0);
   const mergeCount = repoMeta?.merge_count ?? (section === 'merges' ? events.length : 0);
-  const tokenFailure = !loading && Boolean(githubMeta) && githubMeta?.configured === false;
-  const githubFailed = !loading && Boolean(githubMeta) && githubMeta.configured !== false && (githubMeta.allowed === false || githubError);
+  const tokenFailure = !loading && githubMeta != null && githubMeta.configured === false;
+  const githubFailed = !loading && githubMeta != null && githubMeta.configured !== false && (githubMeta.allowed === false || Boolean(githubError));
 
   const reviewEvent = (item: DeployEvent) => {
     setSelected(item);
