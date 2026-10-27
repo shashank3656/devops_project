@@ -801,15 +801,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/security/cloud-scan', label: 'Cloud scan', Icon: IconShield },
         { href: '/security/findings', label: 'Findings', Icon: IconShield },
       ];
-  const recordsNavItems: NavItem[] = isManager || Boolean(user?.grants?.records)
+  const grants = portalGrants(user);
+  const recordsNavItems: NavItem[] = isManager || grants.records
     ? [
-        ...((isManager || Boolean(user?.grants?.infrastructure)) ? [] : [{ href: '/pipelines', label: 'Pipelines', Icon: IconFileText }]),
+        ...((isManager || grants.infrastructure) ? [] : [{ href: '/pipelines', label: 'Pipelines', Icon: IconFileText }]),
         { href: '/scorecards', label: 'Scorecards', Icon: IconFileText },
         { href: '/evidence', label: 'Evidence', Icon: IconFileText },
         { href: '/templates', label: 'Request templates', Icon: IconTemplates },
       ]
     : [];
-  const grants = portalGrants(user);
   if ((grants.portalAccess || grants.manager) && grants.records && pathAllowed('/scorecards', grants)) {
     dailyNavItems.push({ href: '/scorecards', label: 'Scorecards', Icon: IconFileText });
   }
