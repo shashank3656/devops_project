@@ -1081,6 +1081,7 @@ func main() {
 	http.HandleFunc("/api/devops/templates", devopsTemplatesRouter)
 	http.HandleFunc("/api/devops/templates/", devopsTemplatesRouter)
 	http.HandleFunc("/api/devops/previews", devopsPreviewsHandler)
+	http.HandleFunc("/api/devops/previews/", devopsPreviewsHandler)
 	http.HandleFunc("/api/devops/scorecards", devopsScorecardsHandler)
 	http.HandleFunc("/api/devops/evidence", devopsEvidenceHandler)
 	http.HandleFunc("/api/devops/credential-audit", devopsCredentialAuditHandler)

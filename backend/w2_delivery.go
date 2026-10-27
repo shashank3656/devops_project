@@ -337,24 +337,169 @@ func previewsForBranch(branch string) []previewEnvironment {
 	return out
 }
 
+func previewRepoSegment(value string) bool {
+	if value == "" || value == "." || value == ".." {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func ownerNameFromRemote(raw string) string {
+	value := strings.TrimSpace(raw)
+	value = strings.TrimSuffix(value, ".git")
+	lower := strings.ToLower(value)
+	for _, host := range []string{"github.com/", "gitlab.com/", "bitbucket.org/"} {
+		idx := strings.Index(lower, host)
+		if idx < 0 {
+			continue
+		}
+		rest := strings.Trim(value[idx+len(host):], "/")
+		if cut := strings.IndexAny(rest, "?#"); cut >= 0 {
+			rest = rest[:cut]
+		}
+		parts := strings.Split(rest, "/")
+		if len(parts) >= 2 {
+			return parts[0] + "/" + strings.TrimSuffix(parts[1], ".git")
+		}
+	}
+	return value
+}
+
+func normalizePreviewRepo(raw string) (string, error) {
+	value := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	value = strings.Trim(value, "/")
+	value = strings.TrimSuffix(value, ".git")
+	if value == "" {
+		return "", fmt.Errorf("repository is required")
+	}
+	lower := strings.ToLower(value)
+	if strings.Contains(lower, "password") || strings.Contains(lower, "secret") || strings.Contains(lower, "token") || strings.Contains(lower, "bearer") {
+		return "", fmt.Errorf("repository cannot contain a secret")
+	}
+	value = ownerNameFromRemote(value)
+	if strings.Count(value, "/") != 1 {
+		return "", fmt.Errorf("use owner/name")
+	}
+	owner, name, _ := strings.Cut(value, "/")
+	owner = strings.TrimSpace(owner)
+	name = strings.TrimSuffix(strings.TrimSpace(name), ".git")
+	if !previewRepoSegment(owner) || !previewRepoSegment(name) {
+		return "", fmt.Errorf("use owner/name")
+	}
+	out := owner + "/" + name
+	if len(out) > 400 {
+		return "", fmt.Errorf("repository is too long")
+	}
+	return out, nil
+}
+
+func updatePreviewRepo(id int, repo string) (*previewEnvironment, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database not available")
+	}
+	if id <= 0 {
+		return nil, fmt.Errorf("invalid preview")
+	}
+	normalized, err := normalizePreviewRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	var current int
+	if err := queryRowContext(`SELECT id FROM preview_environments WHERE id = $1`, id).Scan(&current); err != nil {
+		return nil, fmt.Errorf("preview not found")
+	}
+	if _, err := execContext(`
+		UPDATE preview_environments
+		SET repo = $2, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1
+	`, id, normalized); err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate") {
+			return nil, fmt.Errorf("a preview already uses that repository and PR")
+		}
+		return nil, err
+	}
+	item := getPreviewEnvironment(id)
+	if item == nil {
+		return nil, fmt.Errorf("preview not found")
+	}
+	return item, nil
+}
+
 func devopsPreviewsHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
-	if r.Method == "OPTIONS" {
+	if r.Method == http.MethodOptions {
 		handleOptions(w, r)
 		return
 	}
 	if _, ok := requireDevopsUser(w, r); !ok {
 		return
 	}
-	if r.Method != "GET" {
-		writeMethodNotAllowed(w, r)
-		return
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/devops/previews"), "/")
+	id := 0
+	if rest != "" {
+		parsed, err := strconv.Atoi(rest)
+		if err != nil || parsed <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid preview id", err)
+			return
+		}
+		id = parsed
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"previews": listPreviewEnvironments(100),
-		"status":   "ok",
-	})
+	switch r.Method {
+	case http.MethodGet:
+		if id > 0 {
+			item := getPreviewEnvironment(id)
+			if item == nil {
+				writeAPIError(w, r, http.StatusNotFound, "preview not found", nil)
+				return
+			}
+			_ = writeJSONResponse(w, http.StatusOK, map[string]any{"preview": item, "status": "ok"})
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"previews": listPreviewEnvironments(100),
+			"status":   "ok",
+		})
+	case http.MethodPatch:
+		if id <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "preview id is required", nil)
+			return
+		}
+		var body struct {
+			Repo string `json:"repo"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
+			return
+		}
+		item, err := updatePreviewRepo(id, body.Repo)
+		if err != nil {
+			msg := err.Error()
+			status := http.StatusBadRequest
+			if msg == "preview not found" {
+				status = http.StatusNotFound
+			} else if strings.Contains(msg, "already uses") {
+				status = http.StatusConflict
+			} else if msg == "database not available" {
+				status = http.StatusServiceUnavailable
+			}
+			writeAPIError(w, r, status, msg, err)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{
+			"preview": item,
+			"status":  "ok",
+			"note":    "Catalog repository name updated. This does not move or tear down the preview host.",
+		})
+	default:
+		writeMethodNotAllowed(w, r)
+	}
 }
 
 func parseFlagWebhook(body []byte) (parsedChangeWebhook, error) {
