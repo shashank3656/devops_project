@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestNormalizeRepoIdentity(t *testing.T) {
 	owner, name := normalizeRepoIdentity("", "acme/infra-live")
@@ -10,6 +13,43 @@ func TestNormalizeRepoIdentity(t *testing.T) {
 	owner, name = normalizeRepoIdentity("acme", "infra-live")
 	if owner != "acme" || name != "infra-live" {
 		t.Fatalf("got %s/%s", owner, name)
+	}
+}
+
+func TestVerifyGitHubRepositoryForOnboardRejectsMissing(t *testing.T) {
+	prev := lookupGitHubRepository
+	lookupGitHubRepository = func(owner, name string) (string, string, bool, error) {
+		return owner, name, false, nil
+	}
+	defer func() { lookupGitHubRepository = prev }()
+	_, _, err := verifyGitHubRepositoryForOnboard("acme", "missing-repo")
+	if !errors.Is(err, errGitHubRepoNotFound) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestVerifyGitHubRepositoryForOnboardUsesCanonicalName(t *testing.T) {
+	prev := lookupGitHubRepository
+	lookupGitHubRepository = func(owner, name string) (string, string, bool, error) {
+		return "Acme", "infra-live", true, nil
+	}
+	defer func() { lookupGitHubRepository = prev }()
+	owner, name, err := verifyGitHubRepositoryForOnboard("acme", "infra-live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner != "Acme" || name != "infra-live" {
+		t.Fatalf("got %s/%s", owner, name)
+	}
+}
+
+func TestLookupGitHubRepositoryLiveWithoutToken(t *testing.T) {
+	prev := GitHubToken
+	GitHubToken = ""
+	defer func() { GitHubToken = prev }()
+	_, _, exists, err := lookupGitHubRepositoryLive("acme", "infra")
+	if exists || err == nil {
+		t.Fatal("missing GitHub token must not create an onboard")
 	}
 }
 
@@ -25,5 +65,56 @@ func TestDeployIntelGitHubAccessRequiresToken(t *testing.T) {
 	defer func() { GitHubToken = prev }()
 	if deployIntelGitHubAccessAllowed("acme", "infra") {
 		t.Fatal("expected false without token")
+	}
+	count, access, fetched := inspectDeployIntelGitHub("acme", "infra")
+	if count != 0 || access != "failed" || fetched != nil {
+		t.Fatalf("missing token is failed access, got count=%d access=%s fetched=%v", count, access, fetched)
+	}
+}
+
+func TestEnableMergeTrackingRequiresOnboardedRepo(t *testing.T) {
+	saved := DB
+	DB = nil
+	defer func() { DB = saved }()
+	if err := enableMergeTrackingForRepo(1, "acme", "infra", 0); err == nil {
+		t.Fatal("missing database must not enable merge tracking")
+	}
+}
+
+func TestDisconnectDeployIntelRepoDoesNotCallGitHub(t *testing.T) {
+	called := false
+	prevLookup := lookupGitHubRepository
+	lookupGitHubRepository = func(owner, name string) (string, string, bool, error) {
+		called = true
+		return owner, name, false, errors.New("github must not be called")
+	}
+	defer func() { lookupGitHubRepository = prevLookup }()
+	saved := DB
+	DB = nil
+	defer func() { DB = saved }()
+	if err := disconnectDeployIntelRepo("acme", "infra"); err == nil {
+		t.Fatal("expected unavailable without database")
+	}
+	if called {
+		t.Fatal("disconnect must not call GitHub")
+	}
+}
+
+func TestUpdateDeployIntelRepoCatalogWithoutDB(t *testing.T) {
+	called := false
+	prevLookup := lookupGitHubRepository
+	lookupGitHubRepository = func(owner, name string) (string, string, bool, error) {
+		called = true
+		return owner, name, true, nil
+	}
+	defer func() { lookupGitHubRepository = prevLookup }()
+	saved := DB
+	DB = nil
+	defer func() { DB = saved }()
+	if _, err := updateDeployIntelRepoCatalog("acme", "infra", "acme", "infra", "main"); err == nil {
+		t.Fatal("expected unavailable without database")
+	}
+	if called {
+		t.Fatal("same-name catalog edit must not call GitHub")
 	}
 }

@@ -34,6 +34,7 @@ type repoDeployEvent struct {
 	ChangeBrief   *deployIntelChangeBrief   `json:"change_brief,omitempty"`
 	GitHubPost    *deployIntelGitHubPost    `json:"github_post,omitempty"`
 	SimilarMerges []deployIntelSimilarMerge `json:"similar_merges,omitempty"`
+	Pipeline      *deployIntelPipelineLink  `json:"pipeline,omitempty"`
 }
 
 func isProductionBaseBranch(ref string) bool {
@@ -472,6 +473,20 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Catalog: onboard repos first, then drill into owner/repo for PR analysis.
 	if owner == "" || repo == "" {
+		if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("view")), "pull-requests") {
+			limit := 12
+			if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+				if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+					limit = n
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			encodeJSON(w, map[string]interface{}{
+				"status": "ok",
+				"events": listDeliveryOpenPullRequests(limit),
+			})
+			return
+		}
 		summaries, err := listDeployIntelRepoSummaries()
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
@@ -479,10 +494,9 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{
-			"status":              "ok",
-			"repos":               summaries,
-			"projects":            listDeployIntelProjectOptions(),
-			"future_capabilities": deployIntelFutureCapabilities,
+			"status":   "ok",
+			"repos":    summaries,
+			"projects": listDeployIntelProjectOptions(),
 		})
 		return
 	}
@@ -535,7 +549,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		repoSummary = buildDeployIntelRepoSummary(*rec)
 	}
 
-	var events []repoDeployEvent
+	events := []repoDeployEvent{}
 	var githubFetch deployIntelGitHubFetch
 	var err error
 	if section == "open" {
@@ -543,7 +557,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		if openOpts.Limit <= 0 {
 			openOpts.Limit = limit
 		}
-		if refreshNumber > 0 {
+		if refreshNumber > 0 && openOpts.DeepPR <= 0 {
 			openOpts.DeepPR = refreshNumber
 		}
 		events, githubFetch, err = listOpenPullRequestsAnalyzed(owner, repo, openOpts)
@@ -583,7 +597,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-	} else {
+	} else if section != "settings" {
 		events, err = listRepoDeployEvents(owner, repo, limit)
 		if err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "request failed", err)
@@ -591,20 +605,19 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	insights, insightErr := buildDeployIntelRepoInsights(owner, repo, baseBranch)
-	if insightErr != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "request failed", insightErr)
-		return
+	if section == "open" && githubFetch.Listed > 0 && strings.TrimSpace(r.URL.Query().Get("only")) != "1" {
+		repoSummary.OpenPRCount = githubFetch.TotalOpen
+		if githubFetch.Error == "" {
+			repoSummary.GitHubAccess = "connected"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	payload := map[string]interface{}{
-		"status":              "ok",
-		"repo":                repoSummary,
-		"section":             section,
-		"events":              events,
-		"insights":            insights,
-		"future_capabilities": deployIntelFutureCapabilities,
+		"status":  "ok",
+		"repo":    repoSummary,
+		"section": section,
+		"events":  events,
 		"onboarded_repo": map[string]interface{}{
 			"owner":     owner,
 			"name":      repo,
@@ -627,5 +640,6 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 	if refreshPost != nil {
 		payload["github_post"] = refreshPost
 	}
+	payload["projects"] = listDeployIntelProjectOptions()
 	encodeJSON(w, payload)
 }

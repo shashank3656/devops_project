@@ -19,9 +19,9 @@ type itsmCategory struct {
 }
 
 type itsmSLAPolicy struct {
-	Priority        string `json:"priority"`
-	RespondMinutes  int    `json:"respond_minutes"`
-	ResolveMinutes  int    `json:"resolve_minutes"`
+	Priority       string `json:"priority"`
+	RespondMinutes int    `json:"respond_minutes"`
+	ResolveMinutes int    `json:"resolve_minutes"`
 }
 
 type incidentSLA struct {
@@ -50,15 +50,15 @@ type itsmJournalEntry struct {
 }
 
 type knowledgeArticle struct {
-	ID             int       `json:"id"`
-	ArticleNumber  string    `json:"article_number"`
-	Title          string    `json:"title"`
-	Body           string    `json:"body"`
-	ProblemID      *int      `json:"problem_id,omitempty"`
-	ProblemNumber  string    `json:"problem_number,omitempty"`
-	Published      bool      `json:"published"`
-	CreatedBy      *int      `json:"created_by,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID            int       `json:"id"`
+	ArticleNumber string    `json:"article_number"`
+	Title         string    `json:"title"`
+	Body          string    `json:"body"`
+	ProblemID     *int      `json:"problem_id,omitempty"`
+	ProblemNumber string    `json:"problem_number,omitempty"`
+	Published     bool      `json:"published"`
+	CreatedBy     *int      `json:"created_by,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type incidentChildRef struct {
@@ -92,6 +92,8 @@ func slaPolicyForPriority(priority string) itsmSLAPolicy {
 	}
 }
 
+const slaStaleAfter = 72 * time.Hour
+
 func formatSLARemaining(deadline *time.Time, now time.Time) string {
 	if deadline == nil {
 		return ""
@@ -99,6 +101,9 @@ func formatSLARemaining(deadline *time.Time, now time.Time) string {
 	delta := deadline.Sub(now)
 	if delta < 0 {
 		over := -delta
+		if over >= slaStaleAfter {
+			return "stale"
+		}
 		if over < time.Hour {
 			return fmt.Sprintf("breached %dm ago", int(over.Minutes()))
 		}

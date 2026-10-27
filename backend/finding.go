@@ -63,6 +63,7 @@ var (
 	updateCloudFinding       = updateCloudFindingInDB
 	insertFindingObservation = insertFindingObservationToDB
 	loadCloudFinding         = loadCloudFindingFromDB
+	listCloudFindings        = listCloudFindingsFromDB
 	findingClock             = func() time.Time { return time.Now().UTC() }
 )
 
@@ -318,6 +319,42 @@ func insertFindingObservationToDB(item findingObservation) (findingObservation, 
 	return item, err
 }
 
+func listCloudFindingsFromDB(actor authzSubject, state, result string) ([]cloudFinding, error) {
+	if DB == nil {
+		return []cloudFinding{}, nil
+	}
+	state = strings.ToLower(strings.TrimSpace(state))
+	result = strings.ToLower(strings.TrimSpace(result))
+	rows, cancel, err := queryRowsWithTimeout(`
+		SELECT id, project_id, account_id, region, check_id, resource_id, fingerprint, state, latest_result, policy_version, closure_reason, coverage, rescan_state
+		FROM cloud_findings
+		WHERE ($1 = '' OR LOWER(state) = $1)
+		  AND ($2 = '' OR LOWER(latest_result) = $2)
+		ORDER BY id DESC
+		LIMIT 200
+	`, state, result)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			return []cloudFinding{}, nil
+		}
+		return nil, err
+	}
+	defer cancel()
+	defer rows.Close()
+	out := []cloudFinding{}
+	for rows.Next() {
+		var item cloudFinding
+		if err := rows.Scan(&item.ID, &item.ProjectID, &item.AccountID, &item.Region, &item.CheckID, &item.ResourceID, &item.Fingerprint, &item.State, &item.LatestResult, &item.PolicyVersion, &item.ClosureReason, &item.Coverage, &item.RescanState); err != nil {
+			return nil, err
+		}
+		if !mappingAllowed(actor, item.ProjectID, authzRead) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func loadCloudFindingFromDB(id int) (cloudFinding, error) {
 	if DB == nil || id <= 0 {
 		return cloudFinding{}, errFindingHidden
@@ -404,6 +441,19 @@ func findingDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	findingID, _ := strconv.Atoi(r.URL.Query().Get("finding_id"))
+	if findingID <= 0 {
+		state := strings.TrimSpace(r.URL.Query().Get("state"))
+		if state == "" && (r.URL.Query().Get("open") == "1" || strings.EqualFold(r.URL.Query().Get("lifecycle"), "open")) {
+			state = "open"
+		}
+		items, listErr := listCloudFindings(actor, state, r.URL.Query().Get("result"))
+		if listErr != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "failed to list findings", listErr)
+			return
+		}
+		_ = writeJSONResponse(w, http.StatusOK, map[string]any{"findings": items, "status": "ok"})
+		return
+	}
 	saved, err := loadCloudFinding(findingID)
 	if err != nil || saved.ID <= 0 || !mappingAllowed(actor, saved.ProjectID, authzRead) {
 		writeFindingError(w, r, errFindingHidden)

@@ -267,12 +267,16 @@ func devopsWorkloadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// dueStatus returns "overdue", "due_soon", or "" for SLA display
+// dueStatus returns "stale", "overdue", "due_soon", or "" for SLA display.
+// Clocks older than 72 hours are stale so operators do not treat demo debt as a live breach.
 func dueStatus(due *time.Time) string {
 	if due == nil {
 		return ""
 	}
 	now := time.Now()
+	if due.Before(now.Add(-72 * time.Hour)) {
+		return "stale"
+	}
 	if due.Before(now) {
 		return "overdue"
 	}

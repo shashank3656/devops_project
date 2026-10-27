@@ -45,6 +45,12 @@ export default function DevOpsLogin() {
   const [canRetry, setCanRetry] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [accessCopied, setAccessCopied] = useState(false);
+  const [accessTeam, setAccessTeam] = useState('');
+  const [accessProject, setAccessProject] = useState('');
+  const [accessNeeded, setAccessNeeded] = useState('read');
+  const [accessReason, setAccessReason] = useState('');
+  const [accessSent, setAccessSent] = useState(false);
+  const [accessSending, setAccessSending] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -223,9 +229,10 @@ export default function DevOpsLogin() {
   const accessRequestText = [
     'Hello, I need access to OpsTrellis.',
     `Username: ${username.trim() || '(my username)'}`,
-    'Team:',
-    'Project(s):',
-    'Access needed (read / write):',
+    `Team: ${accessTeam.trim() || '(team)'}`,
+    `Project(s): ${accessProject.trim() || '(project)'}`,
+    `Access needed: ${accessNeeded}`,
+    accessReason.trim() ? `Reason: ${accessReason.trim()}` : 'Reason:',
   ].join('\n');
 
   const copyAccessRequest = async () => {
@@ -235,6 +242,34 @@ export default function DevOpsLogin() {
       window.setTimeout(() => setAccessCopied(false), 2500);
     } catch {
       setAccessCopied(false);
+    }
+  };
+
+  const submitAccessRequest = async () => {
+    if (!username.trim() || accessSending) return;
+    setAccessSending(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/public/access-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          team: accessTeam.trim(),
+          project: accessProject.trim(),
+          access_needed: accessNeeded,
+          reason: accessReason.trim(),
+        }),
+      });
+      if (!res.ok) {
+        setError('The access request was not accepted. Copy it and send it to an administrator.');
+        return;
+      }
+      setAccessSent(true);
+    } catch {
+      setError('Could not send the access request. Copy it and send it to an administrator.');
+    } finally {
+      setAccessSending(false);
     }
   };
 
@@ -423,13 +458,40 @@ export default function DevOpsLogin() {
                 {accessOpen ? (
                   <div id="login-access-help" className="login-page__access-panel">
                     <p>
-                      Your OpsTrellis administrator adds people to groups and projects. Send them this request so they know
-                      what to grant.
+                      This is not a sign-up. An administrator adds people to groups and projects. Send a request so they know what to grant.
                     </p>
+                    <label className="label">
+                      Username
+                      <input className="input" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="The username you will use" autoComplete="username" />
+                    </label>
+                    <label className="label">
+                      Team
+                      <input className="input" value={accessTeam} onChange={(event) => setAccessTeam(event.target.value)} placeholder="Your team" />
+                    </label>
+                    <label className="label">
+                      Project
+                      <input className="input" value={accessProject} onChange={(event) => setAccessProject(event.target.value)} placeholder="Project you need" />
+                    </label>
+                    <label className="label">
+                      Access needed
+                      <select className="input" value={accessNeeded} onChange={(event) => setAccessNeeded(event.target.value)}>
+                        <option value="read">Read</option>
+                        <option value="write">Write</option>
+                      </select>
+                    </label>
+                    <label className="label">
+                      Reason
+                      <textarea className="input" rows={2} value={accessReason} onChange={(event) => setAccessReason(event.target.value)} placeholder="What work this access is for" />
+                    </label>
                     <pre className="login-page__access-text">{accessRequestText}</pre>
-                    <button type="button" className="btn btn-secondary login-page__access-copy" onClick={() => void copyAccessRequest()}>
-                      {accessCopied ? 'Copied' : 'Copy request'}
-                    </button>
+                    <div className="portal-page__actions">
+                      <button type="button" className="btn btn-primary login-page__access-copy" disabled={!username.trim() || accessSending || accessSent} onClick={() => void submitAccessRequest()}>
+                        {accessSent ? 'Request sent' : accessSending ? 'Sending…' : 'Send to administrator'}
+                      </button>
+                      <button type="button" className="btn btn-secondary login-page__access-copy" onClick={() => void copyAccessRequest()}>
+                        {accessCopied ? 'Copied' : 'Copy request'}
+                      </button>
+                    </div>
                     <p className="login-page__access-note" aria-live="polite">
                       Locked out or forgot your password? Use <Link href="/forgot-password" className="login-page__link">Forgot password</Link> first.
                     </p>

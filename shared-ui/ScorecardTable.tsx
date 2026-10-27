@@ -18,6 +18,7 @@ export interface ScorecardDoraRow {
 }
 
 export interface ScorecardRow {
+  service_id?: number;
   service: string;
   environment?: string;
   team?: string;
@@ -62,6 +63,45 @@ function doraText(metric: ScorecardDoraRow): string {
   return `${metric.value}${unit} (${metric.band})`;
 }
 
+function serviceHref(item: ScorecardRow): string {
+  return item.service_id ? `/services/${item.service_id}` : `/services?q=${encodeURIComponent(item.service)}`;
+}
+
+function gapActions(item: ScorecardRow): { href: string; label: string }[] {
+  const seen = new Set<string>();
+  const out: { href: string; label: string }[] = [];
+  const add = (href: string, label: string) => {
+    if (seen.has(href)) return;
+    seen.add(href);
+    out.push({ href, label });
+  };
+  for (const check of item.checks || []) {
+    if (checkState(check) === 'pass') continue;
+    if (check.key === 'owner') add(serviceHref(item), 'Assign owner');
+    if (check.key === 'runbook') add(`/runbooks/new?service=${encodeURIComponent(item.service)}`, 'Add runbook');
+    if (check.key === 'incidents') add(`/incidents?q=${encodeURIComponent(item.service)}`, 'Open incidents');
+    if (check.key === 'slo') add(`/slos?q=${encodeURIComponent(item.service)}`, 'Review SLO');
+    if (check.key === 'change') add('/changes/new', 'Create change');
+  }
+  if (item.slo_burned) add(`/slos?q=${encodeURIComponent(item.service)}`, 'Review SLO');
+  if (item.open_incidents > 0) add(`/incidents?q=${encodeURIComponent(item.service)}`, 'Open incidents');
+  return out.slice(0, 3);
+}
+
+function GapLinks({ item }: { item: ScorecardRow }) {
+  const gaps = gapActions(item);
+  if (!gaps.length) return <span className="ig-cell-meta">No gaps</span>;
+  return (
+    <div className="ig-cell-stack">
+      {gaps.map((gap) => (
+        <Link key={`${gap.href}-${gap.label}`} className="ig-cell-link" href={gap.href}>
+          {gap.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function buildUserColumns(): DataTableColumn<ScorecardRow>[] {
   return [
     {
@@ -98,6 +138,7 @@ function buildUserColumns(): DataTableColumn<ScorecardRow>[] {
         </>
       ),
     },
+    { id: 'gaps', header: 'Fix gaps', cell: (item) => <GapLinks item={item} /> },
   ];
 }
 
@@ -108,7 +149,9 @@ function buildDevopsColumns(): DataTableColumn<ScorecardRow>[] {
       header: 'Service',
       cell: (item) => (
         <>
-          <strong>{item.service}</strong>
+          <Link className="ig-cell-link" href={serviceHref(item)}>
+            <strong>{item.service}</strong>
+          </Link>
           <div className="portal-surface__subtitle">{item.team || item.project_name || item.environment || '—'}</div>
         </>
       ),
@@ -149,6 +192,7 @@ function buildDevopsColumns(): DataTableColumn<ScorecardRow>[] {
         </>
       ),
     },
+    { id: 'gaps', header: 'Fix gaps', cell: (item) => <GapLinks item={item} /> },
   ];
 }
 
@@ -189,6 +233,7 @@ function buildAdminColumns(): DataTableColumn<ScorecardRow>[] {
         </>
       ),
     },
+    { id: 'gaps', header: 'Fix gaps', cell: (item) => <GapLinks item={item} /> },
   ];
 }
 

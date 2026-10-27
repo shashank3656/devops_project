@@ -1,4 +1,5 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
@@ -74,6 +75,12 @@ export default function EvidencePage() {
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {loading ? <div className="empty-state">Building pack…</div> : null}
+        {!loading && !error && !pack ? (
+          <div className="empty-state">
+            <p>No evidence pack yet. A pack is built from changes, incidents, and onboarded branch checks for the last 30 days.</p>
+            <Link href="/changes" className="btn btn-primary btn-sm">Open changes</Link>
+          </div>
+        ) : null}
         {pack ? (
           <>
             <section className="portal-surface" style={{ marginBottom: 16 }}>

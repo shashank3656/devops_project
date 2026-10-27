@@ -591,6 +591,49 @@ func findGitOpsProjectIDByGitHubRepo(owner, name string) int {
 	return id
 }
 
+func enableMergeTrackingForRepo(userID int, owner, name string, projectID int) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	owner, name = normalizeRepoIdentity(owner, name)
+	if owner == "" || name == "" {
+		return fmt.Errorf("owner and repository name are required")
+	}
+	rec, _ := getDeployIntelRepo(owner, name)
+	if rec == nil || !rec.Enabled {
+		return fmt.Errorf("repository is not onboarded for deploy intelligence")
+	}
+	if linked := findGitOpsProjectIDByGitHubRepo(owner, name); linked > 0 && (projectID == 0 || projectID == linked) {
+		return nil
+	}
+	if projectID > 0 {
+		identity := resolveGitHubRepoForProject(projectID)
+		if identity.Source == "project" && identity.Owner != "" && identity.Name != "" {
+			if !strings.EqualFold(identity.Owner, owner) || !strings.EqualFold(identity.Name, name) {
+				return fmt.Errorf("that GitOps project is already linked to %s/%s", identity.Owner, identity.Name)
+			}
+			return nil
+		}
+		return setGitOpsProjectGitHubRepo(projectID, owner, name)
+	}
+	teamID, err := resolveGitOpsCreateTeamID(userID, 0, "")
+	if err != nil {
+		return err
+	}
+	if !CanUserCreateGitOpsProjectInTeam(userID, teamID) {
+		return fmt.Errorf("GitOps admin access is required to create a project in this team")
+	}
+	projectName := name
+	project, err := CreateGitOpsCatalogProject(teamID, projectName, "", nil, nil, "", userID)
+	if err != nil {
+		project, err = CreateGitOpsCatalogProject(teamID, owner+"/"+name, normalizeGitOpsProjectSlug(owner+"-"+name), nil, nil, "", userID)
+		if err != nil {
+			return err
+		}
+	}
+	return applyGitHubRepoToCatalogProject(project, owner, name)
+}
+
 func setGitOpsProjectGitHubRepo(projectID int, owner, name string) error {
 	if DB == nil || projectID <= 0 {
 		return fmt.Errorf("project is required")
@@ -609,6 +652,11 @@ func setGitOpsProjectGitHubRepo(projectID int, owner, name string) error {
 func maybeOnboardDeployIntelForProjectRepo(project GitOpsCatalogProject) {
 	owner, name := normalizeRepoIdentity(project.GitHubOwner, project.GitHubRepo)
 	if owner == "" || name == "" {
+		return
+	}
+	owner, name, err := verifyGitHubRepositoryForOnboard(owner, name)
+	if err != nil {
+		log.Printf("[deploy-intel] skip auto-onboard %s/%s from project %d: %v", project.GitHubOwner, project.GitHubRepo, project.ID, err)
 		return
 	}
 	base := strings.TrimSpace(project.BaseBranch)

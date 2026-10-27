@@ -883,6 +883,33 @@ func incidentFinishStatus(action string) (status string, note string, ok bool) {
 	}
 }
 
+func incidentHasOwner(item requestIncident) bool {
+	return item.OwnerUserID != nil && *item.OwnerUserID > 0
+}
+
+func incidentCloseBlockedReason(item requestIncident, note string) string {
+	if !incidentHasOwner(item) {
+		return "Assign an owner before closing this incident"
+	}
+	trimmed := strings.TrimSpace(note)
+	if trimmed == "" || strings.EqualFold(trimmed, "Closed.") {
+		return "recovery notes are required to close this incident"
+	}
+	return ""
+}
+
+func incidentOwnerPagePublic(page incidentOwnerPage) map[string]any {
+	return map[string]any{
+		"incident_number": page.IncidentNumber,
+		"severity":        page.Severity,
+		"service":         page.Service,
+		"team":            page.Team,
+		"usernames":       page.Usernames,
+		"paged":           page.Paged,
+		"count":           len(page.Usernames),
+	}
+}
+
 func incidentIsActive(status string) bool {
 	switch normalizeIncidentStatus(status) {
 	case "open", "acknowledged", "investigating", "mitigating", "on_hold":
@@ -1835,6 +1862,44 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleIncidentReviewRoute(w, r, managerID, id)
 		return
 	}
+	if len(parts) == 2 && strings.EqualFold(parts[1], "acknowledge") {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w, r)
+			return
+		}
+		if _, err := execContext(`
+			UPDATE request_incidents
+			SET status = $2, owner_user_id = COALESCE(owner_user_id, $3), updated_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`, id, "acknowledged", managerID); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "could not acknowledge the incident", err)
+			return
+		}
+		item, err := getRequestIncidentByID(id)
+		if err != nil || item == nil {
+			writeAPIError(w, r, http.StatusNotFound, "incident not found", err)
+			return
+		}
+		applyIncidentSLATransition(item.ID, item.Status)
+		item = hydrateOneIncidentITSM(item)
+		AppendAuditLog(&managerID, "request_incident_acknowledge", "request_incident", strconv.Itoa(id), item.Status)
+		go pushIncidentToExternalIRM(*item)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "status": "ok"})
+		return
+	}
+	if len(parts) == 2 && strings.EqualFold(parts[1], "page") {
+		if r.Method != http.MethodPost {
+			writeMethodNotAllowed(w, r)
+			return
+		}
+		page := pageIncidentOwners(*current)
+		item := hydrateOneIncidentITSM(current)
+		AppendAuditLog(&managerID, "request_incident_page", "request_incident", strconv.Itoa(id), current.Severity)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "page": incidentOwnerPagePublic(page), "status": "ok"})
+		return
+	}
 	if len(parts) == 2 {
 		nextStatus, note, finish := incidentFinishStatus(parts[1])
 		if finish {
@@ -1849,9 +1914,11 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 			if strings.TrimSpace(body.Note) != "" {
 				note = strings.TrimSpace(body.Note)
 			}
-			if nextStatus == "closed" && (strings.TrimSpace(body.Note) == "" || strings.EqualFold(strings.TrimSpace(body.Note), "Closed.")) {
-				writeAPIError(w, r, http.StatusBadRequest, "recovery notes are required to close this incident", nil)
-				return
+			if nextStatus == "closed" {
+				if reason := incidentCloseBlockedReason(*current, note); reason != "" {
+					writeAPIError(w, r, http.StatusBadRequest, reason, nil)
+					return
+				}
 			}
 			if _, err := execContext(`
 				UPDATE request_incidents
@@ -1949,6 +2016,16 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if (normalizedStatus == "resolved" || normalizedStatus == "closed") && strings.TrimSpace(body.Notes) == "" && strings.TrimSpace(body.StatusNote) == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "recovery notes are required to resolve or close this incident", nil)
 		return
+	}
+	if normalizedStatus == "resolved" || normalizedStatus == "closed" {
+		ownerID := body.OwnerUserID
+		if (ownerID == nil || *ownerID <= 0) && previous != nil {
+			ownerID = previous.OwnerUserID
+		}
+		if ownerID == nil || *ownerID <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "Assign an owner before closing this incident", nil)
+			return
+		}
 	}
 	var item *requestIncident
 	if requestID.Valid && requestID.Int64 > 0 {

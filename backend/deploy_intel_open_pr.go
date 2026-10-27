@@ -1,17 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/go-github/v61/github"
+	"github.com/lib/pq"
 )
 
 const (
@@ -21,16 +26,41 @@ const (
 )
 
 type deployIntelPreviewLink struct {
-	RequestID int        `json:"request_id"`
-	Env       string     `json:"env"`
-	Branch    string     `json:"branch,omitempty"`
-	Status    string     `json:"status,omitempty"`
-	Label     string     `json:"label"`
-	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
-	URL                string     `json:"url,omitempty"`
-	EstimatedCostUSD   float64    `json:"estimated_cost_usd,omitempty"`
-	ChangeNumber       string     `json:"change_number,omitempty"`
+	RequestID        int        `json:"request_id"`
+	Env              string     `json:"env"`
+	Branch           string     `json:"branch,omitempty"`
+	Status           string     `json:"status,omitempty"`
+	Label            string     `json:"label"`
+	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
+	URL              string     `json:"url,omitempty"`
+	EstimatedCostUSD float64    `json:"estimated_cost_usd,omitempty"`
+	ChangeNumber     string     `json:"change_number,omitempty"`
 }
+
+type deployIntelCISummary struct {
+	Passed  int    `json:"passed"`
+	Failed  int    `json:"failed"`
+	Pending int    `json:"pending"`
+	Skipped int    `json:"skipped"`
+	Label   string `json:"label"`
+}
+
+type deployIntelPipelineLink struct {
+	ChangeID     int    `json:"change_id,omitempty"`
+	ChangeNumber string `json:"change_number,omitempty"`
+	PipelineURL  string `json:"pipeline_url,omitempty"`
+	Label        string `json:"label"`
+	Href         string `json:"href"`
+}
+
+type githubCICache struct {
+	States map[int]string
+	At     time.Time
+}
+
+var githubCIStore sync.Map
+
+const githubCITTL = 45 * time.Second
 
 type deployIntelOpenPRMeta struct {
 	IsDraft             bool                       `json:"is_draft"`
@@ -41,6 +71,7 @@ type deployIntelOpenPRMeta struct {
 	Assignees           []string                   `json:"assignees,omitempty"`
 	RequestedReviewers  []string                   `json:"requested_reviewers,omitempty"`
 	Checks              []deployIntelRequiredCheck `json:"checks,omitempty"`
+	CI                  deployIntelCISummary       `json:"ci"`
 	PreviewEnvironments []deployIntelPreviewLink   `json:"preview_environments,omitempty"`
 	SuggestTicket       bool                       `json:"suggest_ticket"`
 	SuggestTicketReason string                     `json:"suggest_ticket_reason,omitempty"`
@@ -50,6 +81,7 @@ type deployIntelOpenPRMeta struct {
 type openPRListOptions struct {
 	Limit          int
 	DeepPR         int
+	Only           bool
 	ProductionBase string
 	BaseBranchOnly bool
 	IncludeDrafts  bool
@@ -69,8 +101,13 @@ func parseOpenPRListOptions(r *http.Request, productionBase string) openPRListOp
 			opts.Limit = n
 		}
 	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("refresh_pr")); raw != "" {
+	if raw := strings.TrimSpace(r.URL.Query().Get("pr_number")); raw != "" {
 		opts.DeepPR, _ = strconv.Atoi(raw)
+	}
+	if opts.DeepPR <= 0 {
+		if raw := strings.TrimSpace(r.URL.Query().Get("refresh_pr")); raw != "" {
+			opts.DeepPR, _ = strconv.Atoi(raw)
+		}
 	}
 	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("base_filter"))) {
 	case "production", "base", "prod":
@@ -81,6 +118,9 @@ func parseOpenPRListOptions(r *http.Request, productionBase string) openPRListOp
 	}
 	if strings.TrimSpace(r.URL.Query().Get("batch_deep")) == "1" {
 		opts.BatchDeep = true
+	}
+	if strings.TrimSpace(r.URL.Query().Get("only")) == "1" {
+		opts.Only = true
 	}
 	return opts
 }
@@ -136,61 +176,369 @@ func computeReviewSLA(createdAt time.Time, reviewState string) (status, detail s
 	return "ok", fmt.Sprintf("Open %d day(s).", age)
 }
 
-func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner, name, ref string) []deployIntelRequiredCheck {
-	out := []deployIntelRequiredCheck{
-		{Key: "plan_review", Label: checkInfragatePlanReview, Required: true, Present: false, Status: "unknown"},
-		{Key: "policy", Label: checkInfragatePolicy, Required: true, Present: false, Status: "unknown"},
-		{Key: "deploy_intel", Label: checkInfragateDeployIntel, Required: false, Present: false, Status: "unknown"},
+func githubCheckOutcome(conclusion, status string) string {
+	state := strings.ToLower(strings.TrimSpace(conclusion))
+	if state == "" {
+		state = strings.ToLower(strings.TrimSpace(status))
 	}
-	if client == nil || ref == "" {
+	switch state {
+	case "success":
+		return "ok"
+	case "neutral", "skipped", "stale":
+		return "skipped"
+	case "failure", "cancelled", "timed_out", "action_required", "startup_failure":
+		return "failed"
+	case "in_progress", "queued", "pending", "waiting", "requested":
+		return "pending"
+	case "completed":
+		return "ok"
+	default:
+		return "unknown"
+	}
+}
+
+func ciSummaryFromRollup(state string) deployIntelCISummary {
+	switch strings.ToUpper(strings.TrimSpace(state)) {
+	case "SUCCESS":
+		return deployIntelCISummary{Passed: 1, Label: "Passing"}
+	case "FAILURE", "ERROR":
+		return deployIntelCISummary{Failed: 1, Label: "Failing"}
+	case "PENDING", "EXPECTED":
+		return deployIntelCISummary{Pending: 1, Label: "Pending"}
+	default:
+		return deployIntelCISummary{Label: "No checks yet"}
+	}
+}
+
+func deliveryPipelinesHref(owner, name string, prNumber int) string {
+	owner, name = normalizeRepoIdentity(owner, name)
+	params := url.Values{}
+	if owner != "" && name != "" {
+		params.Set("repo", owner+"/"+name)
+	}
+	if prNumber > 0 {
+		params.Set("pr", strconv.Itoa(prNumber))
+	}
+	if len(params) == 0 {
+		return "/pipelines"
+	}
+	return "/pipelines?" + params.Encode()
+}
+
+func githubCICacheKey(owner, name string) string {
+	return strings.ToLower(strings.Trim(owner+"/"+name, "/"))
+}
+
+func attachCheapCISummaries(ctx context.Context, owner, name string, events []repoDeployEvent) {
+	if len(events) == 0 {
+		return
+	}
+	need := make([]int, 0, len(events))
+	for _, ev := range events {
+		if ev.PRNumber <= 0 {
+			continue
+		}
+		if ev.OpenPR != nil && strings.TrimSpace(ev.OpenPR.CI.Label) != "" && ev.OpenPR.CI.Label != "No checks yet" {
+			continue
+		}
+		need = append(need, ev.PRNumber)
+	}
+	if len(need) == 0 {
+		return
+	}
+	states := loadCheapCIStates(ctx, owner, name, need)
+	if len(states) == 0 {
+		return
+	}
+	for i := range events {
+		if events[i].OpenPR == nil {
+			continue
+		}
+		if strings.TrimSpace(events[i].OpenPR.CI.Label) != "" && events[i].OpenPR.CI.Label != "No checks yet" {
+			continue
+		}
+		state, ok := states[events[i].PRNumber]
+		if !ok {
+			continue
+		}
+		events[i].OpenPR.CI = ciSummaryFromRollup(state)
+	}
+}
+
+func loadCheapCIStates(ctx context.Context, owner, name string, prNumbers []int) map[int]string {
+	owner, name = normalizeRepoIdentity(owner, name)
+	key := githubCICacheKey(owner, name)
+	if cached, ok := githubCIStore.Load(key); ok {
+		item := cached.(githubCICache)
+		if time.Since(item.At) < githubCITTL && item.States != nil {
+			hit := true
+			for _, number := range prNumbers {
+				if _, ok := item.States[number]; !ok {
+					hit = false
+					break
+				}
+			}
+			if hit {
+				return item.States
+			}
+		}
+	}
+	states, err := fetchGitHubPRCheckRollup(ctx, owner, name, prNumbers)
+	if err != nil || len(states) == 0 {
+		return map[int]string{}
+	}
+	githubCIStore.Store(key, githubCICache{States: states, At: time.Now().UTC()})
+	return states
+}
+
+func fetchGitHubPRCheckRollup(ctx context.Context, owner, name string, prNumbers []int) (map[int]string, error) {
+	if GitHubToken == "" || owner == "" || name == "" || len(prNumbers) == 0 {
+		return nil, fmt.Errorf("github query is incomplete")
+	}
+	aliases := make([]string, 0, len(prNumbers))
+	seen := map[int]bool{}
+	for _, number := range prNumbers {
+		if number <= 0 || seen[number] || len(aliases) >= 20 {
+			continue
+		}
+		seen[number] = true
+		aliases = append(aliases, fmt.Sprintf("pr%d: pullRequest(number: %d) { number commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }", number, number))
+	}
+	if len(aliases) == 0 {
+		return map[int]string{}, nil
+	}
+	query := fmt.Sprintf("query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(aliases, " "))
+	var parsed struct {
+		Data struct {
+			Repository map[string]json.RawMessage `json:"repository"`
+		} `json:"data"`
+	}
+	if err := githubGraphQL(ctx, query, map[string]interface{}{"owner": owner, "name": name}, &parsed); err != nil {
+		return nil, err
+	}
+	out := map[int]string{}
+	for _, raw := range parsed.Data.Repository {
+		if len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+		var node struct {
+			Number  int `json:"number"`
+			Commits struct {
+				Nodes []struct {
+					Commit struct {
+						StatusCheckRollup *struct {
+							State string `json:"state"`
+						} `json:"statusCheckRollup"`
+					} `json:"commit"`
+				} `json:"nodes"`
+			} `json:"commits"`
+		}
+		if json.Unmarshal(raw, &node) != nil || node.Number <= 0 {
+			continue
+		}
+		state := ""
+		if len(node.Commits.Nodes) > 0 && node.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
+			state = node.Commits.Nodes[0].Commit.StatusCheckRollup.State
+		}
+		out[node.Number] = state
+	}
+	return out, nil
+}
+
+func githubGraphQL(ctx context.Context, query string, variables map[string]interface{}, out interface{}) error {
+	if GitHubToken == "" || strings.TrimSpace(query) == "" {
+		return fmt.Errorf("github graphql is unavailable")
+	}
+	body, err := json.Marshal(map[string]interface{}{"query": query, "variables": variables})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.github.com/graphql", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+GitHubToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("github graphql status %d", resp.StatusCode)
+	}
+	return json.Unmarshal(raw, out)
+}
+
+func attachPipelineLinks(owner, name string, events []repoDeployEvent) {
+	if len(events) == 0 {
+		return
+	}
+	numbers := make([]int, 0, len(events))
+	for _, ev := range events {
+		if ev.PRNumber > 0 {
+			numbers = append(numbers, ev.PRNumber)
+		}
+	}
+	found := findChangesForRepoPRs(owner, name, numbers)
+	for i := range events {
+		link := deployIntelPipelineLink{
+			Label: "Pipelines",
+			Href:  deliveryPipelinesHref(owner, name, events[i].PRNumber),
+		}
+		if change, ok := found[events[i].PRNumber]; ok {
+			link.ChangeID = change.ID
+			link.ChangeNumber = change.ChangeNumber
+			link.PipelineURL = strings.TrimSpace(change.PipelineURL)
+			link.Label = pipelineLabelForChange(change)
+			if link.Label == "" || link.Label == "Unknown" {
+				link.Label = "Pipelines"
+			}
+		}
+		events[i].Pipeline = &link
+	}
+}
+
+func findChangesForRepoPRs(owner, name string, prNumbers []int) map[int]changeRequestRecord {
+	out := map[int]changeRequestRecord{}
+	if DB == nil || len(prNumbers) == 0 {
 		return out
+	}
+	owner, name = normalizeRepoIdentity(owner, name)
+	if owner == "" || name == "" {
+		return out
+	}
+	full := strings.ToLower(strings.Trim(owner+"/"+name, "/"))
+	ids := make([]int64, 0, len(prNumbers))
+	seen := map[int]bool{}
+	for _, number := range prNumbers {
+		if number <= 0 || seen[number] {
+			continue
+		}
+		seen[number] = true
+		ids = append(ids, int64(number))
+	}
+	if len(ids) == 0 {
+		return out
+	}
+	rows, cancel, err := queryRowsWithTimeout(changeRequestSelect()+`
+		WHERE c.pr_number = ANY($1)
+		  AND (
+		        LOWER(c.repo) = $2
+		     OR LOWER(c.repo) = $3
+		     OR LOWER(c.repo) LIKE $4
+		  )
+		ORDER BY c.updated_at DESC, c.id DESC
+	`, pq.Array(ids), full, strings.ToLower(name), "%"+full+"%")
+	if err != nil {
+		return out
+	}
+	defer cancel()
+	defer rows.Close()
+	for rows.Next() {
+		item, err := scanChangeRequest(rows)
+		if err != nil || item == nil || item.PRNumber <= 0 {
+			continue
+		}
+		if _, exists := out[item.PRNumber]; exists {
+			continue
+		}
+		out[item.PRNumber] = *item
+	}
+	return out
+}
+
+func formatCISummaryLabel(summary deployIntelCISummary) string {
+	parts := make([]string, 0, 4)
+	if summary.Failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", summary.Failed))
+	}
+	if summary.Pending > 0 {
+		parts = append(parts, fmt.Sprintf("%d pending", summary.Pending))
+	}
+	if summary.Skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped", summary.Skipped))
+	}
+	if summary.Passed > 0 {
+		parts = append(parts, fmt.Sprintf("%d passed", summary.Passed))
+	}
+	if len(parts) == 0 {
+		return "No checks yet"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func isOpsTrellisCheckName(name string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "infragate/")
+}
+
+func githubCheckDetail(outcome string) string {
+	switch outcome {
+	case "ok":
+		return "Passed on the head commit."
+	case "failed":
+		return "Failed on the head commit."
+	case "pending":
+		return "Still running."
+	case "skipped":
+		return "Skipped."
+	default:
+		return "State is unknown."
+	}
+}
+
+func listGitHubChecksOnRef(ctx context.Context, client *github.Client, owner, name, ref string) ([]deployIntelRequiredCheck, deployIntelCISummary) {
+	out := make([]deployIntelRequiredCheck, 0)
+	summary := deployIntelCISummary{Label: "No checks yet"}
+	if client == nil || ref == "" {
+		return out, summary
 	}
 	runs, _, err := client.Checks.ListCheckRunsForRef(ctx, owner, name, ref, &github.ListCheckRunsOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
 	})
 	if err != nil || runs == nil {
-		for i := range out {
-			out[i].Status = "unknown"
-			out[i].Detail = "Could not load check runs from GitHub."
-		}
-		return out
+		summary.Label = "Checks unknown"
+		return out, summary
 	}
-	latest := map[string]string{}
+	seen := map[string]bool{}
 	for _, run := range runs.CheckRuns {
 		if run == nil || run.Name == nil {
 			continue
 		}
-		name := strings.ToLower(strings.TrimSpace(run.GetName()))
-		conclusion := strings.ToLower(strings.TrimSpace(run.GetConclusion()))
-		if conclusion == "" {
-			conclusion = strings.ToLower(strings.TrimSpace(run.GetStatus()))
+		label := strings.TrimSpace(run.GetName())
+		key := strings.ToLower(label)
+		if label == "" || seen[key] || isOpsTrellisCheckName(label) {
+			continue
 		}
-		latest[name] = conclusion
-	}
-	for i := range out {
-		key := strings.ToLower(out[i].Label)
-		if state, ok := latest[key]; ok {
-			out[i].Present = true
-			switch state {
-			case "success", "completed", "neutral":
-				out[i].Status = "ok"
-				out[i].Detail = "Check passed on head commit."
-			case "failure", "cancelled", "timed_out", "action_required":
-				out[i].Status = "missing"
-				out[i].Detail = "Check did not pass: " + state
-			default:
-				out[i].Status = "unknown"
-				out[i].Detail = "Check state: " + state
-			}
-		} else if out[i].Required {
-			out[i].Status = "missing"
-			out[i].Detail = "Not reported on latest commit."
-		} else {
-			out[i].Status = "unknown"
-			out[i].Detail = "Change brief not posted yet."
+		seen[key] = true
+		outcome := githubCheckOutcome(run.GetConclusion(), run.GetStatus())
+		switch outcome {
+		case "ok":
+			summary.Passed++
+		case "failed":
+			summary.Failed++
+		case "pending":
+			summary.Pending++
+		case "skipped":
+			summary.Skipped++
+		}
+		if len(out) < 24 {
+			out = append(out, deployIntelRequiredCheck{
+				Key:     key,
+				Label:   label,
+				Present: true,
+				Status:  outcome,
+				Detail:  githubCheckDetail(outcome),
+			})
 		}
 	}
-	return out
+	summary.Label = formatCISummaryLabel(summary)
+	return out, summary
 }
 
 func summarizePRReviews(ctx context.Context, client *github.Client, owner, name string, number int) string {
@@ -265,11 +613,6 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 	}
 	meta := &deployIntelOpenPRMeta{
 		IsDraft: pr.GetDraft(),
-		Checks: []deployIntelRequiredCheck{
-			{Key: "plan_review", Label: checkInfragatePlanReview, Required: true, Status: "unknown"},
-			{Key: "policy", Label: checkInfragatePolicy, Required: true, Status: "unknown"},
-			{Key: "deploy_intel", Label: checkInfragateDeployIntel, Required: false, Status: "unknown"},
-		},
 	}
 	if t := pr.GetCreatedAt(); !t.IsZero() {
 		created := t.Time
@@ -300,9 +643,11 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 	if pr.GetHead() != nil {
 		head = pr.GetHead().GetRef()
 	}
-	meta.PreviewEnvironments = findPreviewEnvironmentsForBranch(head)
-	if deep && client != nil && pr.GetHead() != nil {
-		meta.Checks = listInfragateChecksOnRef(ctx, client, owner, name, pr.GetHead().GetSHA())
+	if deep {
+		meta.PreviewEnvironments = findPreviewEnvironmentsForBranch(head)
+		if client != nil && pr.GetHead() != nil && strings.TrimSpace(pr.GetHead().GetSHA()) != "" {
+			meta.Checks, meta.CI = listGitHubChecksOnRef(ctx, client, owner, name, pr.GetHead().GetSHA())
+		}
 	}
 	hasTicket := ev.RequestID != nil && *ev.RequestID > 0
 	if !hasTicket && (strings.EqualFold(ev.RiskLevel, "high") || ev.Score >= 70) {

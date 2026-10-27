@@ -144,8 +144,19 @@ export default function NewRunbookPage() {
   }, [apiUrl]);
 
   useEffect(() => {
+    if (!router.isReady) return;
+    const next = typeof router.query.service === 'string' ? router.query.service.trim() : '';
+    if (next) setService(next);
+  }, [router.isReady, router.query.service]);
+
+  useEffect(() => {
+    if (projectId || !service.trim() || !projects.length) return;
+    const match = projects.find((project) => project.services.some((entry) => entry.service.trim().toLowerCase() === service.trim().toLowerCase()));
+    if (match) setProjectId(String(match.id));
+  }, [projectId, projects, service]);
+
+  useEffect(() => {
     if (!projectId) {
-      setService('');
       return;
     }
     if (!service) return;

@@ -74,6 +74,7 @@ const DEFAULT_TICKET_FILTERS: TicketFilters = {
 };
 
 const TICKET_VIEW_PRESETS: SavedView<TicketFilters>[] = [
+  { name: 'Active & owned', filters: { ...DEFAULT_TICKET_FILTERS, mine: true, status: 'in_progress' } },
   { name: 'Assigned to me', filters: { ...DEFAULT_TICKET_FILTERS, mine: true } },
   { name: 'Awaiting approval', filters: { ...DEFAULT_TICKET_FILTERS, status: 'pending_devops_approval' } },
   { name: 'Breaching SLA', filters: { ...DEFAULT_TICKET_FILTERS, atRisk: true, sortBy: 'due_date', sortOrder: 'asc' } },
@@ -125,7 +126,7 @@ interface TicketRow {
   status: string;
   priority: string;
   due_date: string | null;
-  due_status: '' | 'overdue' | 'due_soon';
+  due_status: '' | 'overdue' | 'due_soon' | 'stale';
   pr_url: string;
   created_at: string;
   updated_at: string;
@@ -888,7 +889,12 @@ export default function DevOpsTickets() {
       cell: (req) => (
         <div className="ig-cell-stack">
           <span className="ig-cell-meta">{formatDateOnly(req.due_date)}</span>
-          {req.due_status === 'overdue' ? <span className="ig-badge ig-badge--danger">Overdue</span> : null}
+          {req.due_status === 'stale' ? <span className="ig-badge ig-badge--medium">Stale</span> : null}
+          {req.pr_url && req.due_status === 'overdue' && req.status !== 'completed' && req.status !== 'rejected' ? (
+            <span className="ig-badge ig-badge--medium" title="A merged pull request does not complete this request.">Awaiting verify</span>
+          ) : req.due_status === 'overdue' && req.status !== 'completed' && req.status !== 'rejected' ? (
+            <span className="ig-badge ig-badge--danger">Overdue</span>
+          ) : null}
           {req.due_status === 'due_soon' ? <span className="ig-badge ig-badge--medium">Due in 24h</span> : null}
         </div>
       ),
@@ -919,7 +925,7 @@ export default function DevOpsTickets() {
       align: 'right',
       cell: (req) =>
         req.pr_url ? (
-          <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">
+          <a href={req.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" title="A merged pull request does not complete this request.">
             PR ↗
           </a>
         ) : null,
@@ -1513,7 +1519,7 @@ export default function DevOpsTickets() {
                             <strong>{formatDateOnly(detailRequest.due_date)}</strong>
                             {detailRequest.due_status && (
                               <small className={`devops-approval-workspace__due devops-approval-workspace__due--${detailRequest.due_status}`}>
-                                {detailRequest.due_status === 'overdue' ? 'Overdue' : 'Due in 24h'}
+                                {detailRequest.due_status === 'stale' ? 'Stale' : detailRequest.due_status === 'overdue' && detailRequest.pr_url ? 'Awaiting verify' : detailRequest.due_status === 'overdue' ? 'Overdue' : 'Due in 24h'}
                               </small>
                             )}
                           </div>

@@ -105,7 +105,10 @@ export default function MaintenancePage() {
           </form>
           {loading ? <div className="empty-state">Loading maintenance...</div> : null}
           {!loading && !visible.length ? (
-            <div className="empty-state">{filtering ? 'No maintenance matches this filter.' : 'No maintenance windows yet.'}</div>
+            <div className="empty-state">
+              <p>{filtering ? 'No maintenance matches this filter.' : 'No maintenance windows yet. A planned window is approved before it runs. It does not patch production.'}</p>
+              {!filtering && canWrite ? <Link href="/maintenance/new" className="btn btn-primary btn-sm">Create window</Link> : null}
+            </div>
           ) : null}
           {visible.length ? (
             <table className="templates-table">

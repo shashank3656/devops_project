@@ -36,6 +36,7 @@ interface Incident {
   id: number;
   incident_number?: string;
   request_id: number;
+  request_service?: string;
   team_id?: number | null;
   severity: string;
   status: string;
@@ -55,6 +56,11 @@ interface Incident {
     previous_sha?: string;
     watch_result?: string;
     impact_summary?: string;
+  };
+  postmortem?: {
+    status?: string;
+    impact_summary?: string;
+    root_cause?: string;
   };
   major?: boolean;
   status_note?: string;
@@ -80,6 +86,7 @@ function normalizeIncident(incident: unknown): Incident {
     id: typeof item.id === 'number' ? item.id : 0,
     incident_number: typeof item.incident_number === 'string' ? item.incident_number : '',
     request_id: typeof item.request_id === 'number' ? item.request_id : 0,
+    request_service: typeof item.request_service === 'string' ? item.request_service : typeof item.service === 'string' ? item.service : '',
     team_id: typeof item.team_id === 'number' ? item.team_id : null,
     severity: typeof item.severity === 'string' ? item.severity : 'medium',
     status: typeof item.status === 'string' ? item.status : 'open',
@@ -196,10 +203,12 @@ export default function EditIncidentPage() {
   const [rollbackPlan, setRollbackPlan] = useState<Incident['rollback_plan']>();
   const [rollingBack, setRollingBack] = useState(false);
   const [review, setReview] = useState<Incident['review']>();
+  const [postmortem, setPostmortem] = useState<Incident['postmortem']>();
   const [generatingReview, setGeneratingReview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [finishing, setFinishing] = useState<'close' | 'cancel' | ''>('');
+  const [finishing, setFinishing] = useState<'close' | 'cancel' | 'acknowledge' | 'page' | ''>('');
+  const [requestService, setRequestService] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [callers, setCallers] = useState<TeamMemberOption[]>([]);
@@ -272,6 +281,7 @@ export default function EditIncidentPage() {
         setOwnerUserId(matched.owner_user_id ? String(matched.owner_user_id) : '');
         setSummary(matched.summary);
         setNotes(matched.notes);
+        setRequestService(matched.request_service || '');
         setSource(matched.source || 'ticket');
         setFingerprint(matched.fingerprint || '');
         setAlertSource(matched.alert_source || '');
@@ -298,6 +308,13 @@ export default function EditIncidentPage() {
           if (plan) setRollbackPlan(plan);
           if (body.review && typeof body.review === 'object') {
             setReview(body.review as Incident['review']);
+          } else {
+            setReview(undefined);
+          }
+          if (body.postmortem && typeof body.postmortem === 'object') {
+            setPostmortem(body.postmortem as Incident['postmortem']);
+          } else {
+            setPostmortem(undefined);
           }
           const detailIncident = normalizeIncident(body.incident);
           if (detailIncident.id) {
@@ -407,6 +424,10 @@ export default function EditIncidentPage() {
       clearSessionAndRedirect();
       return;
     }
+    if (action === 'close' && !ownerUserId) {
+      setError('Assign an owner before closing this incident.');
+      return;
+    }
     if (action === 'close' && !statusNote.trim()) {
       setError('Recovery notes are required to close this incident.');
       return;
@@ -463,7 +484,16 @@ export default function EditIncidentPage() {
                 href={`/problems/new?incident_id=${incidentId || ''}&title=${encodeURIComponent(summary || currentIncidentNumber)}&priority=${encodeURIComponent(severity)}`}
                 className="btn btn-primary"
               >
-                Create problem
+                Mark recurring
+              </Link>
+            )}
+            {requestService ? (
+              <Link href={`/runbooks/new?service=${encodeURIComponent(requestService)}`} className="btn btn-secondary">
+                Start runbook
+              </Link>
+            ) : (
+              <Link href="/runbooks" className="btn btn-secondary">
+                Start runbook
               </Link>
             )}
             <Link href="/incidents" className="btn btn-secondary">Back to incidents</Link>
@@ -601,6 +631,19 @@ export default function EditIncidentPage() {
                   {review.watch_result ? ` · Watch ${review.watch_result}` : ''}
                   {review.previous_sha ? ` · previous SHA ${review.previous_sha}` : ''}
                 </p>
+              ) : null}
+              {postmortem?.status || (['resolved', 'closed'].includes(incidentStateValue(status)) && ['p1', 'p2'].includes(severityToPriority(severity))) ? (
+                <p className="portal-surface__subtitle">
+                  Postmortem: {postmortem?.status || 'not started'}
+                  {postmortem?.impact_summary ? ` · ${postmortem.impact_summary}` : ''}
+                  {' '}
+                  <Link href={`/incident-workspace?incident_id=${incidentId}`}>
+                    {postmortem?.status === 'completed' ? 'Open postmortem' : 'Complete postmortem'}
+                  </Link>
+                </p>
+              ) : null}
+              {major ? (
+                <p className="access-hint">Status comms use the conference URL and notes on this incident. Emails are never listed in the portal.</p>
               ) : null}
               {problemId ? (
                 <p className="portal-surface__subtitle">
@@ -741,9 +784,64 @@ export default function EditIncidentPage() {
                 >
                   {silencing ? 'Silencing...' : 'Silence 2 hours'}
                 </button>
+                {incidentCanFinish(status) && incidentStateValue(status) === 'new' ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={Boolean(finishing) || saving}
+                    onClick={() => {
+                      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                      if (!token || !incidentId) return;
+                      setFinishing('acknowledge');
+                      setError('');
+                      fetch(`${apiUrl}/api/devops/incidents/${incidentId}/acknowledge`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: '{}',
+                      })
+                        .then(async (res) => {
+                          const data = asRecord(await res.json().catch(() => ({})));
+                          if (!res.ok) throw new Error(getString(data.error, 'Could not acknowledge'));
+                          setStatus('acknowledged');
+                          setNotice('Incident acknowledged. Response SLA is now running.');
+                          void loadData();
+                        })
+                        .catch((err) => setError(err instanceof Error ? err.message : 'Could not acknowledge'))
+                        .finally(() => setFinishing(''));
+                    }}
+                  >
+                    {finishing === 'acknowledge' ? 'Acknowledging…' : 'Acknowledge'}
+                  </button>
+                ) : null}
                 {incidentCanFinish(status) ? (
                   <>
-                    <button type="button" className="btn btn-primary" disabled={Boolean(finishing) || saving} onClick={() => void finish('close')}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={Boolean(finishing) || saving}
+                      onClick={() => {
+                        const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                        if (!token || !incidentId) return;
+                        setFinishing('page');
+                        setError('');
+                        fetch(`${apiUrl}/api/devops/incidents/${incidentId}/page`, {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                          body: '{}',
+                        })
+                          .then(async (res) => {
+                            const data = asRecord(await res.json().catch(() => ({})));
+                            if (!res.ok) throw new Error(getString(data.error, 'Could not page on-call'));
+                            const page = data.page && typeof data.page === 'object' ? data.page as { paged?: boolean; count?: number; team?: string } : {};
+                            setNotice(page.paged ? `On-call paged${page.team ? ` for ${page.team}` : ''}.` : 'No on-call page was sent. Coverage may be missing or this priority is below P2.');
+                          })
+                          .catch((err) => setError(err instanceof Error ? err.message : 'Could not page on-call'))
+                          .finally(() => setFinishing(''));
+                      }}
+                    >
+                      {finishing === 'page' ? 'Paging…' : 'Page on-call'}
+                    </button>
+                    <button type="button" className="btn btn-primary" disabled={Boolean(finishing) || saving || !ownerUserId} title={!ownerUserId ? 'Assign an owner before closing this incident.' : 'Close with recovery notes'} onClick={() => void finish('close')}>
                       {finishing === 'close' ? 'Closing...' : 'Close'}
                     </button>
                     <button type="button" className="btn btn-secondary" disabled={Boolean(finishing) || saving} onClick={() => void finish('cancel')}>

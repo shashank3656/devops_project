@@ -25,26 +25,36 @@ interface CalendarPayload {
   items?: CalendarItem[];
 }
 
+interface FreezePayload {
+  active_reason?: string;
+  freezes?: { reason?: string; environment?: string; starts_at?: string; ends_at?: string }[];
+}
+
 export default function ChangeCalendarPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [payload, setPayload] = useState<CalendarPayload | null>(null);
+  const [freeze, setFreeze] = useState<FreezePayload | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
-    fetch(`${apiUrl}/api/devops/change-calendar`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (res) => {
+    const headers = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      fetch(`${apiUrl}/api/devops/change-calendar`, { headers }).then(async (res) => {
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setError(data?.error || 'Failed to load calendar');
-          return;
-        }
-        setPayload(data);
+        if (!res.ok) throw new Error(data?.error || 'Failed to load calendar');
+        return data as CalendarPayload;
+      }),
+      fetch(`${apiUrl}/api/devops/freezes`, { headers }).then(async (res) => (res.ok ? res.json() : null)).catch(() => null),
+    ])
+      .then(([calendar, freezeBody]) => {
+        setPayload(calendar);
+        setFreeze(freezeBody && typeof freezeBody === 'object' ? freezeBody as FreezePayload : null);
       })
-      .catch(() => setError('Failed to load calendar'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load calendar'))
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
@@ -65,6 +75,11 @@ export default function ChangeCalendarPage() {
           <Link href="/changes" className="btn btn-secondary">Open changes</Link>
         </div>
         {error ? <div className="alert alert-error">{error}</div> : null}
+        {freeze?.active_reason ? (
+          <div className="alert alert-error" role="status">
+            Production freeze is active: {freeze.active_reason}. New CAB windows still need approval and do not deploy through a freeze.
+          </div>
+        ) : null}
         <section className="k8s-summary-strip">
           <div className="k8s-summary-card">
             <span className="k8s-summary-card__label">Upcoming</span>

@@ -122,6 +122,12 @@ export default function DevOpsServiceHeatmapPage() {
         {loading ? <div className="portal-surface"><div className="empty-state">Loading service heatmap...</div></div> : null}
         {error ? <div className="alert alert-error">{error}</div> : null}
 
+        {!loading && !error && !heatmap ? (
+          <div className="empty-state">
+            <p>No usage heatmap yet. Demand appears after projects have requests. Empty is Unknown, not zero usage.</p>
+            <Link href="/projects/new" className="btn btn-primary btn-sm">Onboard a project</Link>
+          </div>
+        ) : null}
         {!loading && !error && heatmap ? (
           <>
             <section className="portal-surface" style={{ marginBottom: 24 }}>

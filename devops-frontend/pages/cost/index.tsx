@@ -275,18 +275,18 @@ export default function CostOverviewPage() {
             </section>
             <section className="cost-split">
               <article className="cost-split__col">
-                <h2>Top cost drivers</h2>
+                <h2>Billed by service</h2>
                 {(showSample ? COST_SAMPLE.drivers : (data?.service_mix || [])).length ? (
                   <ul className="cost-driver-list">
                     {(showSample ? COST_SAMPLE.drivers : (data?.service_mix || [])).map((row) => (
                       <li key={row.label}>
-                        <Link href={explorerHref({ family: row.label })}>{row.label}</Link>
+                        <Link href={explorerHref({ family: row.label, group: 'service' })}>{row.label}</Link>
                         <span>{row.display}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p>No complete service mix for this window.</p>
+                  <p>No complete billed mix for this window. Incomplete is never $0. <Link href={explorerHref({ group: 'service' })}>Open explorer</Link></p>
                 )}
               </article>
               <article className="cost-split__col">
