@@ -30,9 +30,9 @@ interface PipelineRow {
   preview?: boolean;
 }
 
-type PipelineState = 'all' | 'running' | 'failed' | 'succeeded' | 'unknown';
+type PipelineState = 'all' | 'running' | 'failed' | 'succeeded' | 'unknown' | 'stale';
 
-function pipelineState(label?: string): Exclude<PipelineState, 'all'> {
+function pipelineState(label?: string): Exclude<PipelineState, 'all' | 'stale'> {
   const key = (label || 'Unknown').toLowerCase();
   if (key === 'failed') return 'failed';
   if (key === 'succeeded') return 'succeeded';
@@ -83,6 +83,7 @@ export default function PipelinesPage() {
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
+      if (stateFilter === 'stale') return Boolean(item.stale);
       const state = pipelineState(item.pipeline_label);
       if (stateFilter !== 'all' && state !== stateFilter) return false;
       if (!needle) return true;
@@ -91,10 +92,11 @@ export default function PipelinesPage() {
   }, [items, query, stateFilter]);
 
   const filters: { id: PipelineState; label: string; count: number }[] = [
-    { id: 'all', label: 'All', count: counts.all },
+    { id: 'all', label: 'Runs', count: counts.all },
     { id: 'failed', label: 'Failed', count: counts.failed },
     { id: 'succeeded', label: 'Succeeded', count: counts.succeeded },
     { id: 'running', label: 'Running', count: counts.running },
+    { id: 'stale', label: 'Stale', count: counts.stale },
     { id: 'unknown', label: 'Unknown', count: counts.unknown },
   ];
 
@@ -121,47 +123,28 @@ export default function PipelinesPage() {
           <p className="delivery-scope">Workspace environment is All. Each run shows its recorded environment.</p>
         )}
 
-        <div className="delivery-stats" role="group" aria-label="Pipeline counts">
-          <article className="delivery-stat">
-            <span className="delivery-stat__label">Runs</span>
-            <strong className="delivery-stat__value">{loading ? '—' : counts.all}</strong>
-          </article>
-          <article className="delivery-stat">
-            <span className="delivery-stat__label">Failed</span>
-            <strong className="delivery-stat__value">{loading ? '—' : counts.failed}</strong>
-          </article>
-          <article className="delivery-stat">
-            <span className="delivery-stat__label">Succeeded</span>
-            <strong className="delivery-stat__value">{loading ? '—' : counts.succeeded}</strong>
-          </article>
-          <article className="delivery-stat">
-            <span className="delivery-stat__label">Status stale</span>
-            <strong className="delivery-stat__value">{loading ? '—' : counts.stale}</strong>
-            <p className="delivery-stat__hint">Running or posted with no update for 24 hours.</p>
-          </article>
-        </div>
-
-        <div className="delivery-toolbar">
+        <div className="delivery-toolbar delivery-toolbar--pipe">
           <label className="delivery-search">
-            <span className="delivery-search__label">Find run</span>
             <input
               className="delivery-search__input"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Repo, service, or change"
+              placeholder="Find run"
+              aria-label="Find run"
               autoComplete="off"
               spellCheck={false}
             />
           </label>
-          <div className="delivery-filters" role="group" aria-label="Pipeline state">
+          <div className="delivery-filters delivery-filters--pipe" role="group" aria-label="Pipeline state">
             {filters.map((filter) => (
               <button
                 key={filter.id}
                 type="button"
-                className={`delivery-filter${stateFilter === filter.id ? ' is-active' : ''}`}
+                className={`delivery-filter delivery-filter--${filter.id}${stateFilter === filter.id ? ' is-active' : ''}`}
                 onClick={() => setStateFilter(filter.id)}
               >
-                {filter.label} {loading ? '' : filter.count}
+                {filter.label}
+                <strong>{loading ? '—' : filter.count}</strong>
               </button>
             ))}
           </div>
