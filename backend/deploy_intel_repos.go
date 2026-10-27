@@ -45,14 +45,18 @@ type deployIntelLastChange struct {
 
 type deployIntelRepoSummary struct {
 	deployIntelRepo
-	Ready        bool                   `json:"ready"`
-	MergeCount   int                    `json:"merge_count"`
-	HighRisk30d  int                    `json:"high_risk_30d"`
-	OpenPRCount  int                    `json:"open_pr_count"`
-	LastMergedAt *time.Time             `json:"last_merged_at,omitempty"`
-	WebhookPath  string                 `json:"webhook_path"`
-	SetupSummary string                 `json:"setup_summary"`
-	LastChange   *deployIntelLastChange `json:"last_change,omitempty"`
+	Ready          bool                   `json:"ready"`
+	MergeCount     int                    `json:"merge_count"`
+	HighRisk30d    int                    `json:"high_risk_30d"`
+	OpenPRCount    int                    `json:"open_pr_count"`
+	LastMergedAt   *time.Time             `json:"last_merged_at,omitempty"`
+	WebhookPath    string                 `json:"webhook_path"`
+	SetupSummary   string                 `json:"setup_summary"`
+	GitHubAccess   string                 `json:"github_access"`
+	MergeTracking  string                 `json:"merge_tracking"`
+	LastSyncAt     *time.Time             `json:"last_sync_at,omitempty"`
+	NeedsAttention bool                   `json:"needs_attention"`
+	LastChange     *deployIntelLastChange `json:"last_change,omitempty"`
 }
 
 func ensureDefaultDeployIntelRepo() {
@@ -505,30 +509,52 @@ func repoDeployStats(owner, name string) (mergeCount, highRisk30d int, lastMerge
 	return mergeCount, highRisk30d, lastMerged
 }
 
-func countGitHubOpenPRs(owner, name string) int {
-	if !deployIntelGitHubAccessAllowed(owner, name) {
-		return 0
-	}
+func inspectDeployIntelGitHub(owner, name string) (openCount int, access string, fetchedAt *time.Time) {
 	owner, name = normalizeRepoIdentity(owner, name)
+	if GitHubToken == "" {
+		return 0, "failed", nil
+	}
+	rec, _ := getDeployIntelRepo(owner, name)
+	if rec != nil && !rec.Enabled {
+		return 0, "paused", nil
+	}
+	if !deployIntelGitHubAccessAllowed(owner, name) {
+		return 0, "failed", nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	client, err := newGitHubClient()
 	if err != nil || client == nil {
-		return 0
+		return 0, "failed", nil
 	}
 	_, total, _, err := fetchGitHubOpenPullRequests(ctx, client, owner, name, deployIntelMaxOpenPRList)
 	if err != nil {
-		return 0
+		return 0, "failed", nil
 	}
-	return total
+	now := time.Now().UTC()
+	return total, "connected", &now
+}
+
+func countGitHubOpenPRs(owner, name string) int {
+	count, _, _ := inspectDeployIntelGitHub(owner, name)
+	return count
 }
 
 func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 	mergeCount, highRisk30d, lastMerged := repoDeployStats(item.Owner, item.Name)
 	ready := deployIntelRepoReady(item.Owner, item.Name)
-	openCount := 0
-	if deployIntelGitHubAccessAllowed(item.Owner, item.Name) {
-		openCount = countGitHubOpenPRs(item.Owner, item.Name)
+	openCount, access, fetchedAt := inspectDeployIntelGitHub(item.Owner, item.Name)
+	mergeTracking := "needs_setup"
+	if ready {
+		mergeTracking = "configured"
+	}
+	lastSync := fetchedAt
+	if lastSync == nil {
+		lastSync = lastMerged
+	}
+	if lastSync == nil && !item.UpdatedAt.IsZero() {
+		updated := item.UpdatedAt.UTC()
+		lastSync = &updated
 	}
 	summary := deployIntelRepoSummary{
 		deployIntelRepo: item,
@@ -538,16 +564,20 @@ func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 		OpenPRCount:     openCount,
 		LastMergedAt:    lastMerged,
 		WebhookPath:     "/api/webhooks/github",
+		GitHubAccess:    access,
+		MergeTracking:   mergeTracking,
+		LastSyncAt:      lastSync,
+		NeedsAttention:  access != "connected" || mergeTracking == "needs_setup" || !item.Enabled,
 	}
 	switch {
 	case !item.Enabled:
 		summary.SetupSummary = "Repository is registered but monitoring is paused. Re-enable to fetch open PRs from GitHub."
-	case GitHubToken == "":
-		summary.SetupSummary = "Add GITHUB_TOKEN on the API so OpsTrellis can list and analyze pull requests from GitHub."
-	case !ready:
-		summary.SetupSummary = fmt.Sprintf("Live open PRs load from GitHub. Add a GitOps project to the catalog to auto-capture merges into %s via webhook.", item.BaseBranch)
+	case access == "failed":
+		summary.SetupSummary = "GitHub access failed. Confirm GITHUB_TOKEN can list pull requests for this repository."
+	case mergeTracking == "needs_setup":
+		summary.SetupSummary = fmt.Sprintf("Merge tracking is not configured. Add a GitOps project so merges into %s are captured automatically.", item.BaseBranch)
 	default:
-		summary.SetupSummary = fmt.Sprintf("Fetching open PRs from GitHub and listening for merges into %s.", item.BaseBranch)
+		summary.SetupSummary = fmt.Sprintf("GitHub is connected and merge tracking is configured for %s.", item.BaseBranch)
 	}
 	summary.LastChange = lastChangeForRepo(item.Owner, item.Name)
 	return summary

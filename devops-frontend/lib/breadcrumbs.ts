@@ -23,6 +23,7 @@ export const KNOWN_PAGES: ReadonlySet<string> = new Set([
   '/deploy-intelligence',
   '/deploy-intelligence/[owner]/[repo]',
   '/deploy-intelligence/onboard',
+  '/pull-requests',
   '/pipelines',
   '/environments',
   '/evidence',

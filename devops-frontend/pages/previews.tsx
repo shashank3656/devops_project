@@ -20,6 +20,7 @@ interface PreviewRow {
   change_number?: string;
   estimated_cost_usd?: number;
   updated_at: string;
+  torn_down_at?: string;
 }
 
 export default function PreviewsCatalogPage() {
@@ -102,43 +103,52 @@ export default function PreviewsCatalogPage() {
       <Head>
         <title>Preview environments - OpsTrellis</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="delivery-shell">
+        <header className="delivery-head">
           <div>
-            <span className="portal-page__eyebrow">Changes</span>
-            <h1 className="portal-page__title">Preview environments</h1>
-            <p className="portal-page__subtitle">
-              Opening a PR on an onboarded repo starts a preview CHG. Merge or close tears it down and records estimated cost on the PR brief. Editing the repository name updates the catalog only.
-            </p>
+            <p className="delivery-kicker">Delivery</p>
+            <h1 className="delivery-title">Preview environments</h1>
+            <p className="delivery-lede">Review preview hosts for open PRs. Estimated cost is recorded on the change, not the cloud bill.</p>
           </div>
-        </div>
+        </header>
         <DeliveryHubNav active="previews" />
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
-        {loading ? <div className="empty-state">Loading previews…</div> : null}
+        {loading ? <p className="delivery-empty">Loading previews…</p> : null}
         {!loading && items.length === 0 ? (
-          <div className="empty-state">
-            <p>No preview environments yet. Open a PR against an onboarded repo. Merge or close tears the preview down.</p>
-            <Link href="/deploy-intelligence/onboard" className="btn btn-primary btn-sm">Onboard a repository</Link>
+          <div className="delivery-empty-panel">
+            <h2>Preview environments are not configured yet</h2>
+            <p>A live preview needs a connected GitHub repository and an open PR against that repo. Merge or close tears the host down.</p>
+            <ol className="delivery-steps">
+              <li>Connect a repository that already exists on GitHub.</li>
+              <li>Open a pull request against the watched base branch.</li>
+              <li>Return here to review the URL, estimated cost, and cleanup status.</li>
+            </ol>
+            <Link href="/deploy-intelligence/onboard" className="btn btn-primary">Connect repository</Link>
           </div>
         ) : null}
         {items.length > 0 ? (
-          <section className="portal-surface">
-            <table className="table">
+          <section className="delivery-panel">
+            <table className="delivery-table">
               <thead>
                 <tr>
                   <th>PR</th>
-                  <th>Repo</th>
-                  <th>Status</th>
-                  <th>Cost</th>
-                  <th>Change</th>
+                  <th>Environment status</th>
+                  <th>URL</th>
+                  <th>Expiry</th>
+                  <th>Estimated cost</th>
+                  <th>Cleanup</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {items.map((item) => {
+                  const cleanup = item.torn_down_at ? 'Cleaned up' : item.status === 'live' ? 'Active' : item.status || 'Unknown';
+                  return (
                   <tr key={item.id}>
-                    <td>#{item.pr_number}{item.branch ? ` · ${item.branch}` : ''}</td>
                     <td>
+                      <span className="delivery-pr-link__title">#{item.pr_number}</span>
+                      <span className="delivery-pr-link__meta">{item.repo || 'Unknown'}{item.branch ? ` · ${item.branch}` : ''}</span>
                       {editingId === item.id ? (
                         <form className="portal-page__actions" onSubmit={(event) => void saveRepo(event, item)}>
                           <label className="label" style={{ margin: 0 }}>
@@ -159,32 +169,31 @@ export default function PreviewsCatalogPage() {
                             Cancel
                           </button>
                         </form>
-                      ) : (
-                        <div className="portal-page__actions">
-                          <span>{item.repo || 'Unknown'}</span>
-                          {canWrite ? (
-                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit(item)}>
-                              Edit repo
-                            </button>
-                          ) : null}
-                        </div>
-                      )}
-                    </td>
-                    <td>{item.status}</td>
-                    <td>${(item.estimated_cost_usd || 0).toFixed(2)}</td>
-                    <td>
-                      {item.change_id ? (
-                        <Link href={`/changes/${item.change_id}`}>{item.change_number || `CHG ${item.change_id}`}</Link>
-                      ) : '—'}
-                      {item.url ? (
-                        <>
-                          {' · '}
-                          <a href={item.url} target="_blank" rel="noreferrer">Open</a>
-                        </>
+                      ) : canWrite ? (
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit(item)}>
+                          Edit repo
+                        </button>
                       ) : null}
                     </td>
+                    <td>
+                      <span className={`delivery-status delivery-status--${item.status === 'live' ? 'ok' : item.torn_down_at ? 'unknown' : 'pending'}`}>
+                        {item.status || 'Unknown'}
+                      </span>
+                    </td>
+                    <td>{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.url}</a> : 'Unknown'}</td>
+                    <td>Unknown</td>
+                    <td>${(item.estimated_cost_usd || 0).toFixed(2)}</td>
+                    <td>{cleanup}</td>
+                    <td>
+                      {item.url ? (
+                        <a className="btn btn-primary btn-sm" href={item.url} target="_blank" rel="noreferrer">View preview</a>
+                      ) : item.change_id ? (
+                        <Link href={`/changes/${item.change_id}`} className="btn btn-secondary btn-sm">View change</Link>
+                      ) : '—'}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             {!canWrite ? <p className="access-hint">A viewer can read this catalog. Editing the repository name needs write access.</p> : null}

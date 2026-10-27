@@ -1,29 +1,28 @@
 import Link from 'next/link';
 
-type DeliveryHubTab = 'repos' | 'pipelines' | 'previews';
+type DeliveryHubTab = 'repos' | 'pulls' | 'pipelines' | 'previews';
 
 export default function DeliveryHubNav({ active }: { active: DeliveryHubTab }) {
   const tabs: { id: DeliveryHubTab; href: string; label: string }[] = [
     { id: 'repos', href: '/deploy-intelligence', label: 'Repositories' },
+    { id: 'pulls', href: '/pull-requests', label: 'Pull requests' },
     { id: 'pipelines', href: '/pipelines', label: 'Pipelines' },
-    { id: 'previews', href: '/previews', label: 'Previews' },
+    { id: 'previews', href: '/previews', label: 'Preview environments' },
   ];
   return (
-    <nav className="cloud-hub-nav portal-surface" aria-label="Delivery workspace">
-      <div className="cloud-hub-nav__row">
-        <div className="cloud-hub-nav__tabs" role="tablist" aria-label="Delivery views">
-          {tabs.map((tab) => (
-            <Link
-              key={tab.id}
-              href={tab.href}
-              className={`cloud-hub-nav__tab${active === tab.id ? ' is-active' : ''}`}
-              role="tab"
-              aria-selected={active === tab.id}
-            >
-              {tab.label}
-            </Link>
-          ))}
-        </div>
+    <nav className="delivery-hub" aria-label="Delivery">
+      <div className="delivery-hub__tabs" role="tablist" aria-label="Delivery views">
+        {tabs.map((tab) => (
+          <Link
+            key={tab.id}
+            href={tab.href}
+            className={`delivery-hub__tab${active === tab.id ? ' is-active' : ''}`}
+            role="tab"
+            aria-selected={active === tab.id}
+          >
+            {tab.label}
+          </Link>
+        ))}
       </div>
     </nav>
   );

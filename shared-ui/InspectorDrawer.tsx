@@ -15,6 +15,7 @@ export default function InspectorDrawer({
   label,
   resetKey,
   returnFocusId,
+  wide,
 }: {
   open: boolean;
   onClose: () => void;
@@ -29,6 +30,8 @@ export default function InspectorDrawer({
   resetKey?: string | number | null;
   /** Element to focus after close, usually the row that opened the drawer. */
   returnFocusId?: string;
+  /** Delivery review uses a wider panel for PR evidence. */
+  wide?: boolean;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -90,7 +93,7 @@ export default function InspectorDrawer({
   return (
     <>
       <div className="ig-drawer__scrim" onClick={onClose} aria-hidden />
-      <aside className="ig-drawer" ref={panelRef} role="dialog" aria-modal="true" aria-label={label || 'Details'}>
+      <aside className={`ig-drawer${wide ? ' ig-drawer--wide' : ''}`} ref={panelRef} role="dialog" aria-modal="true" aria-label={label || 'Details'}>
         <header className="ig-drawer__header">
           <div className="ig-drawer__titles">
             {eyebrow ? <span className="ig-eyebrow">{eyebrow}</span> : null}

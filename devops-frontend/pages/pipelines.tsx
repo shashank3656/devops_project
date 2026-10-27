@@ -2,9 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import { useWorkspaceScope } from '@infragate/ui';
 import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { formatDurationMinutes, formatWhen } from '../lib/delivery';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -21,6 +23,10 @@ interface PipelineRow {
   title?: string;
   change_type?: string;
   updated_at?: string;
+  last_checked?: string;
+  duration_minutes?: number;
+  duration_known?: boolean;
+  stale?: boolean;
   preview?: boolean;
 }
 
@@ -34,16 +40,10 @@ function pipelineState(label?: string): Exclude<PipelineState, 'all'> {
   return 'unknown';
 }
 
-function formatWhen(value?: string) {
-  if (!value) return 'Unknown';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Unknown';
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
 export default function PipelinesPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const { scope } = useWorkspaceScope();
   const [items, setItems] = useState<PipelineRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,12 @@ export default function PipelinesPage() {
       router.replace('/login');
       return;
     }
-    fetch(`${apiUrl}/api/devops/pipelines`, { headers: { Authorization: `Bearer ${token}` } })
+    const params = new URLSearchParams();
+    if (scope.projectId) params.set('project_id', scope.projectId);
+    if (scope.environment) params.set('environment', scope.environment);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    setLoading(true);
+    fetch(`${apiUrl}/api/devops/pipelines${suffix}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Failed to load pipelines');
@@ -64,7 +69,7 @@ export default function PipelinesPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load pipelines'))
       .finally(() => setLoading(false));
-  }, [apiUrl, router]);
+  }, [apiUrl, router, scope.environment, scope.projectId]);
 
   const counts = useMemo(() => ({
     all: items.length,
@@ -72,6 +77,7 @@ export default function PipelinesPage() {
     failed: items.filter((item) => pipelineState(item.pipeline_label) === 'failed').length,
     succeeded: items.filter((item) => pipelineState(item.pipeline_label) === 'succeeded').length,
     unknown: items.filter((item) => pipelineState(item.pipeline_label) === 'unknown').length,
+    stale: items.filter((item) => item.stale).length,
   }), [items]);
 
   const visible = useMemo(() => {
@@ -97,48 +103,49 @@ export default function PipelinesPage() {
       <Head>
         <title>Pipelines - OpsTrellis</title>
       </Head>
-      <div className="pipe-page">
-        <header className="pipe-page__head">
+      <div className="delivery-shell">
+        <header className="delivery-head">
           <div>
-            <p className="pipe-page__kicker">Delivery</p>
-            <h1 className="pipe-page__title">Pipelines</h1>
-            <p className="pipe-page__lede">
-              CI runs posted onto a change. Failed is red. Succeeded is green. A missing URL stays Unknown.
-            </p>
+            <p className="delivery-kicker">Delivery</p>
+            <h1 className="delivery-title">Pipelines</h1>
+            <p className="delivery-lede">CI runs posted onto a change. Environment comes from the recorded change, not the run title.</p>
           </div>
-          <Link href="/operations/webhooks" className="btn btn-secondary">Open webhooks</Link>
         </header>
         <DeliveryHubNav active="pipelines" />
         {error ? <div className="alert alert-error">{error}</div> : null}
+        {scope.environment ? (
+          <p className="delivery-scope">
+            Showing runs recorded for <strong>{scope.environment}</strong>. Titles such as “in dev” are not used for this filter.
+          </p>
+        ) : (
+          <p className="delivery-scope">Workspace environment is All. Each run shows its recorded environment.</p>
+        )}
 
-        <div className="pipe-stats" role="group" aria-label="Pipeline counts">
-          <div className="pipe-stat">
-            <span className="pipe-stat__label">Runs</span>
-            <strong className="pipe-stat__value">{loading ? '—' : counts.all}</strong>
-          </div>
-          <div className="pipe-stat pipe-stat--failed">
-            <span className="pipe-stat__label">Failed</span>
-            <strong className="pipe-stat__value">{loading ? '—' : counts.failed}</strong>
-          </div>
-          <div className="pipe-stat pipe-stat--succeeded">
-            <span className="pipe-stat__label">Succeeded</span>
-            <strong className="pipe-stat__value">{loading ? '—' : counts.succeeded}</strong>
-          </div>
-          <div className="pipe-stat pipe-stat--running">
-            <span className="pipe-stat__label">Running</span>
-            <strong className="pipe-stat__value">{loading ? '—' : counts.running}</strong>
-          </div>
-          <div className="pipe-stat pipe-stat--unknown">
-            <span className="pipe-stat__label">Unknown</span>
-            <strong className="pipe-stat__value">{loading ? '—' : counts.unknown}</strong>
-          </div>
+        <div className="delivery-stats" role="group" aria-label="Pipeline counts">
+          <article className="delivery-stat">
+            <span className="delivery-stat__label">Runs</span>
+            <strong className="delivery-stat__value">{loading ? '—' : counts.all}</strong>
+          </article>
+          <article className="delivery-stat">
+            <span className="delivery-stat__label">Failed</span>
+            <strong className="delivery-stat__value">{loading ? '—' : counts.failed}</strong>
+          </article>
+          <article className="delivery-stat">
+            <span className="delivery-stat__label">Succeeded</span>
+            <strong className="delivery-stat__value">{loading ? '—' : counts.succeeded}</strong>
+          </article>
+          <article className="delivery-stat">
+            <span className="delivery-stat__label">Status stale</span>
+            <strong className="delivery-stat__value">{loading ? '—' : counts.stale}</strong>
+            <p className="delivery-stat__hint">Running or posted with no update for 24 hours.</p>
+          </article>
         </div>
 
-        <div className="pipe-toolbar">
-          <label className="pipe-search">
-            <span className="pipe-search__label">Find run</span>
+        <div className="delivery-toolbar">
+          <label className="delivery-search">
+            <span className="delivery-search__label">Find run</span>
             <input
-              className="pipe-search__input"
+              className="delivery-search__input"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Repo, service, or change"
@@ -146,12 +153,12 @@ export default function PipelinesPage() {
               spellCheck={false}
             />
           </label>
-          <div className="pipe-filters" role="group" aria-label="Pipeline state">
+          <div className="delivery-filters" role="group" aria-label="Pipeline state">
             {filters.map((filter) => (
               <button
                 key={filter.id}
                 type="button"
-                className={`pipe-filter pipe-filter--${filter.id}${stateFilter === filter.id ? ' is-active' : ''}`}
+                className={`delivery-filter${stateFilter === filter.id ? ' is-active' : ''}`}
                 onClick={() => setStateFilter(filter.id)}
               >
                 {filter.label} {loading ? '' : filter.count}
@@ -160,61 +167,67 @@ export default function PipelinesPage() {
           </div>
         </div>
 
-        {loading ? <p className="pipe-empty">Loading pipelines…</p> : null}
+        {loading ? <p className="delivery-empty">Loading pipelines…</p> : null}
         {!loading && !items.length ? (
-          <div className="pipe-empty-panel">
-            <h2 className="pipe-empty-panel__title">No pipeline runs yet</h2>
-            <p className="pipe-empty-panel__copy">
-              Post a change webhook with pipeline_url, or a CI webhook against a request. A GitHub repo onboard is not required here.
-            </p>
-            <div className="portal-page__actions">
-              <Link href="/operations/webhooks" className="btn btn-primary btn-sm">Connect a webhook</Link>
-              <Link href="/changes/new" className="btn btn-secondary btn-sm">Create from PR</Link>
-            </div>
+          <div className="delivery-empty-panel">
+            <h2>No pipeline runs yet</h2>
+            <p>Post a change webhook with pipeline_url. A GitHub repo onboard is not required here.</p>
+            <Link href="/operations/webhooks" className="btn btn-primary btn-sm">Connect a webhook</Link>
           </div>
         ) : null}
         {!loading && items.length > 0 && visible.length === 0 ? (
-          <p className="pipe-empty">No pipelines match this filter.</p>
+          <p className="delivery-empty">No pipelines match this filter.</p>
         ) : null}
 
         {visible.length ? (
-          <ul className="pipe-list">
-            {visible.map((item) => {
-              const state = pipelineState(item.pipeline_label);
-              const label = item.pipeline_label || 'Unknown';
-              return (
-                <li key={item.id} className={`pipe-run pipe-run--${state}`}>
-                  <span className="pipe-run__rail" aria-hidden="true" />
-                  <div className="pipe-run__main">
-                    <Link href={`/changes/${item.id}`} className="pipe-run__chg">
-                      {item.change_number || `CHG${item.id}`}
-                    </Link>
-                    <p className="pipe-run__title">{item.title || item.service || 'Unknown'}</p>
-                    <p className="pipe-run__meta">
-                      {item.repo || 'Unknown'}
-                      {item.preview ? ' · Preview CHG' : ''}
-                      {' · '}
-                      {item.environment || 'Unknown'}
-                      {' · '}
-                      {formatWhen(item.updated_at)}
-                    </p>
-                  </div>
-                  <code className="pipe-run__sha">{item.sha || 'Unknown'}</code>
-                  <span className={`pipe-status pipe-status--${state}`}>
-                    <i className="pipe-status__dot" aria-hidden="true" />
-                    {label}
-                  </span>
-                  {item.pipeline_url ? (
-                    <a className="pipe-run__open" href={item.pipeline_url} target="_blank" rel="noreferrer">
-                      Open run
-                    </a>
-                  ) : (
-                    <span className="pipe-run__open pipe-run__open--muted">No URL</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <section className="delivery-panel">
+            <div className="table-scroll">
+              <table className="delivery-table">
+                <thead>
+                  <tr>
+                    <th>Run name</th>
+                    <th>Repository</th>
+                    <th>Environment</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Last checked</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((item) => {
+                    const state = pipelineState(item.pipeline_label);
+                    const label = item.pipeline_label || 'Unknown';
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <span className="delivery-pr-link__title">{item.title || item.change_number || `Run ${item.id}`}</span>
+                          <span className="delivery-pr-link__meta">{item.change_number || `CHG${item.id}`}</span>
+                        </td>
+                        <td>{item.repo || 'Unknown'}</td>
+                        <td>{item.environment || 'Unknown'}</td>
+                        <td>
+                          <span className={`delivery-status delivery-status--${state === 'succeeded' ? 'ok' : state === 'failed' ? 'failed' : state === 'running' ? 'pending' : 'unknown'}`}>
+                            {label}
+                          </span>
+                          {item.stale ? <span className="delivery-status delivery-status--setup">Status stale</span> : null}
+                        </td>
+                        <td>{formatDurationMinutes(item.duration_minutes, item.duration_known)}</td>
+                        <td>{formatWhen(item.last_checked || item.updated_at)}</td>
+                        <td>
+                          {item.pipeline_url ? (
+                            <a className="btn btn-primary btn-sm" href={item.pipeline_url} target="_blank" rel="noreferrer">View run</a>
+                          ) : (
+                            <Link href={`/changes/${item.id}`} className="btn btn-secondary btn-sm">View change</Link>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
         ) : null}
       </div>
     </DevOpsLayout>

@@ -21,15 +21,23 @@ const (
 )
 
 type deployIntelPreviewLink struct {
-	RequestID int        `json:"request_id"`
-	Env       string     `json:"env"`
-	Branch    string     `json:"branch,omitempty"`
-	Status    string     `json:"status,omitempty"`
-	Label     string     `json:"label"`
-	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
-	URL                string     `json:"url,omitempty"`
-	EstimatedCostUSD   float64    `json:"estimated_cost_usd,omitempty"`
-	ChangeNumber       string     `json:"change_number,omitempty"`
+	RequestID        int        `json:"request_id"`
+	Env              string     `json:"env"`
+	Branch           string     `json:"branch,omitempty"`
+	Status           string     `json:"status,omitempty"`
+	Label            string     `json:"label"`
+	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
+	URL              string     `json:"url,omitempty"`
+	EstimatedCostUSD float64    `json:"estimated_cost_usd,omitempty"`
+	ChangeNumber     string     `json:"change_number,omitempty"`
+}
+
+type deployIntelCISummary struct {
+	Passed  int    `json:"passed"`
+	Failed  int    `json:"failed"`
+	Pending int    `json:"pending"`
+	Skipped int    `json:"skipped"`
+	Label   string `json:"label"`
 }
 
 type deployIntelOpenPRMeta struct {
@@ -41,6 +49,7 @@ type deployIntelOpenPRMeta struct {
 	Assignees           []string                   `json:"assignees,omitempty"`
 	RequestedReviewers  []string                   `json:"requested_reviewers,omitempty"`
 	Checks              []deployIntelRequiredCheck `json:"checks,omitempty"`
+	CI                  deployIntelCISummary       `json:"ci"`
 	PreviewEnvironments []deployIntelPreviewLink   `json:"preview_environments,omitempty"`
 	SuggestTicket       bool                       `json:"suggest_ticket"`
 	SuggestTicketReason string                     `json:"suggest_ticket_reason,omitempty"`
@@ -69,8 +78,13 @@ func parseOpenPRListOptions(r *http.Request, productionBase string) openPRListOp
 			opts.Limit = n
 		}
 	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("refresh_pr")); raw != "" {
+	if raw := strings.TrimSpace(r.URL.Query().Get("pr_number")); raw != "" {
 		opts.DeepPR, _ = strconv.Atoi(raw)
+	}
+	if opts.DeepPR <= 0 {
+		if raw := strings.TrimSpace(r.URL.Query().Get("refresh_pr")); raw != "" {
+			opts.DeepPR, _ = strconv.Atoi(raw)
+		}
 	}
 	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("base_filter"))) {
 	case "production", "base", "prod":
@@ -136,14 +150,56 @@ func computeReviewSLA(createdAt time.Time, reviewState string) (status, detail s
 	return "ok", fmt.Sprintf("Open %d day(s).", age)
 }
 
-func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner, name, ref string) []deployIntelRequiredCheck {
+func githubCheckOutcome(conclusion, status string) string {
+	state := strings.ToLower(strings.TrimSpace(conclusion))
+	if state == "" {
+		state = strings.ToLower(strings.TrimSpace(status))
+	}
+	switch state {
+	case "success":
+		return "ok"
+	case "neutral", "skipped", "stale":
+		return "skipped"
+	case "failure", "cancelled", "timed_out", "action_required", "startup_failure":
+		return "failed"
+	case "in_progress", "queued", "pending", "waiting", "requested":
+		return "pending"
+	case "completed":
+		return "ok"
+	default:
+		return "unknown"
+	}
+}
+
+func formatCISummaryLabel(summary deployIntelCISummary) string {
+	parts := make([]string, 0, 4)
+	if summary.Failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", summary.Failed))
+	}
+	if summary.Pending > 0 {
+		parts = append(parts, fmt.Sprintf("%d pending", summary.Pending))
+	}
+	if summary.Skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped", summary.Skipped))
+	}
+	if summary.Passed > 0 {
+		parts = append(parts, fmt.Sprintf("%d passed", summary.Passed))
+	}
+	if len(parts) == 0 {
+		return "No checks yet"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner, name, ref string) ([]deployIntelRequiredCheck, deployIntelCISummary) {
 	out := []deployIntelRequiredCheck{
 		{Key: "plan_review", Label: checkInfragatePlanReview, Required: true, Present: false, Status: "unknown"},
 		{Key: "policy", Label: checkInfragatePolicy, Required: true, Present: false, Status: "unknown"},
 		{Key: "deploy_intel", Label: checkInfragateDeployIntel, Required: false, Present: false, Status: "unknown"},
 	}
+	summary := deployIntelCISummary{Label: "No checks yet"}
 	if client == nil || ref == "" {
-		return out
+		return out, summary
 	}
 	runs, _, err := client.Checks.ListCheckRunsForRef(ctx, owner, name, ref, &github.ListCheckRunsOptions{
 		ListOptions: github.ListOptions{PerPage: 100},
@@ -153,44 +209,54 @@ func listInfragateChecksOnRef(ctx context.Context, client *github.Client, owner,
 			out[i].Status = "unknown"
 			out[i].Detail = "Could not load check runs from GitHub."
 		}
-		return out
+		summary.Label = "Checks unknown"
+		return out, summary
 	}
 	latest := map[string]string{}
 	for _, run := range runs.CheckRuns {
 		if run == nil || run.Name == nil {
 			continue
 		}
-		name := strings.ToLower(strings.TrimSpace(run.GetName()))
-		conclusion := strings.ToLower(strings.TrimSpace(run.GetConclusion()))
-		if conclusion == "" {
-			conclusion = strings.ToLower(strings.TrimSpace(run.GetStatus()))
+		outcome := githubCheckOutcome(run.GetConclusion(), run.GetStatus())
+		latest[strings.ToLower(strings.TrimSpace(run.GetName()))] = outcome
+		switch outcome {
+		case "ok":
+			summary.Passed++
+		case "failed":
+			summary.Failed++
+		case "pending":
+			summary.Pending++
+		case "skipped":
+			summary.Skipped++
 		}
-		latest[name] = conclusion
 	}
+	summary.Label = formatCISummaryLabel(summary)
 	for i := range out {
 		key := strings.ToLower(out[i].Label)
 		if state, ok := latest[key]; ok {
 			out[i].Present = true
+			out[i].Status = state
 			switch state {
-			case "success", "completed", "neutral":
-				out[i].Status = "ok"
+			case "ok":
 				out[i].Detail = "Check passed on head commit."
-			case "failure", "cancelled", "timed_out", "action_required":
-				out[i].Status = "missing"
-				out[i].Detail = "Check did not pass: " + state
+			case "failed":
+				out[i].Detail = "Check failed on head commit."
+			case "pending":
+				out[i].Detail = "Check is still running."
+			case "skipped":
+				out[i].Detail = "Check was skipped."
 			default:
-				out[i].Status = "unknown"
-				out[i].Detail = "Check state: " + state
+				out[i].Detail = "Check state is unknown."
 			}
 		} else if out[i].Required {
-			out[i].Status = "missing"
+			out[i].Status = "pending"
 			out[i].Detail = "Not reported on latest commit."
 		} else {
 			out[i].Status = "unknown"
 			out[i].Detail = "Change brief not posted yet."
 		}
 	}
-	return out
+	return out, summary
 }
 
 func summarizePRReviews(ctx context.Context, client *github.Client, owner, name string, number int) string {
@@ -301,8 +367,8 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 		head = pr.GetHead().GetRef()
 	}
 	meta.PreviewEnvironments = findPreviewEnvironmentsForBranch(head)
-	if deep && client != nil && pr.GetHead() != nil {
-		meta.Checks = listInfragateChecksOnRef(ctx, client, owner, name, pr.GetHead().GetSHA())
+	if client != nil && pr.GetHead() != nil && strings.TrimSpace(pr.GetHead().GetSHA()) != "" {
+		meta.Checks, meta.CI = listInfragateChecksOnRef(ctx, client, owner, name, pr.GetHead().GetSHA())
 	}
 	hasTicket := ev.RequestID != nil && *ev.RequestID > 0
 	if !hasTicket && (strings.EqualFold(ev.RiskLevel, "high") || ev.Score >= 70) {

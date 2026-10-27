@@ -3023,6 +3023,10 @@ html[data-theme] .ig-bulkbar__select { width: auto; min-height: 30px; padding: 4
   animation: ig-drawer-in var(--ig-duration-slow) var(--ig-ease);
 }
 
+.ig-drawer--wide {
+  width: min(880px, 100vw);
+}
+
 .ig-drawer__scrim { display: none; }
 
 .ig-drawer__header {

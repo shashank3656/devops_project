@@ -66,6 +66,10 @@ func TestDeployIntelGitHubAccessRequiresToken(t *testing.T) {
 	if deployIntelGitHubAccessAllowed("acme", "infra") {
 		t.Fatal("expected false without token")
 	}
+	count, access, fetched := inspectDeployIntelGitHub("acme", "infra")
+	if count != 0 || access != "failed" || fetched != nil {
+		t.Fatalf("missing token is failed access, got count=%d access=%s fetched=%v", count, access, fetched)
+	}
 }
 
 func TestDisconnectDeployIntelRepoDoesNotCallGitHub(t *testing.T) {

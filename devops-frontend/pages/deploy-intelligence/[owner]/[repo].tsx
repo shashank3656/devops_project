@@ -2,199 +2,151 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  DataTable,
-  EmptyState,
-  InspectorDrawer,
-  PRImpactBrief,
-  SegmentedControl,
-  type DataTableColumn,
-  type DeployIntelChangeBrief,
-  type PRImpactBriefData,
-  useConfirm,
-} from '@infragate/ui';
+import { InspectorDrawer, useConfirm } from '@infragate/ui';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import {
+  canManageDeliveryRepos,
+  formatCI,
+  formatReviewAge,
+  formatRisk,
+  formatWhen,
+  githubAccessLabel,
+  mergeTrackingLabel,
+  type DeliveryCheck,
+  type DeliveryCISummary,
+} from '../../../lib/delivery';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
-type Section = 'merges' | 'open';
+type RepoSection = 'open' | 'merges' | 'settings';
 
-interface OpenPRMeta {
-  is_draft?: boolean;
-  age_days?: number;
-  review_sla?: string;
-  review_detail?: string;
-  assignees?: string[];
-  requested_reviewers?: string[];
-  checks?: RequiredCheck[];
-  preview_environments?: { request_id: number; env: string; label: string; expires_at?: string }[];
-  suggest_ticket?: boolean;
-  suggest_ticket_reason?: string;
-  conflicts_with?: number[];
+interface GitHubFetchMeta {
+  configured?: boolean;
+  allowed?: boolean;
+  ready?: boolean;
+  error?: string;
+  fetched_at?: string;
+  listed?: number;
+  total_open?: number;
+}
+
+interface RepoMeta {
+  owner: string;
+  name: string;
+  base_branch: string;
+  enabled: boolean;
+  ready: boolean;
+  merge_count: number;
+  open_pr_count: number;
+  webhook_path?: string;
+  setup_summary?: string;
+  github_access?: string;
+  merge_tracking?: string;
+  last_sync_at?: string;
 }
 
 interface DeployEvent {
-  id?: number;
   pr_number: number;
-  request_id?: number;
   title: string;
   author: string;
   base_branch: string;
   head_branch: string;
-  merged_at?: string;
-  commit_count: number;
-  file_count: number;
-  additions: number;
-  deletions: number;
   score: number;
   risk_level: string;
   summary: string;
   pr_url: string;
-  impact: PRImpactBriefData;
-  open_pr?: OpenPRMeta;
-  change_brief?: DeployIntelChangeBrief;
-  similar_merges?: {
-    pr_number: number;
-    title: string;
-    headline?: string;
-    overlap?: string[];
-    later_revert?: { pr_number: number; title: string };
-    pr_url?: string;
-  }[];
+  request_id?: number;
+  commit_count?: number;
+  file_count?: number;
+  additions?: number;
+  deletions?: number;
+  merged_at?: string;
+  impact?: {
+    summary?: string;
+    recommended_action?: string;
+    files?: { path?: string; category?: string }[];
+    blast_radius?: string[];
+    stack?: string;
+    factors?: { label?: string; detail?: string; severity?: string }[];
+    analyzed_at?: string;
+  };
+  open_pr?: {
+    is_draft?: boolean;
+    age_days?: number;
+    review_sla?: string;
+    review_detail?: string;
+    checks?: DeliveryCheck[];
+    ci?: DeliveryCISummary;
+    suggest_ticket?: boolean;
+    suggest_ticket_reason?: string;
+  };
   github_post?: {
-    check_posted?: boolean;
     comment_posted?: boolean;
-    check_name?: string;
-    conclusion?: string;
+    check_posted?: boolean;
     error?: string;
+    preview?: string;
   };
-}
-
-interface RepoSummary {
-  owner: string;
-  name: string;
-  base_branch: string;
-  ready: boolean;
-  merge_count: number;
-  open_pr_count: number;
-  setup_summary: string;
-  webhook_path: string;
-  last_change?: {
-    id: number;
-    change_number: string;
-    sha: string;
-    previous_sha?: string;
-    provenance_signed: boolean;
-    sbom_url?: string;
-    attestation_url?: string;
-    policy_status?: string;
-    status?: string;
-    drift?: { drifted?: boolean; detail?: string; live_marker?: string };
-    rollback?: {
-      allowed?: boolean;
-      previous_sha?: string;
-      block_reason?: string;
-      k8s_href?: string;
-    };
+  change_brief?: {
+    markdown?: string;
   };
-}
-
-interface RequiredCheck {
-  key: string;
-  label: string;
-  required: boolean;
-  present: boolean;
-  status: string;
-  detail?: string;
-}
-
-interface GitHubFetchMeta {
-  configured: boolean;
-  allowed: boolean;
-  ready: boolean;
-  error?: string;
-  fetched_at?: string;
-  listed: number;
-  total_open: number;
-  truncated: boolean;
-  max_listed: number;
-}
-
-function riskChipTone(level: string): 'low' | 'medium' | 'high' | 'danger' | 'ok' | 'info' | 'neutral' {
-  if (level === 'high') return 'danger';
-  if (level === 'medium') return 'medium';
-  if (level === 'low') return 'low';
-  return 'neutral';
-}
-
-function canManageRepos(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const raw = localStorage.getItem('devops_user');
-    const user = raw ? (JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } }) : null;
-    return user?.role === 'admin' || Boolean(user?.devops_profile?.is_manager);
-  } catch {
-    return false;
-  }
 }
 
 export default function DeployIntelligenceRepoPage() {
-  const router = useRouter();
   const apiUrl = useApiUrl();
+  const router = useRouter();
   const confirm = useConfirm();
-  const canManage = canManageRepos();
+  const canManage = canManageDeliveryRepos();
   const owner = typeof router.query.owner === 'string' ? router.query.owner : '';
   const repo = typeof router.query.repo === 'string' ? router.query.repo : '';
-
-  const [section, setSection] = useState<Section>('merges');
+  const [section, setSection] = useState<RepoSection>('open');
   const [events, setEvents] = useState<DeployEvent[]>([]);
-  const [repoMeta, setRepoMeta] = useState<RepoSummary | null>(null);
+  const [repoMeta, setRepoMeta] = useState<RepoMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [selected, setSelected] = useState<DeployEvent | null>(null);
+  const [refreshPR, setRefreshPR] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [githubMeta, setGithubMeta] = useState<GitHubFetchMeta | null>(null);
+  const [githubError, setGithubError] = useState('');
+  const [includeDrafts, setIncludeDrafts] = useState(false);
+  const [suggestingTicket, setSuggestingTicket] = useState(false);
+  const [ticketMessage, setTicketMessage] = useState('');
+  const [query, setQuery] = useState('');
   const [editing, setEditing] = useState(false);
   const [draftOwner, setDraftOwner] = useState('');
   const [draftName, setDraftName] = useState('');
   const [draftBase, setDraftBase] = useState('main');
   const [saving, setSaving] = useState(false);
-  const [selected, setSelected] = useState<DeployEvent | null>(null);
-  const [refreshPR, setRefreshPR] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-  const [githubMeta, setGithubMeta] = useState<GitHubFetchMeta | null>(null);
-  const [githubError, setGithubError] = useState('');
-  const [baseFilter, setBaseFilter] = useState<'all' | 'production'>('production');
-  const [includeDrafts, setIncludeDrafts] = useState(false);
-  const [suggestingTicket, setSuggestingTicket] = useState(false);
-  const [ticketMessage, setTicketMessage] = useState('');
-  const [ackReasons, setAckReasons] = useState('');
-  const [rollingLastChange, setRollingLastChange] = useState(false);
 
-  const load = async (refreshNumber?: number, options?: { batchDeep?: boolean }) => {
+  const load = async (options?: { prNumber?: number; post?: boolean; keepSelection?: boolean }) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token || !owner || !repo) return;
     setLoading(true);
     setError('');
     try {
-      const query = new URLSearchParams({
+      const params = new URLSearchParams({
         owner,
         repo,
         limit: '100',
-        section,
+        section: section === 'settings' ? 'open' : section,
       });
-      if (section === 'open') {
-        query.set('fetch_github', '1');
-        if (baseFilter === 'production') query.set('base_filter', 'production');
-        if (includeDrafts) query.set('include_drafts', '1');
-        if (options?.batchDeep) query.set('batch_deep', '1');
+      if (section === 'open' || section === 'settings') {
+        params.set('fetch_github', '1');
+        if (includeDrafts) params.set('include_drafts', '1');
       }
-      if (refreshNumber && refreshNumber > 0) query.set('refresh_pr', String(refreshNumber));
-      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence?${query}`, {
+      if (options?.prNumber && options.prNumber > 0) {
+        if (options.post) params.set('refresh_pr', String(options.prNumber));
+        else params.set('pr_number', String(options.prNumber));
+      }
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error || 'Failed to load pull request analysis');
+        setError(data?.error || 'Failed to load pull requests');
         return;
       }
       setRepoMeta(data?.repo || null);
@@ -202,745 +154,513 @@ export default function DeployIntelligenceRepoPage() {
       setEvents(nextEvents);
       setGithubMeta((data?.github as GitHubFetchMeta) || null);
       setGithubError(typeof data?.github_error === 'string' ? data.github_error : '');
-      if (refreshNumber && refreshNumber > 0) {
-        const match = nextEvents.find((e) => e.pr_number === refreshNumber);
+      if (options?.prNumber && options.prNumber > 0) {
+        const match = nextEvents.find((item) => item.pr_number === options.prNumber);
         if (match) setSelected(match);
+      } else if (!options?.keepSelection) {
+        setSelected(null);
       }
     } catch {
-      setError('Failed to load pull request analysis');
+      setError('Failed to load pull requests');
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setPosting(false);
     }
   };
 
   useEffect(() => {
     if (!router.isReady) return;
-    void load();
-  }, [apiUrl, router.isReady, owner, repo, section, baseFilter, includeDrafts]);
+    const requested = router.query.section;
+    if (requested === 'merges' || requested === 'settings' || requested === 'open') {
+      setSection(requested);
+    }
+  }, [router.isReady, router.query.section]);
+
+  useEffect(() => {
+    if (!router.isReady || !owner || !repo) return;
+    const raw = router.query.pr;
+    const prNumber = Array.isArray(raw) ? Number(raw[0]) : Number(raw);
+    void load({
+      prNumber: section === 'open' && prNumber > 0 ? prNumber : undefined,
+      keepSelection: prNumber > 0,
+    });
+  }, [apiUrl, router.isReady, owner, repo, section, includeDrafts, router.query.pr]);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return events;
+    return events.filter((item) => `${item.title} #${item.pr_number} ${item.author}`.toLowerCase().includes(needle));
+  }, [events, query]);
+
+  const access = githubAccessLabel(repoMeta?.github_access);
+  const tracking = mergeTrackingLabel(repoMeta?.merge_tracking);
+  const openCount = repoMeta?.open_pr_count ?? (section === 'open' ? events.length : 0);
+  const mergeCount = repoMeta?.merge_count ?? (section === 'merges' ? events.length : 0);
+  const tokenFailure = !loading && Boolean(githubMeta) && githubMeta?.configured === false;
+  const githubFailed = !loading && Boolean(githubMeta) && githubMeta.configured !== false && (githubMeta.allowed === false || githubError);
+
+  const reviewEvent = (item: DeployEvent) => {
+    setSelected(item);
+    setTicketMessage('');
+    if (section === 'open') void load({ prNumber: item.pr_number, keepSelection: true });
+  };
+
+  const postGitHubComment = async (item: DeployEvent) => {
+    setPosting(true);
+    await load({ prNumber: item.pr_number, post: true, keepSelection: true });
+  };
+
+  const importMergedPR = async () => {
+    const number = Number(refreshPR);
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!number || !token || !owner || !repo) return;
+    setRefreshing(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({
+        owner,
+        repo,
+        limit: '100',
+        section: 'merges',
+        refresh_pr: String(number),
+      });
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || 'The merged PR could not be imported');
+        return;
+      }
+      setSection('merges');
+      setRepoMeta(data?.repo || null);
+      const nextEvents: DeployEvent[] = Array.isArray(data?.events) ? data.events : [];
+      setEvents(nextEvents);
+      const match = nextEvents.find((item) => item.pr_number === number);
+      if (match) setSelected(match);
+    } catch {
+      setError('The merged PR could not be imported');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const suggestTicket = async (prNumber: number, acknowledged = false) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
-    const reasons = ackReasons.split('\n').map((line) => line.trim()).filter(Boolean);
     setSuggestingTicket(true);
     setTicketMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/suggest-ticket`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          owner,
-          name: repo,
-          pr_number: prNumber,
-          acknowledged,
-          reasons,
-        }),
+        body: JSON.stringify({ owner, name: repo, pr_number: prNumber, acknowledged, reasons: [] }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 428 && data?.ack_reasons_required) {
-        setTicketMessage(data?.error || 'Add exception reasons, then create the ticket.');
-        return;
-      }
       if (!res.ok) {
-        setTicketMessage(data?.error || 'Could not create ticket');
+        setTicketMessage(typeof data?.error === 'string' ? data.error : 'The change request could not be created.');
         return;
       }
-      setTicketMessage(data?.message || `Ticket #${data?.request_id} created`);
-      setAckReasons('');
-      void load();
+      setTicketMessage(typeof data?.message === 'string' ? data.message : 'Change request created.');
+      await load({ prNumber, keepSelection: true });
     } catch {
-      setTicketMessage('Could not create ticket');
+      setTicketMessage('The change request could not be created.');
     } finally {
       setSuggestingTicket(false);
     }
   };
 
-  const onRowOpen = (row: DeployEvent) => {
-    setSelected(row);
-    if (section === 'open') {
-      setRefreshing(true);
-      void load(row.pr_number);
+  const saveEdit = async () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner,
+          name: repo,
+          next_owner: draftOwner,
+          next_name: draftName,
+          base_branch: draftBase,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'The repository could not be updated');
+        return;
+      }
+      setEditing(false);
+      setNotice('Catalog entry updated. GitHub was not renamed.');
+      await router.replace(`/deploy-intelligence/${encodeURIComponent(draftOwner)}/${encodeURIComponent(draftName)}`);
+    } catch {
+      setError('The repository could not be updated');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const columns: DataTableColumn<DeployEvent>[] = useMemo(
-    () => [
-      {
-        id: 'pr',
-        header: 'Pull request',
-        cell: (row) => (
-          <div className="ig-cell-stack">
-            <span className="ig-cell-title">{row.title || `PR #${row.pr_number}`}</span>
-            <span className="ig-cell-meta">
-              #{row.pr_number} · {row.author || 'unknown'} · {row.head_branch} → {row.base_branch}
-            </span>
-          </div>
-        ),
-      },
-      {
-        id: 'commits',
-        header: 'Commits',
-        align: 'right',
-        className: 'ig-cell-num',
-        cell: (row) => row.commit_count,
-      },
-      {
-        id: 'files',
-        header: 'Files',
-        align: 'right',
-        className: 'ig-cell-num',
-        cell: (row) => row.file_count,
-      },
-      {
-        id: 'diff',
-        header: 'Diff',
-        align: 'right',
-        className: 'ig-cell-num',
-        cell: (row) => `+${row.additions}/-${row.deletions}`,
-      },
-      {
-        id: 'changing',
-        header: 'Changing',
-        cell: (row) => {
-          const brief = row.change_brief || row.impact?.change_brief;
-          return <span className="ig-cell-title">{brief?.headline || '—'}</span>;
-        },
-      },
-      {
-        id: 'risk-because',
-        header: 'Risk because',
-        cell: (row) => {
-          const reasons = row.change_brief?.risk_because || row.impact?.change_brief?.risk_because || [];
-          if (reasons.length === 0) return <span className="ig-cell-meta">—</span>;
-          return <span className="ig-cell-meta">{reasons[0]}</span>;
-        },
-      },
-      ...(section === 'open'
-        ? [
-            {
-              id: 'conflicts',
-              header: 'Stack',
-              cell: (row: DeployEvent) => {
-                const conflicts = row.open_pr?.conflicts_with || [];
-                if (conflicts.length === 0) return <span className="ig-cell-meta">—</span>;
-                return <span className="ig-cell-meta">#{conflicts.join(', #')}</span>;
-              },
-            } as DataTableColumn<DeployEvent>,
-          ]
-        : []),
-      {
-        id: 'risk',
-        header: 'Risk',
-        cell: (row) => (
-          <span className={`ig-chip ig-chip--${riskChipTone(row.risk_level)}`}>
-            {row.risk_level} · {row.score}
-          </span>
-        ),
-      },
-      ...(section === 'open'
-        ? [
-            {
-              id: 'github-brief',
-              header: 'GitHub brief',
-              cell: (row: DeployEvent) => {
-                const posted = row.github_post;
-                const deployCheck = row.open_pr?.checks?.find((check) => check.key === 'deploy_intel');
-                if (posted?.comment_posted || posted?.check_posted) {
-                  return (
-                    <span className={`ig-chip ig-chip--${posted.check_posted ? 'ok' : 'info'}`}>
-                      {posted.check_posted ? 'Check + comment' : 'Comment posted'}
-                    </span>
-                  );
-                }
-                if (deployCheck?.status === 'ok') {
-                  return <span className="ig-chip ig-chip--ok">Posted</span>;
-                }
-                return <span className="ig-cell-meta">Open row to post</span>;
-              },
-            },
-          ]
-        : []),
-      {
-        id: 'when',
-        header: section === 'merges' ? 'Merged' : 'Review SLA',
-        cell: (row) => {
-          if (section === 'merges' && row.merged_at) return new Date(row.merged_at).toLocaleString();
-          if (section === 'open' && row.open_pr) {
-            const sla = row.open_pr.review_sla || 'ok';
-            return (
-              <span className={`ig-chip ig-chip--${sla === 'breach' ? 'danger' : sla === 'warning' ? 'medium' : 'ok'}`}>
-                {row.open_pr.age_days ?? 0}d · {sla}
-              </span>
-            );
-          }
-          return section === 'open' ? 'Open' : '—';
-        },
-      },
-      ...(section === 'open'
-        ? [
-            {
-              id: 'checks',
-              header: 'CI checks',
-              cell: (row: DeployEvent) => {
-                const checks = row.open_pr?.checks || [];
-                const ok = checks.filter((c) => c.status === 'ok').length;
-                const missing = checks.filter((c) => c.status === 'missing').length;
-                if (checks.length === 0) return '—';
-                return (
-                  <span className="ig-cell-meta">
-                    {ok}/{checks.length} ok{missing > 0 ? ` · ${missing} gap` : ''}
-                  </span>
-                );
-              },
-            } as DataTableColumn<DeployEvent>,
-          ]
-        : []),
-      {
-        id: 'request',
-        header: 'Request',
-        cell: (row) =>
-          row.request_id ? (
-            <Link href={`/tickets?id=${row.request_id}`} className="ig-cell-link" onClick={(e) => e.stopPropagation()}>
-              #{row.request_id}
-            </Link>
-          ) : (
-            '—'
-          ),
-      },
-    ],
-    [section],
-  );
+  const disconnectRepo = async () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const ok = await confirm({
+      title: `Disconnect ${owner}/${repo}?`,
+      message: 'Disconnect removes the watch list entry only. GitHub is not deleted.',
+      confirmLabel: 'Disconnect',
+    });
+    if (!ok) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner, name: repo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'The repository could not be disconnected');
+        return;
+      }
+      await router.push('/deploy-intelligence');
+    } catch {
+      setError('The repository could not be disconnected');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const brief: PRImpactBriefData | null = selected?.impact?.pr_number
-    ? selected.impact
-    : selected
-      ? {
-          request_id: selected.request_id,
-          pr_number: selected.pr_number,
-          pr_url: selected.pr_url,
-          title: selected.title,
-          author: selected.author,
-          base_branch: selected.base_branch,
-          head_branch: selected.head_branch,
-          merge_state: section === 'open' ? 'open' : 'merged',
-          deploy_status: section === 'open' ? 'open' : 'merged',
-          commit_count: selected.commit_count,
-          file_count: selected.file_count,
-          additions: selected.additions,
-          deletions: selected.deletions,
-          blast_radius: selected.impact?.blast_radius || [],
-          score: selected.score,
-          risk_level: selected.risk_level as PRImpactBriefData['risk_level'],
-          summary: selected.summary,
-          recommended_action: selected.impact?.recommended_action || '',
-          factors: selected.impact?.factors || [],
-          commits: selected.impact?.commits,
-          files: selected.impact?.files,
-          change_brief: selected.change_brief || selected.impact?.change_brief,
-          plan_delta: selected.impact?.plan_delta,
-          similar_merges: selected.similar_merges || selected.impact?.similar_merges,
-        }
-      : null;
-
-  const rowKey = (row: DeployEvent) => row.id ?? row.pr_number;
+  const risk = selected ? formatRisk(selected.score, selected.risk_level) : null;
+  const checks = selected ? formatCI(selected.open_pr?.ci, selected.open_pr?.checks) : null;
+  const commentPreview = selected?.change_brief?.markdown || selected?.github_post?.preview || selected?.summary || '';
 
   return (
     <DevOpsLayout>
       <Head>
-        <title>
-          {owner}/{repo} - Deploy intelligence
-        </title>
+        <title>{repo || 'Repository'} - OpsTrellis</title>
       </Head>
-      <div className="portal-page">
-        <div className="portal-page__header">
+      <div className="delivery-shell">
+        <Link href="/deploy-intelligence" className="delivery-back">Repositories</Link>
+        <header className="delivery-head delivery-head--repo">
           <div>
-            <span className="portal-page__eyebrow">Deploy intelligence</span>
-            <h1 className="portal-page__title">
-              {owner}/{repo}
-            </h1>
-            <p className="portal-page__subtitle">
-              {repoMeta?.setup_summary ||
-                'Watch open PRs, merged PRs, and related pipelines for this repository. Disconnect removes the watch list entry only.'}
+            <p className="delivery-kicker">Delivery</p>
+            <h1 className="delivery-title">{repo || 'Repository'}</h1>
+            <p className="delivery-meta">
+              {owner || 'Unknown'} · {repoMeta?.base_branch || 'main'} · {access.label} · {tracking.label}
             </p>
           </div>
-          <div className="portal-page__actions">
-            <Link href="/deploy-intelligence" className="btn btn-secondary">
-              All repositories
-            </Link>
-            {selected?.pr_url ? (
-              <a href={selected.pr_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
-                Open on GitHub
-              </a>
-            ) : null}
-            {canManage ? (
-              <>
+          {canManage ? (
+            <details className="delivery-menu">
+              <summary aria-label="Repository actions">⋯</summary>
+              <div className="delivery-menu__panel">
                 <button
                   type="button"
-                  className="btn btn-secondary"
-                  disabled={saving}
                   onClick={() => {
-                    setEditing(true);
                     setDraftOwner(owner);
                     setDraftName(repo);
                     setDraftBase(repoMeta?.base_branch || 'main');
-                    setError('');
-                    setNotice('');
+                    setEditing(true);
+                    setSection('settings');
                   }}
                 >
-                  Edit
+                  Edit catalog
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={saving}
-                  onClick={() => {
-                    void (async () => {
-                      const ok = await confirm({
-                        title: 'Disconnect repository',
-                        message: `Disconnect ${owner}/${repo} from OpsTrellis?`,
-                        detailLines: [
-                          'This removes the watch list entry for pipelines, open PRs, and merged PRs.',
-                          'The GitHub repository is not deleted.',
-                        ],
-                        confirmLabel: 'Disconnect',
-                        destructive: true,
-                      });
-                      if (!ok) return;
-                      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-                      if (!token) return;
-                      setSaving(true);
-                      setError('');
-                      setNotice('');
-                      try {
-                        const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
-                          method: 'DELETE',
-                          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ owner, name: repo }),
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                          setError(data?.error || 'The repository could not be disconnected');
-                          return;
-                        }
-                        await router.push('/deploy-intelligence');
-                      } catch {
-                        setError('The repository could not be disconnected');
-                      } finally {
-                        setSaving(false);
-                      }
-                    })();
-                  }}
-                >
-                  Disconnect
-                </button>
-              </>
-            ) : null}
-          </div>
+                <button type="button" onClick={() => void disconnectRepo()}>Disconnect</button>
+              </div>
+            </details>
+          ) : null}
+        </header>
+
+        <div className="delivery-subtabs" role="tablist" aria-label="Repository views">
+          {(
+            [
+              ['open', `Open PRs (${openCount})`],
+              ['merges', `Merged analyses (${mergeCount})`],
+              ['settings', 'Settings'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`delivery-subtab${section === id ? ' is-active' : ''}`}
+              onClick={() => setSection(id)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
-        {editing ? (
-          <form
-            className="portal-surface"
-            style={{ marginBottom: 24 }}
-            onSubmit={(event) => {
-              event.preventDefault();
-              void (async () => {
-                const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-                if (!token) return;
-                setSaving(true);
-                setError('');
-                setNotice('');
-                try {
-                  const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
-                    method: 'PATCH',
-                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      owner,
-                      name: repo,
-                      new_owner: draftOwner.trim(),
-                      new_name: draftName.trim(),
-                      base_branch: draftBase.trim() || 'main',
-                    }),
-                  });
-                  const data = await res.json().catch(() => ({}));
-                  if (!res.ok) {
-                    setError(data?.error || (res.status === 404 ? 'Repository not found' : 'The catalog could not be updated'));
-                    return;
-                  }
-                  setEditing(false);
-                  setNotice(data?.note || 'Catalog repository updated. The GitHub repository was not renamed or deleted.');
-                  const nextOwner = data?.repo?.owner || draftOwner.trim();
-                  const nextName = data?.repo?.name || draftName.trim();
-                  if (nextOwner !== owner || nextName !== repo) {
-                    await router.replace(`/deploy-intelligence/${encodeURIComponent(nextOwner)}/${encodeURIComponent(nextName)}`);
-                    return;
-                  }
-                  await load();
-                } catch {
-                  setError('The catalog could not be updated');
-                } finally {
-                  setSaving(false);
-                }
-              })();
-            }}
-          >
-            <span className="portal-surface__eyebrow">Edit catalog</span>
-            <p className="portal-surface__subtitle">
-              This updates the OpsTrellis watch list only. GitHub is not renamed.
-            </p>
-            <div className="portal-page__actions" style={{ marginTop: 12 }}>
-              <label className="label" style={{ margin: 0 }}>
-                Owner
-                <input className="input" value={draftOwner} onChange={(event) => setDraftOwner(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={saving} />
-              </label>
-              <label className="label" style={{ margin: 0 }}>
-                Repository
-                <input className="input" value={draftName} onChange={(event) => setDraftName(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={saving} />
-              </label>
-              <label className="label" style={{ margin: 0 }}>
-                Base branch
-                <input className="input" value={draftBase} onChange={(event) => setDraftBase(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={saving} />
-              </label>
-              <button type="submit" className="btn btn-primary" disabled={saving || !draftOwner.trim() || !draftName.trim()}>
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-              <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-            </div>
-          </form>
+        {tokenFailure ? (
+          <div className="alert alert-error">GitHub access failed. Configure GITHUB_TOKEN on the API so pull requests can be listed.</div>
+        ) : null}
+        {githubFailed && !tokenFailure ? (
+          <div className="alert alert-error">{githubError || 'GitHub access failed for this repository.'}</div>
         ) : null}
 
-        {repoMeta?.last_change ? (
-          <section className="portal-surface" style={{ marginBottom: 24 }}>
-            <div className="portal-surface__header">
+        {section !== 'settings' ? (
+          <div className="delivery-toolbar">
+            <label className="delivery-search">
+              <span className="delivery-search__label">Find pull request</span>
+              <input
+                className="delivery-search__input"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Title, number, or author"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            {section === 'open' ? (
+              <label className="delivery-check">
+                <input type="checkbox" checked={includeDrafts} onChange={(event) => setIncludeDrafts(event.target.checked)} />
+                Include drafts
+              </label>
+            ) : (
+              <details className="delivery-menu">
+                <summary>Import merged PR</summary>
+                <div className="delivery-menu__panel delivery-menu__panel--form">
+                  <label className="label">
+                    PR number
+                    <input className="input" value={refreshPR} onChange={(event) => setRefreshPR(event.target.value.replace(/[^\d]/g, ''))} />
+                  </label>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={!refreshPR || refreshing} onClick={() => void importMergedPR()}>
+                    {refreshing ? 'Importing…' : 'Import'}
+                  </button>
+                </div>
+              </details>
+            )}
+          </div>
+        ) : null}
+
+        {section === 'settings' ? (
+          <section className="delivery-panel">
+            <h2 className="delivery-panel__title">Connection</h2>
+            <dl className="delivery-facts">
               <div>
-                <span className="portal-surface__eyebrow">Last Change Request</span>
-                <h2 className="portal-surface__title">{repoMeta.last_change.change_number}</h2>
-                <p className="portal-surface__subtitle">
-                  {repoMeta.last_change.sha.slice(0, 12)}
-                  {repoMeta.last_change.previous_sha ? ` · previous ${repoMeta.last_change.previous_sha.slice(0, 7)}` : ''}
-                  {repoMeta.last_change.status ? ` · ${repoMeta.last_change.status}` : ''}
-                </p>
+                <dt>GitHub access</dt>
+                <dd><span className={`delivery-status delivery-status--${access.tone}`}>{access.label}</span></dd>
               </div>
-              <span className={`ig-chip ig-chip--${repoMeta.last_change.provenance_signed ? 'ok' : 'medium'}`}>
-                {repoMeta.last_change.provenance_signed ? 'Signed provenance' : 'Unsigned'}
-              </span>
-              {repoMeta.last_change.drift?.drifted ? (
-                <span className="ig-chip ig-chip--medium">{repoMeta.last_change.drift.detail || 'Live image drifted from last CHG'}</span>
-              ) : null}
-            </div>
-            <div className="portal-page__actions" style={{ justifyContent: 'flex-start' }}>
-              <Link href={`/changes/${repoMeta.last_change.id}`} className="btn btn-secondary">
-                Open change
-              </Link>
-              {repoMeta.last_change.sbom_url ? (
-                <a href={repoMeta.last_change.sbom_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary">
-                  SBOM
-                </a>
-              ) : null}
-              {repoMeta.last_change.rollback?.k8s_href ? (
-                <Link href={repoMeta.last_change.rollback.k8s_href} className="btn btn-secondary">
-                  Cluster
-                </Link>
-              ) : null}
-              {repoMeta.last_change.rollback?.allowed && repoMeta.last_change.rollback.previous_sha ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={rollingLastChange}
-                  onClick={() => {
-                    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-                    if (!token || !repoMeta.last_change) return;
-                    setRollingLastChange(true);
-                    setError('');
-                    fetch(`${apiUrl}/api/devops/changes/${repoMeta.last_change.id}/rollback`, {
-                      method: 'POST',
-                      headers: { Authorization: `Bearer ${token}` },
-                    })
-                      .then(async (res) => {
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                          setError(data?.error || 'Failed to record rollback');
-                          return;
-                        }
-                        if (data.change?.id) {
-                          void router.push(`/changes/${data.change.id}`);
-                        }
-                      })
-                      .catch(() => setError('Failed to record rollback'))
-                      .finally(() => setRollingLastChange(false));
-                  }}
-                >
-                  {rollingLastChange
-                    ? 'Recording…'
-                    : `Roll back to ${repoMeta.last_change.rollback.previous_sha.slice(0, 7)}`}
-                </button>
-              ) : repoMeta.last_change.rollback?.block_reason ? (
-                <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>{repoMeta.last_change.rollback.block_reason}</span>
-              ) : null}
+              <div>
+                <dt>Merge tracking</dt>
+                <dd><span className={`delivery-status delivery-status--${tracking.tone}`}>{tracking.label}</span></dd>
+              </div>
+              <div>
+                <dt>Last sync</dt>
+                <dd>{formatWhen(repoMeta?.last_sync_at || githubMeta?.fetched_at)}</dd>
+              </div>
+              <div>
+                <dt>Webhook</dt>
+                <dd><code>{repoMeta?.webhook_path || '/api/webhooks/github'}</code></dd>
+              </div>
+            </dl>
+            {repoMeta?.merge_tracking !== 'configured' ? (
+              <div className="delivery-empty-panel">
+                <h2>Complete merge tracking</h2>
+                <p>
+                  Open PRs can load from GitHub without this step. Add a GitOps project so merges into {repoMeta?.base_branch || 'main'} are captured automatically.
+                </p>
+                <div className="portal-page__actions">
+                  <Link href="/gitops-projects" className="btn btn-primary">Open GitOps projects</Link>
+                  <Link href="/operations/webhooks" className="btn btn-secondary">Webhook settings</Link>
+                </div>
+              </div>
+            ) : (
+              <p className="delivery-empty">Merges into {repoMeta?.base_branch || 'main'} are captured automatically.</p>
+            )}
+            {editing ? (
+              <form
+                className="portal-page__actions"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveEdit();
+                }}
+              >
+                <label className="label">
+                  Owner
+                  <input className="input" value={draftOwner} onChange={(event) => setDraftOwner(event.target.value.replace(/\s+/g, ''))} />
+                </label>
+                <label className="label">
+                  Repository
+                  <input className="input" value={draftName} onChange={(event) => setDraftName(event.target.value.replace(/\s+/g, ''))} />
+                </label>
+                <label className="label">
+                  Base branch
+                  <input className="input" value={draftBase} onChange={(event) => setDraftBase(event.target.value.replace(/\s+/g, ''))} />
+                </label>
+                <button type="submit" className="btn btn-primary" disabled={saving}>Save catalog</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+              </form>
+            ) : null}
+          </section>
+        ) : loading ? (
+          <p className="delivery-empty">Loading pull requests…</p>
+        ) : visible.length === 0 ? (
+          <div className="delivery-empty-panel">
+            <h2>{section === 'open' ? 'No open pull requests' : 'No merged analyses yet'}</h2>
+            <p>
+              {section === 'open'
+                ? 'GitHub returned no open PRs for this repository and filter.'
+                : 'Merged analyses appear after a production merge is tracked, or after you import a merged PR.'}
+            </p>
+          </div>
+        ) : (
+          <section className="delivery-panel">
+            <div className="table-scroll">
+              <table className="delivery-table">
+                <thead>
+                  <tr>
+                    <th>Pull request</th>
+                    <th>Risk</th>
+                    <th>{section === 'open' ? 'CI checks' : 'Merged'}</th>
+                    <th>{section === 'open' ? 'Review age' : 'Branch'}</th>
+                    <th>Change request</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((item) => {
+                    const itemRisk = formatRisk(item.score, item.risk_level);
+                    const itemCI = formatCI(item.open_pr?.ci, item.open_pr?.checks);
+                    const age = formatReviewAge(item.open_pr?.age_days, item.open_pr?.review_sla);
+                    return (
+                      <tr key={item.pr_number}>
+                        <td>
+                          <button type="button" className="delivery-pr-link" onClick={() => reviewEvent(item)}>
+                            <span className="delivery-pr-link__title">{item.title || `Pull request #${item.pr_number}`}</span>
+                            <span className="delivery-pr-link__meta">#{item.pr_number} · {item.author || 'Unknown'}</span>
+                          </button>
+                        </td>
+                        <td>
+                          <span className={`delivery-status delivery-status--${itemRisk.band}`} title={`${itemRisk.scale}. ${itemRisk.note}`}>
+                            {itemRisk.label}
+                          </span>
+                        </td>
+                        <td>
+                          {section === 'open' ? (
+                            <span className={`delivery-status delivery-status--${itemCI.tone}`}>{itemCI.label}</span>
+                          ) : (
+                            <span className="delivery-status delivery-status--unknown">{formatWhen(item.merged_at)}</span>
+                          )}
+                        </td>
+                        <td>
+                          {section === 'open' ? (
+                            <>
+                              <span>{age.label}</span>
+                              {age.overdue ? <span className="delivery-status delivery-status--failed">Overdue</span> : null}
+                            </>
+                          ) : (
+                            <span>{item.head_branch || '—'}</span>
+                          )}
+                        </td>
+                        <td>
+                          {item.request_id ? (
+                            <Link href={`/changes/${item.request_id}`}>CHG linked</Link>
+                          ) : (
+                            <span className="delivery-status delivery-status--unknown">Not linked</span>
+                          )}
+                        </td>
+                        <td>
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => reviewEvent(item)}>
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </section>
-        ) : null}
-
-        <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">Pull requests</span>
-              <h2 className="portal-surface__title">PR analysis</h2>
-              <p className="portal-surface__subtitle">
-                Base branch <strong>{repoMeta?.base_branch || 'main'}</strong> · {repoMeta?.merge_count ?? 0} stored merges ·{' '}
-                {repoMeta?.open_pr_count ?? 0} open on GitHub
-              </p>
-            </div>
-            <SegmentedControl
-              label="Pull request section"
-              value={section}
-              onChange={(value) => setSection(value === 'open' ? 'open' : 'merges')}
-              options={[
-                { value: 'merges', label: 'Merged to base' },
-                { value: 'open', label: 'Open PRs' },
-              ]}
-            />
-          </div>
-
-          {section === 'merges' ? (
-            <form
-              className="ig-lifecycle__row"
-              style={{ marginBottom: 16 }}
-              onSubmit={(e) => {
-                e.preventDefault();
-                const n = parseInt(refreshPR, 10);
-                if (!n) return;
-                setRefreshing(true);
-                void load(n);
-              }}
-            >
-              <input
-                className="ig-lifecycle__select"
-                placeholder="Backfill merged PR #"
-                value={refreshPR}
-                onChange={(e) => setRefreshPR(e.target.value)}
-                aria-label="Pull request number to analyze"
-              />
-              <button type="submit" className="btn btn-secondary btn-sm" disabled={refreshing || !refreshPR.trim()}>
-                {refreshing ? 'Analyzing…' : 'Analyze & store merge'}
-              </button>
-            </form>
-          ) : (
-            <div className="ig-lifecycle__row" style={{ marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-              <SegmentedControl
-                label="Base branch filter"
-                value={baseFilter}
-                onChange={(v) => setBaseFilter(v === 'production' ? 'production' : 'all')}
-                options={[
-                  { value: 'production', label: `→ ${repoMeta?.base_branch || 'main'}` },
-                  { value: 'all', label: 'All open' },
-                ]}
-              />
-              <label className="portal-toolbar__item" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={includeDrafts} onChange={(e) => setIncludeDrafts(e.target.checked)} />
-                <span className="credential-audit-label">Include drafts</span>
-              </label>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                disabled={loading || refreshing}
-                onClick={() => {
-                  setRefreshing(true);
-                  void load();
-                }}
-              >
-                {refreshing || loading ? 'Fetching from GitHub…' : 'Refresh from GitHub'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                disabled={loading || refreshing}
-                onClick={() => {
-                  setRefreshing(true);
-                  void load(undefined, { batchDeep: true });
-                }}
-                title="Deep-analyze up to 12 PRs (commits, files, CI checks)"
-              >
-                Batch analyze
-              </button>
-              {githubMeta?.fetched_at ? (
-                <span className="portal-surface__subtitle" style={{ margin: 0 }}>
-                  Last fetch {new Date(githubMeta.fetched_at).toLocaleString()} · {githubMeta.listed} listed
-                  {githubMeta.truncated ? ` (cap ${githubMeta.max_listed}; more open on GitHub)` : ''}
-                </span>
-              ) : null}
-              {githubError ? <span className="alert alert-error" style={{ margin: 0, padding: '8px 12px' }}>{githubError}</span> : null}
-              {!githubMeta?.configured && section === 'open' ? (
-                <span className="portal-surface__subtitle" style={{ margin: 0 }}>
-                  Configure <code>GITHUB_TOKEN</code> on the backend to list open pull requests.
-                </span>
-              ) : null}
-            </div>
-          )}
-
-          <div className="ig-legacy-table">
-            <DataTable<DeployEvent>
-              label={section === 'merges' ? 'Merged pull requests' : 'Open pull requests (live analysis)'}
-              columns={columns}
-              rows={events}
-              rowKey={rowKey}
-              loading={loading}
-              activeKey={selected ? rowKey(selected) : null}
-              onRowOpen={onRowOpen}
-              empty={
-                <EmptyState
-                  title={section === 'merges' ? 'No merge analyses yet' : 'No open pull requests'}
-                  body={
-                    section === 'merges'
-                      ? 'Merge to the production base branch or backfill a PR number above.'
-                      : githubError
-                        ? 'Fix GitHub access above, then use Refresh from GitHub.'
-                        : 'No open pull requests on this repository, or the list is still loading.'
-                  }
-                />
-              }
-            />
-          </div>
-        </section>
-
+        )}
       </div>
 
-      <InspectorDrawer open={Boolean(selected)} title={selected ? `PR #${selected.pr_number}` : 'PR analysis'} onClose={() => setSelected(null)}>
-        {selected?.change_brief || selected?.impact?.change_brief ? (
-          <div className="portal-surface" style={{ marginBottom: 16 }}>
-            <span className="portal-surface__eyebrow">Change brief</span>
-            <h3 className="portal-surface__title" style={{ marginTop: 4 }}>
-              {(selected.change_brief || selected.impact.change_brief)?.headline}
-            </h3>
-            {(selected.change_brief || selected.impact.change_brief)?.multi_env ? (
-              <p className="portal-surface__subtitle">This PR touches more than one environment path.</p>
+      <InspectorDrawer
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        wide
+        resetKey={selected?.pr_number}
+        eyebrow="Pull request review"
+        title={selected ? `#${selected.pr_number} ${selected.title}` : 'Pull request'}
+        subtitle={selected ? `${selected.author || 'Unknown'} · ${selected.head_branch || 'branch'} → ${selected.base_branch || 'base'}` : ''}
+        footer={selected ? (
+          <div className="delivery-drawer-actions">
+            {selected.pr_url ? (
+              <a className="btn btn-secondary" href={selected.pr_url} target="_blank" rel="noreferrer">Open on GitHub</a>
             ) : null}
-            {(selected.change_brief || selected.impact.change_brief)?.changing?.length ? (
-              <ul className="portal-list" style={{ marginTop: 10 }}>
-                {(selected.change_brief || selected.impact.change_brief)!.changing.map((group) => (
-                  <li key={group.key}>
-                    {group.label} · {group.count} file{group.count === 1 ? '' : 's'}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {(selected.change_brief || selected.impact.change_brief)?.risk_because?.length ? (
-              <ul className="portal-list" style={{ marginTop: 10 }}>
-                {(selected.change_brief || selected.impact.change_brief)!.risk_because.map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-              </ul>
-            ) : null}
-            {selected.impact?.plan_delta?.has_plan ? (
-              <p className="portal-surface__subtitle" style={{ marginTop: 10 }}>
-                Plan vs PR: {selected.impact.plan_delta.summary}
-              </p>
-            ) : null}
-            {(selected.similar_merges || selected.impact?.similar_merges)?.length ? (
-              <ul className="portal-list" style={{ marginTop: 10 }}>
-                {(selected.similar_merges || selected.impact?.similar_merges || []).map((item) => (
-                  <li key={item.pr_number}>
-                    Similar #{item.pr_number} {item.headline || item.title}
-                    {item.later_revert ? ` · later revert #${item.later_revert.pr_number}` : ''}
-                  </li>
-                ))}
-              </ul>
+            {section === 'open' ? (
+              <button type="button" className="btn btn-primary" disabled={posting} onClick={() => void postGitHubComment(selected)}>
+                {posting ? 'Posting…' : 'Post GitHub comment'}
+              </button>
             ) : null}
           </div>
         ) : null}
-        {selected?.open_pr ? (
-          <div className="portal-surface" style={{ marginBottom: 16 }}>
-            {(() => {
-              const posted = selected.github_post;
-              const deployCheck = selected.open_pr.checks?.find((check) => check.key === 'deploy_intel');
-              const postedOk = Boolean(posted?.check_posted || posted?.comment_posted || deployCheck?.status === 'ok');
-              return (
-                <span className={`ig-chip ig-chip--${postedOk ? 'ok' : posted?.error ? 'danger' : 'neutral'}`} style={{ marginRight: 8 }}>
-                  {posted?.check_posted
-                    ? 'infragate/deploy-intel posted'
-                    : posted?.comment_posted
-                      ? 'PR comment posted'
-                      : postedOk
-                        ? 'GitHub brief posted'
-                        : 'GitHub brief not posted'}
-                </span>
-              );
-            })()}
-            {selected.open_pr.is_draft ? <span className="ig-chip ig-chip--neutral">Draft</span> : null}
-            {selected.open_pr.conflicts_with && selected.open_pr.conflicts_with.length > 0 ? (
-              <p className="portal-surface__subtitle" style={{ marginTop: 8 }}>
-                Overlaps open PRs #{selected.open_pr.conflicts_with.join(', #')}
-              </p>
-            ) : null}
-            {selected.open_pr.review_detail ? <p className="portal-surface__subtitle">{selected.open_pr.review_detail}</p> : null}
-            {selected.open_pr.checks && selected.open_pr.checks.length > 0 ? (
-              <ul className="portal-list">
-                {selected.open_pr.checks.map((c) => (
-                  <li key={c.key}>
-                    <code>{c.label}</code>{' '}
-                    <span className={`ig-chip ig-chip--${c.status === 'ok' ? 'ok' : c.status === 'missing' ? 'danger' : 'neutral'}`}>
-                      {c.status}
-                    </span>
+      >
+        {selected && risk && checks ? (
+          <div className="delivery-drawer">
+            <section>
+              <h3>Summary</h3>
+              <p>{selected.impact?.summary || selected.summary || 'No summary yet.'}</p>
+              <p className="delivery-table__hint">{risk.note} {selected.impact?.recommended_action || ''}</p>
+            </section>
+            <section>
+              <h3>Risk evidence</h3>
+              <p><strong>{risk.label}</strong> · {risk.scale}</p>
+              {(selected.impact?.files || []).length ? (
+                <ul>
+                  {(selected.impact?.files || []).slice(0, 8).map((file) => (
+                    <li key={file.path}>{file.path}{file.category ? ` · ${file.category}` : ''}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No file evidence stored yet.</p>
+              )}
+              {selected.impact?.analyzed_at ? <p className="delivery-table__hint">Analyzed {formatWhen(selected.impact.analyzed_at)}</p> : null}
+            </section>
+            <section>
+              <h3>Checks</h3>
+              <p><span className={`delivery-status delivery-status--${checks.tone}`}>{checks.label}</span></p>
+              <ul>
+                {(selected.open_pr?.checks || []).map((check) => (
+                  <li key={check.key || check.label}>
+                    {check.label}: {check.status || 'unknown'}{check.detail ? ` — ${check.detail}` : ''}
                   </li>
                 ))}
               </ul>
-            ) : null}
-            {selected.open_pr.preview_environments && selected.open_pr.preview_environments.length > 0 ? (
-              <ul className="portal-list" style={{ marginTop: 12 }}>
-                {selected.open_pr.preview_environments.map((p) => (
-                  <li key={p.request_id}>
-                    <Link href={`/tickets?id=${p.request_id}`} className="ig-cell-link">
-                      {p.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {selected.open_pr.suggest_ticket && !selected.request_id ? (
-              <div style={{ marginTop: 12 }}>
-                <label className="portal-toolbar__item">
-                  <span className="credential-audit-label">Exception reasons (required for high risk)</span>
-                  <textarea
-                    className="input"
-                    rows={3}
-                    value={ackReasons}
-                    onChange={(event) => setAckReasons(event.target.value)}
-                    placeholder="Why this high-risk PR can proceed as a ticket"
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  style={{ marginTop: 8 }}
-                  disabled={suggestingTicket}
-                  onClick={() => void suggestTicket(selected.pr_number, ackReasons.trim().length > 0)}
-                >
-                  {suggestingTicket ? 'Creating ticket…' : 'Create OpsTrellis ticket'}
-                </button>
-              </div>
-            ) : null}
-            {selected.open_pr.suggest_ticket_reason ? (
-              <p className="portal-surface__subtitle" style={{ marginTop: 8 }}>
-                {selected.open_pr.suggest_ticket_reason}
+              {selected.open_pr?.review_detail ? <p>{selected.open_pr.review_detail}</p> : null}
+            </section>
+            <section>
+              <h3>Change request</h3>
+              {selected.request_id ? (
+                <p><Link href={`/changes/${selected.request_id}`}>Open linked change</Link></p>
+              ) : (
+                <div>
+                  <p>Not linked. A low risk score does not approve a release.</p>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={suggestingTicket} onClick={() => void suggestTicket(selected.pr_number)}>
+                    {suggestingTicket ? 'Creating…' : 'Create change request'}
+                  </button>
+                  {ticketMessage ? <p>{ticketMessage}</p> : null}
+                </div>
+              )}
+            </section>
+            <section>
+              <h3>Technical details</h3>
+              <p>
+                {selected.commit_count || 0} commits · {selected.file_count || 0} files · +{selected.additions || 0} / −{selected.deletions || 0}
               </p>
-            ) : null}
-            {ticketMessage ? <p className="portal-surface__subtitle">{ticketMessage}</p> : null}
+              <p>Head: {selected.head_branch || 'Unknown'}</p>
+              {selected.impact?.stack ? <p>Detected stack: {selected.impact.stack}</p> : null}
+            </section>
+            <section>
+              <h3>Preview GitHub comment</h3>
+              <pre className="delivery-preview">{commentPreview || 'No comment preview yet.'}</pre>
+              {selected.github_post?.error ? <p className="delivery-table__hint">{selected.github_post.error}</p> : null}
+            </section>
           </div>
         ) : null}
-        {selected?.github_post ? (
-          <p className="portal-surface__subtitle" style={{ marginBottom: 12 }}>
-            GitHub brief:{' '}
-            {selected.github_post.comment_posted ? 'comment posted' : 'comment not posted'}
-            {selected.github_post.check_posted ? ' · check posted' : ' · check needs GitHub App'}
-            {selected.github_post.error ? ` · ${selected.github_post.error}` : ''}
-          </p>
-        ) : null}
-        {brief ? <PRImpactBrief brief={brief} /> : null}
       </InspectorDrawer>
     </DevOpsLayout>
   );

@@ -89,6 +89,7 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/approval-center', key: 'tickets' },
   { prefix: '/approval-sla', key: 'tickets' },
   { prefix: '/deploy-intelligence', key: 'releases' },
+  { prefix: '/pull-requests', key: 'releases' },
   { prefix: '/pipelines', key: 'releases' },
   { prefix: '/gitops-projects', key: 'releases' },
   { prefix: '/gitops-control', key: 'releases' },
@@ -203,7 +204,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'environments', grants.manager)) prefixes.push('/environments');
     if (pageOn(grants, 'cloud-accounts', grants.manager)) prefixes.push('/cloud-accounts');
     if (pageOn(grants, 'cloud-inventory', grants.manager)) prefixes.push('/cloud-resources');
-    if (pageOn(grants, 'releases', grants.manager)) prefixes.push('/promotions', '/deploy-intelligence', '/pipelines', '/gitops-projects', '/gitops-control', '/release-notes', '/project-operations');
+    if (pageOn(grants, 'releases', grants.manager)) prefixes.push('/promotions', '/deploy-intelligence', '/pull-requests', '/pipelines', '/gitops-projects', '/gitops-control', '/release-notes', '/project-operations');
     if (grants.manager) prefixes.push('/gate-approvals', '/gate-policies');
   }
   if (grants.security) {
@@ -218,6 +219,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
       '/approval-sla',
       '/change-calendar',
       '/deploy-intelligence',
+      '/pull-requests',
       '/pipelines',
       '/gitops-projects',
       '/gitops-control',
@@ -239,6 +241,7 @@ export function accessRequirement(pathname: string): string {
   if (matches(pathname, '/change-calendar')) return 'Needs Daily access, including change requests.';
   if (
     matches(pathname, '/deploy-intelligence')
+    || matches(pathname, '/pull-requests')
     || matches(pathname, '/pipelines')
     || matches(pathname, '/gitops-projects')
     || matches(pathname, '/gitops-control')

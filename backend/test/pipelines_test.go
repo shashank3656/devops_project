@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestPipelineLabelForChange(t *testing.T) {
 	if pipelineLabelForChange(changeRequestRecord{Status: "implemented"}) != "Unknown" {
@@ -17,11 +20,30 @@ func TestPipelineLabelForChange(t *testing.T) {
 	}
 }
 
+func TestPipelineFreshnessMarksStaleRunning(t *testing.T) {
+	now := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	created := now.Add(-20 * 24 * time.Hour)
+	updated := now.Add(-11 * 24 * time.Hour)
+	minutes, known, lastChecked, stale := pipelineFreshness(changeRequestRecord{
+		CreatedAt: created,
+		UpdatedAt: updated,
+	}, "Running", now)
+	if !known || !stale {
+		t.Fatalf("expected known stale running pipeline, got known=%v stale=%v", known, stale)
+	}
+	if minutes < 11*24*60 {
+		t.Fatalf("expected elapsed duration from created, got %d", minutes)
+	}
+	if !lastChecked.Equal(updated) {
+		t.Fatalf("last checked should be updated_at, got %s", lastChecked)
+	}
+}
+
 func TestListPipelineCatalogWithoutDB(t *testing.T) {
 	saved := DB
 	DB = nil
 	defer func() { DB = saved }()
-	if got := listPipelineCatalog(); got == nil || len(got) != 0 {
+	if got := listPipelineCatalog(0, ""); got == nil || len(got) != 0 {
 		t.Fatalf("expected empty catalog, got %#v", got)
 	}
 }

@@ -29,3 +29,22 @@ func TestOpenPRMatchesFiltersDraft(t *testing.T) {
 		t.Fatal("draft included")
 	}
 }
+
+func TestGithubCheckOutcomeAndCILabel(t *testing.T) {
+	if githubCheckOutcome("failure", "completed") != "failed" {
+		t.Fatal("failure is failed")
+	}
+	if githubCheckOutcome("", "in_progress") != "pending" {
+		t.Fatal("in progress is pending")
+	}
+	if githubCheckOutcome("success", "completed") != "ok" {
+		t.Fatal("success is ok")
+	}
+	label := formatCISummaryLabel(deployIntelCISummary{Failed: 2, Pending: 1, Passed: 3})
+	if label != "2 failed · 1 pending · 3 passed" {
+		t.Fatalf("got %q", label)
+	}
+	if formatCISummaryLabel(deployIntelCISummary{}) != "No checks yet" {
+		t.Fatal("empty checks stay unknown")
+	}
+}

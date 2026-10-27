@@ -117,15 +117,15 @@ export default function DeployIntelligenceOnboardPage() {
   return (
     <DevOpsLayout>
       <Head>
-        <title>Onboard repository - Deploy intelligence</title>
+        <title>Connect repository - OpsTrellis</title>
       </Head>
-      <div className="di-page">
-        <header className="di-page__head">
-          <Link href="/deploy-intelligence" className="di-back">
-            ← Back to repositories
+      <div className="delivery-shell">
+        <header className="delivery-head">
+          <Link href="/deploy-intelligence" className="delivery-back">
+            Repositories
           </Link>
-          <p className="di-kicker">Deploy intelligence</p>
-          <h1 className="di-title">Onboard a repository</h1>
+          <p className="delivery-kicker">Delivery</p>
+          <h1 className="delivery-title">Connect a repository</h1>
           <p className="di-lede">
             Connect a GitHub repo so OpsTrellis can analyze open and merged pull requests and post a change brief on the PR. The owner and name must already exist on GitHub. A missing repository is not added.
           </p>
@@ -206,7 +206,7 @@ export default function DeployIntelligenceOnboardPage() {
             </label>
 
             <button type="submit" className="di-submit" disabled={!canSubmit}>
-              {onboarding ? 'Onboarding…' : 'Onboard'}
+              {onboarding ? 'Connecting…' : 'Connect repository'}
             </button>
           </div>
 

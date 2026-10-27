@@ -542,7 +542,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		if openOpts.Limit <= 0 {
 			openOpts.Limit = limit
 		}
-		if refreshNumber > 0 {
+		if refreshNumber > 0 && openOpts.DeepPR <= 0 {
 			openOpts.DeepPR = refreshNumber
 		}
 		events, githubFetch, err = listOpenPullRequestsAnalyzed(owner, repo, openOpts)

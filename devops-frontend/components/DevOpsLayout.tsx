@@ -157,8 +157,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/problems/new': 'Create problem',
   '/knowledge': 'Knowledge',
   '/activity': 'Operator activity',
-  '/deploy-intelligence': 'Deploy intelligence',
-  '/deploy-intelligence/onboard': 'Onboard repository',
+  '/deploy-intelligence': 'Repositories',
+  '/deploy-intelligence/onboard': 'Connect repository',
+  '/pull-requests': 'Pull requests',
   '/pipelines': 'Pipelines',
   '/gate-approvals': 'Promotion history',
   '/notification-settings': 'Alert Settings',
@@ -706,6 +707,16 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       return pathname === '/cost/budgets' || pathname.startsWith('/cost/budgets/') || pathname === '/cost/anomalies';
     }
     if (href === '/k8s') return pathname === '/k8s' || pathname.startsWith('/k8s/');
+    if (href === '/deploy-intelligence') {
+      return (
+        pathname === '/deploy-intelligence'
+        || pathname.startsWith('/deploy-intelligence/')
+        || pathname === '/pull-requests'
+        || pathname === '/pipelines'
+        || pathname === '/previews'
+        || pathname.startsWith('/previews/')
+      );
+    }
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
@@ -787,7 +798,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     iamNavItem,
     { href: '/k8s', label: 'Kubernetes', Icon: IconK8s },
     { href: '/promotions', label: 'Releases', Icon: IconFileText },
-    { href: '/pipelines', label: 'Pipelines', Icon: IconFileText },
+    { href: '/deploy-intelligence', label: 'Delivery', Icon: IconFileText },
   ];
   const securityNavItems: NavItem[] = isManager
     ? [
@@ -1400,7 +1411,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'problems', label: 'Problems', href: '/problems', hint: 'Problem records' },
           { id: 'create-problem', label: 'Create problem', href: '/problems/new', hint: 'Open a problem' },
           { id: 'knowledge', label: 'Knowledge', href: '/knowledge', hint: 'Articles' },
-          { id: 'deploy-intel', label: 'Deploy intelligence', href: '/deploy-intelligence', hint: 'Deploy signals' },
+          { id: 'delivery', label: 'Delivery', href: '/deploy-intelligence', hint: 'Repositories, pull requests, pipelines' },
           { id: 'pipelines', label: 'Pipelines', href: '/pipelines', hint: 'CI runs posted onto changes' },
         ].filter((command) => !user || pathAllowed(command.href, grants))}
       />
