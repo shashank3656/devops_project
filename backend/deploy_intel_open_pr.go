@@ -1,17 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/go-github/v61/github"
+	"github.com/lib/pq"
 )
 
 const (
@@ -39,6 +44,23 @@ type deployIntelCISummary struct {
 	Skipped int    `json:"skipped"`
 	Label   string `json:"label"`
 }
+
+type deployIntelPipelineLink struct {
+	ChangeID     int    `json:"change_id,omitempty"`
+	ChangeNumber string `json:"change_number,omitempty"`
+	PipelineURL  string `json:"pipeline_url,omitempty"`
+	Label        string `json:"label"`
+	Href         string `json:"href"`
+}
+
+type githubCICache struct {
+	States map[int]string
+	At     time.Time
+}
+
+var githubCIStore sync.Map
+
+const githubCITTL = 45 * time.Second
 
 type deployIntelOpenPRMeta struct {
 	IsDraft             bool                       `json:"is_draft"`
@@ -173,6 +195,262 @@ func githubCheckOutcome(conclusion, status string) string {
 	default:
 		return "unknown"
 	}
+}
+
+func ciSummaryFromRollup(state string) deployIntelCISummary {
+	switch strings.ToUpper(strings.TrimSpace(state)) {
+	case "SUCCESS":
+		return deployIntelCISummary{Passed: 1, Label: "Passing"}
+	case "FAILURE", "ERROR":
+		return deployIntelCISummary{Failed: 1, Label: "Failing"}
+	case "PENDING", "EXPECTED":
+		return deployIntelCISummary{Pending: 1, Label: "Pending"}
+	default:
+		return deployIntelCISummary{Label: "No checks yet"}
+	}
+}
+
+func deliveryPipelinesHref(owner, name string, prNumber int) string {
+	owner, name = normalizeRepoIdentity(owner, name)
+	params := url.Values{}
+	if owner != "" && name != "" {
+		params.Set("repo", owner+"/"+name)
+	}
+	if prNumber > 0 {
+		params.Set("pr", strconv.Itoa(prNumber))
+	}
+	if len(params) == 0 {
+		return "/pipelines"
+	}
+	return "/pipelines?" + params.Encode()
+}
+
+func githubCICacheKey(owner, name string) string {
+	return strings.ToLower(strings.Trim(owner+"/"+name, "/"))
+}
+
+func attachCheapCISummaries(ctx context.Context, owner, name string, events []repoDeployEvent) {
+	if len(events) == 0 {
+		return
+	}
+	need := make([]int, 0, len(events))
+	for _, ev := range events {
+		if ev.PRNumber <= 0 {
+			continue
+		}
+		if ev.OpenPR != nil && strings.TrimSpace(ev.OpenPR.CI.Label) != "" && ev.OpenPR.CI.Label != "No checks yet" {
+			continue
+		}
+		need = append(need, ev.PRNumber)
+	}
+	if len(need) == 0 {
+		return
+	}
+	states := loadCheapCIStates(ctx, owner, name, need)
+	if len(states) == 0 {
+		return
+	}
+	for i := range events {
+		if events[i].OpenPR == nil {
+			continue
+		}
+		if strings.TrimSpace(events[i].OpenPR.CI.Label) != "" && events[i].OpenPR.CI.Label != "No checks yet" {
+			continue
+		}
+		state, ok := states[events[i].PRNumber]
+		if !ok {
+			continue
+		}
+		events[i].OpenPR.CI = ciSummaryFromRollup(state)
+	}
+}
+
+func loadCheapCIStates(ctx context.Context, owner, name string, prNumbers []int) map[int]string {
+	owner, name = normalizeRepoIdentity(owner, name)
+	key := githubCICacheKey(owner, name)
+	if cached, ok := githubCIStore.Load(key); ok {
+		item := cached.(githubCICache)
+		if time.Since(item.At) < githubCITTL && item.States != nil {
+			hit := true
+			for _, number := range prNumbers {
+				if _, ok := item.States[number]; !ok {
+					hit = false
+					break
+				}
+			}
+			if hit {
+				return item.States
+			}
+		}
+	}
+	states, err := fetchGitHubPRCheckRollup(ctx, owner, name, prNumbers)
+	if err != nil || len(states) == 0 {
+		return map[int]string{}
+	}
+	githubCIStore.Store(key, githubCICache{States: states, At: time.Now().UTC()})
+	return states
+}
+
+func fetchGitHubPRCheckRollup(ctx context.Context, owner, name string, prNumbers []int) (map[int]string, error) {
+	if GitHubToken == "" || owner == "" || name == "" || len(prNumbers) == 0 {
+		return nil, fmt.Errorf("github query is incomplete")
+	}
+	aliases := make([]string, 0, len(prNumbers))
+	seen := map[int]bool{}
+	for _, number := range prNumbers {
+		if number <= 0 || seen[number] || len(aliases) >= 20 {
+			continue
+		}
+		seen[number] = true
+		aliases = append(aliases, fmt.Sprintf("pr%d: pullRequest(number: %d) { number commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }", number, number))
+	}
+	if len(aliases) == 0 {
+		return map[int]string{}, nil
+	}
+	query := fmt.Sprintf("query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(aliases, " "))
+	var parsed struct {
+		Data struct {
+			Repository map[string]json.RawMessage `json:"repository"`
+		} `json:"data"`
+	}
+	if err := githubGraphQL(ctx, query, map[string]interface{}{"owner": owner, "name": name}, &parsed); err != nil {
+		return nil, err
+	}
+	out := map[int]string{}
+	for _, raw := range parsed.Data.Repository {
+		if len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+		var node struct {
+			Number  int `json:"number"`
+			Commits struct {
+				Nodes []struct {
+					Commit struct {
+						StatusCheckRollup *struct {
+							State string `json:"state"`
+						} `json:"statusCheckRollup"`
+					} `json:"commit"`
+				} `json:"nodes"`
+			} `json:"commits"`
+		}
+		if json.Unmarshal(raw, &node) != nil || node.Number <= 0 {
+			continue
+		}
+		state := ""
+		if len(node.Commits.Nodes) > 0 && node.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
+			state = node.Commits.Nodes[0].Commit.StatusCheckRollup.State
+		}
+		out[node.Number] = state
+	}
+	return out, nil
+}
+
+func githubGraphQL(ctx context.Context, query string, variables map[string]interface{}, out interface{}) error {
+	if GitHubToken == "" || strings.TrimSpace(query) == "" {
+		return fmt.Errorf("github graphql is unavailable")
+	}
+	body, err := json.Marshal(map[string]interface{}{"query": query, "variables": variables})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.github.com/graphql", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+GitHubToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("github graphql status %d", resp.StatusCode)
+	}
+	return json.Unmarshal(raw, out)
+}
+
+func attachPipelineLinks(owner, name string, events []repoDeployEvent) {
+	if len(events) == 0 {
+		return
+	}
+	numbers := make([]int, 0, len(events))
+	for _, ev := range events {
+		if ev.PRNumber > 0 {
+			numbers = append(numbers, ev.PRNumber)
+		}
+	}
+	found := findChangesForRepoPRs(owner, name, numbers)
+	for i := range events {
+		link := deployIntelPipelineLink{
+			Label: "Pipelines",
+			Href:  deliveryPipelinesHref(owner, name, events[i].PRNumber),
+		}
+		if change, ok := found[events[i].PRNumber]; ok {
+			link.ChangeID = change.ID
+			link.ChangeNumber = change.ChangeNumber
+			link.PipelineURL = strings.TrimSpace(change.PipelineURL)
+			link.Label = pipelineLabelForChange(change)
+			if link.Label == "" || link.Label == "Unknown" {
+				link.Label = "Pipelines"
+			}
+		}
+		events[i].Pipeline = &link
+	}
+}
+
+func findChangesForRepoPRs(owner, name string, prNumbers []int) map[int]changeRequestRecord {
+	out := map[int]changeRequestRecord{}
+	if DB == nil || len(prNumbers) == 0 {
+		return out
+	}
+	owner, name = normalizeRepoIdentity(owner, name)
+	if owner == "" || name == "" {
+		return out
+	}
+	full := strings.ToLower(strings.Trim(owner+"/"+name, "/"))
+	ids := make([]int64, 0, len(prNumbers))
+	seen := map[int]bool{}
+	for _, number := range prNumbers {
+		if number <= 0 || seen[number] {
+			continue
+		}
+		seen[number] = true
+		ids = append(ids, int64(number))
+	}
+	if len(ids) == 0 {
+		return out
+	}
+	rows, cancel, err := queryRowsWithTimeout(changeRequestSelect()+`
+		WHERE c.pr_number = ANY($1)
+		  AND (
+		        LOWER(c.repo) = $2
+		     OR LOWER(c.repo) = $3
+		     OR LOWER(c.repo) LIKE $4
+		  )
+		ORDER BY c.updated_at DESC, c.id DESC
+	`, pq.Array(ids), full, strings.ToLower(name), "%"+full+"%")
+	if err != nil {
+		return out
+	}
+	defer cancel()
+	defer rows.Close()
+	for rows.Next() {
+		item, err := scanChangeRequest(rows)
+		if err != nil || item == nil || item.PRNumber <= 0 {
+			continue
+		}
+		if _, exists := out[item.PRNumber]; exists {
+			continue
+		}
+		out[item.PRNumber] = *item
+	}
+	return out
 }
 
 func formatCISummaryLabel(summary deployIntelCISummary) string {

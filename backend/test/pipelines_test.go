@@ -43,7 +43,19 @@ func TestListPipelineCatalogWithoutDB(t *testing.T) {
 	saved := DB
 	DB = nil
 	defer func() { DB = saved }()
-	if got := listPipelineCatalog(0, ""); got == nil || len(got) != 0 {
+	if got := listPipelineCatalog(0, "", "", 0); got == nil || len(got) != 0 {
 		t.Fatalf("expected empty catalog, got %#v", got)
+	}
+}
+
+func TestPipelineMatchesRepo(t *testing.T) {
+	if !pipelineMatchesRepo("acme/infra-live", "acme/infra-live") {
+		t.Fatal("exact owner/name")
+	}
+	if !pipelineMatchesRepo("acme/infra-live", "infra-live") {
+		t.Fatal("repo name should match owner/name")
+	}
+	if pipelineMatchesRepo("acme/infra-live", "other/repo") {
+		t.Fatal("different repo should not match")
 	}
 }

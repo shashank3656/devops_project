@@ -120,54 +120,54 @@ export default function DeployIntelligenceOnboardPage() {
         <title>Connect repository - OpsTrellis</title>
       </Head>
       <div className="delivery-shell">
+        <Link href="/deploy-intelligence" className="delivery-back">Repositories</Link>
         <header className="delivery-head">
-          <Link href="/deploy-intelligence" className="delivery-back">
-            Repositories
-          </Link>
-          <p className="delivery-kicker">Delivery</p>
-          <h1 className="delivery-title">Connect a repository</h1>
-          <p className="di-lede">
-            Connect a GitHub repo so OpsTrellis can analyze open and merged pull requests and post a change brief on the PR. The owner and name must already exist on GitHub. A missing repository is not added.
-          </p>
+          <div>
+            <p className="delivery-kicker">Delivery</p>
+            <h1 className="delivery-title">Connect a repository</h1>
+            <p className="delivery-lede">
+              The owner and name must already exist on GitHub. A missing repository is not added.
+            </p>
+          </div>
         </header>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
 
-        <form className="di-form" onSubmit={onboard}>
-          {projects.length > 0 ? (
-            <label className="di-project">
-              <span className="di-label">GitOps project</span>
-              <select
-                className="di-input"
-                value={onboardProjectId}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setOnboardProjectId(next);
-                  const project = projects.find((item) => String(item.id) === next);
-                  if (!project) return;
-                  if (project.github_owner) setOnboardOwner(project.github_owner);
-                  if (project.github_repo) setOnboardName(project.github_repo);
-                  if (project.base_branch) setOnboardBase(project.base_branch);
-                }}
-              >
-                <option value="">Optional — pick a project to fill owner/repo</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                    {project.github_owner && project.github_repo
-                      ? ` · ${project.github_owner}/${project.github_repo}`
-                      : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <div className="di-form__row">
-            <div className="di-path" role="group" aria-label="GitHub repository">
-              <label className="di-path__part">
-                <span className="di-label">Owner</span>
+        <section className="delivery-panel">
+          <form className="delivery-form delivery-form--connect" onSubmit={onboard}>
+            {projects.length > 0 ? (
+              <label className="label">
+                GitOps project
+                <select
+                  className="input"
+                  value={onboardProjectId}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setOnboardProjectId(next);
+                    const project = projects.find((item) => String(item.id) === next);
+                    if (!project) return;
+                    if (project.github_owner) setOnboardOwner(project.github_owner);
+                    if (project.github_repo) setOnboardName(project.github_repo);
+                    if (project.base_branch) setOnboardBase(project.base_branch);
+                  }}
+                >
+                  <option value="">Optional — pick a project to fill owner/repo</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                      {project.github_owner && project.github_repo
+                        ? ` · ${project.github_owner}/${project.github_repo}`
+                        : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <div className="delivery-form__split">
+              <label className="label">
+                Owner
                 <input
-                  className="di-input"
+                  className="input"
                   value={onboardOwner}
                   onChange={(e) => applyOwnerChange(e.target.value)}
                   placeholder="acme-corp"
@@ -176,13 +176,10 @@ export default function DeployIntelligenceOnboardPage() {
                   required
                 />
               </label>
-              <span className="di-path__slash" aria-hidden>
-                /
-              </span>
-              <label className="di-path__part">
-                <span className="di-label">Repository</span>
+              <label className="label">
+                Repository
                 <input
-                  className="di-input"
+                  className="input"
                   value={onboardName}
                   onChange={(e) => setOnboardName(e.target.value.replace(/\s+/g, ''))}
                   placeholder="infra-live"
@@ -192,11 +189,10 @@ export default function DeployIntelligenceOnboardPage() {
                 />
               </label>
             </div>
-
-            <label className="di-branch">
-              <span className="di-label">Base branch</span>
+            <label className="label">
+              Base branch
               <input
-                className="di-input"
+                className="input"
                 value={onboardBase}
                 onChange={(e) => setOnboardBase(e.target.value.replace(/\s+/g, ''))}
                 placeholder="main"
@@ -204,19 +200,17 @@ export default function DeployIntelligenceOnboardPage() {
                 spellCheck={false}
               />
             </label>
-
-            <button type="submit" className="di-submit" disabled={!canSubmit}>
-              {onboarding ? 'Connecting…' : 'Connect repository'}
-            </button>
-          </div>
-
-          <div className="di-form__meta">
-            <p className="di-target">{target || 'Paste owner/repo or a GitHub URL into Owner.'}</p>
-            <button type="button" className="di-copy" onClick={copyWebhook}>
-              {copied ? 'Webhook copied' : 'Copy webhook URL'}
-            </button>
-          </div>
-        </form>
+            <p className="delivery-form__hint">{target || 'Paste owner/repo or a GitHub URL into Owner.'}</p>
+            <div className="portal-page__actions">
+              <button type="submit" className="btn btn-primary" disabled={!canSubmit}>
+                {onboarding ? 'Connecting…' : 'Connect repository'}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => void copyWebhook()}>
+                {copied ? 'Webhook copied' : 'Copy webhook URL'}
+              </button>
+            </div>
+          </form>
+        </section>
       </div>
     </DevOpsLayout>
   );

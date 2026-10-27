@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-github/v61/github"
@@ -49,5 +50,30 @@ func TestGithubCheckOutcomeAndCILabel(t *testing.T) {
 	}
 	if !isOpsTrellisCheckName("infragate/plan-review") || isOpsTrellisCheckName("ci / test") {
 		t.Fatal("infragate checks stay internal")
+	}
+}
+
+func TestCISummaryFromRollup(t *testing.T) {
+	passing := ciSummaryFromRollup("SUCCESS")
+	if passing.Label != "Passing" || passing.Passed != 1 {
+		t.Fatalf("success rollup: %#v", passing)
+	}
+	failing := ciSummaryFromRollup("FAILURE")
+	if failing.Label != "Failing" || failing.Failed != 1 {
+		t.Fatalf("failure rollup: %#v", failing)
+	}
+	pending := ciSummaryFromRollup("PENDING")
+	if pending.Label != "Pending" || pending.Pending != 1 {
+		t.Fatalf("pending rollup: %#v", pending)
+	}
+	if ciSummaryFromRollup("").Label != "No checks yet" {
+		t.Fatal("empty rollup stays unknown")
+	}
+}
+
+func TestDeliveryPipelinesHref(t *testing.T) {
+	href := deliveryPipelinesHref("acme", "infra-live", 12)
+	if !strings.Contains(href, "repo=acme%2Finfra-live") || !strings.Contains(href, "pr=12") {
+		t.Fatalf("got %s", href)
 	}
 }

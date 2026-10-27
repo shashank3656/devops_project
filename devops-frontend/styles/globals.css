@@ -13096,7 +13096,10 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
 }
 
 .delivery-toolbar--repo {
-  flex-wrap: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .delivery-toolbar--repo .delivery-search {
@@ -13221,6 +13224,32 @@ a.delivery-filter {
 .delivery-filter--running.is-active { background: rgba(251, 191, 36, 0.16); color: #fbbf24; }
 .delivery-filter--stale.is-active { background: rgba(251, 146, 60, 0.16); color: #fb923c; }
 .delivery-filter--unknown.is-active { background: rgba(148, 163, 184, 0.16); color: #e2e8f0; }
+.delivery-filter--high { color: #f87171; border-color: rgba(248, 113, 113, 0.35); }
+.delivery-filter--medium { color: #fbbf24; border-color: rgba(251, 191, 36, 0.35); }
+.delivery-filter--low { color: #2dd4bf; border-color: rgba(45, 212, 191, 0.35); }
+.delivery-filter--overdue { color: #fb923c; border-color: rgba(251, 146, 60, 0.35); }
+.delivery-filter--high.is-active { background: rgba(248, 113, 113, 0.16); color: #f87171; }
+.delivery-filter--medium.is-active { background: rgba(251, 191, 36, 0.16); color: #fbbf24; }
+.delivery-filter--low.is-active { background: rgba(45, 212, 191, 0.16); color: #2dd4bf; }
+.delivery-filter--overdue.is-active { background: rgba(251, 146, 60, 0.16); color: #fb923c; }
+
+.delivery-search--repo {
+  flex: 0 1 180px;
+}
+
+.delivery-row-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.delivery-row-actions .btn-sm {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 .delivery-panel {
   overflow: visible;
@@ -13415,6 +13444,38 @@ a.delivery-filter {
   padding: 0 18px 18px;
 }
 
+.delivery-form--connect {
+  max-width: 560px;
+  padding: 18px;
+}
+
+.delivery-form__split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.delivery-form__hint {
+  margin: 0;
+  color: var(--delivery-muted);
+  font-size: 13px;
+}
+
+.delivery-form .label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  color: var(--delivery-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .delivery-form__split {
+    grid-template-columns: 1fr;
+  }
+}
+
 .delivery-menu__panel {
   position: absolute;
   right: 0;
@@ -13493,6 +13554,7 @@ a.delivery-filter {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .delivery-check {

@@ -14,6 +14,7 @@ interface PipelineRow {
   id: number;
   change_number?: string;
   repo?: string;
+  pr_number?: number;
   service?: string;
   environment?: string;
   status?: string;
@@ -51,6 +52,7 @@ export default function PipelinesPage() {
   const [stateFilter, setStateFilter] = useState<PipelineState>('all');
 
   useEffect(() => {
+    if (!router.isReady) return;
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) {
       router.replace('/login');
@@ -59,6 +61,10 @@ export default function PipelinesPage() {
     const params = new URLSearchParams();
     if (scope.projectId) params.set('project_id', scope.projectId);
     if (scope.environment) params.set('environment', scope.environment);
+    const repo = typeof router.query.repo === 'string' ? router.query.repo : '';
+    const pr = typeof router.query.pr === 'string' ? router.query.pr : '';
+    if (repo) params.set('repo', repo);
+    if (pr) params.set('pr', pr);
     const suffix = params.toString() ? `?${params.toString()}` : '';
     setLoading(true);
     fetch(`${apiUrl}/api/devops/pipelines${suffix}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -69,7 +75,7 @@ export default function PipelinesPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load pipelines'))
       .finally(() => setLoading(false));
-  }, [apiUrl, router, scope.environment, scope.projectId]);
+  }, [apiUrl, router, router.isReady, router.query.pr, router.query.repo, scope.environment, scope.projectId]);
 
   const counts = useMemo(() => ({
     all: items.length,
@@ -115,6 +121,14 @@ export default function PipelinesPage() {
         </header>
         <DeliveryHubNav active="pipelines" />
         {error ? <div className="alert alert-error">{error}</div> : null}
+        {typeof router.query.repo === 'string' && router.query.repo ? (
+          <p className="delivery-scope">
+            Showing runs recorded for <strong>{router.query.repo}</strong>
+            {typeof router.query.pr === 'string' && router.query.pr ? ` PR #${router.query.pr}` : ''}.
+            {' '}
+            <Link href="/pipelines">Clear PR filter</Link>
+          </p>
+        ) : null}
         {scope.environment ? (
           <p className="delivery-scope">
             Showing runs recorded for <strong>{scope.environment}</strong>. Titles such as “in dev” are not used for this filter.
@@ -154,7 +168,11 @@ export default function PipelinesPage() {
         {!loading && !items.length ? (
           <div className="delivery-empty-panel">
             <h2>No pipeline runs yet</h2>
-            <p>Post a change webhook with pipeline_url. A GitHub repo onboard is not required here.</p>
+            <p>
+              {typeof router.query.repo === 'string' && router.query.repo
+                ? 'No pipeline URL is recorded for this pull request yet. Missing stays Unknown.'
+                : 'Post a change webhook with pipeline_url. A GitHub repo onboard is not required here.'}
+            </p>
             <Link href="/operations/webhooks" className="btn btn-primary btn-sm">Connect a webhook</Link>
           </div>
         ) : null}

@@ -13,6 +13,7 @@ import {
   formatWhen,
   githubAccessLabel,
   mergeTrackingLabel,
+  pipelinesHref,
   type DeliveryCheck,
   type DeliveryCISummary,
 } from '../../../lib/delivery';
@@ -43,7 +44,15 @@ interface RepoMeta {
   setup_summary?: string;
   github_access?: string;
   merge_tracking?: string;
+  gitops_project_id?: number;
   last_sync_at?: string;
+}
+
+interface GitOpsProjectOption {
+  id: number;
+  name: string;
+  github_owner?: string;
+  github_repo?: string;
 }
 
 interface DeployEvent {
@@ -80,6 +89,13 @@ interface DeployEvent {
     ci?: DeliveryCISummary;
     suggest_ticket?: boolean;
     suggest_ticket_reason?: string;
+  };
+  pipeline?: {
+    href?: string;
+    pipeline_url?: string;
+    label?: string;
+    change_id?: number;
+    change_number?: string;
   };
   github_post?: {
     comment_posted?: boolean;
@@ -119,6 +135,14 @@ export default function DeployIntelligenceRepoPage() {
   const [draftName, setDraftName] = useState('');
   const [draftBase, setDraftBase] = useState('main');
   const [saving, setSaving] = useState(false);
+  const [projects, setProjects] = useState<GitOpsProjectOption[]>([]);
+  const [linkProjectId, setLinkProjectId] = useState('');
+  const [enabling, setEnabling] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [needsAck, setNeedsAck] = useState(false);
+  const [ackReason, setAckReason] = useState('');
 
   const load = async (options?: { prNumber?: number; post?: boolean; keepSelection?: boolean; quiet?: boolean }) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -171,6 +195,8 @@ export default function DeployIntelligenceRepoPage() {
       }
       if (data?.github) setGithubMeta(data.github as GitHubFetchMeta);
       setGithubError(typeof data?.github_error === 'string' ? data.github_error : '');
+      if (Array.isArray(data?.projects)) setProjects(data.projects);
+      if (data?.repo?.gitops_project_id) setLinkProjectId(String(data.repo.gitops_project_id));
     } catch {
       setError('Failed to load pull requests');
     } finally {
@@ -210,9 +236,15 @@ export default function DeployIntelligenceRepoPage() {
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return events;
-    return events.filter((item) => `${item.title} #${item.pr_number} ${item.author}`.toLowerCase().includes(needle));
-  }, [events, query]);
+    return events.filter((item) => {
+      const risk = formatRisk(item.score, item.risk_level).band;
+      const age = formatReviewAge(item.open_pr?.age_days, item.open_pr?.review_sla);
+      if (section === 'open' && riskFilter !== 'all' && risk !== riskFilter) return false;
+      if (section === 'open' && overdueOnly && !age.overdue) return false;
+      if (!needle) return true;
+      return `${item.title} #${item.pr_number} ${item.author}`.toLowerCase().includes(needle);
+    });
+  }, [events, overdueOnly, query, riskFilter, section]);
 
   const access = githubAccessLabel(repoMeta?.github_access);
   const tracking = mergeTrackingLabel(repoMeta?.merge_tracking);
@@ -224,6 +256,8 @@ export default function DeployIntelligenceRepoPage() {
   const reviewEvent = (item: DeployEvent) => {
     setSelected(item);
     setTicketMessage('');
+    setNeedsAck(false);
+    setAckReason('');
     if (section === 'open') void load({ prNumber: item.pr_number, keepSelection: true, quiet: true });
   };
 
@@ -270,25 +304,83 @@ export default function DeployIntelligenceRepoPage() {
   const suggestTicket = async (prNumber: number, acknowledged = false) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
+    if (acknowledged && !ackReason.trim()) {
+      setTicketMessage('Add a reason before creating a high-risk change request.');
+      return;
+    }
     setSuggestingTicket(true);
     setTicketMessage('');
     try {
       const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/suggest-ticket`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ owner, name: repo, pr_number: prNumber, acknowledged, reasons: [] }),
+        body: JSON.stringify({
+          owner,
+          name: repo,
+          pr_number: prNumber,
+          acknowledged,
+          reasons: acknowledged && ackReason.trim() ? [ackReason.trim()] : [],
+        }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 428 || data?.ack_reasons_required) {
+        setNeedsAck(true);
+        setTicketMessage(typeof data?.error === 'string' ? data.error : 'High-risk PRs need an acknowledgement before a change is created.');
+        return;
+      }
       if (!res.ok) {
         setTicketMessage(typeof data?.error === 'string' ? data.error : 'The change request could not be created.');
         return;
       }
-      setTicketMessage(typeof data?.message === 'string' ? data.message : 'Change request created.');
-      await load({ prNumber, keepSelection: true });
+      setNeedsAck(false);
+      setAckReason('');
+      setTicketMessage(typeof data?.message === 'string' ? data.message : data?.existing ? 'A change request is already linked.' : 'Change request created.');
+      await load({ prNumber, keepSelection: true, quiet: true });
     } catch {
       setTicketMessage('The change request could not be created.');
     } finally {
       setSuggestingTicket(false);
+    }
+  };
+
+  const enableMergeTracking = async () => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token || !owner || !repo) return;
+    setEnabling(true);
+    setError('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          owner,
+          name: repo,
+          project_id: linkProjectId ? Number(linkProjectId) : undefined,
+          enable_merge_tracking: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'Merge tracking could not be enabled');
+        return;
+      }
+      setRepoMeta(data?.repo || null);
+      setNotice(typeof data?.note === 'string' ? data.note : 'Merge tracking is configured. GitHub was not changed.');
+      if (data?.repo?.gitops_project_id) setLinkProjectId(String(data.repo.gitops_project_id));
+    } catch {
+      setError('Merge tracking could not be enabled');
+    } finally {
+      setEnabling(false);
+    }
+  };
+
+  const copyWebhook = async () => {
+    try {
+      await navigator.clipboard.writeText(`${apiUrl.replace(/\/$/, '')}/api/webhooks/github`);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
     }
   };
 
@@ -439,10 +531,36 @@ export default function DeployIntelligenceRepoPage() {
               />
             </label>
             {section === 'open' ? (
-              <label className="delivery-check">
-                <input type="checkbox" checked={includeDrafts} onChange={(event) => setIncludeDrafts(event.target.checked)} />
-                Include drafts
-              </label>
+              <>
+                <div className="delivery-filters delivery-filters--pipe" role="group" aria-label="Risk">
+                  {([
+                    ['all', 'All'],
+                    ['high', 'High'],
+                    ['medium', 'Medium'],
+                    ['low', 'Low'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`delivery-filter delivery-filter--${id}${riskFilter === id ? ' is-active' : ''}`}
+                      onClick={() => setRiskFilter(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className={`delivery-filter delivery-filter--overdue${overdueOnly ? ' is-active' : ''}`}
+                    onClick={() => setOverdueOnly((value) => !value)}
+                  >
+                    Overdue
+                  </button>
+                </div>
+                <label className="delivery-check">
+                  <input type="checkbox" checked={includeDrafts} onChange={(event) => setIncludeDrafts(event.target.checked)} />
+                  Include drafts
+                </label>
+              </>
             ) : (
               <details className="delivery-menu delivery-menu--action">
                 <summary>Import merged PR</summary>
@@ -482,16 +600,42 @@ export default function DeployIntelligenceRepoPage() {
               </div>
             </dl>
             {repoMeta?.merge_tracking !== 'configured' ? (
-              <div className="delivery-empty-panel">
-                <h2>Complete merge tracking</h2>
-                <p>
-                  Open PRs can load from GitHub without this step. Add a GitOps project so merges into {repoMeta?.base_branch || 'main'} are captured automatically.
+              <form
+                className="delivery-form delivery-form--connect"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void enableMergeTracking();
+                }}
+              >
+                <h2 className="delivery-panel__title">Complete merge tracking</h2>
+                <p className="delivery-lede">
+                  Open PRs already load from GitHub. Link a GitOps project so merges into {repoMeta?.base_branch || 'main'} are captured. GitHub is not renamed.
                 </p>
+                {projects.length > 0 ? (
+                  <label className="label">
+                    GitOps project
+                    <select className="input" value={linkProjectId} onChange={(event) => setLinkProjectId(event.target.value)}>
+                      <option value="">Create a project for this repository</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                          {project.github_owner && project.github_repo ? ` · ${project.github_owner}/${project.github_repo}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <p className="delivery-table__hint">No GitOps project yet. Enable creates one for {owner}/{repo}.</p>
+                )}
                 <div className="portal-page__actions">
-                  <Link href="/gitops-projects" className="btn btn-primary">Open GitOps projects</Link>
-                  <Link href="/operations/webhooks" className="btn btn-secondary">Webhook settings</Link>
+                  <button type="submit" className="btn btn-primary" disabled={enabling || !canManage}>
+                    {enabling ? 'Enabling…' : 'Enable merge tracking'}
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={() => void copyWebhook()}>
+                    {copied ? 'Webhook copied' : 'Copy webhook URL'}
+                  </button>
                 </div>
-              </div>
+              </form>
             ) : (
               <p className="delivery-empty">Merges into {repoMeta?.base_branch || 'main'} are captured automatically.</p>
             )}
@@ -529,11 +673,19 @@ export default function DeployIntelligenceRepoPage() {
           <p className="delivery-empty">Loading pull requests…</p>
         ) : visible.length === 0 ? (
           <div className="delivery-empty-panel">
-            <h2>{section === 'open' ? 'No open pull requests' : 'No merged analyses yet'}</h2>
+            <h2>
+              {events.length > 0
+                ? 'No pull requests match this filter'
+                : section === 'open'
+                  ? 'No open pull requests'
+                  : 'No merged analyses yet'}
+            </h2>
             <p>
-              {section === 'open'
-                ? 'GitHub returned no open PRs for this repository and filter.'
-                : 'Merged analyses appear after a production merge is tracked, or after you import a merged PR.'}
+              {events.length > 0
+                ? 'Clear risk or overdue filters to see the rest of this repository.'
+                : section === 'open'
+                  ? 'GitHub returned no open PRs for this repository and filter.'
+                  : 'Merged analyses appear after a production merge is tracked, or after you import a merged PR.'}
             </p>
           </div>
         ) : (
@@ -593,9 +745,17 @@ export default function DeployIntelligenceRepoPage() {
                           )}
                         </td>
                         <td>
-                          <button type="button" className="btn btn-primary btn-sm" onClick={() => reviewEvent(item)}>
-                            Review
-                          </button>
+                          <div className="delivery-row-actions">
+                            <Link
+                              href={item.pipeline?.href || pipelinesHref(owner, repo, item.pr_number)}
+                              className="btn btn-secondary btn-sm"
+                            >
+                              Pipelines
+                            </Link>
+                            <button type="button" className="btn btn-primary btn-sm" onClick={() => reviewEvent(item)}>
+                              Review
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -617,6 +777,9 @@ export default function DeployIntelligenceRepoPage() {
         subtitle={selected ? `${selected.author || 'Unknown'} · ${selected.head_branch || 'branch'} → ${selected.base_branch || 'base'}` : ''}
         footer={selected ? (
           <div className="delivery-drawer-actions">
+            <Link href={selected.pipeline?.href || pipelinesHref(owner, repo, selected.pr_number)} className="btn btn-secondary">
+              Pipelines
+            </Link>
             {selected.pr_url ? (
               <a className="btn btn-secondary" href={selected.pr_url} target="_blank" rel="noreferrer">Open on GitHub</a>
             ) : null}
@@ -674,12 +837,43 @@ export default function DeployIntelligenceRepoPage() {
                 <p><Link href={`/changes/${selected.request_id}`}>Open linked change</Link></p>
               ) : (
                 <div>
-                  <p>Not linked. A low risk score does not approve a release.</p>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={suggestingTicket} onClick={() => void suggestTicket(selected.pr_number)}>
-                    {suggestingTicket ? 'Creating…' : 'Create change request'}
+                  <p>Not linked. Creating a change does not merge the pull request. A low risk score does not approve a release.</p>
+                  {needsAck ? (
+                    <label className="label">
+                      Acknowledgement reason
+                      <input
+                        className="input"
+                        value={ackReason}
+                        onChange={(event) => setAckReason(event.target.value)}
+                        placeholder="Why this high-risk change should proceed"
+                      />
+                    </label>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={suggestingTicket || (needsAck && !ackReason.trim())}
+                    onClick={() => void suggestTicket(selected.pr_number, needsAck)}
+                  >
+                    {suggestingTicket ? 'Creating…' : needsAck ? 'Acknowledge and create change' : 'Create or link change'}
                   </button>
                   {ticketMessage ? <p>{ticketMessage}</p> : null}
                 </div>
+              )}
+            </section>
+            <section>
+              <h3>Pipelines</h3>
+              <p>
+                <Link href={selected.pipeline?.href || pipelinesHref(owner, repo, selected.pr_number)}>
+                  {selected.pipeline?.change_number ? `Runs for ${selected.pipeline.change_number}` : 'Open related pipeline runs'}
+                </Link>
+              </p>
+              {selected.pipeline?.pipeline_url ? (
+                <p>
+                  <a href={selected.pipeline.pipeline_url} target="_blank" rel="noreferrer">Open recorded run</a>
+                </p>
+              ) : (
+                <p className="delivery-table__hint">No pipeline URL is recorded on a change yet. Missing stays Unknown, not Healthy.</p>
               )}
             </section>
             <section>

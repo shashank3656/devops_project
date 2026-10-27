@@ -46,18 +46,19 @@ type deployIntelLastChange struct {
 
 type deployIntelRepoSummary struct {
 	deployIntelRepo
-	Ready          bool                   `json:"ready"`
-	MergeCount     int                    `json:"merge_count"`
-	HighRisk30d    int                    `json:"high_risk_30d"`
-	OpenPRCount    int                    `json:"open_pr_count"`
-	LastMergedAt   *time.Time             `json:"last_merged_at,omitempty"`
-	WebhookPath    string                 `json:"webhook_path"`
-	SetupSummary   string                 `json:"setup_summary"`
-	GitHubAccess   string                 `json:"github_access"`
-	MergeTracking  string                 `json:"merge_tracking"`
-	LastSyncAt     *time.Time             `json:"last_sync_at,omitempty"`
-	NeedsAttention bool                   `json:"needs_attention"`
-	LastChange     *deployIntelLastChange `json:"last_change,omitempty"`
+	Ready           bool                   `json:"ready"`
+	MergeCount      int                    `json:"merge_count"`
+	HighRisk30d     int                    `json:"high_risk_30d"`
+	OpenPRCount     int                    `json:"open_pr_count"`
+	LastMergedAt    *time.Time             `json:"last_merged_at,omitempty"`
+	WebhookPath     string                 `json:"webhook_path"`
+	SetupSummary    string                 `json:"setup_summary"`
+	GitHubAccess    string                 `json:"github_access"`
+	MergeTracking   string                 `json:"merge_tracking"`
+	GitOpsProjectID int                    `json:"gitops_project_id,omitempty"`
+	LastSyncAt      *time.Time             `json:"last_sync_at,omitempty"`
+	NeedsAttention  bool                   `json:"needs_attention"`
+	LastChange      *deployIntelLastChange `json:"last_change,omitempty"`
 }
 
 func ensureDefaultDeployIntelRepo() {
@@ -314,9 +315,7 @@ func deployIntelRepoReady(owner, name string) bool {
 	if DB == nil {
 		return true
 	}
-	var count int
-	_ = DB.QueryRow(`SELECT COUNT(*) FROM gitops_projects`).Scan(&count)
-	return count > 0
+	return findGitOpsProjectIDByGitHubRepo(owner, name) > 0
 }
 
 // deployIntelGitHubAccessAllowed is true when this onboarded repo may call GitHub for live PR data (no GitOps catalog required).
@@ -583,6 +582,7 @@ func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 	mergeCount, highRisk30d, lastMerged := repoDeployStats(item.Owner, item.Name)
 	ready := deployIntelRepoReady(item.Owner, item.Name)
 	openCount, access, fetchedAt := inspectDeployIntelGitHub(item.Owner, item.Name)
+	projectID := findGitOpsProjectIDByGitHubRepo(item.Owner, item.Name)
 	mergeTracking := "needs_setup"
 	if ready {
 		mergeTracking = "configured"
@@ -605,6 +605,7 @@ func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 		WebhookPath:     "/api/webhooks/github",
 		GitHubAccess:    access,
 		MergeTracking:   mergeTracking,
+		GitOpsProjectID: projectID,
 		LastSyncAt:      lastSync,
 		NeedsAttention:  access != "connected" || mergeTracking == "needs_setup" || !item.Enabled,
 	}
@@ -763,10 +764,12 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 			return nil, meta, getErr
 		}
 		ev := attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(ctx, client, owner, name, pr, true), true)
+		events := []repoDeployEvent{ev}
+		attachPipelineLinks(owner, name, events)
 		meta.FetchedAt = time.Now().UTC().Format(time.RFC3339)
 		meta.Listed = 1
 		meta.TotalOpen = 1
-		return []repoDeployEvent{ev}, meta, nil
+		return events, meta, nil
 	}
 	fetchCap := opts.Limit
 	if opts.BaseBranchOnly || !opts.IncludeDrafts {
@@ -825,6 +828,8 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 	}
 	attachOpenPRConflicts(out)
 	attachSimilarMergesToOpenEvents(owner, name, out)
+	attachCheapCISummaries(ctx, owner, name, out)
+	attachPipelineLinks(owner, name, out)
 	return out, meta, nil
 }
 
@@ -864,14 +869,17 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Owner      string `json:"owner"`
-		Name       string `json:"name"`
-		NewOwner   string `json:"new_owner"`
-		NewName    string `json:"new_name"`
-		BaseBranch string `json:"base_branch"`
-		Notes      string `json:"notes"`
-		Enabled    *bool  `json:"enabled"`
-		ProjectID  int    `json:"project_id"`
+		Owner               string `json:"owner"`
+		Name                string `json:"name"`
+		NewOwner            string `json:"new_owner"`
+		NewName             string `json:"new_name"`
+		NextOwner           string `json:"next_owner"`
+		NextName            string `json:"next_name"`
+		BaseBranch          string `json:"base_branch"`
+		Notes               string `json:"notes"`
+		Enabled             *bool  `json:"enabled"`
+		ProjectID           int    `json:"project_id"`
+		EnableMergeTracking bool   `json:"enable_merge_tracking"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
@@ -917,7 +925,31 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 			"repo":   buildDeployIntelRepoSummary(*repo),
 		})
 	case http.MethodPatch:
-		repo, err := updateDeployIntelRepoCatalog(body.Owner, body.Name, body.NewOwner, body.NewName, body.BaseBranch)
+		nextOwner := firstNonEmpty(body.NewOwner, body.NextOwner)
+		nextName := firstNonEmpty(body.NewName, body.NextName)
+		if body.EnableMergeTracking || body.ProjectID > 0 {
+			if err := enableMergeTrackingForRepo(managerID, body.Owner, body.Name, body.ProjectID); err != nil {
+				writeDeployIntelRepoError(w, r, err)
+				return
+			}
+		}
+		catalogTouched := strings.TrimSpace(nextOwner) != "" || strings.TrimSpace(nextName) != "" || strings.TrimSpace(body.BaseBranch) != ""
+		if !catalogTouched && (body.EnableMergeTracking || body.ProjectID > 0) {
+			repo, err := getDeployIntelRepo(body.Owner, body.Name)
+			if err != nil || repo == nil {
+				writeDeployIntelRepoError(w, r, fmt.Errorf("repository is not onboarded for deploy intelligence"))
+				return
+			}
+			AppendAuditLog(&managerID, "deploy_intel_merge_tracking", "deploy_intel_repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), "configured")
+			w.Header().Set("Content-Type", "application/json")
+			encodeJSON(w, map[string]interface{}{
+				"status": "ok",
+				"repo":   buildDeployIntelRepoSummary(*repo),
+				"note":   "Merge tracking is configured. GitHub was not changed.",
+			})
+			return
+		}
+		repo, err := updateDeployIntelRepoCatalog(body.Owner, body.Name, nextOwner, nextName, body.BaseBranch)
 		if err != nil {
 			writeDeployIntelRepoError(w, r, err)
 			return

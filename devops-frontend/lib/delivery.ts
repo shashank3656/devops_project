@@ -101,6 +101,17 @@ export function formatDurationMinutes(minutes?: number, known?: boolean) {
   return rest ? `${hours}h ${rest}m` : `${hours}h`;
 }
 
+export function pipelinesHref(owner?: string, repo?: string, prNumber?: number) {
+  const params = new URLSearchParams();
+  const ownerName = (owner || '').trim();
+  const repoName = (repo || '').trim();
+  if (ownerName && repoName) params.set('repo', `${ownerName}/${repoName}`);
+  else if (repoName) params.set('repo', repoName);
+  if (prNumber && prNumber > 0) params.set('pr', String(prNumber));
+  const query = params.toString();
+  return query ? `/pipelines?${query}` : '/pipelines';
+}
+
 export function canManageDeliveryRepos(): boolean {
   if (typeof window === 'undefined') return false;
   try {

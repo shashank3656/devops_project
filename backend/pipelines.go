@@ -13,6 +13,7 @@ type pipelineCatalogRow struct {
 	ID              int    `json:"id"`
 	ChangeNumber    string `json:"change_number"`
 	Repo            string `json:"repo"`
+	PRNumber        int    `json:"pr_number,omitempty"`
 	Service         string `json:"service"`
 	Environment     string `json:"environment"`
 	Status          string `json:"status"`
@@ -27,6 +28,24 @@ type pipelineCatalogRow struct {
 	DurationKnown   bool   `json:"duration_known"`
 	Stale           bool   `json:"stale"`
 	Preview         bool   `json:"preview"`
+}
+
+func pipelineMatchesRepo(rowRepo, filter string) bool {
+	rowRepo = strings.ToLower(strings.TrimSpace(rowRepo))
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter == "" {
+		return true
+	}
+	if rowRepo == "" {
+		return false
+	}
+	if rowRepo == filter {
+		return true
+	}
+	if strings.HasSuffix(filter, "/"+rowRepo) || strings.HasSuffix(rowRepo, "/"+filter) {
+		return true
+	}
+	return strings.Contains(rowRepo, filter)
 }
 
 func pipelineLabelForChange(item changeRequestRecord) string {
@@ -74,7 +93,7 @@ func pipelineFreshness(item changeRequestRecord, label string, now time.Time) (m
 	return minutes, true, lastChecked, stale
 }
 
-func listPipelineCatalog(projectID int, environment string) []pipelineCatalogRow {
+func listPipelineCatalog(projectID int, environment, repoFilter string, prNumber int) []pipelineCatalogRow {
 	environment = strings.TrimSpace(environment)
 	if strings.EqualFold(environment, "all") {
 		environment = ""
@@ -87,6 +106,12 @@ func listPipelineCatalog(projectID int, environment string) []pipelineCatalogRow
 	out := make([]pipelineCatalogRow, 0, 80)
 	for _, item := range items {
 		preview := strings.EqualFold(item.ChangeType, "preview")
+		if !pipelineMatchesRepo(item.Repo, repoFilter) {
+			continue
+		}
+		if prNumber > 0 && item.PRNumber != prNumber {
+			continue
+		}
 		if strings.TrimSpace(item.PipelineURL) == "" && !preview {
 			continue
 		}
@@ -113,6 +138,7 @@ func listPipelineCatalog(projectID int, environment string) []pipelineCatalogRow
 			ID:              item.ID,
 			ChangeNumber:    item.ChangeNumber,
 			Repo:            item.Repo,
+			PRNumber:        item.PRNumber,
 			Service:         item.Service,
 			Environment:     firstNonEmpty(item.Environment, "Unknown"),
 			Status:          item.Status,
@@ -150,11 +176,15 @@ func devopsPipelinesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
 	environment := strings.TrimSpace(r.URL.Query().Get("environment"))
+	repoFilter := strings.TrimSpace(r.URL.Query().Get("repo"))
+	prNumber, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("pr")))
 	_ = writeJSONResponse(w, http.StatusOK, map[string]any{
-		"pipelines":   listPipelineCatalog(projectID, environment),
+		"pipelines":   listPipelineCatalog(projectID, environment, repoFilter, prNumber),
 		"status":      "ok",
 		"environment": environment,
 		"project_id":  projectID,
+		"repo":        repoFilter,
+		"pr":          prNumber,
 		"scope_note":  "Environment comes from the recorded change, not the run title.",
 		"stale_after": "24h",
 		"note":        "Pipelines are CI runs posted onto a change. A missing pipeline URL stays Unknown. A preview environment is a separate catalog.",

@@ -34,6 +34,7 @@ type repoDeployEvent struct {
 	ChangeBrief   *deployIntelChangeBrief   `json:"change_brief,omitempty"`
 	GitHubPost    *deployIntelGitHubPost    `json:"github_post,omitempty"`
 	SimilarMerges []deployIntelSimilarMerge `json:"similar_merges,omitempty"`
+	Pipeline      *deployIntelPipelineLink  `json:"pipeline,omitempty"`
 }
 
 func isProductionBaseBranch(ref string) bool {
@@ -639,5 +640,6 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 	if refreshPost != nil {
 		payload["github_post"] = refreshPost
 	}
+	payload["projects"] = listDeployIntelProjectOptions()
 	encodeJSON(w, payload)
 }

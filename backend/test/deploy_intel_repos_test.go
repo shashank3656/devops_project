@@ -72,6 +72,15 @@ func TestDeployIntelGitHubAccessRequiresToken(t *testing.T) {
 	}
 }
 
+func TestEnableMergeTrackingRequiresOnboardedRepo(t *testing.T) {
+	saved := DB
+	DB = nil
+	defer func() { DB = saved }()
+	if err := enableMergeTrackingForRepo(1, "acme", "infra", 0); err == nil {
+		t.Fatal("missing database must not enable merge tracking")
+	}
+}
+
 func TestDisconnectDeployIntelRepoDoesNotCallGitHub(t *testing.T) {
 	called := false
 	prevLookup := lookupGitHubRepository
