@@ -17,13 +17,6 @@ var errGitHubRepoNotFound = errors.New("Repository not found")
 
 var lookupGitHubRepository = lookupGitHubRepositoryLive
 
-var deployIntelFutureCapabilities = []string{
-	"deploy_frequency_by_service",
-	"rollback_correlation",
-	"required_checks_per_environment_branch",
-	"auto_assign_reviewers_from_codeowners",
-}
-
 type deployIntelRepo struct {
 	ID          int       `json:"id"`
 	Owner       string    `json:"owner"`
@@ -194,6 +187,87 @@ func listDeployIntelRepos() ([]deployIntelRepo, error) {
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+func updateDeployIntelRepoCatalog(currentOwner, currentName, nextOwner, nextName, baseBranch string) (*deployIntelRepo, error) {
+	if DB == nil {
+		return nil, fmt.Errorf("database not available")
+	}
+	currentOwner, currentName = normalizeRepoIdentity(currentOwner, currentName)
+	if currentOwner == "" || currentName == "" {
+		return nil, fmt.Errorf("owner and repository name are required")
+	}
+	current, _ := getDeployIntelRepo(currentOwner, currentName)
+	if current == nil {
+		return nil, fmt.Errorf("repository is not onboarded for deploy intelligence")
+	}
+	if strings.TrimSpace(nextOwner) == "" {
+		nextOwner = current.Owner
+	}
+	if strings.TrimSpace(nextName) == "" {
+		nextName = current.Name
+	}
+	nextOwner, nextName = normalizeRepoIdentity(nextOwner, nextName)
+	if nextOwner == "" || nextName == "" {
+		return nil, fmt.Errorf("owner and repository name are required")
+	}
+	identityChanged := !strings.EqualFold(current.Owner, nextOwner) || !strings.EqualFold(current.Name, nextName)
+	if identityChanged {
+		verifiedOwner, verifiedName, err := verifyGitHubRepositoryForOnboard(nextOwner, nextName)
+		if err != nil {
+			return nil, err
+		}
+		nextOwner, nextName = verifiedOwner, verifiedName
+	}
+	baseBranch = strings.TrimSpace(baseBranch)
+	if baseBranch == "" {
+		baseBranch = strings.TrimSpace(current.BaseBranch)
+	}
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	_, err := DB.Exec(`
+		UPDATE deploy_intel_repos
+		   SET repo_owner = $2,
+		       repo_name = $3,
+		       base_branch = $4,
+		       updated_at = CURRENT_TIMESTAMP
+		 WHERE id = $1
+	`, current.ID, nextOwner, nextName, baseBranch)
+	if err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate") {
+			return nil, fmt.Errorf("that repository is already onboarded")
+		}
+		return nil, err
+	}
+	updated, _ := getDeployIntelRepo(nextOwner, nextName)
+	if updated == nil {
+		return nil, fmt.Errorf("repository is not onboarded for deploy intelligence")
+	}
+	return updated, nil
+}
+
+func disconnectDeployIntelRepo(owner, name string) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	owner, name = normalizeRepoIdentity(owner, name)
+	if owner == "" || name == "" {
+		return fmt.Errorf("owner and repository name are required")
+	}
+	result, err := DB.Exec(`
+		DELETE FROM deploy_intel_repos
+		 WHERE lower(repo_owner) = lower($1) AND lower(repo_name) = lower($2)
+	`, owner, name)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("repository is not onboarded for deploy intelligence")
+	}
+	return nil
 }
 
 func upsertDeployIntelRepo(owner, name, baseBranch, notes string, enabled bool) (*deployIntelRepo, error) {
@@ -634,14 +708,26 @@ func prByNumber(prs []*github.PullRequest, number int) *github.PullRequest {
 	return &github.PullRequest{Number: github.Int(number)}
 }
 
+func writeDeployIntelRepoError(w http.ResponseWriter, r *http.Request, err error) {
+	status := http.StatusBadRequest
+	msg := err.Error()
+	switch {
+	case errors.Is(err, errGitHubRepoNotFound):
+		status = http.StatusNotFound
+	case msg == "repository is not onboarded for deploy intelligence":
+		status = http.StatusNotFound
+	case strings.Contains(msg, "already onboarded"):
+		status = http.StatusConflict
+	case msg == "database not available":
+		status = http.StatusServiceUnavailable
+	}
+	writeAPIError(w, r, status, msg, err)
+}
+
 func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
 		handleOptions(w, r)
-		return
-	}
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, r, http.MethodPost)
 		return
 	}
 	managerID, ok := requireDevopsManager(w, r)
@@ -651,6 +737,8 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Owner      string `json:"owner"`
 		Name       string `json:"name"`
+		NewOwner   string `json:"new_owner"`
+		NewName    string `json:"new_name"`
 		BaseBranch string `json:"base_branch"`
 		Notes      string `json:"notes"`
 		Enabled    *bool  `json:"enabled"`
@@ -660,45 +748,71 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "invalid json", err)
 		return
 	}
-	if body.ProjectID > 0 {
-		identity := resolveGitHubRepoForProject(body.ProjectID)
-		if strings.TrimSpace(body.Owner) == "" {
-			body.Owner = identity.Owner
+	switch r.Method {
+	case http.MethodPost:
+		if body.ProjectID > 0 {
+			identity := resolveGitHubRepoForProject(body.ProjectID)
+			if strings.TrimSpace(body.Owner) == "" {
+				body.Owner = identity.Owner
+			}
+			if strings.TrimSpace(body.Name) == "" {
+				body.Name = identity.Name
+			}
+			if strings.TrimSpace(body.BaseBranch) == "" {
+				body.BaseBranch = identity.BaseBranch
+			}
 		}
-		if strings.TrimSpace(body.Name) == "" {
-			body.Name = identity.Name
+		owner, name, err := verifyGitHubRepositoryForOnboard(body.Owner, body.Name)
+		if err != nil {
+			writeDeployIntelRepoError(w, r, err)
+			return
 		}
-		if strings.TrimSpace(body.BaseBranch) == "" {
-			body.BaseBranch = identity.BaseBranch
+		enabled := true
+		if body.Enabled != nil {
+			enabled = *body.Enabled
 		}
-	}
-	owner, name, err := verifyGitHubRepositoryForOnboard(body.Owner, body.Name)
-	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, errGitHubRepoNotFound) {
-			status = http.StatusNotFound
+		repo, err := upsertDeployIntelRepo(owner, name, body.BaseBranch, body.Notes, enabled)
+		if err != nil {
+			writeDeployIntelRepoError(w, r, err)
+			return
 		}
-		writeAPIError(w, r, status, err.Error(), err)
-		return
-	}
-	enabled := true
-	if body.Enabled != nil {
-		enabled = *body.Enabled
-	}
-	repo, err := upsertDeployIntelRepo(owner, name, body.BaseBranch, body.Notes, enabled)
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
-		return
-	}
-	if body.ProjectID > 0 {
-		if err := setGitOpsProjectGitHubRepo(body.ProjectID, repo.Owner, repo.Name); err != nil {
-			log.Printf("[deploy-intel] link project %d to %s/%s: %v", body.ProjectID, repo.Owner, repo.Name, err)
+		if body.ProjectID > 0 {
+			if err := setGitOpsProjectGitHubRepo(body.ProjectID, repo.Owner, repo.Name); err != nil {
+				log.Printf("[deploy-intel] link project %d to %s/%s: %v", body.ProjectID, repo.Owner, repo.Name, err)
+			}
 		}
+		AppendAuditLog(&managerID, "deploy_intel_repo_onboard", "deploy_intel_repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), repo.BaseBranch)
+		w.Header().Set("Content-Type", "application/json")
+		encodeJSON(w, map[string]interface{}{
+			"status": "ok",
+			"repo":   buildDeployIntelRepoSummary(*repo),
+		})
+	case http.MethodPatch:
+		repo, err := updateDeployIntelRepoCatalog(body.Owner, body.Name, body.NewOwner, body.NewName, body.BaseBranch)
+		if err != nil {
+			writeDeployIntelRepoError(w, r, err)
+			return
+		}
+		AppendAuditLog(&managerID, "deploy_intel_repo_edit", "deploy_intel_repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), repo.BaseBranch)
+		w.Header().Set("Content-Type", "application/json")
+		encodeJSON(w, map[string]interface{}{
+			"status": "ok",
+			"repo":   buildDeployIntelRepoSummary(*repo),
+			"note":   "Catalog repository updated. The GitHub repository was not renamed or deleted.",
+		})
+	case http.MethodDelete:
+		owner, name := normalizeRepoIdentity(body.Owner, body.Name)
+		if err := disconnectDeployIntelRepo(owner, name); err != nil {
+			writeDeployIntelRepoError(w, r, err)
+			return
+		}
+		AppendAuditLog(&managerID, "deploy_intel_repo_disconnect", "deploy_intel_repo", fmt.Sprintf("%s/%s", owner, name), "portal catalog only")
+		w.Header().Set("Content-Type", "application/json")
+		encodeJSON(w, map[string]interface{}{
+			"status": "ok",
+			"note":   "Disconnected from OpsTrellis. The GitHub repository was not deleted.",
+		})
+	default:
+		writeMethodNotAllowed(w, r, http.MethodPost, http.MethodPatch, http.MethodDelete)
 	}
-	AppendAuditLog(&managerID, "deploy_intel_repo_onboard", "deploy_intel_repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), repo.BaseBranch)
-	w.Header().Set("Content-Type", "application/json")
-	encodeJSON(w, map[string]interface{}{
-		"status": "ok",
-		"repo":   buildDeployIntelRepoSummary(*repo),
-	})
 }

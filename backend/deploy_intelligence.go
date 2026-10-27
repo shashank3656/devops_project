@@ -479,10 +479,9 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		encodeJSON(w, map[string]interface{}{
-			"status":              "ok",
-			"repos":               summaries,
-			"projects":            listDeployIntelProjectOptions(),
-			"future_capabilities": deployIntelFutureCapabilities,
+			"status":   "ok",
+			"repos":    summaries,
+			"projects": listDeployIntelProjectOptions(),
 		})
 		return
 	}
@@ -599,12 +598,11 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	payload := map[string]interface{}{
-		"status":              "ok",
-		"repo":                repoSummary,
-		"section":             section,
-		"events":              events,
-		"insights":            insights,
-		"future_capabilities": deployIntelFutureCapabilities,
+		"status":   "ok",
+		"repo":     repoSummary,
+		"section":  section,
+		"events":   events,
+		"insights": insights,
 		"onboarded_repo": map[string]interface{}{
 			"owner":     owner,
 			"name":      repo,

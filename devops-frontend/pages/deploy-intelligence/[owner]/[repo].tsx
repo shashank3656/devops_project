@@ -109,28 +109,6 @@ interface RequiredCheck {
   detail?: string;
 }
 
-interface BranchProtectionInsight {
-  base_branch: string;
-  protected: boolean;
-  enforcement?: string;
-  required_checks: RequiredCheck[];
-  recommendations?: string[];
-  summary: string;
-  github_configured: boolean;
-}
-
-interface DeployFrequencyBucket {
-  period_start: string;
-  period_label: string;
-  merge_count: number;
-  high_risk_merges: number;
-}
-
-interface RepoInsights {
-  branch_protection: BranchProtectionInsight;
-  deploy_frequency: DeployFrequencyBucket[];
-}
-
 interface GitHubFetchMeta {
   configured: boolean;
   allowed: boolean;
@@ -150,20 +128,36 @@ function riskChipTone(level: string): 'low' | 'medium' | 'high' | 'danger' | 'ok
   return 'neutral';
 }
 
+function canManageRepos(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem('devops_user');
+    const user = raw ? (JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } }) : null;
+    return user?.role === 'admin' || Boolean(user?.devops_profile?.is_manager);
+  } catch {
+    return false;
+  }
+}
+
 export default function DeployIntelligenceRepoPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
   const confirm = useConfirm();
+  const canManage = canManageRepos();
   const owner = typeof router.query.owner === 'string' ? router.query.owner : '';
   const repo = typeof router.query.repo === 'string' ? router.query.repo : '';
 
   const [section, setSection] = useState<Section>('merges');
   const [events, setEvents] = useState<DeployEvent[]>([]);
   const [repoMeta, setRepoMeta] = useState<RepoSummary | null>(null);
-  const [future, setFuture] = useState<string[]>([]);
-  const [insights, setInsights] = useState<RepoInsights | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draftOwner, setDraftOwner] = useState('');
+  const [draftName, setDraftName] = useState('');
+  const [draftBase, setDraftBase] = useState('main');
+  const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<DeployEvent | null>(null);
   const [refreshPR, setRefreshPR] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -174,8 +168,6 @@ export default function DeployIntelligenceRepoPage() {
   const [suggestingTicket, setSuggestingTicket] = useState(false);
   const [ticketMessage, setTicketMessage] = useState('');
   const [ackReasons, setAckReasons] = useState('');
-  const [protecting, setProtecting] = useState(false);
-  const [protectMessage, setProtectMessage] = useState('');
   const [rollingLastChange, setRollingLastChange] = useState(false);
 
   const load = async (refreshNumber?: number, options?: { batchDeep?: boolean }) => {
@@ -208,8 +200,6 @@ export default function DeployIntelligenceRepoPage() {
       setRepoMeta(data?.repo || null);
       const nextEvents: DeployEvent[] = Array.isArray(data?.events) ? data.events : [];
       setEvents(nextEvents);
-      setFuture(Array.isArray(data?.future_capabilities) ? data.future_capabilities : []);
-      setInsights((data?.insights as RepoInsights) || null);
       setGithubMeta((data?.github as GitHubFetchMeta) || null);
       setGithubError(typeof data?.github_error === 'string' ? data.github_error : '');
       if (refreshNumber && refreshNumber > 0) {
@@ -228,38 +218,6 @@ export default function DeployIntelligenceRepoPage() {
     if (!router.isReady) return;
     void load();
   }, [apiUrl, router.isReady, owner, repo, section, baseFilter, includeDrafts]);
-
-  const applyRecommendedProtection = async () => {
-    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
-    if (!token) return;
-    const branch = insights?.branch_protection.base_branch || repoMeta?.base_branch || 'main';
-    const ok = await confirm({
-      title: 'Apply branch protection',
-      message: `Apply recommended OpsTrellis checks on ${owner}/${repo} branch ${branch}?\n\nThis will require infragate/plan-review and infragate/policy, and will create branch protection if it is missing.`,
-      confirmLabel: 'Apply',
-    });
-    if (!ok) return;
-    setProtecting(true);
-    setProtectMessage('');
-    try {
-      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/protect-branch`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ owner, name: repo, base_branch: branch, confirm: true }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setProtectMessage(data?.error || 'Could not apply branch protection');
-        return;
-      }
-      setProtectMessage('Recommended branch protection applied.');
-      void load();
-    } catch {
-      setProtectMessage('Could not apply branch protection');
-    } finally {
-      setProtecting(false);
-    }
-  };
 
   const suggestTicket = async (prNumber: number, acknowledged = false) => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -503,7 +461,7 @@ export default function DeployIntelligenceRepoPage() {
             </h1>
             <p className="portal-page__subtitle">
               {repoMeta?.setup_summary ||
-                'See what each pull request changes and why it is risky before merge or promotion.'}
+                'Watch open PRs, merged PRs, and related pipelines for this repository. Disconnect removes the watch list entry only.'}
             </p>
           </div>
           <div className="portal-page__actions">
@@ -515,10 +473,146 @@ export default function DeployIntelligenceRepoPage() {
                 Open on GitHub
               </a>
             ) : null}
+            {canManage ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={saving}
+                  onClick={() => {
+                    setEditing(true);
+                    setDraftOwner(owner);
+                    setDraftName(repo);
+                    setDraftBase(repoMeta?.base_branch || 'main');
+                    setError('');
+                    setNotice('');
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={saving}
+                  onClick={() => {
+                    void (async () => {
+                      const ok = await confirm({
+                        title: 'Disconnect repository',
+                        message: `Disconnect ${owner}/${repo} from OpsTrellis?`,
+                        detailLines: [
+                          'This removes the watch list entry for pipelines, open PRs, and merged PRs.',
+                          'The GitHub repository is not deleted.',
+                        ],
+                        confirmLabel: 'Disconnect',
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                      if (!token) return;
+                      setSaving(true);
+                      setError('');
+                      setNotice('');
+                      try {
+                        const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
+                          method: 'DELETE',
+                          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ owner, name: repo }),
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                          setError(data?.error || 'The repository could not be disconnected');
+                          return;
+                        }
+                        await router.push('/deploy-intelligence');
+                      } catch {
+                        setError('The repository could not be disconnected');
+                      } finally {
+                        setSaving(false);
+                      }
+                    })();
+                  }}
+                >
+                  Disconnect
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
 
         {error ? <div className="alert alert-error">{error}</div> : null}
+        {notice ? <div className="alert alert-success">{notice}</div> : null}
+        {editing ? (
+          <form
+            className="portal-surface"
+            style={{ marginBottom: 24 }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void (async () => {
+                const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+                if (!token) return;
+                setSaving(true);
+                setError('');
+                setNotice('');
+                try {
+                  const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
+                    method: 'PATCH',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      owner,
+                      name: repo,
+                      new_owner: draftOwner.trim(),
+                      new_name: draftName.trim(),
+                      base_branch: draftBase.trim() || 'main',
+                    }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    setError(data?.error || (res.status === 404 ? 'Repository not found' : 'The catalog could not be updated'));
+                    return;
+                  }
+                  setEditing(false);
+                  setNotice(data?.note || 'Catalog repository updated. The GitHub repository was not renamed or deleted.');
+                  const nextOwner = data?.repo?.owner || draftOwner.trim();
+                  const nextName = data?.repo?.name || draftName.trim();
+                  if (nextOwner !== owner || nextName !== repo) {
+                    await router.replace(`/deploy-intelligence/${encodeURIComponent(nextOwner)}/${encodeURIComponent(nextName)}`);
+                    return;
+                  }
+                  await load();
+                } catch {
+                  setError('The catalog could not be updated');
+                } finally {
+                  setSaving(false);
+                }
+              })();
+            }}
+          >
+            <span className="portal-surface__eyebrow">Edit catalog</span>
+            <p className="portal-surface__subtitle">
+              This updates the OpsTrellis watch list only. GitHub is not renamed.
+            </p>
+            <div className="portal-page__actions" style={{ marginTop: 12 }}>
+              <label className="label" style={{ margin: 0 }}>
+                Owner
+                <input className="input" value={draftOwner} onChange={(event) => setDraftOwner(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={saving} />
+              </label>
+              <label className="label" style={{ margin: 0 }}>
+                Repository
+                <input className="input" value={draftName} onChange={(event) => setDraftName(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={saving} />
+              </label>
+              <label className="label" style={{ margin: 0 }}>
+                Base branch
+                <input className="input" value={draftBase} onChange={(event) => setDraftBase(event.target.value.replace(/\s+/g, ''))} autoComplete="off" disabled={saving} />
+              </label>
+              <button type="submit" className="btn btn-primary" disabled={saving || !draftOwner.trim() || !draftName.trim()}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         {repoMeta?.last_change ? (
           <section className="portal-surface" style={{ marginBottom: 24 }}>
@@ -590,105 +684,6 @@ export default function DeployIntelligenceRepoPage() {
               ) : null}
             </div>
           </section>
-        ) : null}
-
-        {insights ? (
-          <div className="portal-detail-grid" style={{ marginBottom: 24 }}>
-            <section className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Branch protection</span>
-                  <h2 className="portal-surface__title">Required CI checks</h2>
-                  <p className="portal-surface__subtitle">{insights.branch_protection.summary}</p>
-                </div>
-                <span className={`ig-chip ig-chip--${insights.branch_protection.protected ? 'ok' : 'medium'}`}>
-                  {insights.branch_protection.protected ? 'Protected' : 'Not protected'}
-                </span>
-              </div>
-              <ul className="portal-list">
-                {insights.branch_protection.required_checks.map((check) => (
-                  <li key={check.key}>
-                    <code>{check.label}</code>{' '}
-                    <span className={`ig-chip ig-chip--${check.status === 'ok' ? 'ok' : check.status === 'missing' ? 'danger' : 'neutral'}`}>
-                      {check.status}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {insights.branch_protection.recommendations && insights.branch_protection.recommendations.length > 0 ? (
-                <ul className="portal-list" style={{ marginTop: 12 }}>
-                  {insights.branch_protection.recommendations.map((rec) => (
-                    <li key={rec}>{rec}</li>
-                  ))}
-                </ul>
-              ) : null}
-              {insights.branch_protection.recommendations && insights.branch_protection.recommendations.length > 0 ? (
-                <div style={{ marginTop: 12 }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    disabled={protecting || !insights.branch_protection.github_configured}
-                    onClick={() => void applyRecommendedProtection()}
-                  >
-                    {protecting ? 'Applying…' : 'Apply recommended protection'}
-                  </button>
-                  {protectMessage ? <p className="portal-surface__subtitle" style={{ marginTop: 8 }}>{protectMessage}</p> : null}
-                </div>
-              ) : null}
-            </section>
-
-            <section className="portal-surface">
-              <div className="portal-surface__header">
-                <div>
-                  <span className="portal-surface__eyebrow">Deploy frequency</span>
-                  <h2 className="portal-surface__title">Merges to base (weekly)</h2>
-                  <p className="portal-surface__subtitle">Production-branch merges stored for this repository.</p>
-                </div>
-              </div>
-              {insights.deploy_frequency.length === 0 ? (
-                <p className="portal-surface__subtitle">No merge history yet for charting.</p>
-              ) : (
-                <figure className="ops-chart-figure">
-                  <figcaption className="ops-chart-figure__caption">
-                    Merges per week · scale 0–{Math.max(...insights.deploy_frequency.map((b) => b.merge_count), 1)}
-                    <span className="ops-chart-figure__legend">
-                      <span><i className="ops-swatch ops-swatch--merge" aria-hidden="true" />Merges</span>
-                      <span><i className="ops-swatch ops-swatch--risk" aria-hidden="true" />High risk</span>
-                    </span>
-                  </figcaption>
-                  <div
-                    className="deploy-intel-chart"
-                    role="img"
-                    aria-label={`Weekly merges: ${insights.deploy_frequency.map((b) => `${b.period_label} ${b.merge_count} merges, ${b.high_risk_merges} high risk`).join('; ')}`}
-                  >
-                    {(() => {
-                      const max = Math.max(...insights.deploy_frequency.map((b) => b.merge_count), 1);
-                      return insights.deploy_frequency.map((bucket) => (
-                        <div key={bucket.period_label} className="deploy-intel-chart__row" aria-hidden="true">
-                          <span className="deploy-intel-chart__label">{bucket.period_label}</span>
-                          <div className="deploy-intel-chart__bar-track">
-                            <div
-                              className="deploy-intel-chart__bar deploy-intel-chart__bar--merge"
-                              style={{ width: bucket.merge_count === 0 ? '0%' : `${Math.max(3, (bucket.merge_count / max) * 100)}%` }}
-                              title={`${bucket.merge_count} merge(s)`}
-                            />
-                            {bucket.high_risk_merges > 0 ? (
-                              <div
-                                className="deploy-intel-chart__bar deploy-intel-chart__bar--risk"
-                                style={{ width: `${Math.max(3, (bucket.high_risk_merges / max) * 100)}%` }}
-                                title={`${bucket.high_risk_merges} high risk`}
-                              />
-                            ) : null}
-                          </div>
-                          <span className="deploy-intel-chart__value">{bucket.merge_count}</span>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </figure>
-              )}
-            </section>
-          </div>
         ) : null}
 
         <section className="portal-surface">
@@ -813,18 +808,6 @@ export default function DeployIntelligenceRepoPage() {
           </div>
         </section>
 
-        {future.length > 0 ? (
-          <section className="portal-surface" style={{ marginTop: 24 }}>
-            <span className="portal-surface__eyebrow">Coming next for this repo</span>
-            <ul className="portal-list">
-              {future.map((item) => (
-                <li key={item}>
-                  <code>{item}</code>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </div>
 
       <InspectorDrawer open={Boolean(selected)} title={selected ? `PR #${selected.pr_number}` : 'PR analysis'} onClose={() => setSelected(null)}>

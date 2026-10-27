@@ -67,3 +67,41 @@ func TestDeployIntelGitHubAccessRequiresToken(t *testing.T) {
 		t.Fatal("expected false without token")
 	}
 }
+
+func TestDisconnectDeployIntelRepoDoesNotCallGitHub(t *testing.T) {
+	called := false
+	prevLookup := lookupGitHubRepository
+	lookupGitHubRepository = func(owner, name string) (string, string, bool, error) {
+		called = true
+		return owner, name, false, errors.New("github must not be called")
+	}
+	defer func() { lookupGitHubRepository = prevLookup }()
+	saved := DB
+	DB = nil
+	defer func() { DB = saved }()
+	if err := disconnectDeployIntelRepo("acme", "infra"); err == nil {
+		t.Fatal("expected unavailable without database")
+	}
+	if called {
+		t.Fatal("disconnect must not call GitHub")
+	}
+}
+
+func TestUpdateDeployIntelRepoCatalogWithoutDB(t *testing.T) {
+	called := false
+	prevLookup := lookupGitHubRepository
+	lookupGitHubRepository = func(owner, name string) (string, string, bool, error) {
+		called = true
+		return owner, name, true, nil
+	}
+	defer func() { lookupGitHubRepository = prevLookup }()
+	saved := DB
+	DB = nil
+	defer func() { DB = saved }()
+	if _, err := updateDeployIntelRepoCatalog("acme", "infra", "acme", "infra", "main"); err == nil {
+		t.Fatal("expected unavailable without database")
+	}
+	if called {
+		t.Fatal("same-name catalog edit must not call GitHub")
+	}
+}

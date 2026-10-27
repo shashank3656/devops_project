@@ -23,13 +23,13 @@ type deployIntelRequiredCheck struct {
 }
 
 type deployIntelBranchProtection struct {
-	BaseBranch        string                     `json:"base_branch"`
-	Protected         bool                       `json:"protected"`
-	Enforcement     string                     `json:"enforcement,omitempty"`
-	RequiredChecks    []deployIntelRequiredCheck `json:"required_checks"`
-	Recommendations   []string                   `json:"recommendations,omitempty"`
-	Summary           string                     `json:"summary"`
-	GitHubConfigured  bool                       `json:"github_configured"`
+	BaseBranch       string                     `json:"base_branch"`
+	Protected        bool                       `json:"protected"`
+	Enforcement      string                     `json:"enforcement,omitempty"`
+	RequiredChecks   []deployIntelRequiredCheck `json:"required_checks"`
+	Recommendations  []string                   `json:"recommendations,omitempty"`
+	Summary          string                     `json:"summary"`
+	GitHubConfigured bool                       `json:"github_configured"`
 }
 
 type deployFrequencyBucket struct {
@@ -176,7 +176,6 @@ func buildDeployIntelRepoInsights(owner, name, baseBranch string) (deployIntelRe
 		return deployIntelRepoInsights{}, err
 	}
 	return deployIntelRepoInsights{
-		BranchProtection: buildDeployIntelBranchProtection(owner, name, baseBranch),
-		DeployFrequency:  freq,
+		DeployFrequency: freq,
 	}, nil
 }
