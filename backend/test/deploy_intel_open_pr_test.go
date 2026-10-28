@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v61/github"
 )
@@ -93,6 +94,28 @@ func TestOverallReleaseReadiness(t *testing.T) {
 	})
 	if ready != "ready" || readyLabel != "Ready for approval" || len(readyReasons) != 0 {
 		t.Fatalf("got %s %s %#v", ready, readyLabel, readyReasons)
+	}
+}
+
+func TestComputeReviewSLADoesNotAdviseMerge(t *testing.T) {
+	status, detail := computeReviewSLA(time.Now().Add(-4*24*time.Hour), "")
+	if status != "warning" {
+		t.Fatalf("status=%s", status)
+	}
+	if !strings.Contains(detail, "Review required; release readiness is unconfirmed.") {
+		t.Fatalf("detail=%q", detail)
+	}
+	if strings.Contains(strings.ToLower(detail), "merge") {
+		t.Fatalf("SLA copy still advised merge: %q", detail)
+	}
+}
+
+func TestResponsiblePRReviewerIsNotAuthor(t *testing.T) {
+	if got := responsiblePRReviewer("dependabot[bot]", &deployIntelOpenPRMeta{Assignees: []string{"dependabot[bot]"}}, nil); got != "" {
+		t.Fatalf("author must not become owner: %q", got)
+	}
+	if got := responsiblePRReviewer("dependabot[bot]", &deployIntelOpenPRMeta{RequestedReviewers: []string{"platform-review"}}, nil); got != "platform-review" {
+		t.Fatalf("requested reviewer = %q", got)
 	}
 }
 

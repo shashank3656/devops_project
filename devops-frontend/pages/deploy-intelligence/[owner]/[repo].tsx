@@ -7,6 +7,7 @@ import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import LinkedJiraWork from '../../../components/LinkedJiraWork';
 import {
+  assignedReviewer,
   canManageDeliveryRepos,
   formatCI,
   formatReviewAge,
@@ -561,9 +562,9 @@ export default function DeployIntelligenceRepoPage() {
         {section === 'open' && bottleneck ? (
           <section className="delivery-stats" aria-label="Review bottlenecks">
             <article className="delivery-stat">
-              <span className="delivery-stat__label">Awaiting owner</span>
+              <span className="delivery-stat__label">Awaiting reviewer</span>
               <strong className="delivery-stat__value">{bottleneck.awaiting_owner ?? 0}</strong>
-              <p className="delivery-stat__hint">No assignee and no requested reviewer</p>
+              <p className="delivery-stat__hint">No assigned reviewer besides the author</p>
             </article>
             <article className="delivery-stat">
               <span className="delivery-stat__label">Overdue reviews</span>
@@ -625,7 +626,7 @@ export default function DeployIntelligenceRepoPage() {
                     className={`delivery-filter delivery-filter--pending${awaitingOwnerOnly ? ' is-active' : ''}`}
                     onClick={() => setAwaitingOwnerOnly((value) => !value)}
                   >
-                    Awaiting owner
+                    Awaiting reviewer
                   </button>
                 </div>
                 <label className="delivery-check">
@@ -770,7 +771,7 @@ export default function DeployIntelligenceRepoPage() {
                     <th>Risk</th>
                     <th>{section === 'open' ? 'CI checks' : 'Merged'}</th>
                     <th>{section === 'open' ? 'Review age' : 'Branch'}</th>
-                    {section === 'open' ? <th>Owner</th> : null}
+                    {section === 'open' ? <th>Reviewer</th> : null}
                     <th>Change request</th>
                     <th>Action</th>
                   </tr>
@@ -813,8 +814,8 @@ export default function DeployIntelligenceRepoPage() {
                         {section === 'open' ? (
                           <td>
                             {item.open_pr?.awaiting_owner
-                              ? <span className="delivery-status delivery-status--pending">Awaiting owner</span>
-                              : (item.open_pr?.assignees?.[0] || item.open_pr?.requested_reviewers?.[0] || 'Assigned')}
+                              ? <span className="delivery-status delivery-status--pending">Awaiting reviewer</span>
+                              : (assignedReviewer(item.author, item.open_pr?.assignees, item.open_pr?.requested_reviewers) || 'Assigned')}
                           </td>
                         ) : null}
                         <td>

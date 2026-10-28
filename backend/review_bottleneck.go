@@ -27,9 +27,21 @@ type reviewBottleneckSummary struct {
 	Teams               []reviewBottleneckTeam `json:"teams"`
 }
 
-const reviewBottleneckNote = "Awaiting an owner means no assignee and no requested reviewer. Overdue uses the seven-day review SLA. Approval delay is time to the first GitHub approval when that timestamp is known. Repository trends are not a proven team capacity claim."
+const reviewBottleneckNote = "Awaiting a reviewer means no assignee and no requested reviewer. The pull request author is not the assigned owner. Overdue uses the seven-day review SLA. Approval delay is time to the first GitHub approval when that timestamp is known. Repository trends are not a proven team capacity claim."
 
-func prAwaitingOwner(meta *deployIntelOpenPRMeta) bool {
+func hasNonAuthorLogin(logins []string, author string) bool {
+	author = strings.TrimSpace(author)
+	for _, login := range logins {
+		login = strings.TrimSpace(login)
+		if login == "" || strings.EqualFold(login, author) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func prAwaitingOwner(meta *deployIntelOpenPRMeta, author string) bool {
 	if meta == nil {
 		return true
 	}
@@ -37,7 +49,7 @@ func prAwaitingOwner(meta *deployIntelOpenPRMeta) bool {
 	if decision == "APPROVED" {
 		return false
 	}
-	if len(meta.Assignees) > 0 || len(meta.RequestedReviewers) > 0 {
+	if hasNonAuthorLogin(meta.Assignees, author) || hasNonAuthorLogin(meta.RequestedReviewers, author) {
 		return false
 	}
 	if decision == "CHANGES_REQUESTED" {
@@ -93,7 +105,7 @@ func attachReviewWait(events []repoDeployEvent) {
 		if events[i].OpenPR == nil {
 			continue
 		}
-		events[i].OpenPR.AwaitingOwner = prAwaitingOwner(events[i].OpenPR)
+		events[i].OpenPR.AwaitingOwner = prAwaitingOwner(events[i].OpenPR, events[i].Author)
 		if delay, ok := prApprovalDelayDays(events[i]); ok {
 			events[i].OpenPR.ApprovalDelayDays = delay
 			events[i].OpenPR.DelayKnown = true

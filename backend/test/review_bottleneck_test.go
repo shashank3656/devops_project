@@ -6,20 +6,23 @@ import (
 )
 
 func TestPRAwaitingOwner(t *testing.T) {
-	if !prAwaitingOwner(nil) {
-		t.Fatal("missing review meta is awaiting an owner")
+	if !prAwaitingOwner(nil, "") {
+		t.Fatal("missing review meta is awaiting a reviewer")
 	}
-	if !prAwaitingOwner(&deployIntelOpenPRMeta{ReviewDecision: "REVIEW_REQUIRED"}) {
+	if !prAwaitingOwner(&deployIntelOpenPRMeta{ReviewDecision: "REVIEW_REQUIRED"}, "dependabot[bot]") {
 		t.Fatal("review required with no reviewers is awaiting")
 	}
-	if prAwaitingOwner(&deployIntelOpenPRMeta{Assignees: []string{"alex"}}) {
-		t.Fatal("assigned PR is not awaiting an owner")
+	if !prAwaitingOwner(&deployIntelOpenPRMeta{Assignees: []string{"dependabot[bot]"}}, "dependabot[bot]") {
+		t.Fatal("author-only assignee is still awaiting a reviewer")
 	}
-	if prAwaitingOwner(&deployIntelOpenPRMeta{RequestedReviewers: []string{"sam"}}) {
-		t.Fatal("requested reviewer is not awaiting an owner")
+	if prAwaitingOwner(&deployIntelOpenPRMeta{Assignees: []string{"alex"}}, "dependabot[bot]") {
+		t.Fatal("assigned PR is not awaiting a reviewer")
 	}
-	if prAwaitingOwner(&deployIntelOpenPRMeta{ReviewDecision: "APPROVED"}) {
-		t.Fatal("approved PR is not awaiting an owner")
+	if prAwaitingOwner(&deployIntelOpenPRMeta{RequestedReviewers: []string{"sam"}}, "lee") {
+		t.Fatal("requested reviewer is not awaiting a reviewer")
+	}
+	if prAwaitingOwner(&deployIntelOpenPRMeta{ReviewDecision: "APPROVED"}, "lee") {
+		t.Fatal("approved PR is not awaiting a reviewer")
 	}
 }
 
@@ -58,6 +61,6 @@ func TestReviewBottleneckSummary(t *testing.T) {
 		t.Fatalf("teams: %#v", summary.Teams)
 	}
 	if events[0].OpenPR.AwaitingOwner == false {
-		t.Fatal("unassigned overdue PR should await an owner")
+		t.Fatal("unassigned overdue PR should await a reviewer")
 	}
 }

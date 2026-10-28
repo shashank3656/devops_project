@@ -5,7 +5,7 @@ import { useRouter } from 'next/router';
 import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { formatCI, formatReviewAge, formatRisk, pipelinesHref, type DeliveryCheck, type DeliveryCISummary } from '../lib/delivery';
+import { assignedReviewer, formatCI, formatReviewAge, formatRisk, pipelinesHref, type DeliveryCheck, type DeliveryCISummary } from '../lib/delivery';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -149,9 +149,9 @@ export default function PullRequestsPage() {
         {bottleneck ? (
           <section className="delivery-stats" aria-label="Review bottlenecks">
             <article className="delivery-stat">
-              <span className="delivery-stat__label">Awaiting owner</span>
+              <span className="delivery-stat__label">Awaiting reviewer</span>
               <strong className="delivery-stat__value">{bottleneck.awaiting_owner ?? 0}</strong>
-              <p className="delivery-stat__hint">No assignee and no requested reviewer</p>
+              <p className="delivery-stat__hint">No assigned reviewer besides the author</p>
             </article>
             <article className="delivery-stat">
               <span className="delivery-stat__label">Overdue reviews</span>
@@ -210,7 +210,7 @@ export default function PullRequestsPage() {
               className={`delivery-filter delivery-filter--pending${ageFilter === 'awaiting' ? ' is-active' : ''}`}
               onClick={() => setAgeFilter(ageFilter === 'awaiting' ? 'all' : 'awaiting')}
             >
-              Awaiting owner
+              Awaiting reviewer
             </button>
           </div>
           {repos.length > 1 ? (
@@ -246,7 +246,7 @@ export default function PullRequestsPage() {
                     <th>Risk</th>
                     <th>CI checks</th>
                     <th>Review age</th>
-                    <th>Owner</th>
+                    <th>Reviewer</th>
                     <th>Change request</th>
                     <th>Action</th>
                   </tr>
@@ -280,8 +280,8 @@ export default function PullRequestsPage() {
                         </td>
                         <td>
                           {item.open_pr?.awaiting_owner
-                            ? <span className="delivery-status delivery-status--pending">Awaiting owner</span>
-                            : (item.open_pr?.assignees?.[0] || item.open_pr?.requested_reviewers?.[0] || 'Assigned')}
+                            ? <span className="delivery-status delivery-status--pending">Awaiting reviewer</span>
+                            : (assignedReviewer(item.author, item.open_pr?.assignees, item.open_pr?.requested_reviewers) || 'Assigned')}
                         </td>
                         <td>
                           {item.request_id ? <Link href={`/changes/${item.request_id}`}>CHG linked</Link> : 'Not linked'}
@@ -310,7 +310,7 @@ export default function PullRequestsPage() {
                   <tr>
                     <th>Repository</th>
                     <th>Open</th>
-                    <th>Awaiting owner</th>
+                    <th>Awaiting reviewer</th>
                     <th>Overdue</th>
                     <th>Median age</th>
                     <th>Median approval delay</th>

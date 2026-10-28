@@ -64,6 +64,15 @@ export function formatCI(summary?: DeliveryCISummary | null, checks?: DeliveryCh
   return { label, tone: ciTone(failed, pending, passed, skipped) };
 }
 
+export function assignedReviewer(author?: string, assignees?: string[] | null, requested?: string[] | null) {
+  const skip = (author || '').trim().toLowerCase();
+  for (const login of [...(assignees || []), ...(requested || [])]) {
+    const value = (login || '').trim();
+    if (value && value.toLowerCase() !== skip) return value;
+  }
+  return '';
+}
+
 export function formatReviewAge(ageDays?: number, sla?: string) {
   const days = typeof ageDays === 'number' ? ageDays : 0;
   const overdue = sla === 'breach';

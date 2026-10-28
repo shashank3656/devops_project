@@ -13,6 +13,7 @@ export type ReleaseReadiness = {
   sha?: string;
   source?: string;
   evaluated_at?: string;
+  author?: string;
   owner?: string;
   reasons?: string[];
   checks?: ReleaseReadinessCheck[];
@@ -52,7 +53,8 @@ export default function ReleaseReadinessCard({ readiness }: { readiness?: Releas
       <p className="release-readiness__note">
         {readiness.note || 'Release readiness is not deployment authorization. The risk score is a separate impact estimate.'}
       </p>
-      {readiness.owner ? <p className="release-readiness__evidence">Owner {readiness.owner}</p> : null}
+      {readiness.author ? <p className="release-readiness__evidence">Author {readiness.author}</p> : null}
+      {readiness.owner ? <p className="release-readiness__evidence">Assigned reviewer {readiness.owner}</p> : <p className="release-readiness__evidence">No assigned reviewer</p>}
       <p className="release-readiness__evidence">
         Commit {shortSHA(readiness.sha)} · {readiness.source || 'Unknown source'}
         {readiness.evaluated_at ? ` · evaluated ${readiness.evaluated_at}` : ''}

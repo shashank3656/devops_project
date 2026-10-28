@@ -83,7 +83,7 @@ export default function JiraOnboardPage() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || 'Jira app could not be saved');
       setClientSecret('');
-      setNotice('Client ID and secret are stored encrypted. They are not shown again. You can now add a Jira connection.');
+      setNotice('Jira app credentials saved. You can now add a Jira connection.');
       setApp(body.oauth_app || app);
       void router.push('/integrations/jira');
     } catch (err) {
@@ -103,7 +103,7 @@ export default function JiraOnboardPage() {
           <div>
             <p className="ops-kicker"><Link href="/integrations/jira">Jira</Link></p>
             <h1>Onboard Jira app</h1>
-            <p>Store the Atlassian OAuth client ID and secret in OpsTrellis. Credentials stay encrypted on the API and are never returned to the browser.</p>
+            <p>Create an Atlassian OAuth app, then enter the client ID and secret here so this portal can connect to Jira Cloud.</p>
           </div>
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
@@ -120,14 +120,14 @@ export default function JiraOnboardPage() {
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Atlassian OAuth app</h2>
-                <p className="portal-surface__subtitle">Create an OAuth 2.0 (3LO) app in the Atlassian developer console, then paste the values here. Do not put them in a server environment file.</p>
+                <p className="portal-surface__subtitle">Create an OAuth 2.0 (3LO) app in the Atlassian developer console, then paste the client ID and secret here.</p>
               </div>
             </div>
             <ol className="jira-onboard-steps">
               <li>Create the app at developer.atlassian.com and enable authorization code grants.</li>
               <li>Add this callback URL to the app.</li>
               <li>Grant {app?.scopes || 'read:jira-work write:jira-work read:jira-user manage:jira-webhook offline_access'}.</li>
-              <li>Save the client ID and secret below. OpsTrellis encrypts the secret in the database.</li>
+              <li>Save the client ID and secret below. The secret is never shown again after you save.</li>
             </ol>
             <label className="label">Callback URL
               <div className="jira-onboard-copy">

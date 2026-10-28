@@ -25,7 +25,7 @@ export default function JiraIntegrationsPage() {
   const tab = (['connections', 'spaces', 'linked', 'activity'] as Tab[]).includes(router.query.tab as Tab)
     ? (router.query.tab as Tab)
     : 'connections';
-  const [oauthReady, setOauthReady] = useState(true);
+  const [oauthReady, setOauthReady] = useState<boolean | null>(null);
   const [connections, setConnections] = useState<JiraConnection[]>([]);
   const [spaces, setSpaces] = useState<JiraSpace[]>([]);
   const [links, setLinks] = useState<JiraLink[]>([]);
@@ -109,19 +109,21 @@ export default function JiraIntegrationsPage() {
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}
         {notice ? <div className="alert alert-success">{notice}</div> : null}
-        {!oauthReady ? (
+        {loading ? (
+          <p className="work-empty">Loading Jira…</p>
+        ) : oauthReady === false ? (
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Onboard the Jira app</h2>
-                <p className="portal-surface__subtitle">Enter the Atlassian OAuth client ID and secret here. OpsTrellis stores them encrypted in the database. They are not read from a server environment file.</p>
+                <p className="portal-surface__subtitle">Enter the Atlassian OAuth client ID and secret, then add a Jira connection.</p>
               </div>
             </div>
             <div className="portal-form-actions">
               <Link href="/integrations/jira/onboard" className="btn btn-primary">Onboard Jira app</Link>
             </div>
           </section>
-        ) : (
+        ) : oauthReady ? (
           <section className="portal-surface">
             <div className="portal-surface__header">
               <div>
@@ -139,15 +141,16 @@ export default function JiraIntegrationsPage() {
               <Link href="/integrations/jira/onboard" className="btn btn-secondary">Replace app credentials</Link>
             </div>
           </section>
-        )}
-        <div className="delivery-filters" role="tablist" aria-label="Jira views">
-          {tabs.map((item) => (
-            <Link key={item.id} href={`/integrations/jira?tab=${item.id}`} className={`delivery-filter${tab === item.id ? ' is-selected' : ''}`}>
-              {item.label} {item.count}
-            </Link>
-          ))}
-        </div>
-        {loading ? <p className="work-empty">Loading Jira…</p> : null}
+        ) : null}
+        {!loading ? (
+          <div className="delivery-filters" role="tablist" aria-label="Jira views">
+            {tabs.map((item) => (
+              <Link key={item.id} href={`/integrations/jira?tab=${item.id}`} className={`delivery-filter${tab === item.id ? ' is-selected' : ''}`}>
+                {item.label} {item.count}
+              </Link>
+            ))}
+          </div>
+        ) : null}
         {tab === 'connections' && !loading ? (
           <section className="portal-surface">
             <div className="table-wrap">
@@ -165,7 +168,12 @@ export default function JiraIntegrationsPage() {
                 </thead>
                 <tbody>
                   {connections.length === 0 ? (
-                    <tr><td colSpan={7}>No Jira connections yet.</td></tr>
+                    <tr>
+                      <td colSpan={7}>
+                        <strong>No Jira connections yet.</strong>
+                        <p className="form-section__copy">Onboard the Jira app if it is not already configured, then add a connection and authorize a Jira site.</p>
+                      </td>
+                    </tr>
                   ) : connections.map((conn) => (
                     <tr key={conn.id}>
                       <td>{conn.site_name || conn.name}</td>
@@ -197,7 +205,12 @@ export default function JiraIntegrationsPage() {
                 </thead>
                 <tbody>
                   {spaces.length === 0 ? (
-                    <tr><td colSpan={5}>No permitted Jira spaces yet.</td></tr>
+                    <tr>
+                      <td colSpan={5}>
+                        <strong>No permitted Jira spaces yet.</strong>
+                        <p className="form-section__copy">Connect a Jira site first, then enable at least one space. Open Connections to add a site and choose which spaces this portal may use.</p>
+                      </td>
+                    </tr>
                   ) : spaces.map((space) => (
                     <tr key={space.id}>
                       <td><Link href={`/integrations/jira/${space.connection_id}?screen=mappings`}>{space.name} ({space.jira_project_key})</Link></td>
@@ -262,7 +275,12 @@ export default function JiraIntegrationsPage() {
                 </thead>
                 <tbody>
                   {links.length === 0 ? (
-                    <tr><td colSpan={6}>No linked Jira work yet.</td></tr>
+                    <tr>
+                      <td colSpan={6}>
+                        <strong>No linked Jira work yet.</strong>
+                        <p className="form-section__copy">After a space is enabled, link or create a Jira issue from a pull request, change, incident, or finding. Linked records will appear here.</p>
+                      </td>
+                    </tr>
                   ) : links.map((link) => (
                     <tr key={link.id}>
                       <td>{link.issue.issue_key} {link.issue.summary}</td>
@@ -308,7 +326,12 @@ export default function JiraIntegrationsPage() {
                 </thead>
                 <tbody>
                   {activity.length === 0 ? (
-                    <tr><td colSpan={5}>No Jira operations yet.</td></tr>
+                    <tr>
+                      <td colSpan={5}>
+                        <strong>No Jira operations yet.</strong>
+                        <p className="form-section__copy">Activity is recorded after a link, create, refresh, or retry. Connect Jira, enable a space, then link or create work to see operations here.</p>
+                      </td>
+                    </tr>
                   ) : activity.map((op) => (
                     <tr key={op.operation_id}>
                       <td>{op.kind.replace(/_/g, ' ')}</td>

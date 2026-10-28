@@ -182,10 +182,10 @@ func computeReviewSLA(createdAt time.Time, reviewState string) (status, detail s
 	}
 	age := int(time.Since(createdAt).Hours() / 24)
 	if age >= deployIntelReviewSLABreachDays {
-		return "breach", fmt.Sprintf("Open %d days without merge.", age)
+		return "breach", fmt.Sprintf("Open %d days. Review required; release readiness is unconfirmed.", age)
 	}
 	if age >= deployIntelReviewSLAWarnDays {
-		return "warning", fmt.Sprintf("Open %d days — consider review or merge.", age)
+		return "warning", fmt.Sprintf("Open %d days. Review required; release readiness is unconfirmed.", age)
 	}
 	if strings.EqualFold(reviewState, "changes_requested") {
 		return "warning", "Changes were requested on this PR."
@@ -790,10 +790,8 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 		if deep && client != nil {
 			reviewNote = summarizePRReviews(ctx, client, owner, name, pr.GetNumber())
 		}
-		meta.ReviewSLA, meta.ReviewDetail = computeReviewSLA(created, "")
-		if reviewNote != "" && meta.ReviewDetail != "" {
-			meta.ReviewDetail = meta.ReviewDetail + " " + reviewNote
-		} else if reviewNote != "" {
+		meta.ReviewSLA, _ = computeReviewSLA(created, "")
+		if reviewNote != "" {
 			meta.ReviewDetail = reviewNote
 		}
 	}

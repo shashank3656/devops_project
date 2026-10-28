@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { InspectorDrawer, buildPortalApiUrl, portalFetch } from '@infragate/ui';
 import {
@@ -556,8 +557,8 @@ export default function LinkedJiraWork({
         </div>
         {allowActions && source ? (
           <div className="request-actions" style={{ marginTop: 0 }}>
-            <button type="button" className="btn btn-secondary btn-sm" disabled={!canLink} onClick={() => { setMode('link'); setHits([]); }}>Link existing</button>
-            <button type="button" className="btn btn-primary btn-sm" disabled={!canCreate} onClick={() => { setMode('create'); const first = spaces.find((s) => s.can_create); if (first) { setSpaceId(first.id); void loadTypes(first.id); } }}>Create issue</button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={loading || !canLink} onClick={() => { setMode('link'); setHits([]); }}>Link existing</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={loading || !canCreate} onClick={() => { setMode('create'); const first = spaces.find((s) => s.can_create); if (first) { setSpaceId(first.id); void loadTypes(first.id); } }}>Create issue</button>
             {links.some((link) => link.issue.stale) ? (
               <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void refreshIssues(links.filter((link) => link.issue.stale))}>Refresh stale</button>
             ) : null}
@@ -566,6 +567,13 @@ export default function LinkedJiraWork({
       </div>
       {error ? <div className="alert alert-error">{error}</div> : null}
       {notice ? <div className="alert alert-success">{notice}</div> : null}
+      {allowActions && source && !loading && (!canLink || !canCreate) ? (
+        <p className="form-section__copy">
+          Connect Jira and enable a space to continue.{' '}
+          <Link href="/integrations/jira">Open Jira setup</Link>
+          . If you cannot add a connection, contact your administrator.
+        </p>
+      ) : null}
       {allowActions && suggestions.length ? (
         <div className="portal-surface" style={{ marginBottom: 16 }}>
           <h3 className="portal-surface__title">Suggested Jira work</h3>

@@ -20,6 +20,7 @@ type releaseReadiness struct {
 	SHA         string                  `json:"sha,omitempty"`
 	Source      string                  `json:"source"`
 	EvaluatedAt string                  `json:"evaluated_at"`
+	Author      string                  `json:"author,omitempty"`
 	Owner       string                  `json:"owner,omitempty"`
 	Reasons     []string                `json:"reasons,omitempty"`
 	Checks      []releaseReadinessCheck `json:"checks"`
@@ -59,15 +60,13 @@ func buildPRReleaseReadiness(owner, name string, ev repoDeployEvent) *releaseRea
 			}
 		}
 	}
-	ownerName := strings.TrimSpace(ev.Author)
-	if change != nil && strings.TrimSpace(change.AssigneeUsername) != "" {
-		ownerName = change.AssigneeUsername
-	}
+	authorName := strings.TrimSpace(ev.Author)
 	return finalizeReleaseReadiness(releaseReadinessInput{
 		SHA:            sha,
 		Source:         "GitHub pull request",
 		EvaluatedAt:    now,
-		Owner:          ownerName,
+		Author:         authorName,
+		Owner:          responsiblePRReviewer(authorName, ev.OpenPR, change),
 		CI:             ci,
 		ReviewDecision: reviewDecision,
 		ReviewDetail:   reviewDetail,
@@ -90,12 +89,13 @@ func buildChangeReleaseReadiness(item changeRequestRecord) *releaseReadiness {
 	if strings.TrimSpace(item.PipelineURL) == "" && ci.Passed == 0 && ci.Failed == 0 && ci.Pending == 0 {
 		ci.Label = "No checks yet"
 	}
-	ownerName := firstNonEmpty(item.AssigneeUsername, item.Author)
+	authorName := strings.TrimSpace(item.Author)
 	return finalizeReleaseReadiness(releaseReadinessInput{
 		SHA:            strings.TrimSpace(item.SHA),
 		Source:         "Change record",
 		EvaluatedAt:    time.Now().UTC(),
-		Owner:          ownerName,
+		Author:         authorName,
+		Owner:          responsiblePRReviewer(authorName, nil, &item),
 		CI:             ci,
 		ReviewDecision: "",
 		ReviewDetail:   "",
@@ -108,12 +108,33 @@ type releaseReadinessInput struct {
 	SHA            string
 	Source         string
 	EvaluatedAt    time.Time
+	Author         string
 	Owner          string
 	CI             deployIntelCISummary
 	ReviewDecision string
 	ReviewDetail   string
 	Change         *changeRequestRecord
 	Environment    string
+}
+
+func responsiblePRReviewer(author string, meta *deployIntelOpenPRMeta, change *changeRequestRecord) string {
+	author = strings.TrimSpace(author)
+	candidates := []string{}
+	if meta != nil {
+		candidates = append(candidates, meta.Assignees...)
+		candidates = append(candidates, meta.RequestedReviewers...)
+	}
+	if change != nil {
+		candidates = append(candidates, change.AssigneeUsername)
+	}
+	for _, login := range candidates {
+		login = strings.TrimSpace(login)
+		if login == "" || strings.EqualFold(login, author) {
+			continue
+		}
+		return login
+	}
+	return ""
 }
 
 func finalizeReleaseReadiness(in releaseReadinessInput) *releaseReadiness {
@@ -138,6 +159,7 @@ func finalizeReleaseReadiness(in releaseReadinessInput) *releaseReadiness {
 		SHA:         in.SHA,
 		Source:      in.Source,
 		EvaluatedAt: evaluated,
+		Author:      in.Author,
 		Owner:       in.Owner,
 		Reasons:     reasons,
 		Checks:      checks,
