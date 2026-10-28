@@ -1561,6 +1561,7 @@ func MigrateDatabase() error {
 	migrateSecurityVulnSchema()
 	migrateCostLedgerSchema()
 	migrateRecordDocumentsSchema()
+	migrateJiraIntegrationSchema()
 
 	log.Println("Database schema is up to date")
 	return nil

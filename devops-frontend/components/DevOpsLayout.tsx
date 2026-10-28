@@ -106,6 +106,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/cost/kubernetes': 'Kubernetes cost',
   '/cost/configuration': 'Data sources',
   '/operations/webhooks': 'Webhooks',
+  '/integrations/jira': 'Jira',
+  '/integrations/jira/onboard': 'Onboard Jira',
   '/maintenance': 'Maintenance',
   '/service-desk': 'Service desk',
   '/approval-center': 'Approval queue',
@@ -742,6 +744,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
+        { href: '/integrations/jira', label: 'Jira', Icon: IconProjects },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
         {
           href: '/notification-settings',
@@ -763,6 +766,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
+        { href: '/integrations/jira', label: 'Jira', Icon: IconProjects },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
       ];
   const iamNavItem: NavItem = {

@@ -46,6 +46,7 @@ func inheritedCapabilityInventory(revision, environment string) []inheritedCapab
 		note("Cloud inventory", "/api/devops/cloud/resources", capabilityDemo, "The connected database has 5 cloud_resources rows, including the demo seed ids. There is no cloud API read."),
 		note("Kubernetes overview", "/api/devops/k8s-overview", capabilityUnavailable, "The connected database has 0 project_k8s_connections rows."),
 		note("GitHub connectivity", "/api/webhooks/github", capabilityUnavailable, "The configured token was rejected by the GitHub API, so repository calls stay unavailable."),
+		note("Jira Cloud integration", "/api/devops/integrations/jira", jiraCapabilityMode(), "Jira Cloud OAuth connects selected spaces. Owner access is not shared with every portal user. Data Center is not in this release."),
 		note("Copilot model", "/api/copilot", capabilityUnavailable, "Without COPILOT_API_KEY or OPENAI_API_KEY the handler keeps the grounded catalog answer and does not call a model."),
 		note("Credential audit", "/api/devops/credential-audit", capabilityLive, "Rows come from stored credential audit logs. This is not a scanner finding."),
 		note("Security findings", "(no scanner route)", capabilityUnavailable, "identity_findings has 0 rows and records SSO identity data. No cloud or code scanner route is registered."),

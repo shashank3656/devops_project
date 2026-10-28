@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DeploymentVerificationCard, InspectorDrawer, ReleaseReadinessCard, useConfirm, type DeploymentVerification, type ReleaseReadiness } from '@infragate/ui';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import LinkedJiraWork from '../../../components/LinkedJiraWork';
 import {
   canManageDeliveryRepos,
   formatCI,
@@ -942,6 +943,19 @@ export default function DeployIntelligenceRepoPage() {
                 </div>
               )}
             </section>
+            <LinkedJiraWork
+              apiUrl={apiUrl}
+              source={{
+                sourceType: 'pull_request',
+                sourceId: selected.pr_number,
+                sourceKey: `${owner}/${repo}#${selected.pr_number}`,
+                defaultSummary: selected.title,
+                defaultDescription: selected.title,
+                suggestTitle: selected.title,
+                suggestBranch: selected.head_branch,
+                suggestBody: selected.summary,
+              }}
+            />
             <section>
               <h3>Pipelines</h3>
               <p>

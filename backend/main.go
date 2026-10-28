@@ -742,6 +742,7 @@ func main() {
 		startVulnSecurityWorker()
 		startOncallHandoverWorker()
 		startExpiryAssetWorker()
+		startJiraWorkerScheduler()
 	}
 	InitRuntimeResilience()
 
@@ -837,6 +838,10 @@ func main() {
 	http.HandleFunc("/api/admin/inbound-sources/", adminInboundSourceDetailHandler)
 	http.HandleFunc("/api/devops/inbound-sources", devopsInboundSourcesHandler)
 	http.HandleFunc("/api/devops/inbound-sources/", devopsInboundSourceDetailHandler)
+	http.HandleFunc("/api/devops/integrations/jira", jiraIntegrationsHandler)
+	http.HandleFunc("/api/devops/integrations/jira/", jiraIntegrationsHandler)
+	http.HandleFunc("/api/integrations/jira/oauth/callback", jiraOAuthCallbackHandler)
+	http.HandleFunc("/api/webhooks/jira", jiraWebhookHandler)
 	http.HandleFunc("/api/admin/changes", adminChangesHandler)
 	http.HandleFunc("/api/admin/changes/", adminChangeDetailHandler)
 	http.HandleFunc("/api/admin/scorecards", adminScorecardsHandler)

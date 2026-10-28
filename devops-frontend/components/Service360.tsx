@@ -4,6 +4,7 @@ import { formatOperationalTime } from '@infragate/ui';
 import { recordReference } from '../lib/recordRef';
 import ServiceActivityTimeline from './ServiceActivityTimeline';
 import ServiceEnvironmentMatrix from './ServiceEnvironmentMatrix';
+import LinkedJiraWork from './LinkedJiraWork';
 
 type TabId = 'overview' | 'resources' | 'changes' | 'incidents' | 'access' | 'environments' | 'activity';
 
@@ -317,6 +318,17 @@ export default function Service360({
             </p>
           ) : null}
           {overview}
+          {serviceId ? (
+            <LinkedJiraWork
+              apiUrl={apiUrl}
+              source={{
+                sourceType: 'service',
+                sourceId: serviceId,
+                sourceKey: serviceName,
+                defaultSummary: serviceName,
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       {tab === 'resources' && !loading ? (

@@ -23,6 +23,7 @@ import {
   type ReleaseReadiness,
 } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import LinkedJiraWork from '../../components/LinkedJiraWork';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const CHANGE_STATUS_ACTIONS = new Set(['resolve', 'close', 'fail', 'cancel', 'reopen']);
@@ -244,6 +245,17 @@ export default function ChangeDetailPage() {
             <DeploymentVerificationCard verification={verification} />
             <ChangeDetailPanel item={item} actions={detailActions} />
             {resourceId ? <RecordDocuments apiUrl={apiUrl} kind="changes" recordId={resourceId} /> : null}
+            {resourceId ? (
+              <LinkedJiraWork
+                apiUrl={apiUrl}
+                source={{
+                  sourceType: 'change',
+                  sourceId: Number(resourceId),
+                  defaultSummary: item.title || item.change_number,
+                  defaultDescription: item.title,
+                }}
+              />
+            ) : null}
             <ResourceContextPanel
               apiUrl={apiUrl}
               token={token}

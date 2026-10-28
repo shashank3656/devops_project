@@ -13723,3 +13723,67 @@ html[data-theme] .delivery-shell .delivery-table th {
     flex: 1 1 100%;
   }
 }
+
+.jira-health {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--ig-surface-3);
+  color: var(--ig-muted);
+}
+.jira-health--ok { background: var(--ig-success-soft); color: var(--ig-success); }
+.jira-health--info { background: var(--ig-accent-soft); color: var(--ig-accent-text); }
+.jira-health--warn { background: var(--ig-warning-soft); color: var(--ig-warning); }
+.jira-health--danger { background: var(--ig-danger-soft); color: var(--ig-danger); }
+.jira-health--muted { background: var(--ig-surface-3); color: var(--ig-muted); }
+
+.jira-link-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.jira-link-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ig-border);
+  color: var(--ig-text);
+}
+.jira-link-card p,
+.jira-panel .form-section__copy {
+  color: var(--ig-muted);
+}
+.jira-grant-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin: 8px 0;
+  color: var(--ig-text);
+}
+
+.jira-onboard-steps {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  color: var(--ig-text);
+  line-height: 1.5;
+}
+
+.jira-onboard-copy {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.jira-onboard-copy .input {
+  flex: 1;
+}

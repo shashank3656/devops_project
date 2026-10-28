@@ -104,6 +104,7 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/certificates', key: 'certificates' },
   { prefix: '/cost', key: 'cost' },
   { prefix: '/operations/webhooks', key: 'webhooks' },
+  { prefix: '/integrations/jira', key: 'jira' },
   { prefix: '/maintenance', key: 'maintenance' },
   { prefix: '/reports-automation', key: 'reports' },
   { prefix: '/security/vulnerabilities', key: 'vulnerabilities' },
@@ -195,6 +196,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'maintenance', true)) prefixes.push('/maintenance');
     if (pageOn(grants, 'reports', true)) prefixes.push('/reports-automation');
     if (pageOn(grants, 'webhooks', true)) prefixes.push('/operations/webhooks');
+    if (pageOn(grants, 'jira', true)) prefixes.push('/integrations/jira');
     if (grants.manager) prefixes.push('/runbooks', '/notification-settings', '/retry-center', '/approval-notification-analytics', '/approval-center', '/approval-sla');
   }
   if (grants.infrastructure) {

@@ -169,6 +169,7 @@ func sectionForPath(path string) string {
 	}
 	switch {
 	case strings.HasPrefix(path, "/api/webhooks/"),
+		strings.HasPrefix(path, "/api/integrations/jira/oauth"),
 		strings.HasPrefix(path, "/api/auth/"),
 		strings.HasPrefix(path, "/api/public/"),
 		path == "/api/devops/me",
@@ -211,6 +212,7 @@ func sectionForPath(path string) string {
 		strings.HasPrefix(path, "/api/devops/notification-settings"),
 		strings.HasPrefix(path, "/api/devops/approval-notification-analytics"),
 		strings.HasPrefix(path, "/api/devops/inbound-sources"),
+		strings.HasPrefix(path, "/api/devops/integrations/jira"),
 		strings.HasPrefix(path, "/api/reports/"):
 		return "operations"
 	case strings.HasPrefix(path, "/api/cost/"):

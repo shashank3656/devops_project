@@ -12,6 +12,7 @@ import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { CostOptimization, CostRecommendation, costHref, costLifecycleLabel, costQuery, costRiskLabel, fetchCostJson } from '../../lib/cost';
 import { COST_SAMPLE_RECS } from '../../lib/costSample';
+import LinkedJiraWork from '../../components/LinkedJiraWork';
 
 export default function CostOptimizationPage() {
   const apiUrl = useApiUrl();
@@ -218,10 +219,19 @@ export default function CostOptimizationPage() {
                 <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('verify', { result: 'inconclusive' })}>Mark Inconclusive</button>
                 <button type="button" className="btn btn-secondary" disabled={!!acting || sampleLocked || !reason || !reviewBy || data?.can_operate === false} onClick={() => void act('dismiss')}>Dismiss</button>
               </div>
+              <LinkedJiraWork
+                apiUrl={apiUrl}
+                source={{
+                  sourceType: 'cost_recommendation',
+                  sourceKey: open.calc_id,
+                  defaultSummary: open.finding_type,
+                  defaultDescription: open.proposed_action || open.finding_type,
+                }}
+              />
               <CostTechnicalDetails>
                 <p>{open.calc_id}</p>
                 <p>{open.calculation}</p>
-                <p>Approval does not execute the change. This page does not pause workloads. Overlapping savings are not summed.</p>
+                <p>Approval does not execute the change. This page does not pause workloads. Overlapping savings are not summed. Jira ticket completion is not verified savings.</p>
               </CostTechnicalDetails>
             </>
           ) : null}
