@@ -11,12 +11,16 @@ import {
   ChangeDetailPanel,
   changeScopeIncomplete,
   DeliveryVisibilityCard,
+  DeploymentVerificationCard,
+  ReleaseReadinessCard,
   ResourceContextPanel,
   parsePortalNumericId,
   parsePortalPathSegment,
   portalFetch,
   type ChangeDetailModel,
   type DeliveryVisibility,
+  type DeploymentVerification,
+  type ReleaseReadiness,
 } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
 
@@ -46,6 +50,8 @@ export default function ChangeDetailPage() {
   const [blastRadius, setBlastRadius] = useState<string[]>([]);
   const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
   const [delivery, setDelivery] = useState<DeliveryVisibility | null>(null);
+  const [readiness, setReadiness] = useState<ReleaseReadiness | null>(null);
+  const [verification, setVerification] = useState<DeploymentVerification | null>(null);
   const [isManager, setIsManager] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -160,6 +166,8 @@ export default function ChangeDetailPage() {
         setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
         setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
         setDelivery((data.delivery as DeliveryVisibility | undefined) ?? null);
+        setReadiness((data.readiness as ReleaseReadiness | undefined) ?? null);
+        setVerification((data.verification as DeploymentVerification | undefined) ?? null);
       })
       .catch(() => setError('Failed to load change'))
       .finally(() => setLoading(false));
@@ -232,6 +240,8 @@ export default function ChangeDetailPage() {
         {loading ? <p className="work-empty">Loading change…</p> : null}
         {item ? (
           <>
+            <ReleaseReadinessCard readiness={readiness} />
+            <DeploymentVerificationCard verification={verification} />
             <ChangeDetailPanel item={item} actions={detailActions} />
             {resourceId ? <RecordDocuments apiUrl={apiUrl} kind="changes" recordId={resourceId} /> : null}
             <ResourceContextPanel

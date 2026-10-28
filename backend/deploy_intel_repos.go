@@ -450,6 +450,10 @@ func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner
 		reqID = &req.ID
 		brief.RequestID = req.ID
 	}
+	headSHA := ""
+	if pr != nil && pr.GetHead() != nil {
+		headSHA = strings.TrimSpace(pr.GetHead().GetSHA())
+	}
 	return repoDeployEvent{
 		RepoOwner:   owner,
 		RepoName:    name,
@@ -459,6 +463,7 @@ func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner
 		Author:      brief.Author,
 		BaseBranch:  brief.BaseBranch,
 		HeadBranch:  brief.HeadBranch,
+		HeadSHA:     headSHA,
 		CommitCount: brief.CommitCount,
 		FileCount:   brief.FileCount,
 		Additions:   brief.Additions,
@@ -718,6 +723,7 @@ func listDeliveryOpenPullRequests(limitPerRepo int) []repoDeployEvent {
 			if err != nil || len(events) == 0 {
 				return
 			}
+			attachReviewWait(events)
 			mu.Lock()
 			out = append(out, events...)
 			mu.Unlock()
@@ -765,7 +771,9 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 		}
 		ev := attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(ctx, client, owner, name, pr, true), true)
 		events := []repoDeployEvent{ev}
+		attachCheapCISummaries(ctx, owner, name, events)
 		attachPipelineLinks(owner, name, events)
+		attachReleaseReadiness(owner, name, events)
 		meta.FetchedAt = time.Now().UTC().Format(time.RFC3339)
 		meta.Listed = 1
 		meta.TotalOpen = 1
@@ -830,6 +838,7 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 	attachSimilarMergesToOpenEvents(owner, name, out)
 	attachCheapCISummaries(ctx, owner, name, out)
 	attachPipelineLinks(owner, name, out)
+	attachReleaseReadiness(owner, name, out)
 	return out, meta, nil
 }
 
@@ -913,10 +922,8 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 			writeDeployIntelRepoError(w, r, err)
 			return
 		}
-		if body.ProjectID > 0 {
-			if err := setGitOpsProjectGitHubRepo(body.ProjectID, repo.Owner, repo.Name); err != nil {
-				log.Printf("[deploy-intel] link project %d to %s/%s: %v", body.ProjectID, repo.Owner, repo.Name, err)
-			}
+		if err := enableMergeTrackingForRepo(managerID, repo.Owner, repo.Name, body.ProjectID); err != nil {
+			log.Printf("[deploy-intel] merge tracking for %s/%s: %v", repo.Owner, repo.Name, err)
 		}
 		AppendAuditLog(&managerID, "deploy_intel_repo_onboard", "deploy_intel_repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), repo.BaseBranch)
 		w.Header().Set("Content-Type", "application/json")

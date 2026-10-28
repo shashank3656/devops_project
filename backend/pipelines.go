@@ -10,24 +10,25 @@ import (
 const pipelineStaleAfter = 24 * time.Hour
 
 type pipelineCatalogRow struct {
-	ID              int    `json:"id"`
-	ChangeNumber    string `json:"change_number"`
-	Repo            string `json:"repo"`
-	PRNumber        int    `json:"pr_number,omitempty"`
-	Service         string `json:"service"`
-	Environment     string `json:"environment"`
-	Status          string `json:"status"`
-	PipelineURL     string `json:"pipeline_url,omitempty"`
-	PipelineLabel   string `json:"pipeline_label"`
-	SHA             string `json:"sha,omitempty"`
-	Title           string `json:"title"`
-	ChangeType      string `json:"change_type"`
-	UpdatedAt       string `json:"updated_at"`
-	LastChecked     string `json:"last_checked"`
-	DurationMinutes int    `json:"duration_minutes"`
-	DurationKnown   bool   `json:"duration_known"`
-	Stale           bool   `json:"stale"`
-	Preview         bool   `json:"preview"`
+	ID              int                     `json:"id"`
+	ChangeNumber    string                  `json:"change_number"`
+	Repo            string                  `json:"repo"`
+	PRNumber        int                     `json:"pr_number,omitempty"`
+	Service         string                  `json:"service"`
+	Environment     string                  `json:"environment"`
+	Status          string                  `json:"status"`
+	PipelineURL     string                  `json:"pipeline_url,omitempty"`
+	PipelineLabel   string                  `json:"pipeline_label"`
+	SHA             string                  `json:"sha,omitempty"`
+	Title           string                  `json:"title"`
+	ChangeType      string                  `json:"change_type"`
+	UpdatedAt       string                  `json:"updated_at"`
+	LastChecked     string                  `json:"last_checked"`
+	DurationMinutes int                     `json:"duration_minutes"`
+	DurationKnown   bool                    `json:"duration_known"`
+	Stale           bool                    `json:"stale"`
+	Preview         bool                    `json:"preview"`
+	Verification    *deploymentVerification `json:"verification,omitempty"`
 }
 
 func pipelineMatchesRepo(rowRepo, filter string) bool {
@@ -153,6 +154,7 @@ func listPipelineCatalog(projectID int, environment, repoFilter string, prNumber
 			DurationKnown:   known,
 			Stale:           stale,
 			Preview:         preview,
+			Verification:    buildListedDeploymentVerification(item),
 		})
 		if len(out) >= 80 {
 			break

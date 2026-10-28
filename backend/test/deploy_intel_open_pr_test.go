@@ -54,9 +54,8 @@ func TestGithubCheckOutcomeAndCILabel(t *testing.T) {
 }
 
 func TestCISummaryFromRollup(t *testing.T) {
-	passing := ciSummaryFromRollup("SUCCESS")
-	if passing.Label != "Passing" || passing.Passed != 1 {
-		t.Fatalf("success rollup: %#v", passing)
+	if ciSummaryFromRollup("SUCCESS").Label != "No checks yet" {
+		t.Fatal("rollup SUCCESS without check conclusions is not a pass")
 	}
 	failing := ciSummaryFromRollup("FAILURE")
 	if failing.Label != "Failing" || failing.Failed != 1 {
@@ -66,8 +65,34 @@ func TestCISummaryFromRollup(t *testing.T) {
 	if pending.Label != "Pending" || pending.Pending != 1 {
 		t.Fatalf("pending rollup: %#v", pending)
 	}
-	if ciSummaryFromRollup("").Label != "No checks yet" {
-		t.Fatal("empty rollup stays unknown")
+	skipped := ciSummaryFromChecks([]deployIntelRequiredCheck{
+		{Status: "skipped"}, {Status: "skipped"}, {Status: "skipped"},
+		{Status: "skipped"}, {Status: "skipped"}, {Status: "skipped"},
+	})
+	if skipped.Skipped != 6 || skipped.Passed != 0 || skipped.Label != "6 skipped" {
+		t.Fatalf("skipped checks must stay skipped, got %#v", skipped)
+	}
+}
+
+func TestOverallReleaseReadiness(t *testing.T) {
+	blocked, label, reasons := overallReleaseReadiness([]releaseReadinessCheck{
+		{Label: "Required CI checks", State: "skipped", Detail: "6 skipped"},
+		{Label: "Required reviews", State: "missing", Detail: "No GitHub reviews yet."},
+	})
+	if blocked != "awaiting_evidence" || label != "Awaiting evidence" || len(reasons) != 2 {
+		t.Fatalf("got %s %s %#v", blocked, label, reasons)
+	}
+	ready, readyLabel, readyReasons := overallReleaseReadiness([]releaseReadinessCheck{
+		{Label: "Required CI checks", State: "passed"},
+		{Label: "Required reviews", State: "approved"},
+		{Label: "Security policy", State: "passed"},
+		{Label: "Change approval", State: "approved"},
+		{Label: "Deployment window", State: "allowed"},
+		{Label: "Rollback preparation", State: "documented"},
+		{Label: "Evidence freshness", State: "passed"},
+	})
+	if ready != "ready" || readyLabel != "Ready for approval" || len(readyReasons) != 0 {
+		t.Fatalf("got %s %s %#v", ready, readyLabel, readyReasons)
 	}
 }
 

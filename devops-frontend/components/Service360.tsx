@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 import { recordReference } from '../lib/recordRef';
+import ServiceActivityTimeline from './ServiceActivityTimeline';
+import ServiceEnvironmentMatrix from './ServiceEnvironmentMatrix';
 
-type TabId = 'overview' | 'resources' | 'changes' | 'incidents' | 'access' | 'environments';
+type TabId = 'overview' | 'resources' | 'changes' | 'incidents' | 'access' | 'environments' | 'activity';
 
 type ChangeRow = {
   id: number;
@@ -81,6 +83,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'incidents', label: 'Incidents' },
   { id: 'access', label: 'Access' },
   { id: 'environments', label: 'Environments' },
+  { id: 'activity', label: 'Activity' },
 ];
 
 function sameService(left?: string, right?: string) {
@@ -106,6 +109,7 @@ function repoDisplay(value?: string) {
 export default function Service360({
   apiUrl,
   token,
+  serviceId,
   serviceName,
   projectId,
   environment,
@@ -115,6 +119,7 @@ export default function Service360({
 }: {
   apiUrl: string;
   token: string;
+  serviceId?: number;
   serviceName: string;
   projectId?: number;
   environment?: string;
@@ -369,6 +374,9 @@ export default function Service360({
         )
       ) : null}
       {tab === 'environments' && !loading ? (
+        serviceId ? (
+          <ServiceEnvironmentMatrix apiUrl={apiUrl} token={token} serviceId={serviceId} />
+        ) : (
         <div className="table-wrap">
           <table>
             <thead>
@@ -398,6 +406,14 @@ export default function Service360({
           </table>
           <p className="access-hint">Latest change status is the change record. Approval readiness stays Unknown until an approval decision is stored. A value that starts with a manual reference is not a commit SHA. Configuration values are not compared here.</p>
         </div>
+        )
+      ) : null}
+      {tab === 'activity' && !loading ? (
+        serviceId ? (
+          <ServiceActivityTimeline apiUrl={apiUrl} token={token} serviceId={serviceId} />
+        ) : (
+          <p className="work-empty">Activity needs a saved service record.</p>
+        )
       ) : null}
     </section>
   );

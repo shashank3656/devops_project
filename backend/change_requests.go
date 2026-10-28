@@ -1173,6 +1173,8 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"blast_radius":     blastRadiusForChange(*item),
 		"drift":            detectServiceDrift(item.Service, item.Environment, item.SHA, item.ImageDigest),
 		"delivery":         buildChangeDeliveryVisibility(item),
+		"readiness":        buildChangeReleaseReadiness(*item),
+		"verification":     buildChangeDeploymentVerification(*item),
 		"status":           "ok",
 	})
 }

@@ -395,7 +395,7 @@ func recommendPRImpactAction(brief prImpactBrief) string {
 	if brief.RiskLevel == "medium" {
 		return "Review the blast radius, then continue with the normal promotion checks."
 	}
-	return "Safe to merge with standard review."
+	return "Low estimated change impact. Release readiness has not been confirmed."
 }
 
 func summarizePRImpact(brief prImpactBrief) string {

@@ -2,7 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { InspectorDrawer, useConfirm } from '@infragate/ui';
+import { DeploymentVerificationCard, InspectorDrawer, ReleaseReadinessCard, useConfirm, type DeploymentVerification, type ReleaseReadiness } from '@infragate/ui';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
 import {
@@ -85,6 +85,9 @@ interface DeployEvent {
     age_days?: number;
     review_sla?: string;
     review_detail?: string;
+    assignees?: string[];
+    requested_reviewers?: string[];
+    awaiting_owner?: boolean;
     checks?: DeliveryCheck[];
     ci?: DeliveryCISummary;
     suggest_ticket?: boolean;
@@ -97,6 +100,8 @@ interface DeployEvent {
     change_id?: number;
     change_number?: string;
   };
+  readiness?: ReleaseReadiness;
+  verification?: DeploymentVerification;
   github_post?: {
     comment_posted?: boolean;
     check_posted?: boolean;
@@ -141,6 +146,15 @@ export default function DeployIntelligenceRepoPage() {
   const [copied, setCopied] = useState(false);
   const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
+  const [awaitingOwnerOnly, setAwaitingOwnerOnly] = useState(false);
+  const [bottleneck, setBottleneck] = useState<{
+    awaiting_owner?: number;
+    overdue?: number;
+    median_age_days?: number;
+    median_approval_delay_days?: number;
+    delay_known?: boolean;
+    note?: string;
+  } | null>(null);
   const [needsAck, setNeedsAck] = useState(false);
   const [ackReason, setAckReason] = useState('');
 
@@ -195,6 +209,9 @@ export default function DeployIntelligenceRepoPage() {
       }
       if (data?.github) setGithubMeta(data.github as GitHubFetchMeta);
       setGithubError(typeof data?.github_error === 'string' ? data.github_error : '');
+      if (section === 'open' && !options?.quiet && data?.review_bottleneck && typeof data.review_bottleneck === 'object') {
+        setBottleneck(data.review_bottleneck);
+      }
       if (Array.isArray(data?.projects)) setProjects(data.projects);
       if (data?.repo?.gitops_project_id) setLinkProjectId(String(data.repo.gitops_project_id));
     } catch {
@@ -225,6 +242,29 @@ export default function DeployIntelligenceRepoPage() {
   }, [owner, repo, repoMeta?.base_branch]);
 
   useEffect(() => {
+    const changeId = selected?.pipeline?.change_id || selected?.request_id;
+    if (!changeId) return;
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    let cancelled = false;
+    const prNumber = selected?.pr_number;
+    fetch(`${apiUrl}/api/devops/changes/${changeId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return null;
+        return data?.verification as DeploymentVerification | undefined;
+      })
+      .then((verification) => {
+        if (cancelled || !verification) return;
+        setSelected((current) => (current && current.pr_number === prNumber ? { ...current, verification } : current));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, selected?.pipeline?.change_id, selected?.pr_number, selected?.request_id]);
+
+  useEffect(() => {
     if (!router.isReady || !owner || !repo) return;
     const raw = router.query.pr;
     const prNumber = Array.isArray(raw) ? Number(raw[0]) : Number(raw);
@@ -241,10 +281,11 @@ export default function DeployIntelligenceRepoPage() {
       const age = formatReviewAge(item.open_pr?.age_days, item.open_pr?.review_sla);
       if (section === 'open' && riskFilter !== 'all' && risk !== riskFilter) return false;
       if (section === 'open' && overdueOnly && !age.overdue) return false;
+      if (section === 'open' && awaitingOwnerOnly && !item.open_pr?.awaiting_owner) return false;
       if (!needle) return true;
       return `${item.title} #${item.pr_number} ${item.author}`.toLowerCase().includes(needle);
     });
-  }, [events, overdueOnly, query, riskFilter, section]);
+  }, [awaitingOwnerOnly, events, overdueOnly, query, riskFilter, section]);
 
   const access = githubAccessLabel(repoMeta?.github_access);
   const tracking = mergeTrackingLabel(repoMeta?.merge_tracking);
@@ -516,6 +557,29 @@ export default function DeployIntelligenceRepoPage() {
         {githubFailed && !tokenFailure ? (
           <div className="alert alert-error">{githubError || 'GitHub access failed for this repository.'}</div>
         ) : null}
+        {section === 'open' && bottleneck ? (
+          <section className="delivery-stats" aria-label="Review bottlenecks">
+            <article className="delivery-stat">
+              <span className="delivery-stat__label">Awaiting owner</span>
+              <strong className="delivery-stat__value">{bottleneck.awaiting_owner ?? 0}</strong>
+              <p className="delivery-stat__hint">No assignee and no requested reviewer</p>
+            </article>
+            <article className="delivery-stat">
+              <span className="delivery-stat__label">Overdue reviews</span>
+              <strong className="delivery-stat__value">{bottleneck.overdue ?? 0}</strong>
+              <p className="delivery-stat__hint">Past the seven-day review SLA</p>
+            </article>
+            <article className="delivery-stat">
+              <span className="delivery-stat__label">Median age</span>
+              <strong className="delivery-stat__value">{typeof bottleneck.median_age_days === 'number' ? `${bottleneck.median_age_days}d` : 'Unknown'}</strong>
+              <p className="delivery-stat__hint">
+                {bottleneck.delay_known
+                  ? `Median approval delay ${bottleneck.median_approval_delay_days ?? 0}d`
+                  : 'Approval delay Unknown until first approval time is recorded'}
+              </p>
+            </article>
+          </section>
+        ) : null}
 
         {section !== 'settings' ? (
           <div className="delivery-toolbar delivery-toolbar--repo">
@@ -554,6 +618,13 @@ export default function DeployIntelligenceRepoPage() {
                     onClick={() => setOverdueOnly((value) => !value)}
                   >
                     Overdue
+                  </button>
+                  <button
+                    type="button"
+                    className={`delivery-filter delivery-filter--pending${awaitingOwnerOnly ? ' is-active' : ''}`}
+                    onClick={() => setAwaitingOwnerOnly((value) => !value)}
+                  >
+                    Awaiting owner
                   </button>
                 </div>
                 <label className="delivery-check">
@@ -698,6 +769,7 @@ export default function DeployIntelligenceRepoPage() {
                     <th>Risk</th>
                     <th>{section === 'open' ? 'CI checks' : 'Merged'}</th>
                     <th>{section === 'open' ? 'Review age' : 'Branch'}</th>
+                    {section === 'open' ? <th>Owner</th> : null}
                     <th>Change request</th>
                     <th>Action</th>
                   </tr>
@@ -737,6 +809,13 @@ export default function DeployIntelligenceRepoPage() {
                             <span>{item.head_branch || '—'}</span>
                           )}
                         </td>
+                        {section === 'open' ? (
+                          <td>
+                            {item.open_pr?.awaiting_owner
+                              ? <span className="delivery-status delivery-status--pending">Awaiting owner</span>
+                              : (item.open_pr?.assignees?.[0] || item.open_pr?.requested_reviewers?.[0] || 'Assigned')}
+                          </td>
+                        ) : null}
                         <td>
                           {item.request_id ? (
                             <Link href={`/changes/${item.request_id}`}>CHG linked</Link>
@@ -798,6 +877,8 @@ export default function DeployIntelligenceRepoPage() {
               <p>{selected.impact?.summary || selected.summary || 'No summary yet.'}</p>
               <p className="delivery-table__hint">{risk.note} {selected.impact?.recommended_action || ''}</p>
             </section>
+            <ReleaseReadinessCard readiness={selected.readiness} />
+            <DeploymentVerificationCard verification={selected.verification} />
             <section>
               <h3>Risk evidence</h3>
               <p><strong>{risk.label}</strong> · {risk.scale}</p>
@@ -873,7 +954,7 @@ export default function DeployIntelligenceRepoPage() {
                   <a href={selected.pipeline.pipeline_url} target="_blank" rel="noreferrer">Open recorded run</a>
                 </p>
               ) : (
-                <p className="delivery-table__hint">No pipeline URL is recorded on a change yet. Missing stays Unknown, not Healthy.</p>
+                <p className="delivery-table__hint">No recorded run yet. Missing stays Unknown, not Healthy.</p>
               )}
             </section>
             <section>

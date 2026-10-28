@@ -77,6 +77,8 @@ export {
 } from './PortalProfileSettings';
 export { default as PolicyChecksCard } from './PolicyChecksCard';
 export { default as PRImpactBrief } from './PRImpactBrief';
+export { default as ReleaseReadinessCard, type ReleaseReadiness, type ReleaseReadinessCheck } from './ReleaseReadinessCard';
+export { default as DeploymentVerificationCard, type DeploymentVerification, type DeploymentVerificationCheck } from './DeploymentVerificationCard';
 export { default as RequestPRImpact } from './RequestPRImpact';
 export { default as ChangeCatalogTable, buildChangeCatalogColumns, type ChangeCatalogRow } from './ChangeCatalogTable';
 export {

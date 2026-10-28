@@ -4,6 +4,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } 
 import { InspectorDrawer, buildPortalApiUrl, formatOperationalTime } from '@infragate/ui';
 import { useUnsavedChanges } from '../lib/useUnsavedChanges';
 import { CONNECTOR_SOURCES, MEASUREMENT_TYPES, SERVICE_CLASSES, budgetDisplay, formatBps, measurementTypeLabel, previewFindingRule, qualityLabel, scheduleModeCopy, scoreDisplay, serviceClassLabel, sparklineHeights, validSecretRefName, type ServiceWorkspaceTab, workspaceTab } from '../lib/sreMonitoring';
+import ServiceActivityTimeline from './ServiceActivityTimeline';
+import ServiceEnvironmentMatrix from './ServiceEnvironmentMatrix';
 import { serviceTicketHref } from '../lib/scopeHref';
 import { recordReference } from '../lib/recordRef';
 
@@ -69,6 +71,8 @@ type Template = { id: string; name: string; source_type: string; measurement_typ
 
 const TABS: { id: ServiceWorkspaceTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'environments', label: 'Environments' },
+  { id: 'activity', label: 'Activity' },
   { id: 'observability', label: 'Observability' },
   { id: 'findings', label: 'Findings' },
   { id: 'configuration', label: 'Configuration' },
@@ -741,6 +745,34 @@ export default function SreServiceWorkspace({
           </section>
           <p className="form-section__copy">{scheduleCopy}. Missing telemetry stays Unknown, not Healthy.{lastEval ? ` Last evaluation ${formatOperationalTime(lastEval)}.` : ' This service has not been evaluated yet.'}</p>
           {overview}
+        </div>
+      ) : null}
+
+      {tab === 'environments' ? (
+        <div className="sre-panel">
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <h2 className="portal-surface__title">Environment versions</h2>
+                <p className="portal-surface__subtitle">Commit and image actually observed in each recorded environment. Missing stays Unknown.</p>
+              </div>
+            </div>
+            <ServiceEnvironmentMatrix apiUrl={apiUrl} token={token} serviceId={serviceId} />
+          </section>
+        </div>
+      ) : null}
+
+      {tab === 'activity' ? (
+        <div className="sre-panel">
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <h2 className="portal-surface__title">Service activity</h2>
+                <p className="portal-surface__subtitle">Pull requests, approvals, deployments, alerts, and incidents. Nearby timestamps are correlation, not proven cause.</p>
+              </div>
+            </div>
+            <ServiceActivityTimeline apiUrl={apiUrl} token={token} serviceId={serviceId} />
+          </section>
         </div>
       ) : null}
 

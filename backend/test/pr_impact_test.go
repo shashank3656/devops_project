@@ -63,3 +63,10 @@ func TestScorePRImpactDocsOnly(t *testing.T) {
 		t.Fatalf("docs-only PR should not be high risk, got score %d", brief.Score)
 	}
 }
+
+func TestRecommendPRImpactActionDoesNotCallSafeToMerge(t *testing.T) {
+	got := recommendPRImpactAction(prImpactBrief{RiskLevel: "low", Score: 12})
+	if got != "Low estimated change impact. Release readiness has not been confirmed." {
+		t.Fatalf("got %q", got)
+	}
+}

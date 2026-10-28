@@ -608,6 +608,7 @@ export default function ServiceDetailPage() {
                       <Service360
                         apiUrl={apiUrl}
                         token={sessionToken}
+                        serviceId={item.id}
                         serviceName={item.service}
                         projectId={item.project_id}
                         environment={item.environment}

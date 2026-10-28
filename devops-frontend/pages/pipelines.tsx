@@ -2,11 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useWorkspaceScope } from '@infragate/ui';
+import { DeploymentVerificationCard, InspectorDrawer, useWorkspaceScope, type DeploymentVerification } from '@infragate/ui';
 import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { formatDurationMinutes, formatWhen } from '../lib/delivery';
+import { formatDurationMinutes, formatVerification, formatWhen } from '../lib/delivery';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -29,6 +29,7 @@ interface PipelineRow {
   duration_known?: boolean;
   stale?: boolean;
   preview?: boolean;
+  verification?: DeploymentVerification;
 }
 
 type PipelineState = 'all' | 'running' | 'failed' | 'succeeded' | 'unknown' | 'stale';
@@ -50,6 +51,21 @@ export default function PipelinesPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [stateFilter, setStateFilter] = useState<PipelineState>('all');
+  const [connecting, setConnecting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [selected, setSelected] = useState<PipelineRow | null>(null);
+  const [detailVerification, setDetailVerification] = useState<DeploymentVerification | null>(null);
+  const webhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
+
+  const copyWebhook = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -76,6 +92,30 @@ export default function PipelinesPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load pipelines'))
       .finally(() => setLoading(false));
   }, [apiUrl, router, router.isReady, router.query.pr, router.query.repo, scope.environment, scope.projectId]);
+
+  useEffect(() => {
+    if (!selected?.id) {
+      setDetailVerification(null);
+      return;
+    }
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    let cancelled = false;
+    setDetailVerification(selected.verification || null);
+    fetch(`${apiUrl}/api/devops/changes/${selected.id}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        return data?.verification as DeploymentVerification | undefined;
+      })
+      .then((verification) => {
+        if (!cancelled && verification) setDetailVerification(verification);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, selected]);
 
   const counts = useMemo(() => ({
     all: items.length,
@@ -118,6 +158,9 @@ export default function PipelinesPage() {
             <h1 className="delivery-title">Pipelines</h1>
             <p className="delivery-lede">CI runs posted onto a change. Environment comes from the recorded change, not the run title.</p>
           </div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setConnecting((value) => !value)}>
+            {connecting ? 'Hide connect steps' : 'Connect pipeline'}
+          </button>
         </header>
         <DeliveryHubNav active="pipelines" />
         {error ? <div className="alert alert-error">{error}</div> : null}
@@ -164,18 +207,24 @@ export default function PipelinesPage() {
           </div>
         </div>
 
-        {loading ? <p className="delivery-empty">Loading pipelines…</p> : null}
-        {!loading && !items.length ? (
-          <div className="delivery-empty-panel">
-            <h2>No pipeline runs yet</h2>
-            <p>
-              {typeof router.query.repo === 'string' && router.query.repo
-                ? 'No pipeline URL is recorded for this pull request yet. Missing stays Unknown.'
-                : 'Post a change webhook with pipeline_url. A GitHub repo onboard is not required here.'}
-            </p>
-            <Link href="/operations/webhooks" className="btn btn-primary btn-sm">Connect a webhook</Link>
-          </div>
+        {connecting || (!loading && !items.length) ? (
+          <section className="delivery-empty-panel">
+            <h2>Connect pipeline</h2>
+            <p>Record CI runs onto a change. A GitHub repository onboard is not required here. Missing runs stay Unknown.</p>
+            <ol className="delivery-steps">
+              <li>Copy the change webhook URL for this workspace.</li>
+              <li>Point your CI at that URL from the integration documentation.</li>
+              <li>New runs appear here with the environment recorded on the change, not the job title.</li>
+            </ol>
+            <div className="portal-page__actions">
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => void copyWebhook()}>
+                {copied ? 'Webhook copied' : 'Copy webhook URL'}
+              </button>
+              <Link href="/operations/webhooks" className="btn btn-secondary btn-sm">Open webhook settings</Link>
+            </div>
+          </section>
         ) : null}
+        {loading ? <p className="delivery-empty">Loading pipelines…</p> : null}
         {!loading && items.length > 0 && visible.length === 0 ? (
           <p className="delivery-empty">No pipelines match this filter.</p>
         ) : null}
@@ -190,6 +239,7 @@ export default function PipelinesPage() {
                     <th>Repository</th>
                     <th>Environment</th>
                     <th>Status</th>
+                    <th>Verification</th>
                     <th>Duration</th>
                     <th>Last checked</th>
                     <th>Action</th>
@@ -199,11 +249,14 @@ export default function PipelinesPage() {
                   {visible.map((item) => {
                     const state = pipelineState(item.pipeline_label);
                     const label = item.pipeline_label || 'Unknown';
+                    const verification = formatVerification(item.verification?.state, item.verification?.label);
                     return (
                       <tr key={item.id}>
                         <td>
-                          <span className="delivery-pr-link__title">{item.title || item.change_number || `Run ${item.id}`}</span>
-                          <span className="delivery-pr-link__meta">{item.change_number || `CHG${item.id}`}</span>
+                          <button type="button" className="delivery-pr-link" onClick={() => setSelected(item)}>
+                            <span className="delivery-pr-link__title">{item.title || item.change_number || `Run ${item.id}`}</span>
+                            <span className="delivery-pr-link__meta">{item.change_number || `CHG${item.id}`}</span>
+                          </button>
                         </td>
                         <td>{item.repo || 'Unknown'}</td>
                         <td>{item.environment || 'Unknown'}</td>
@@ -213,14 +266,20 @@ export default function PipelinesPage() {
                           </span>
                           {item.stale ? <span className="delivery-status delivery-status--setup">Status stale</span> : null}
                         </td>
+                        <td>
+                          <span className={`delivery-status delivery-status--${verification.tone}`}>{verification.label}</span>
+                        </td>
                         <td>{formatDurationMinutes(item.duration_minutes, item.duration_known)}</td>
                         <td>{formatWhen(item.last_checked || item.updated_at)}</td>
                         <td>
-                          {item.pipeline_url ? (
-                            <a className="btn btn-primary btn-sm" href={item.pipeline_url} target="_blank" rel="noreferrer">View run</a>
-                          ) : (
-                            <Link href={`/changes/${item.id}`} className="btn btn-secondary btn-sm">View change</Link>
-                          )}
+                          <div className="delivery-row-actions">
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSelected(item)}>Details</button>
+                            {item.pipeline_url ? (
+                              <a className="btn btn-primary btn-sm" href={item.pipeline_url} target="_blank" rel="noreferrer">View run</a>
+                            ) : (
+                              <Link href={`/changes/${item.id}`} className="btn btn-secondary btn-sm">View change</Link>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -231,6 +290,34 @@ export default function PipelinesPage() {
           </section>
         ) : null}
       </div>
+      <InspectorDrawer
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        wide
+        resetKey={selected?.id}
+        eyebrow="Deployment details"
+        title={selected ? (selected.title || selected.change_number || `Run ${selected.id}`) : 'Deployment'}
+        subtitle={selected ? [selected.change_number, selected.environment || 'Unknown', selected.sha || 'Unknown commit'].filter(Boolean).join(' · ') : ''}
+        footer={selected ? (
+          <div className="delivery-drawer-actions">
+            <Link href={`/changes/${selected.id}`} className="btn btn-secondary">Open change</Link>
+            {selected.pipeline_url ? (
+              <a className="btn btn-primary" href={selected.pipeline_url} target="_blank" rel="noreferrer">Open recorded run</a>
+            ) : null}
+          </div>
+        ) : null}
+      >
+        {selected ? (
+          <div className="delivery-drawer">
+            <section>
+              <h3>Recorded run</h3>
+              <p>{selected.pipeline_label || 'Unknown'} · {selected.environment || 'Unknown'} · {formatWhen(selected.last_checked || selected.updated_at)}</p>
+              <p className="delivery-table__hint">Environment comes from the recorded change, not the run title. Missing telemetry stays Inconclusive, never Healthy.</p>
+            </section>
+            <DeploymentVerificationCard verification={detailVerification || selected.verification} />
+          </div>
+        ) : null}
+      </InspectorDrawer>
     </DevOpsLayout>
   );
 }
