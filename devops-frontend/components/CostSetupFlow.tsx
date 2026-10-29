@@ -90,7 +90,6 @@ export default function CostSetupFlow({
   const [projects, setProjects] = useState<VisibleCostProject[]>([]);
   const [catalogReady, setCatalogReady] = useState(Boolean(clouds?.length));
   const [selected, setSelected] = useState<CostCloudId>('aws');
-  const [showSteps, setShowSteps] = useState(false);
 
   useEffect(() => {
     if (clouds?.length) return;
@@ -155,29 +154,34 @@ export default function CostSetupFlow({
           <p className="cost-empty__note">Ask someone with Cost operate to connect a billing source for this project cloud.</p>
         )}
         {sampleHref ? <Link href={sampleHref} className="btn btn-secondary">View sample dashboard</Link> : null}
-        <Link href="/projects/new" className="btn btn-secondary">Onboard a project</Link>
-        <Link href="/cloud-accounts" className="btn btn-secondary">Connect cloud</Link>
-        <Link href="/k8s" className="btn btn-secondary">Onboard cluster</Link>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          aria-expanded={showSteps}
-          onClick={() => setShowSteps((open) => !open)}
-        >
-          {showSteps ? 'Hide setup steps' : 'How setup works'}
-        </button>
       </div>
-      {showSteps ? (
+      <details className="cost-setup__more">
+        <summary>More setup steps</summary>
         <ol className="cost-setup__steps">
+          <li>
+            <span className="cost-setup__index">1</span>
+            <strong><Link href="/projects/new">Onboard a project</Link></strong>
+            <span>Team and environments before billed data can be scoped.</span>
+          </li>
+          <li>
+            <span className="cost-setup__index">2</span>
+            <strong><Link href="/cloud-accounts">Connect cloud</Link></strong>
+            <span>Inventory stays empty until an account is connected.</span>
+          </li>
+          <li>
+            <span className="cost-setup__index">3</span>
+            <strong><Link href="/k8s">Onboard cluster</Link></strong>
+            <span>Kubernetes is a breakdown of the cloud bill, never an extra line.</span>
+          </li>
           {setup.stages.map((step, index) => (
             <li key={step.title} className={index === active ? 'is-active' : undefined}>
-              <span className="cost-setup__index">{index + 1}</span>
+              <span className="cost-setup__index">{index + 4}</span>
               <strong>{step.title}</strong>
-              {index === active ? <span>{step.copy}</span> : null}
+              <span>{step.copy}</span>
             </li>
           ))}
         </ol>
-      ) : null}
+      </details>
     </section>
   );
 }

@@ -467,8 +467,8 @@ func workspaceChangeQueue(portal, projectID string, viewerID int, failedOnly boo
 		if title == "" {
 			title = "Change request"
 		}
-		href := "/changes?status=new&mine=1"
-		if failedOnly {
+		href := workspaceChangeHref(item.ID)
+		if href == "/changes" && failedOnly {
 			href = "/changes?status=failed"
 		}
 		kind := "change"
@@ -832,7 +832,14 @@ func workspaceIncidentHref(id int) string {
 	if id <= 0 {
 		return "/incidents"
 	}
-	return "/incidents?mine=1"
+	return fmt.Sprintf("/incidents/%d/edit", id)
+}
+
+func workspaceChangeHref(id int) string {
+	if id <= 0 {
+		return "/changes"
+	}
+	return fmt.Sprintf("/changes/%d", id)
 }
 
 func workspaceChangeNeedsAction(status string) bool {

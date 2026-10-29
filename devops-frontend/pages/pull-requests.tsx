@@ -46,6 +46,7 @@ type ReviewBottleneckTeam = {
   overdue?: number;
   median_age_days?: number;
   median_approval_delay_days?: number;
+  approval_sample?: number;
   delay_known?: boolean;
 };
 
@@ -55,6 +56,7 @@ type ReviewBottleneck = {
   open?: number;
   median_age_days?: number;
   median_approval_delay_days?: number;
+  approval_sample?: number;
   delay_known?: boolean;
   note?: string;
   teams?: ReviewBottleneckTeam[];
@@ -163,8 +165,8 @@ export default function PullRequestsPage() {
               <strong className="delivery-stat__value">{typeof bottleneck.median_age_days === 'number' ? `${bottleneck.median_age_days}d` : 'Unknown'}</strong>
               <p className="delivery-stat__hint">
                 {bottleneck.delay_known
-                  ? `Median approval delay ${bottleneck.median_approval_delay_days ?? 0}d`
-                  : 'Approval delay Unknown until first approval time is recorded'}
+                  ? `Median approval delay ${bottleneck.median_approval_delay_days ?? 0}d · ${bottleneck.approval_sample ?? 0} PR${bottleneck.approval_sample === 1 ? '' : 's'}`
+                  : 'No approvals yet'}
               </p>
             </article>
           </section>
@@ -324,7 +326,7 @@ export default function PullRequestsPage() {
                       <td>{team.awaiting_owner ?? 0}</td>
                       <td>{team.overdue ?? 0}</td>
                       <td>{typeof team.median_age_days === 'number' ? `${team.median_age_days}d` : 'Unknown'}</td>
-                      <td>{team.delay_known ? `${team.median_approval_delay_days ?? 0}d` : 'Unknown'}</td>
+                      <td>{team.delay_known ? `${team.median_approval_delay_days ?? 0}d · ${team.approval_sample ?? 0}` : 'No approvals yet'}</td>
                     </tr>
                   ))}
                 </tbody>

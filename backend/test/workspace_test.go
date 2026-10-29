@@ -112,11 +112,20 @@ func TestWorkspaceDeliveryClassification(t *testing.T) {
 }
 
 func TestWorkspaceIncidentHref(t *testing.T) {
-	if got := workspaceIncidentHref(42); got != "/incidents?mine=1" {
+	if got := workspaceIncidentHref(42); got != "/incidents/42/edit" {
 		t.Fatalf("workspaceIncidentHref(42) = %q", got)
 	}
 	if got := workspaceIncidentHref(0); got != "/incidents" {
 		t.Fatalf("workspaceIncidentHref(0) = %q", got)
+	}
+}
+
+func TestWorkspaceChangeHref(t *testing.T) {
+	if got := workspaceChangeHref(3); got != "/changes/3" {
+		t.Fatalf("workspaceChangeHref(3) = %q", got)
+	}
+	if got := workspaceChangeHref(0); got != "/changes" {
+		t.Fatalf("workspaceChangeHref(0) = %q", got)
 	}
 }
 

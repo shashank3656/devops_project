@@ -275,7 +275,7 @@ func readinessWindowCheck(environment string, change *changeRequestRecord) relea
 	item := releaseReadinessCheck{Key: "window", Label: "Deployment window"}
 	env := strings.TrimSpace(environment)
 	if change != nil && env == "" {
-		env = change.Environment
+		env = strings.TrimSpace(change.Environment)
 	}
 	reason := activeFreezeReason()
 	if reason != "" && (envEqualsProd(env) || env == "") {
@@ -283,7 +283,12 @@ func readinessWindowCheck(environment string, change *changeRequestRecord) relea
 		item.Detail = reason
 		return item
 	}
-	if change != nil && !windowAllowsChange(*change, time.Now().UTC()) {
+	if change == nil || strings.TrimSpace(change.Service) == "" || env == "" || (change.CABWindowStart == nil && change.CABWindowEnd == nil) {
+		item.State = "unavailable"
+		item.Detail = "Not evaluated—select a deployment window"
+		return item
+	}
+	if !windowAllowsChange(*change, time.Now().UTC()) {
 		item.State = "conflict"
 		item.Detail = "The recorded change window does not allow deployment now."
 		return item

@@ -12,6 +12,7 @@ import { asRecord, getString } from '../../lib/payload';
 import { expireSession } from '../../lib/sessionExpiry';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 import { inventoryServicesPath } from '../../lib/sreMonitoring';
+import { defaultEnvironmentForProject, useWorkspaceScope } from '@infragate/ui';
 
 const INCIDENT_ATTEMPT_KEY = 'opstrellis-incident-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -106,6 +107,18 @@ function clearSessionAndRedirect() {
   expireSession();
 }
 
+function matchProjectEnvironment(options: string[], wanted: string): string {
+  const names = options.map((item) => item.trim()).filter(Boolean);
+  const needle = wanted.trim().toLowerCase();
+  if (!needle) return '';
+  const exact = names.find((item) => item.toLowerCase() === needle);
+  if (exact) return exact;
+  if (needle.startsWith('prod')) {
+    return names.find((item) => item.toLowerCase().startsWith('prod')) || '';
+  }
+  return names.includes(wanted.trim()) ? wanted.trim() : '';
+}
+
 function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== 'string') return null;
@@ -135,6 +148,7 @@ function resolveIncidentReferenceInput(value: string, incidents: Incident[]): nu
 export default function NewIncidentPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const { scope } = useWorkspaceScope();
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [membersByTeam, setMembersByTeam] = useState<Record<number, TeamMemberOption[]>>({});
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -192,7 +206,7 @@ export default function NewIncidentPage() {
   const [projectChoice, setProjectChoice] = useState('');
   const [incidentEnvironment, setIncidentEnvironment] = useState('');
   const [incidentService, setIncidentService] = useState('');
-  const scopeReady = useRef(false);
+  const appliedWorkspace = useRef(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('opstrellis-incident-draft');
@@ -321,11 +335,29 @@ export default function NewIncidentPage() {
   };
 
   useEffect(() => {
-    if (!router.isReady || scopeReady.current) return;
-    scopeReady.current = true;
-    if (scopedProjectId) setProjectChoice(String(scopedProjectId));
-    if (scopedEnvironment) setIncidentEnvironment(scopedEnvironment);
-  }, [router.isReady, scopedEnvironment, scopedProjectId]);
+    if (!router.isReady || appliedWorkspace.current) return;
+    if (projectChoice) {
+      appliedWorkspace.current = true;
+      return;
+    }
+    const fromQuery = scopedProjectId;
+    const fromScope = Number(scope.projectId) || 0;
+    const projectId = fromQuery || fromScope;
+    if (!projectId) return;
+    setProjectChoice(String(projectId));
+    appliedWorkspace.current = true;
+  }, [projectChoice, router.isReady, scopedProjectId, scope.projectId]);
+
+  useEffect(() => {
+    if (!projectChoice || projectChoice === 'cross') return;
+    const project = scopeProjects.find((item) => String(item.id) === projectChoice);
+    if (!project) return;
+    setIncidentEnvironment((current) => {
+      if (current && project.environments.includes(current)) return current;
+      const wanted = scopedEnvironment || scope.environment;
+      return matchProjectEnvironment(project.environments, wanted) || defaultEnvironmentForProject(scopeProjects, projectChoice, wanted);
+    });
+  }, [projectChoice, scope.environment, scopeProjects, scopedEnvironment]);
 
   useEffect(() => {
     void loadData();
@@ -548,8 +580,8 @@ export default function NewIncidentPage() {
                 <legend className="form-section__title">Affected scope</legend>
                 <p className="form-section__copy">
                   {returnPath
-                    ? 'These values came from Service inventory. You can change the project or the service.'
-                    : 'Choose the project first. The service list is Service inventory for that project (production). Use Unknown / cross-project when it is not one project.'}
+                    ? 'These values came from Service inventory. You can change the project, environment, or service.'
+                    : 'Project and environment start from the authorized workspace. Changing either resets the service list. Use Unknown / cross-project when it is not one project.'}
                 </p>
                 <div className="portal-form-grid">
                   <label className="label">
@@ -573,31 +605,48 @@ export default function NewIncidentPage() {
                     </select>
                   </label>
                   <label className="label">
+                    Environment
+                    <select
+                      className="input"
+                      value={incidentEnvironment}
+                      onChange={(event) => {
+                        setIncidentEnvironment(event.target.value);
+                        setIncidentService('');
+                      }}
+                      disabled={!projectChoice || projectChoice === 'cross'}
+                    >
+                      <option value="">{projectChoice === 'cross' ? 'Not tied to one environment' : projectChoice ? 'Select an environment' : 'Select a project first'}</option>
+                      {projectChoice && projectChoice !== 'cross'
+                        ? (() => {
+                          const listed = scopeProjects.find((item) => String(item.id) === projectChoice)?.environments || [];
+                          return (listed.length ? listed : ['dev', 'uat', 'prod']).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ));
+                        })()
+                        : null}
+                    </select>
+                  </label>
+                  <label className="label">
                     Service
                     <select
                       className="input"
                       value={incidentService}
-                      onChange={(event) => {
-                        const name = event.target.value;
-                        setIncidentService(name);
-                        const mapped = scopeServices.find((item) => item.service === name && String(item.project_id) === projectChoice);
-                        setIncidentEnvironment(mapped?.environment || (name ? 'production' : ''));
-                      }}
+                      onChange={(event) => setIncidentService(event.target.value)}
                       disabled={!projectChoice || projectChoice === 'cross'}
                     >
                       <option value="">{projectChoice === 'cross' ? 'Not tied to one service' : projectChoice ? 'Select a service from inventory' : 'Select a project first'}</option>
                       {projectChoice && projectChoice !== 'cross'
                         ? scopeServices
-                          .filter((item) => String(item.project_id) === projectChoice)
+                          .filter((item) => {
+                            if (String(item.project_id) !== projectChoice) return false;
+                            if (!incidentEnvironment) return true;
+                            return !item.environment || item.environment.toLowerCase() === incidentEnvironment.toLowerCase() || (incidentEnvironment.toLowerCase().startsWith('prod') && item.environment.toLowerCase().startsWith('prod'));
+                          })
                           .map((item) => (
                             <option key={item.id} value={item.service}>{item.service}</option>
                           ))
                         : null}
                     </select>
-                  </label>
-                  <label className="label">
-                    Monitored environment
-                    <input className="input" value={incidentService ? 'Production' : incidentEnvironment || ''} readOnly placeholder={projectChoice === 'cross' ? 'Not tied to one service' : 'Filled from the service'} />
                   </label>
                 </div>
               </fieldset>

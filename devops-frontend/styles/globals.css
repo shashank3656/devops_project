@@ -12269,6 +12269,12 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
   font-weight: 700;
 }
 .cost-setup__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cost-setup__more { margin-top: 16px; }
+.cost-setup__more summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--cost-text);
+}
 .cost-empty .cost-setup__steps { margin: 16px 0 0; }
 .cost-setup__clouds {
   display: flex;

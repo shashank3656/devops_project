@@ -154,6 +154,7 @@ export default function DeployIntelligenceRepoPage() {
     overdue?: number;
     median_age_days?: number;
     median_approval_delay_days?: number;
+    approval_sample?: number;
     delay_known?: boolean;
     note?: string;
   } | null>(null);
@@ -576,8 +577,8 @@ export default function DeployIntelligenceRepoPage() {
               <strong className="delivery-stat__value">{typeof bottleneck.median_age_days === 'number' ? `${bottleneck.median_age_days}d` : 'Unknown'}</strong>
               <p className="delivery-stat__hint">
                 {bottleneck.delay_known
-                  ? `Median approval delay ${bottleneck.median_approval_delay_days ?? 0}d`
-                  : 'Approval delay Unknown until first approval time is recorded'}
+                  ? `Median approval delay ${bottleneck.median_approval_delay_days ?? 0}d · ${bottleneck.approval_sample ?? 0} PR${bottleneck.approval_sample === 1 ? '' : 's'}`
+                  : 'No approvals yet'}
               </p>
             </article>
           </section>

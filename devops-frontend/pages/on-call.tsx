@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { currentMonth, monthTitle, shiftMonth } from '../lib/onCallMonth';
+import { useWorkspaceScope } from '@infragate/ui';
 
 const TOKEN_KEY = 'devops_token';
 const USER_KEY = 'devops_user';
@@ -154,6 +155,7 @@ function todayKey(timeZone: string): string {
 export default function OnCallPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const { scope } = useWorkspaceScope();
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [month, setMonth] = useState(currentMonth('Asia/Kolkata'));
   const [projects, setProjects] = useState<RosterProject[]>([]);
@@ -244,15 +246,22 @@ export default function OnCallPage() {
     setSelectedDate(key.startsWith(month) ? key : `${month}-01`);
   }, [month, timezone]);
 
+  const scopedProjects = useMemo(() => {
+    if (!scope.projectId) return projects;
+    return projects.filter((project) => String(project.id) === scope.projectId);
+  }, [projects, scope.projectId]);
+  const scopeProjectName = scopedProjects[0]?.name || scopedProjects[0]?.code || '';
+  const hideProjectFilter = Boolean(scope.projectId) && scopedProjects.length <= 1;
+
   const teamNames = useMemo(() => {
     const names = new Set<string>();
-    projects.forEach((project) => {
+    scopedProjects.forEach((project) => {
       project.days.forEach((day) => day.teams.forEach((shift) => {
         if (shift.team_name) names.add(shift.team_name);
       }));
     });
     return [...names].sort((left, right) => left.localeCompare(right));
-  }, [projects]);
+  }, [scopedProjects]);
 
   const needle = query.trim().toLowerCase();
   const matches = (project: RosterProject, shift: TeamShift) => {
@@ -261,11 +270,12 @@ export default function OnCallPage() {
     if (!needle) return true;
     return `${project.name} ${project.code} ${shift.team_name} ${shift.name}`.toLowerCase().includes(needle);
   };
-  const rows = projects.flatMap((project) => project.days.flatMap((day) => (
+  const rows = scopedProjects.flatMap((project) => project.days.flatMap((day) => (
     day.teams.filter((shift) => matches(project, shift)).map((shift) => ({ project, day, shift }))
   )));
   const todayRows = rows.filter((row) => row.day.today);
   const criticalGaps = criticalServices.filter((item) => {
+    if (scope.projectId && item.project_id && String(item.project_id) !== scope.projectId) return false;
     const serviceTeam = (item.team || '').trim().toLowerCase();
     if (!serviceTeam) return false;
     return todayRows.some((row) => {
@@ -377,7 +387,18 @@ export default function OnCallPage() {
   };
 
   const selectedRows = rows.filter((row) => row.day.date === selectedDate);
-  const selectedDay = selectedRows[0]?.day || projects.flatMap((project) => project.days).find((day) => day.date === selectedDate);
+  const selectedDay = selectedRows[0]?.day || scopedProjects.flatMap((project) => project.days).find((day) => day.date === selectedDate);
+  const coverageAssignHref = (() => {
+    const first = criticalGaps[0];
+    if (!first) return '/on-call/onboard';
+    const row = todayRows.find((item) => {
+      if (first.project_id && item.project.id !== first.project_id) return false;
+      return (item.shift.team_name || '').trim().toLowerCase() === (first.team || '').trim().toLowerCase() && !item.shift.user_id;
+    });
+    if (row) return `/on-call/project/${row.project.id}/team/${row.shift.team_id}`;
+    if (first.project_id) return `/on-call/project/${first.project_id}`;
+    return '/on-call/onboard';
+  })();
 
   return (
     <DevOpsLayout>
@@ -387,10 +408,10 @@ export default function OnCallPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">On-call</h1>
-            <p className="portal-page__subtitle">The project and environment at the top limit this page. Project and Team below only filter the roster you are looking at. Setup follows Project, then Teams, then People, then Review coverage.</p>
+            <p className="portal-page__subtitle">Setup follows Project, then Teams, then People, then Review coverage.</p>
           </div>
           <div className="portal-page__actions">
-            <Link href="/on-call/handovers" className="btn btn-primary">Handovers</Link>
+            <Link href="/on-call/handovers" className="btn btn-secondary">Handovers</Link>
             <Link href="/on-call/onboard" className="btn btn-secondary">Onboard project</Link>
             <Link href="/on-call/projects" className="btn btn-secondary">Projects</Link>
           </div>
@@ -403,18 +424,25 @@ export default function OnCallPage() {
         ) : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
         {!loading && criticalGaps.length ? (
-          <div className="alert" role="status">
-            Mission Critical coverage gap today:{' '}
-            {criticalGaps.map((item, index) => (
-              <span key={item.id}>
-                {index > 0 ? ', ' : ''}
-                <Link href={`/services/${item.id}`}>{item.service}</Link>
-              </span>
-            ))}
-            . Page from the incident queue after you open a P1/P2.
-            {' '}
-            <Link href="/incidents?severity=p1">Open incidents</Link>
-          </div>
+          <section className="ops-notice" role="alert" aria-label="Mission-critical coverage gap">
+            <div>
+              <p>
+                <strong>Mission-critical coverage gap</strong>
+                {' '}
+                {criticalGaps.length} service{criticalGaps.length === 1 ? '' : 's'} have no one on-call today:
+                {' '}
+                {criticalGaps.map((item, index) => (
+                  <span key={item.id}>
+                    {index > 0 ? ', ' : ''}
+                    <Link href={`/services/${item.id}`}>{item.service}</Link>
+                  </span>
+                ))}
+                .
+              </p>
+              <p>Assign coverage before paging from an incident.</p>
+            </div>
+            <Link href={coverageAssignHref} className="btn btn-primary">Assign coverage</Link>
+          </section>
         ) : null}
         <section className="portal-surface">
           <div className="oncall-filters">
@@ -422,13 +450,15 @@ export default function OnCallPage() {
               Search
               <input className="input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Project, team, or person" />
             </label>
-            <label>
-              Project
-              <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                <option value="">All projects</option>
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : known(project.name)}</option>)}
-              </select>
-            </label>
+            {hideProjectFilter ? null : (
+              <label>
+                {scope.projectId ? `Projects within ${scopeProjectName || 'this'} scope` : 'Project'}
+                <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <option value="">All projects</option>
+                  {scopedProjects.map((project) => <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : known(project.name)}</option>)}
+                </select>
+              </label>
+            )}
             <label>
               Team
               <select className="input" value={team} onChange={(event) => setTeam(event.target.value)}>
@@ -461,7 +491,12 @@ export default function OnCallPage() {
               </div>
             ) : null}
           </div>
-          <p className="access-hint oncall-filters__hint">A day starts at 00:00 in {timezone}. Today, month changes, and handover use that boundary. Changing the timezone reloads coverage for the current month.</p>
+          <p className="access-hint oncall-filters__hint">
+            {scope.projectId
+              ? `The workspace filter is ${scopeProjectName || 'the selected project'}${scope.environment ? ` / ${scope.environment}` : ''}. This roster is limited to that project.`
+              : 'The workspace filter at the top limits this page. Project below further filters the roster you are looking at.'}
+            {' '}A day starts at 00:00 in {timezone}. Today, month changes, and handover use that boundary.
+          </p>
 
           {loading ? <div className="empty-state">Loading on-call...</div> : null}
 

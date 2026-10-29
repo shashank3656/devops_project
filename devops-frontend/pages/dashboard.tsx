@@ -278,18 +278,11 @@ export default function DevOpsDashboard() {
           ) : null}
 
               {setupService ? (
-                <section className="ops-notice" aria-label="Service needs setup">
+                <article className="ops-card ops-card--ready ops-ready" aria-label="Complete service setup">
+                  <h2>Complete service setup</h2>
                   <p>
                     <strong>{setupService.name}</strong> is missing {setupService.missingOwner && setupService.missingRepo ? 'an owner and a repository' : setupService.missingOwner ? 'an owner' : 'a repository'}.
                   </p>
-                  <Link href={setupHref} className="btn btn-primary btn-sm">Complete service setup</Link>
-                </section>
-              ) : null}
-
-              {setupService ? (
-                <article className="ops-card ops-card--ready ops-ready">
-                  <h2>Make your service production-ready</h2>
-                  <p>{setupService.name}</p>
                   <div className="ops-ready__meter">
                     <strong>{`${setupDone} / 2`}</strong>
                     <span>Required setup checks completed</span>
@@ -298,7 +291,7 @@ export default function DevOpsDashboard() {
                     <li><span aria-hidden>{setupService.missingOwner ? '○' : '●'}</span><span><strong>Assign an owner</strong><small>{setupService.missingOwner ? 'Not done' : 'Done'}</small></span></li>
                     <li><span aria-hidden>{setupService.missingRepo ? '○' : '●'}</span><span><strong>Connect repository</strong><small>{setupService.missingRepo ? 'Not done' : 'Done'}</small></span></li>
                   </ul>
-                  <Link href={setupHref}>Open service →</Link>
+                  <Link href={setupHref} className="btn btn-primary btn-sm">Complete service setup</Link>
                 </article>
               ) : (
                 <p className="ops-scores__meta">

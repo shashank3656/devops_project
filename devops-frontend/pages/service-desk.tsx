@@ -510,14 +510,16 @@ export default function ServiceDeskPage() {
           visible.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           setItems(visible);
           setSelectedKey((current) => {
-            if (current) return current;
+            if (current && visible.some((item) => item.key === current)) return current;
             try {
               const saved = JSON.parse(sessionStorage.getItem(DESK_VIEW_KEY) || '{}') as { selectedKey?: string };
-              if (typeof saved.selectedKey === 'string' && saved.selectedKey) return saved.selectedKey;
+              if (typeof saved.selectedKey === 'string' && saved.selectedKey && visible.some((item) => item.key === saved.selectedKey)) {
+                return saved.selectedKey;
+              }
             } catch {
-              // A missing saved ticket falls through to the first visible row.
+              // A missing or stale saved ticket stays unselected until the user opens one.
             }
-            return visible[0]?.key || null;
+            return null;
           });
         });
       })
@@ -533,18 +535,29 @@ export default function ServiceDeskPage() {
   }), [items, scopeEnvironment, scopeProject]);
 
   const selected = useMemo(() => scopedItems.find((item) => item.key === selectedKey) || null, [scopedItems, selectedKey]);
-  const scopeWatch = useRef(`${scopeProject}|${scopeEnvironment}`);
+  const scopeWatch = useRef<string | null>(null);
 
   useEffect(() => {
+    if (loading) return;
     const nextScope = `${scopeProject}|${scopeEnvironment}`;
-    if (scopeWatch.current === nextScope || loading) return;
+    const previous = scopeWatch.current;
+    const firstApply = previous === null;
     scopeWatch.current = nextScope;
+    if (firstApply) {
+      setBulkNotice('');
+      if (selectedKey && !selected) setSelectedKey(null);
+      return;
+    }
+    if (previous === nextScope) return;
     setCheckedKeys([]);
-    if (!selectedKey || selected || !items.some((item) => item.key === selectedKey)) return;
-    const rowId = `sd-row-${selectedKey.replace(/[^A-Za-z0-9_-]/g, '-')}`;
-    setSelectedKey(null);
-    setBulkNotice('That ticket is outside the current project or environment, so its details closed and the page selection was cleared.');
-    window.requestAnimationFrame(() => document.getElementById(rowId)?.focus());
+    if (selectedKey && !selected && items.some((item) => item.key === selectedKey)) {
+      const rowId = `sd-row-${selectedKey.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+      setSelectedKey(null);
+      setBulkNotice('That ticket is outside the current project or environment, so its details closed and the page selection was cleared.');
+      window.requestAnimationFrame(() => document.getElementById(rowId)?.focus());
+      return;
+    }
+    if (selectedKey && !selected) setSelectedKey(null);
   }, [items, loading, scopeEnvironment, scopeProject, selected, selectedKey]);
 
   useEffect(() => {

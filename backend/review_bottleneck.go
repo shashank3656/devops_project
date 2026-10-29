@@ -3,7 +3,6 @@ package main
 import (
 	"sort"
 	"strings"
-	"time"
 )
 
 type reviewBottleneckTeam struct {
@@ -13,6 +12,7 @@ type reviewBottleneckTeam struct {
 	Overdue             int    `json:"overdue"`
 	MedianAgeDays       int    `json:"median_age_days"`
 	MedianApprovalDelay int    `json:"median_approval_delay_days"`
+	ApprovalSample      int    `json:"approval_sample"`
 	DelayKnown          bool   `json:"delay_known"`
 }
 
@@ -22,12 +22,13 @@ type reviewBottleneckSummary struct {
 	Open                int                    `json:"open"`
 	MedianAgeDays       int                    `json:"median_age_days"`
 	MedianApprovalDelay int                    `json:"median_approval_delay_days"`
+	ApprovalSample      int                    `json:"approval_sample"`
 	DelayKnown          bool                   `json:"delay_known"`
 	Note                string                 `json:"note"`
 	Teams               []reviewBottleneckTeam `json:"teams"`
 }
 
-const reviewBottleneckNote = "Awaiting a reviewer means no assignee and no requested reviewer. The pull request author is not the assigned owner. Overdue uses the seven-day review SLA. Approval delay is time to the first GitHub approval when that timestamp is known. Repository trends are not a proven team capacity claim."
+const reviewBottleneckNote = "Awaiting a reviewer means no assignee and no requested reviewer. The pull request author is not the assigned owner. Overdue uses the seven-day review SLA. Approval delay includes only pull requests with a recorded first-approval timestamp and shows that sample size. No approvals yet means none qualify. Repository trends are not a proven team capacity claim."
 
 func hasNonAuthorLogin(logins []string, author string) bool {
 	author = strings.TrimSpace(author)
@@ -60,23 +61,13 @@ func prAwaitingOwner(meta *deployIntelOpenPRMeta, author string) bool {
 
 func prApprovalDelayDays(ev repoDeployEvent) (int, bool) {
 	if ev.OpenPR == nil || ev.OpenPR.CreatedAt == nil || ev.OpenPR.CreatedAt.IsZero() {
-		if ev.OpenPR != nil && ev.OpenPR.AgeDays > 0 && strings.EqualFold(ev.OpenPR.ReviewDecision, "APPROVED") {
-			return ev.OpenPR.AgeDays, true
-		}
-		if ev.OpenPR != nil && (strings.EqualFold(ev.OpenPR.ReviewDecision, "REVIEW_REQUIRED") || strings.TrimSpace(ev.OpenPR.ReviewDecision) == "") {
-			return ev.OpenPR.AgeDays, ev.OpenPR.AgeDays > 0
-		}
+		return 0, false
+	}
+	if ev.OpenPR.FirstApprovedAt == nil || ev.OpenPR.FirstApprovedAt.IsZero() {
 		return 0, false
 	}
 	start := ev.OpenPR.CreatedAt.UTC()
-	end := time.Time{}
-	if ev.OpenPR.FirstApprovedAt != nil && !ev.OpenPR.FirstApprovedAt.IsZero() {
-		end = ev.OpenPR.FirstApprovedAt.UTC()
-	} else if strings.EqualFold(ev.OpenPR.ReviewDecision, "APPROVED") {
-		end = time.Now().UTC()
-	} else {
-		end = time.Now().UTC()
-	}
+	end := ev.OpenPR.FirstApprovedAt.UTC()
 	if end.Before(start) {
 		return 0, false
 	}
@@ -166,6 +157,7 @@ func buildReviewBottleneckSummary(events []repoDeployEvent) reviewBottleneckSumm
 		}
 	}
 	out.MedianAgeDays = medianInt(ages)
+	out.ApprovalSample = len(delays)
 	if len(delays) > 0 {
 		out.MedianApprovalDelay = medianInt(delays)
 		out.DelayKnown = true
@@ -179,6 +171,7 @@ func buildReviewBottleneckSummary(events []repoDeployEvent) reviewBottleneckSumm
 			Overdue:       item.over,
 			MedianAgeDays: medianInt(item.ages),
 		}
+		row.ApprovalSample = len(item.delays)
 		if len(item.delays) > 0 {
 			row.MedianApprovalDelay = medianInt(item.delays)
 			row.DelayKnown = true

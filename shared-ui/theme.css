@@ -4618,6 +4618,11 @@ a.svc-tree__folder:hover,
   margin: 8px 0 14px;
 }
 
+.portal-page > .ops-notice {
+  margin: 0 0 16px;
+  align-items: flex-start;
+}
+
 .oncall-month {
   display: inline-flex;
   align-items: center;

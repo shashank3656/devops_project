@@ -97,6 +97,24 @@ func TestOverallReleaseReadiness(t *testing.T) {
 	}
 }
 
+func TestReadinessWindowNotEvaluatedWithoutChange(t *testing.T) {
+	item := readinessWindowCheck("prod", nil)
+	if item.State != "unavailable" || item.Detail != "Not evaluated—select a deployment window" {
+		t.Fatalf("missing change must stay unevaluated: %#v", item)
+	}
+	start := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Hour)
+	ready := readinessWindowCheck("prod", &changeRequestRecord{
+		Service:        "checkout",
+		Environment:    "prod",
+		CABWindowStart: &start,
+		CABWindowEnd:   &end,
+	})
+	if ready.State != "allowed" && ready.State != "conflict" {
+		t.Fatalf("complete window must be evaluated: %#v", ready)
+	}
+}
+
 func TestComputeReviewSLADoesNotAdviseMerge(t *testing.T) {
 	status, detail := computeReviewSLA(time.Now().Add(-4*24*time.Hour), "")
 	if status != "warning" {
