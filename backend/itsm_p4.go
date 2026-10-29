@@ -162,6 +162,10 @@ func approveChangeCAB(id, userID int) (*changeRequestRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	snap := captureReleaseEvidence(*item)
+	if err := persistReleaseEvidence(item.ID, snap); err == nil {
+		item.ReleaseEvidence = &snap
+	}
 	applyChangePolicies(id, parsedChangeWebhook{
 		Environment: item.Environment,
 		ChangeType:  item.ChangeType,

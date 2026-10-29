@@ -1,4 +1,4 @@
-export type ServiceSetupStepKey = 'owner' | 'repository' | 'environment' | 'monitoring' | 'oncall';
+export type ServiceSetupStepKey = 'owner' | 'repository' | 'monitoring' | 'oncall' | 'deployment';
 
 export type ServiceSetupFields = {
   id?: number;
@@ -55,8 +55,23 @@ export function serviceHasMonitoring(item: ServiceSetupFields): boolean {
   return Boolean(assigned(item.grafana_uid) || assigned(item.dashboard_url) || assigned(item.metrics_url) || assigned(item.promql));
 }
 
+export function serviceHasDeployment(item: ServiceSetupFields): boolean {
+  return serviceHasRepo(item) && serviceHasEnvironment(item);
+}
+
+export function deploymentSetupHref(item: ServiceSetupFields): string {
+  const repo = assigned(item.repo);
+  if (repo.includes('/')) {
+    const [owner, name] = repo.split('/');
+    if (owner && name) {
+      return `/deploy-intelligence/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+    }
+  }
+  return '/deploy-intelligence/onboard';
+}
+
 export function serviceNeedsSetup(item: ServiceSetupFields, onCallReady = true): boolean {
-  return !serviceHasOwner(item) || !serviceHasRepo(item) || !serviceHasEnvironment(item) || !serviceHasMonitoring(item) || !onCallReady;
+  return !serviceHasOwner(item) || !serviceHasRepo(item) || !serviceHasMonitoring(item) || !onCallReady || !serviceHasDeployment(item);
 }
 
 export function buildServiceSetupSteps(item: ServiceSetupFields, onCallReady = false): ServiceSetupStep[] {
@@ -66,7 +81,7 @@ export function buildServiceSetupSteps(item: ServiceSetupFields, onCallReady = f
   return [
     {
       key: 'owner',
-      label: 'Owner / team',
+      label: 'Owner',
       detail: serviceHasOwner(item) ? assigned(item.team) : 'Assign the service owner team',
       done: serviceHasOwner(item),
       mandatory: true,
@@ -81,15 +96,6 @@ export function buildServiceSetupSteps(item: ServiceSetupFields, onCallReady = f
       mandatory: true,
       href: id ? `${base}?tab=configuration&focus=repo` : base,
       actionLabel: 'Connect repository',
-    },
-    {
-      key: 'environment',
-      label: 'Environment',
-      detail: serviceHasEnvironment(item) ? 'Production' : 'Record the monitored environment',
-      done: serviceHasEnvironment(item),
-      mandatory: true,
-      href: id ? `${base}?tab=configuration` : base,
-      actionLabel: 'Set environment',
     },
     {
       key: 'monitoring',
@@ -108,6 +114,21 @@ export function buildServiceSetupSteps(item: ServiceSetupFields, onCallReady = f
       mandatory: true,
       href: projectId ? `/on-call/onboard?project_id=${projectId}` : '/on-call/onboard',
       actionLabel: 'Assign on-call',
+    },
+    {
+      key: 'deployment',
+      label: 'Deployment configuration',
+      detail: serviceHasDeployment(item)
+        ? 'Repository and environment are recorded for delivery'
+        : !serviceHasEnvironment(item)
+          ? 'Record the monitored environment. This is not release approval.'
+          : 'Connect delivery configuration. This is not release approval.',
+      done: serviceHasDeployment(item),
+      mandatory: true,
+      href: !serviceHasEnvironment(item)
+        ? (id ? `${base}?tab=configuration` : base)
+        : deploymentSetupHref(item),
+      actionLabel: !serviceHasEnvironment(item) ? 'Set environment' : 'Configure deployment',
     },
   ];
 }

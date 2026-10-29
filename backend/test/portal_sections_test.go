@@ -44,6 +44,7 @@ func TestSectionForPath(t *testing.T) {
 		"/api/cost/connections":                 "cost",
 		"/api/devops/inbound-sources":           "operations",
 		"/api/devops/integrations/jira":         "operations",
+		"/api/devops/integrations/health":       "integrations-health",
 		"/api/integrations/jira/oauth/callback": "",
 		"/api/webhooks/jira":                    "",
 		"/api/devops/projects":                  "projects",
@@ -73,6 +74,10 @@ func TestSectionForPath(t *testing.T) {
 	}
 	if !allSectionGrants().allows("security") {
 		t.Fatal("admin section was rejected")
+	}
+	costOnly := sectionGrants{Cost: true}
+	if !costOnly.allows("integrations-health") || requester.allows("integrations-health") {
+		t.Fatalf("health grants cost=%v requester=%v", costOnly.allows("integrations-health"), requester.allows("integrations-health"))
 	}
 }
 

@@ -20,6 +20,7 @@ import {
   type ChangeDetailModel,
   type DeliveryVisibility,
   type DeploymentVerification,
+  type ReleaseEvidenceSnapshot,
   type ReleaseReadiness,
 } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -55,6 +56,75 @@ interface ScopeProject {
   name: string;
   code: string;
   environments: string[];
+}
+
+function shortEvidenceSHA(sha?: string) {
+  const value = (sha || '').trim();
+  if (!value) return 'Unknown';
+  return value.length > 12 ? value.slice(0, 12) : value;
+}
+
+function ReleaseEvidencePanel({
+  evidence,
+  currentSHA,
+}: {
+  evidence?: ReleaseEvidenceSnapshot | null;
+  currentSHA?: string;
+}) {
+  if (!evidence) {
+    return (
+      <section className="release-readiness" aria-label="Release evidence snapshot">
+        <div className="release-readiness__head">
+          <strong>Release evidence snapshot</strong>
+          <span className="delivery-status delivery-status--unknown">Not captured</span>
+        </div>
+        <p className="release-readiness__note">A snapshot is saved when this change is approved. Live readiness above is not a stored decision record.</p>
+      </section>
+    );
+  }
+  const invalidated = Boolean(evidence.invalidated);
+  return (
+    <section className="release-readiness" aria-label="Release evidence snapshot">
+      <div className="release-readiness__head">
+        <strong>Release evidence snapshot</strong>
+        <span className={`delivery-status delivery-status--${invalidated ? 'failed' : 'ok'}`}>
+          {invalidated ? 'Invalidated' : 'Captured'}
+        </span>
+      </div>
+      <p className="release-readiness__note">
+        {invalidated
+          ? evidence.invalidated_reason || `A newer commit replaced ${shortEvidenceSHA(evidence.sha)}. Re-evaluate this evidence.`
+          : 'This is the commit, approvals, checks, security, window, and rollback recorded for the approval decision.'}
+      </p>
+      <p className="release-readiness__evidence">
+        Snapshot {shortEvidenceSHA(evidence.sha)}
+        {currentSHA ? ` · current ${shortEvidenceSHA(currentSHA)}` : ''}
+        {evidence.captured_at ? ` · captured ${evidence.captured_at}` : ''}
+      </p>
+      <ul className="release-readiness__list">
+        <li>
+          <span className="release-readiness__check">Approvals</span>
+          <span className="release-readiness__detail">{evidence.approvals || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Checks</span>
+          <span className="release-readiness__detail">{evidence.checks || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Security</span>
+          <span className="release-readiness__detail">{evidence.security || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Deployment window</span>
+          <span className="release-readiness__detail">{evidence.window || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Rollback plan</span>
+          <span className="release-readiness__detail">{evidence.rollback || 'Unknown'}</span>
+        </li>
+      </ul>
+    </section>
+  );
 }
 
 export default function ChangeDetailPage() {
@@ -356,6 +426,7 @@ export default function ChangeDetailPage() {
         {item ? (
           <>
             <ReleaseReadinessCard readiness={readiness} />
+            <ReleaseEvidencePanel evidence={item.release_evidence} currentSHA={item.sha} />
             <DeploymentVerificationCard verification={verification} />
             {isManager && !finished ? (
               <section className="work-board" id="window" aria-label="Deployment window">

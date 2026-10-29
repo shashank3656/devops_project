@@ -89,8 +89,58 @@ export function addCalendarDays(dateKey: string, days: number): string {
   return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
 }
 
+export function nextDateKeys(fromKey: string, count: number): string[] {
+  const length = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  return Array.from({ length }, (_, index) => addCalendarDays(fromKey, index));
+}
+
 export function nextSevenDateKeys(fromKey: string): string[] {
-  return Array.from({ length: 7 }, (_, index) => addCalendarDays(fromKey, index));
+  return nextDateKeys(fromKey, 7);
+}
+
+function dateParts(dateKey: string): { year: number; month: number; day: number } | null {
+  const [yearText, monthText, dayText] = dateKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+export function formatCompactDay(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return dateKey;
+  return `${parts.day} ${MONTHS[parts.month - 1] || 'Unknown'}`;
+}
+
+export function formatDateRange(startKey: string, endKey: string): string {
+  const start = dateParts(startKey);
+  const end = dateParts(endKey);
+  if (!start || !end) return `${startKey}–${endKey}`;
+  const startMonth = MONTHS[start.month - 1] || 'Unknown';
+  const endMonth = MONTHS[end.month - 1] || 'Unknown';
+  if (start.year !== end.year) return `${start.day} ${startMonth} ${start.year}–${end.day} ${endMonth} ${end.year}`;
+  if (start.month === end.month && start.day === end.day) return `${start.day} ${startMonth}`;
+  return `${start.day} ${startMonth}–${end.day} ${endMonth}`;
+}
+
+export function formatDateList(dateKeys: string[]): string {
+  const unique = Array.from(new Set(dateKeys)).sort();
+  if (!unique.length) return '';
+  const spans: string[][] = [];
+  unique.forEach((key) => {
+    const last = spans[spans.length - 1];
+    if (last && addCalendarDays(last[last.length - 1], 1) === key) last.push(key);
+    else spans.push([key]);
+  });
+  return spans.map((span) => (span.length === 1 ? formatCompactDay(span[0]) : formatDateRange(span[0], span[span.length - 1]))).join(', ');
+}
+
+export function weekdayShort(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return '';
+  const weekday = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)).getUTCDay();
+  return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][weekday] || '';
 }
 
 export function currentMonth(timeZone: string): string {

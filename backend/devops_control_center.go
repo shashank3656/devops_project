@@ -1829,7 +1829,7 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		handleOptions(w, r)
 		return
 	}
-	managerID, ok := requireDevopsManager(w, r)
+	managerID, ok := requireDevopsUser(w, r)
 	if !ok {
 		return
 	}

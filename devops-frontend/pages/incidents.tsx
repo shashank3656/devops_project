@@ -380,7 +380,7 @@ export default function DevOpsIncidentsPage() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         clearSessionAndRedirect();
         return;
       }
@@ -451,8 +451,9 @@ export default function DevOpsIncidentsPage() {
       {
         id: 'action',
         header: 'Action',
+        className: 'ig-cell-actions',
         cell: (incident) => (
-          <div className="portal-page__actions">
+          <div className="ig-cell-actions incident-queue-actions">
             {incidentNeedsAck(incident.status) ? (
               <button
                 type="button"
@@ -463,7 +464,7 @@ export default function DevOpsIncidentsPage() {
                   void queueIncidentAction(incident, 'acknowledge');
                 }}
               >
-                Acknowledge
+                {finishingId === incident.id ? 'Acknowledging…' : 'Acknowledge'}
               </button>
             ) : null}
             {incidentPageable(incident.severity) && incidentCanFinish(incident.status) ? (
@@ -486,61 +487,53 @@ export default function DevOpsIncidentsPage() {
             >
               Workspace
             </Link>
-            <button
-              type="button"
+            <Link
               className="btn btn-secondary btn-sm"
-              onClick={(event) => {
-                event.stopPropagation();
-                void router.push(`/incidents/${incident.id}/edit`);
-              }}
+              href={`/incidents/${incident.id}/edit`}
+              onClick={(event) => event.stopPropagation()}
             >
               Edit
-            </button>
+            </Link>
             {incidentCanFinish(incident.status) ? (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  disabled={finishingId === incident.id || !incident.owner_user_id}
-                  title={!incident.owner_user_id ? 'Assign an owner before closing this incident.' : 'Close with recovery notes'}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void queueIncidentAction(incident, 'close');
-                  }}
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  disabled={finishingId === incident.id}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void queueIncidentAction(incident, 'cancel');
-                  }}
-                >
-                  Cancel
-                </button>
-              </>
+              <details className="incident-queue-more" onClick={(event) => event.stopPropagation()}>
+                <summary className="btn btn-secondary btn-sm">More</summary>
+                <div className="incident-queue-more__panel">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={finishingId === incident.id || !incident.owner_user_id}
+                    title={!incident.owner_user_id ? 'Assign an owner before closing this incident.' : 'Close with recovery notes'}
+                    onClick={() => void queueIncidentAction(incident, 'close')}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={finishingId === incident.id}
+                    onClick={() => void queueIncidentAction(incident, 'cancel')}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </details>
             ) : (
-              <>
-                {incidentPageable(incident.severity) ? (
+              <details className="incident-queue-more" onClick={(event) => event.stopPropagation()}>
+                <summary className="btn btn-secondary btn-sm">More</summary>
+                <div className="incident-queue-more__panel">
+                  {incidentPageable(incident.severity) ? (
+                    <Link className="btn btn-secondary btn-sm" href={`/incident-workspace?incident_id=${incident.id}`}>
+                      Complete postmortem
+                    </Link>
+                  ) : null}
                   <Link
                     className="btn btn-secondary btn-sm"
-                    href={`/incident-workspace?incident_id=${incident.id}`}
-                    onClick={(event) => event.stopPropagation()}
+                    href={`/problems/new?incident_id=${incident.id}&title=${encodeURIComponent(incident.summary || incident.incident_number || '')}`}
                   >
-                    Complete postmortem
+                    Mark recurring
                   </Link>
-                ) : null}
-                <Link
-                  className="btn btn-secondary btn-sm"
-                  href={`/problems/new?incident_id=${incident.id}&title=${encodeURIComponent(incident.summary || incident.incident_number || '')}`}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  Mark recurring
-                </Link>
-              </>
+                </div>
+              </details>
             )}
           </div>
         ),
@@ -579,10 +572,6 @@ export default function DevOpsIncidentsPage() {
         }
       }
       if (!response.ok && !Array.isArray(data.incidents)) {
-        if (response.status === 403) {
-          clearSessionAndRedirect();
-          return;
-        }
         throw new Error(getString(data.error, 'Failed to load incidents'));
       }
       setTeams(normalizeTeams(data.teams));
@@ -623,7 +612,7 @@ export default function DevOpsIncidentsPage() {
       const response = await fetch(`${apiUrl}/api/devops/incidents?mode=preview`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         clearSessionAndRedirect();
         return;
       }
@@ -726,7 +715,7 @@ export default function DevOpsIncidentsPage() {
           }),
         },
       );
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         clearSessionAndRedirect();
         return;
       }

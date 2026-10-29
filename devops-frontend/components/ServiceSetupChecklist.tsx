@@ -23,6 +23,7 @@ export default function ServiceSetupChecklist({
         {complete
           ? <><strong>{serviceName}</strong> has the required setup. Optional integrations stay separate.</>
           : <><strong>{serviceName}</strong> can resume from {next ? next.label.toLowerCase() : 'the next required step'}.</>}
+        {' '}Service setup is not release approval.
       </p>
       <div className="ops-ready__meter">
         <strong>{`${done} / ${mandatory.length || 0}`}</strong>

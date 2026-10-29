@@ -19,6 +19,11 @@ interface EvidencePack {
     policy_status?: string;
     cost_delta_usd?: number;
     cost_currency?: string;
+    release_evidence?: {
+      sha?: string;
+      invalidated?: boolean;
+      invalidated_reason?: string;
+    } | null;
   }[];
   incidents?: { incident_number?: string; summary: string; status: string; severity?: string }[];
   branch_protection?: { repo: string; base_branch: string; onboarded?: boolean; required_checks?: string[]; summary?: string }[];
@@ -69,7 +74,7 @@ export default function EvidencePage() {
           <div>
             <span className="portal-page__eyebrow">Compliance</span>
             <h1 className="portal-page__title">Evidence pack</h1>
-            <p className="portal-page__subtitle">Who approved, what SHA shipped, watch result, policy, cost, incidents, and required branch checks for the last 30 days.</p>
+            <p className="portal-page__subtitle">Who approved, what SHA shipped, watch result, policy, cost, incidents, required branch checks, and whether a later commit invalidated the captured evidence.</p>
           </div>
           <button type="button" className="btn btn-secondary" onClick={download}>Download markdown</button>
         </div>
@@ -95,6 +100,7 @@ export default function EvidencePage() {
                     <th>Approved by</th>
                     <th>Policy</th>
                     <th>Cost</th>
+                    <th>Evidence</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -106,6 +112,13 @@ export default function EvidencePage() {
                       <td>{item.cab_approved_by_username || item.author || '—'}</td>
                       <td>{item.policy_status || 'none'}</td>
                       <td>{item.cost_currency || 'USD'} {item.cost_delta_usd ?? 0}</td>
+                      <td>
+                        {item.release_evidence?.invalidated
+                          ? 'Invalidated'
+                          : item.release_evidence?.sha
+                            ? 'Captured'
+                            : 'No snapshot'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

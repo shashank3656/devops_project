@@ -149,6 +149,8 @@ func (g sectionGrants) allows(section string) bool {
 		return g.Daily || g.Infrastructure || g.Security
 	case "sre":
 		return g.Daily || g.Operations
+	case "integrations-health":
+		return g.Operations || g.Cost || g.Security || g.Infrastructure || g.Daily
 	case "desk-or-requests":
 		return g.Daily || g.Requests
 	case "records-or-infrastructure":
@@ -203,6 +205,8 @@ func sectionForPath(path string) string {
 		return "requests"
 	case strings.HasPrefix(path, "/api/me/incidents"), strings.HasPrefix(path, "/api/me/changes"):
 		return "desk-or-requests"
+	case strings.HasPrefix(path, "/api/devops/integrations/health"):
+		return "integrations-health"
 	case strings.HasPrefix(path, "/api/oncall/"),
 		strings.HasPrefix(path, "/api/devops/oncall"),
 		strings.HasPrefix(path, "/api/expiry/"),

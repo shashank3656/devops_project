@@ -26,6 +26,8 @@ interface ProjectReadinessCheck {
   label: string;
   complete: boolean;
   detail: string;
+  href?: string;
+  action_label?: string;
 }
 
 interface ProjectLifecycleAction {
@@ -475,6 +477,8 @@ function normalizeReadinessChecks(value: unknown): ProjectReadinessCheck[] {
       label: getString(row.label),
       complete: Boolean(row.complete),
       detail: getString(row.detail),
+      href: getString(row.href) || undefined,
+      action_label: getString(row.action_label) || undefined,
     };
   }).filter((item) => item.key || item.label || item.detail);
 }
@@ -1302,6 +1306,9 @@ export default function DevOpsProjectDetailPage() {
                       <span>{check.complete ? 'complete' : 'pending'}</span>
                     </div>
                     <p className="portal-preview-signal__detail">{check.detail}</p>
+                    {!check.complete && check.href ? (
+                      <Link href={check.href} className="btn btn-secondary btn-sm">{check.action_label || 'Open setup'}</Link>
+                    ) : null}
                   </article>
                 ))}
               </div>

@@ -1,5 +1,18 @@
 import { formatOperationalTime } from './time';
 
+export type ReleaseEvidenceSnapshot = {
+  sha?: string;
+  captured_at?: string;
+  decision?: string;
+  approvals?: string;
+  checks?: string;
+  security?: string;
+  window?: string;
+  rollback?: string;
+  invalidated?: boolean;
+  invalidated_reason?: string;
+};
+
 export interface ChangeDetailModel {
   id: number;
   change_number: string;
@@ -51,6 +64,7 @@ export interface ChangeDetailModel {
   cab_window_start?: string;
   cab_window_end?: string;
   created_at: string;
+  release_evidence?: ReleaseEvidenceSnapshot | null;
 }
 
 const LIFECYCLE_STEPS = [

@@ -838,6 +838,7 @@ func main() {
 	http.HandleFunc("/api/admin/inbound-sources/", adminInboundSourceDetailHandler)
 	http.HandleFunc("/api/devops/inbound-sources", devopsInboundSourcesHandler)
 	http.HandleFunc("/api/devops/inbound-sources/", devopsInboundSourceDetailHandler)
+	http.HandleFunc("/api/devops/integrations/health", integrationHealthHandler)
 	http.HandleFunc("/api/devops/integrations/jira", jiraIntegrationsHandler)
 	http.HandleFunc("/api/devops/integrations/jira/", jiraIntegrationsHandler)
 	http.HandleFunc("/api/integrations/jira/oauth/callback", jiraOAuthCallbackHandler)

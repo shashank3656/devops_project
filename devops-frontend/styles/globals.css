@@ -1397,10 +1397,17 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 .k8s-filter-toolbar__select {
   min-width: 190px;
   border: 0;
-  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%23C4B5FD' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
   color: var(--color-text);
-  padding: 0 14px;
+  padding: 0 32px 0 14px;
   height: 50px;
+  cursor: pointer;
 }
 .k8s-filter-toolbar__action {
   min-height: 52px;
@@ -1652,6 +1659,9 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+}
+.portal-stat-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .portal-stat-card {
   padding: 18px;
@@ -2931,7 +2941,17 @@ a:hover { color: var(--color-primary-hover); text-decoration: underline; }
 }
 .input::placeholder { color: var(--color-text-muted); }
 select.input,
-select.input:focus { appearance: auto; cursor: pointer; }
+select.input:focus {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%2358677F' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  padding-right: 28px;
+}
+select.input::-ms-expand { display: none; }
 
 .alert { padding: var(--space-4); border-radius: var(--radius); margin-bottom: var(--space-5); }
 .alert-error { background: var(--color-danger-bg); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
@@ -9558,14 +9578,22 @@ body {
   width: 100%;
   min-width: 0;
   min-height: 24px;
-  padding: 0;
+  padding: 0 18px 0 0;
   border: 0;
-  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.75 4.5 6 7.75 9.25 4.5' fill='none' stroke='%23C4B5FD' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+  background-size: 12px 12px;
   color: var(--color-text);
   font-size: 13px;
   font-family: inherit;
   outline: none;
+  cursor: pointer;
 }
+.devops-incident-filter-chip__control::-ms-expand { display: none; }
 
 .devops-incident-filter-row__actions {
   display: flex;
@@ -13908,4 +13936,58 @@ html[data-theme] .delivery-shell .delivery-table th {
   gap: 8px;
   align-items: center;
   justify-content: space-between;
+}
+
+.incident-queue-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  min-width: 248px;
+}
+.incident-queue-actions .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 999px;
+}
+html[data-theme] .devops-layout .ig-table .incident-queue-actions .btn-secondary,
+html[data-theme='dark'] .devops-layout .ig-table .incident-queue-actions .btn-secondary {
+  background: rgba(25, 34, 56, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #f5f7fc;
+  box-shadow: none;
+}
+html[data-theme] .devops-layout .ig-table .incident-queue-actions .btn-secondary:hover:not(:disabled),
+html[data-theme='dark'] .devops-layout .ig-table .incident-queue-actions .btn-secondary:hover:not(:disabled) {
+  background: #2a2150;
+  color: #c4b5fd;
+}
+.incident-queue-more {
+  position: relative;
+}
+.incident-queue-more > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.incident-queue-more > summary::-webkit-details-marker {
+  display: none;
+}
+.incident-queue-more__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 148px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #192238;
 }

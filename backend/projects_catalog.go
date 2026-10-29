@@ -33,10 +33,12 @@ type ProjectApprovalRule struct {
 }
 
 type ProjectReadinessCheck struct {
-	Key      string `json:"key"`
-	Label    string `json:"label"`
-	Complete bool   `json:"complete"`
-	Detail   string `json:"detail"`
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Complete    bool   `json:"complete"`
+	Detail      string `json:"detail"`
+	Href        string `json:"href,omitempty"`
+	ActionLabel string `json:"action_label,omitempty"`
 }
 
 type ProjectLifecycleAction struct {
@@ -300,36 +302,50 @@ func deriveProjectOnboarding(project *ProjectCatalog) {
 	}
 	project.ServiceCount = len(project.Services)
 	project.TeamCount = len(project.TeamAccess)
+	projectHref := ""
+	if project.ID > 0 {
+		projectHref = fmt.Sprintf("/projects/%d", project.ID)
+	}
 	project.ReadinessChecks = []ProjectReadinessCheck{
 		{
-			Key:      "environments",
-			Label:    "Environment layout",
-			Complete: len(project.Environments) > 0,
-			Detail:   "Define at least one environment such as dev, uat, or prod.",
+			Key:         "environments",
+			Label:       "Environment layout",
+			Complete:    len(project.Environments) > 0,
+			Detail:      "Define at least one environment such as dev, uat, or prod.",
+			Href:        projectHref,
+			ActionLabel: "Open catalog",
 		},
 		{
-			Key:      "clouds",
-			Label:    "Cloud coverage",
-			Complete: len(project.Clouds) > 0,
-			Detail:   "Choose which clouds this project can request against.",
+			Key:         "clouds",
+			Label:       "Cloud coverage",
+			Complete:    len(project.Clouds) > 0,
+			Detail:      "Choose which clouds this project can request against.",
+			Href:        projectHref,
+			ActionLabel: "Open catalog",
 		},
 		{
-			Key:      "services",
-			Label:    "Service catalog",
-			Complete: len(project.Services) > 0,
-			Detail:   "Map the cloud-service combinations users are allowed to request.",
+			Key:         "services",
+			Label:       "Service catalog",
+			Complete:    len(project.Services) > 0,
+			Detail:      "Map the cloud-service combinations users are allowed to request.",
+			Href:        "/services/new",
+			ActionLabel: "Add service",
 		},
 		{
-			Key:      "team_access",
-			Label:    "Team access",
-			Complete: len(project.TeamAccess) > 0,
-			Detail:   "Grant at least one portal team access before requests can start.",
+			Key:         "team_access",
+			Label:       "Team access",
+			Complete:    len(project.TeamAccess) > 0,
+			Detail:      "Grant at least one portal team access before requests can start.",
+			Href:        projectHref,
+			ActionLabel: "Open catalog",
 		},
 		{
-			Key:      "owner_team",
-			Label:    "Owner team",
-			Complete: project.OwnerTeamID != nil && *project.OwnerTeamID > 0,
-			Detail:   "Assign an owner team so governance and escalation stay clear.",
+			Key:         "owner_team",
+			Label:       "Owner team",
+			Complete:    project.OwnerTeamID != nil && *project.OwnerTeamID > 0,
+			Detail:      "Assign an owner team so governance and escalation stay clear.",
+			Href:        projectHref,
+			ActionLabel: "Assign owner",
 		},
 	}
 
@@ -1267,7 +1283,107 @@ func getProjectCatalogByID(projectID int) (*ProjectCatalog, error) {
 	if len(projects) == 0 {
 		return nil, nil
 	}
-	return &projects[0], nil
+	project := &projects[0]
+	attachGuidedProjectSetup(project)
+	return project, nil
+}
+
+func attachGuidedProjectSetup(project *ProjectCatalog) {
+	if project == nil || project.ID <= 0 {
+		return
+	}
+	services, _ := listServiceMap(project.ID, "", "")
+	hasRepo := false
+	hasMonitoring := false
+	hasEnvironment := false
+	firstServiceID := 0
+	deployHref := "/deploy-intelligence/onboard"
+	for _, item := range services {
+		if firstServiceID == 0 && item.ID > 0 {
+			firstServiceID = item.ID
+		}
+		repo := strings.TrimSpace(item.Repo)
+		if repo != "" {
+			hasRepo = true
+			parts := strings.SplitN(repo, "/", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[0]) != "" && strings.TrimSpace(parts[1]) != "" {
+				deployHref = fmt.Sprintf("/deploy-intelligence/%s/%s", strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+			}
+		}
+		if strings.TrimSpace(item.GrafanaUID) != "" || strings.TrimSpace(item.DashboardURL) != "" || strings.TrimSpace(item.MetricsURL) != "" || strings.TrimSpace(item.PromQL) != "" {
+			hasMonitoring = true
+		}
+		env := strings.ToLower(strings.TrimSpace(item.Environment))
+		if env != "" && env != "unspecified" && env != "unknown" {
+			hasEnvironment = true
+		}
+	}
+	hasOncall := false
+	if teams, err := listProjectOncallTeams(project.ID); err == nil && len(teams) > 0 {
+		hasOncall = true
+	}
+	serviceHref := fmt.Sprintf("/services/new?project_id=%d", project.ID)
+	if firstServiceID > 0 {
+		serviceHref = fmt.Sprintf("/services/%d?tab=configuration", firstServiceID)
+	}
+	projectHref := fmt.Sprintf("/projects/%d", project.ID)
+	deploymentHref := deployHref
+	deploymentLabel := "Configure deployment"
+	if !hasEnvironment {
+		deploymentHref = serviceHref
+		deploymentLabel = "Set environment"
+	}
+	guided := []ProjectReadinessCheck{
+		{
+			Key:         "guided_owner",
+			Label:       "Owner",
+			Complete:    project.OwnerTeamID != nil && *project.OwnerTeamID > 0,
+			Detail:      "Assign an owner team so governance and escalation stay clear.",
+			Href:        projectHref,
+			ActionLabel: "Assign owner",
+		},
+		{
+			Key:         "guided_repository",
+			Label:       "Repository",
+			Complete:    hasRepo,
+			Detail:      "Connect a source repository on a registered service.",
+			Href:        serviceHref + "&focus=repo",
+			ActionLabel: "Connect repository",
+		},
+		{
+			Key:         "guided_monitoring",
+			Label:       "Monitoring",
+			Complete:    hasMonitoring,
+			Detail:      "Link a dashboard or metrics endpoint. Missing telemetry stays Unknown.",
+			Href:        serviceHref + "&focus=monitoring",
+			ActionLabel: "Link monitoring",
+		},
+		{
+			Key:         "guided_oncall",
+			Label:       "On-call",
+			Complete:    hasOncall,
+			Detail:      "Assign on-call coverage for this project.",
+			Href:        fmt.Sprintf("/on-call/onboard?project_id=%d", project.ID),
+			ActionLabel: "Assign on-call",
+		},
+		{
+			Key:         "guided_deployment",
+			Label:       "Deployment configuration",
+			Complete:    hasRepo && hasEnvironment,
+			Detail:      "Connect delivery configuration. This is not release approval.",
+			Href:        deploymentHref,
+			ActionLabel: deploymentLabel,
+		},
+	}
+	existing := project.ReadinessChecks
+	filtered := make([]ProjectReadinessCheck, 0, len(existing))
+	for _, check := range existing {
+		if strings.HasPrefix(check.Key, "guided_") {
+			continue
+		}
+		filtered = append(filtered, check)
+	}
+	project.ReadinessChecks = append(guided, filtered...)
 }
 
 func listProjectCatalogs() ([]ProjectCatalog, error) {

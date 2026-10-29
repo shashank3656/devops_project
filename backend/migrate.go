@@ -1403,6 +1403,7 @@ func MigrateDatabase() error {
 	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS cost_currency VARCHAR(8) NOT NULL DEFAULT 'USD'`)
 	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS policy_status VARCHAR(20) NOT NULL DEFAULT ''`)
 	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS policy_reasons_json TEXT NOT NULL DEFAULT '[]'`)
+	_, _ = DB.Exec(`ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS release_evidence_json TEXT NOT NULL DEFAULT ''`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS policy_rules (
 			id SERIAL PRIMARY KEY,

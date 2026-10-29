@@ -106,6 +106,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/cost/kubernetes': 'Kubernetes cost',
   '/cost/configuration': 'Data sources',
   '/operations/webhooks': 'Webhooks',
+  '/integrations': 'Integration health',
   '/integrations/jira': 'Jira',
   '/integrations/jira/onboard': 'Onboard Jira',
   '/maintenance': 'Maintenance',
@@ -728,6 +729,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   ];
 
   const leafIsActive = (href: string) => {
+    if (href === '/integrations') return pathname === '/integrations';
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
     if (href === '/iam' || href === '/service-desk' || href === '/portal-access') return pathname === href;
     if (href === '/cost') {
@@ -772,7 +774,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
-        { href: '/integrations/jira', label: 'Jira', Icon: IconProjects },
+        { href: '/integrations', label: 'Integrations', Icon: IconProjects, children: [
+          { href: '/integrations', label: 'Health' },
+          { href: '/integrations/jira', label: 'Jira' },
+        ] },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
         {
           href: '/notification-settings',
@@ -794,7 +799,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
-        { href: '/integrations/jira', label: 'Jira', Icon: IconProjects },
+        { href: '/integrations', label: 'Integrations', Icon: IconProjects, children: [
+          { href: '/integrations', label: 'Health' },
+          { href: '/integrations/jira', label: 'Jira' },
+        ] },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
       ];
   const iamNavItem: NavItem = {
@@ -878,7 +886,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       ]),
     });
   }
-  if (grants.daily) sidebarSections.push({ title: 'Daily', items: visibleNav(dailyNavItems) });
+  if (grants.daily) {
+    const extra = (!grants.operations && !grants.cost) ? [{ href: '/integrations', label: 'Integration health', Icon: IconFileText }] : [];
+    sidebarSections.push({ title: 'Daily', items: visibleNav([...dailyNavItems, ...extra]) });
+  }
   if (grants.operations) sidebarSections.push({ title: 'Operations', items: visibleNav(operationsNavItems) });
   else if (user?.maintenance_approver) {
     sidebarSections.push({
@@ -886,9 +897,15 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       items: [{ href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle }],
     });
   }
-  if (grants.cost) sidebarSections.push({ title: 'Cost', items: visibleNav(costNavItems) });
+  if (grants.cost) {
+    const extra = grants.operations ? [] : [{ href: '/integrations', label: 'Integration health', Icon: IconFileText }];
+    sidebarSections.push({ title: 'Cost', items: visibleNav([...costNavItems, ...extra]) });
+  }
   if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
-  if (grants.security) sidebarSections.push({ title: 'Security', items: visibleNav(securityNavItems) });
+  if (grants.security) {
+    const extra = (!grants.operations && !grants.cost) ? [{ href: '/integrations', label: 'Integration health', Icon: IconShield }] : [];
+    sidebarSections.push({ title: 'Security', items: visibleNav([...securityNavItems, ...extra]) });
+  }
   if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });
   if (grants.portalAccess) {
     sidebarSections.push({
@@ -1459,6 +1476,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar', hint: 'Scheduled changes' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes', hint: 'What shipped' },
           { id: 'cost', label: 'Cost', href: '/cost', hint: 'Operating bill and request estimates' },
+          { id: 'integration-health', label: 'Integration health', href: '/integrations', hint: 'Connector health and recovery' },
           { id: 'services', label: 'Service inventory', href: '/services', hint: 'Production services, observability, and findings' },
           { id: 'slos', label: 'Service SLOs', href: '/slos', hint: 'Error and latency budgets' },
           { id: 'add-service', label: 'Add service', href: '/services/new', hint: 'Register a service' },

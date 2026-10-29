@@ -87,6 +87,7 @@ export {
   changeScopeIncomplete,
   type ChangeDetailModel,
   type ChangeDetailActions,
+  type ReleaseEvidenceSnapshot,
 } from './ChangeDetailPanel';
 export {
   default as IncidentCatalogTable,
