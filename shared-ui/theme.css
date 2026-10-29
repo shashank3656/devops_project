@@ -4618,6 +4618,15 @@ a.svc-tree__folder:hover,
   margin: 8px 0 14px;
 }
 
+.oncall-week-day {
+  margin: 0 0 16px;
+}
+
+.oncall-week-day .portal-surface__title {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
 .portal-page > .ops-notice {
   margin: 0 0 16px;
   align-items: flex-start;
@@ -5540,6 +5549,13 @@ th[aria-sort='descending'] .sd-sort-btn { color: var(--ig-text); }
 
 .sd-empty p {
   margin: 0 0 14px;
+}
+
+.sd-empty__actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .sd-alert {
@@ -7032,10 +7048,23 @@ html[data-theme='dark'] .ops-notice {
   font-size: 28px;
 }
 
+.ops-ready ol,
+.ops-ready__steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
 .ops-ready li {
   display: flex;
   gap: 10px;
   margin: 10px 0;
+  align-items: center;
+}
+
+.ops-ready li .btn {
+  margin-top: 0;
+  margin-left: auto;
 }
 
 .ops-ready a {

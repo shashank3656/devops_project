@@ -8,6 +8,7 @@ import ServiceActivityTimeline from './ServiceActivityTimeline';
 import ServiceEnvironmentMatrix from './ServiceEnvironmentMatrix';
 import { serviceTicketHref } from '../lib/scopeHref';
 import { recordReference } from '../lib/recordRef';
+import CollectionStatus, { collectionStateFromSync } from './CollectionStatus';
 
 type Monitor = {
   id: number;
@@ -272,6 +273,14 @@ export default function SreServiceWorkspace({
   const trendMonitor = monitors.find((item) => item.id === trendMonitorId) || availability || monitors[0];
   const openFindings = findings.filter((item) => item.lifecycle !== 'resolved');
   const lastEval = monitors.map((item) => item.latest?.evaluated_at || item.latest?.measurement?.observed_at).filter(Boolean).sort().at(-1);
+  const queryFailed = monitors.some((item) => item.latest?.measurement?.state === 'query_failed' || Boolean(item.latest?.source_error));
+  const observabilitySource = connectors.find((item) => item.enabled !== false)?.source_type || connectors[0]?.source_type || 'Observability';
+  const collectionState = collectionStateFromSync({
+    connected: connectors.length > 0 || monitors.length > 0,
+    failed: queryFailed,
+    lastSuccess: lastEval,
+    empty: !findings.length,
+  });
   const scheduledMinutes = monitors.filter((item) => item.enabled && (item.schedule_minutes || 0) > 0).map((item) => item.schedule_minutes || 0);
   const scheduleCopy = scheduledMinutes.length ? scheduleModeCopy(Math.min(...scheduledMinutes)) : 'On-demand';
   const visibleFindings = openFindings.concat(findings.filter((item) => item.lifecycle === 'resolved')).filter((item) => (
@@ -707,6 +716,12 @@ export default function SreServiceWorkspace({
         </div>
         <div className="sre-workspace__tools">
           <p className="sre-workspace__mode">{scheduleCopy}{lastEval ? ` · last evaluation ${formatOperationalTime(lastEval)}` : ' · not evaluated yet'}</p>
+          <CollectionStatus
+            source={observabilitySource}
+            lastSuccess={lastEval}
+            state={collectionState}
+            detail="Missing telemetry stays Unknown, not Healthy."
+          />
           {primaryAction}
         </div>
       </div>

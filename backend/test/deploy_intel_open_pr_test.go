@@ -97,6 +97,85 @@ func TestOverallReleaseReadiness(t *testing.T) {
 	}
 }
 
+func TestSameCommitSHA(t *testing.T) {
+	if !sameCommitSHA("abcdef1234567890", "abcdef1") {
+		t.Fatal("short prefix of the same commit must match")
+	}
+	if sameCommitSHA("abcdef1234567890", "ffffff1234567890") {
+		t.Fatal("different commits must not match")
+	}
+	if evidenceCommitMoved("", "abcdef1234567890") {
+		t.Fatal("unknown current SHA is not a moved commit")
+	}
+	if !evidenceCommitMoved("aaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbb") {
+		t.Fatal("different recorded SHA must count as moved")
+	}
+}
+
+func TestReadinessMissingRequirementsAreActionable(t *testing.T) {
+	ready := finalizeReleaseReadiness(releaseReadinessInput{
+		SHA:            "abcdef1234567890",
+		Source:         "GitHub pull request",
+		ReviewDecision: "REVIEW_REQUIRED",
+		PRURL:          "https://github.com/acme/app/pull/12",
+		PRNumber:       12,
+		RepoOwner:      "acme",
+		RepoName:       "app",
+	})
+	actions := map[string]releaseReadinessCheck{}
+	for _, check := range ready.Checks {
+		actions[check.Key] = check
+	}
+	if actions["reviews"].ActionLabel != "Assign reviewer" || actions["reviews"].ActionHref != "https://github.com/acme/app/pull/12" {
+		t.Fatalf("reviews action = %#v", actions["reviews"])
+	}
+	if actions["change"].ActionLabel != "Link change" || actions["change"].ActionKey != "link_change" {
+		t.Fatalf("change action = %#v", actions["change"])
+	}
+	if actions["security"].ActionLabel != "Configure security scan" {
+		t.Fatalf("security action = %#v", actions["security"])
+	}
+	if actions["window"].ActionLabel != "Select deployment window" {
+		t.Fatalf("window action = %#v", actions["window"])
+	}
+}
+
+func TestReadinessReevaluatesWhenCommitChanges(t *testing.T) {
+	change := &changeRequestRecord{
+		ID:           9,
+		ChangeNumber: "CHG0000009",
+		SHA:          "oldcommitsha0001",
+		PolicyStatus: "pass",
+		CABStatus:    "approved",
+		Status:       "authorized",
+		Service:      "checkout",
+		Environment:  "prod",
+	}
+	ready := finalizeReleaseReadiness(releaseReadinessInput{
+		SHA:      "newcommitsha0002",
+		Source:   "GitHub pull request",
+		Change:   change,
+		PRURL:    "https://github.com/acme/app/pull/4",
+		PRNumber: 4,
+	})
+	byKey := map[string]releaseReadinessCheck{}
+	for _, check := range ready.Checks {
+		byKey[check.Key] = check
+	}
+	if byKey["security"].State != "unavailable" || !strings.Contains(byKey["security"].Detail, "Re-evaluate") {
+		t.Fatalf("stale security = %#v", byKey["security"])
+	}
+	if byKey["change"].State != "pending" || !strings.Contains(byKey["change"].Detail, "Re-evaluate") {
+		t.Fatalf("stale approval = %#v", byKey["change"])
+	}
+	if byKey["evidence"].State != "unavailable" || !strings.Contains(byKey["evidence"].Detail, "Head commit changed") {
+		t.Fatalf("stale evidence = %#v", byKey["evidence"])
+	}
+	if ready.State == "ready" {
+		t.Fatal("moved commit must not stay ready")
+	}
+}
+
 func TestReadinessWindowNotEvaluatedWithoutChange(t *testing.T) {
 	item := readinessWindowCheck("prod", nil)
 	if item.State != "unavailable" || item.Detail != "Not evaluated—select a deployment window" {

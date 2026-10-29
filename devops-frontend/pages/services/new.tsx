@@ -213,7 +213,7 @@ export default function NewServiceMapPage() {
             <span className="portal-page__eyebrow">Service inventory</span>
             <h1 className="portal-page__title">Add service</h1>
             <p className="portal-page__subtitle">
-              Register a production service. Observability, findings, and configuration open on the service after save.
+              Required setup is owner, repository, environment, monitoring, then on-call. Optional integrations stay on the service after save.
             </p>
           </div>
           <Link href={scopeListHref('/services', router.query)} className="btn btn-secondary">Back to inventory</Link>
@@ -222,9 +222,16 @@ export default function NewServiceMapPage() {
         <section className="portal-surface">
           <form onSubmit={(event) => void submit(event)} onChange={() => setDirty(true)}>
             <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
+            <ol className="ops-ready__steps form-section__copy">
+              <li>Owner / team</li>
+              <li>Repository</li>
+              <li>Environment</li>
+              <li>Monitoring</li>
+              <li>On-call, after save</li>
+            </ol>
             <fieldset className="form-section">
-              <legend className="form-section__title">Basics</legend>
-              <p className="form-section__copy">An active service needs a project. Inventory monitors production only, so environment folders are not used. Service owner team stays optional and is separate from the project team.</p>
+              <legend className="form-section__title">Required identity</legend>
+              <p className="form-section__copy">An active service needs a project. Inventory monitors production. Assign the owner team and repository here, then finish monitoring on this form.</p>
               <div className="portal-form-grid">
                 <label className="label">
                   Service<span className="form-req" aria-hidden="true"> *</span>
@@ -263,32 +270,14 @@ export default function NewServiceMapPage() {
                   </select>
                 </label>
                 <label className="label">
-                  Repo <span className="onboard-optional">Optional</span>
+                  Repo
                   <input className="input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="acme/payments-api" />
                 </label>
               </div>
             </fieldset>
             <fieldset className="form-section">
-              <legend className="form-section__title">Support and response</legend>
-              <p className="form-section__copy">These stay on the service so on-call can find them later. They are not a health signal.</p>
-              <div className="portal-form-grid">
-                <label className="label">
-                  Support team <span className="onboard-optional">Optional</span>
-                  <input className="input" value={supportTeam} onChange={(e) => setSupportTeam(e.target.value)} placeholder="payments-oncall" />
-                </label>
-                <label className="label">
-                  Escalation route <span className="onboard-optional">Optional</span>
-                  <input className="input" value={escalationRoute} onChange={(e) => setEscalationRoute(e.target.value)} placeholder="PagerDuty service or Slack channel" />
-                </label>
-                <label className="label">
-                  Runbook URL <span className="onboard-optional">Optional</span>
-                  <input className="input" value={runbookURL} onChange={(e) => setRunbookURL(e.target.value)} placeholder="https://internal/wiki/runbook" />
-                </label>
-              </div>
-            </fieldset>
-            <details className="onboard-advanced" open={Boolean(grafanaUID || dashboardURL || metricsURL || promql) || undefined}>
-              <summary>Monitoring <span className="onboard-optional">Optional</span></summary>
-              <p className="form-section__copy">Link dashboards and metrics so the service page can show live health. Without them, health shows as Unknown.</p>
+              <legend className="form-section__title">Monitoring</legend>
+              <p className="form-section__copy">Required to finish setup. Health stays Unknown until a dashboard or metrics endpoint is evaluated.</p>
               <div className="portal-form-grid">
                 <label className="label">
                   Grafana UID
@@ -305,6 +294,24 @@ export default function NewServiceMapPage() {
                 <label className="label">
                   PromQL
                   <textarea className="input" rows={3} value={promql} onChange={(e) => setPromql(e.target.value)} />
+                </label>
+              </div>
+            </fieldset>
+            <details className="onboard-advanced" open={Boolean(supportTeam || escalationRoute || runbookURL) || undefined}>
+              <summary>Optional integrations</summary>
+              <p className="form-section__copy">Support, escalation, and runbook stay on the service. They are not required to finish setup and are not a health signal.</p>
+              <div className="portal-form-grid">
+                <label className="label">
+                  Support team
+                  <input className="input" value={supportTeam} onChange={(e) => setSupportTeam(e.target.value)} placeholder="payments-oncall" />
+                </label>
+                <label className="label">
+                  Escalation route
+                  <input className="input" value={escalationRoute} onChange={(e) => setEscalationRoute(e.target.value)} placeholder="PagerDuty service or Slack channel" />
+                </label>
+                <label className="label">
+                  Runbook URL
+                  <input className="input" value={runbookURL} onChange={(e) => setRunbookURL(e.target.value)} placeholder="https://internal/wiki/runbook" />
                 </label>
               </div>
             </details>

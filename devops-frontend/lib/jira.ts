@@ -183,8 +183,12 @@ export function jiraHealthTone(health?: string): 'ok' | 'info' | 'warn' | 'dange
     case 'delayed':
     case 'configuration_needed':
     case 'stale':
+    case 'no_findings':
       return 'warn';
+    case 'not_connected':
+      return 'muted';
     case 'failed':
+    case 'collection_failed':
     case 'reauthorization_required':
       return 'danger';
     default:
@@ -206,6 +210,10 @@ export function jiraHealthLabel(health?: string): string {
     case 'reauthorization_required': return 'Reauthorization required';
     case 'paused': return 'Paused';
     case 'not_configured': return 'Not configured';
+    case 'stale': return 'Stale';
+    case 'no_findings': return 'No findings';
+    case 'not_connected': return 'Not connected';
+    case 'collection_failed': return 'Collection failed';
     case 'succeeded': return 'Succeeded';
     case 'retrying': return 'Retrying';
     case 'reconcile': return 'Reconciling';

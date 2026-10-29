@@ -4,6 +4,9 @@ export type ReleaseReadinessCheck = {
   state?: string;
   detail?: string;
   owner?: string;
+  action_key?: string;
+  action_label?: string;
+  action_href?: string;
 };
 
 export type ReleaseReadiness = {
@@ -39,9 +42,77 @@ function shortSHA(sha?: string) {
   return value.length > 12 ? value.slice(0, 12) : value;
 }
 
-export default function ReleaseReadinessCard({ readiness }: { readiness?: ReleaseReadiness | null }) {
+function blockingChecks(checks: ReleaseReadinessCheck[]) {
+  return checks.filter((check) => {
+    const tone = toneFor(check.state);
+    return tone === 'failed' || tone === 'pending' || tone === 'unknown';
+  });
+}
+
+function CheckAction({
+  check,
+  onAction,
+}: {
+  check: ReleaseReadinessCheck;
+  onAction?: (check: ReleaseReadinessCheck) => void;
+}) {
+  const label = (check.action_label || '').trim();
+  if (!label) return null;
+  const href = (check.action_href || '').trim();
+  if (href) {
+    const external = /^https?:\/\//i.test(href);
+    return (
+      <a
+        className="btn btn-secondary btn-sm release-readiness__action"
+        href={href}
+        target={external ? '_blank' : undefined}
+        rel={external ? 'noreferrer' : undefined}
+      >
+        {label}
+      </a>
+    );
+  }
+  if (!onAction) return null;
+  return (
+    <button type="button" className="btn btn-secondary btn-sm release-readiness__action" onClick={() => onAction(check)}>
+      {label}
+    </button>
+  );
+}
+
+function CheckRow({
+  check,
+  onAction,
+}: {
+  check: ReleaseReadinessCheck;
+  onAction?: (check: ReleaseReadinessCheck) => void;
+}) {
+  return (
+    <li>
+      <span className="release-readiness__check">{check.label}</span>
+      <span className={`delivery-status delivery-status--${toneFor(check.state)}`}>{formatState(check.state)}</span>
+      <span className="release-readiness__detail">
+        {check.detail}
+        {check.owner ? ` · ${check.owner}` : ''}
+      </span>
+      <CheckAction check={check} onAction={onAction} />
+    </li>
+  );
+}
+
+export default function ReleaseReadinessCard({
+  readiness,
+  compact = false,
+  onAction,
+}: {
+  readiness?: ReleaseReadiness | null;
+  compact?: boolean;
+  onAction?: (check: ReleaseReadinessCheck) => void;
+}) {
   if (!readiness) return null;
   const checks = Array.isArray(readiness.checks) ? readiness.checks : [];
+  const blockers = blockingChecks(checks);
+  const reasons = Array.isArray(readiness.reasons) ? readiness.reasons : [];
   return (
     <section className="release-readiness" aria-label="Release readiness">
       <div className="release-readiness__head">
@@ -50,38 +121,48 @@ export default function ReleaseReadinessCard({ readiness }: { readiness?: Releas
           {readiness.label || formatState(readiness.state)}
         </span>
       </div>
-      <p className="release-readiness__note">
-        {readiness.note || 'Release readiness is not deployment authorization. The risk score is a separate impact estimate.'}
-      </p>
       {readiness.author ? <p className="release-readiness__evidence">Author {readiness.author}</p> : null}
       {readiness.owner ? <p className="release-readiness__evidence">Assigned reviewer {readiness.owner}</p> : <p className="release-readiness__evidence">No assigned reviewer</p>}
-      <p className="release-readiness__evidence">
-        Commit {shortSHA(readiness.sha)} · {readiness.source || 'Unknown source'}
-        {readiness.evaluated_at ? ` · evaluated ${readiness.evaluated_at}` : ''}
-      </p>
-      {readiness.reasons?.length ? (
-        <ul className="release-readiness__list">
-          {readiness.reasons.map((reason) => (
-            <li key={reason}>
-              <span className="release-readiness__detail">{reason}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {checks.length ? (
-        <ul className="release-readiness__list">
-          {checks.map((check) => (
-            <li key={check.key || check.label}>
-              <span className="release-readiness__check">{check.label}</span>
-              <span className={`delivery-status delivery-status--${toneFor(check.state)}`}>{formatState(check.state)}</span>
-              <span className="release-readiness__detail">
-                {check.detail}
-                {check.owner ? ` · ${check.owner}` : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {compact ? (
+        blockers.length ? (
+          <ul className="release-readiness__list">
+            {blockers.map((check) => <CheckRow key={check.key || check.label} check={check} onAction={onAction} />)}
+          </ul>
+        ) : reasons.length ? (
+          <ul className="release-readiness__list">
+            {reasons.map((reason) => (
+              <li key={reason}>
+                <span className="release-readiness__detail">{reason}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="release-readiness__evidence">No readiness blockers recorded.</p>
+        )
+      ) : (
+        <>
+          <p className="release-readiness__note">
+            {readiness.note || 'Release readiness is not deployment authorization. The risk score is a separate impact estimate.'}
+          </p>
+          <p className="release-readiness__evidence">
+            Commit {shortSHA(readiness.sha)} · {readiness.source || 'Unknown source'}
+            {readiness.evaluated_at ? ` · evaluated ${readiness.evaluated_at}` : ''}
+          </p>
+          {checks.length ? (
+            <ul className="release-readiness__list">
+              {checks.map((check) => <CheckRow key={check.key || check.label} check={check} onAction={onAction} />)}
+            </ul>
+          ) : reasons.length ? (
+            <ul className="release-readiness__list">
+              {reasons.map((reason) => (
+                <li key={reason}>
+                  <span className="release-readiness__detail">{reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }

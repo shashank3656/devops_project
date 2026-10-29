@@ -13594,8 +13594,20 @@ html[data-theme='dark'] .delivery-filter--pending.is-selected {
   color: var(--delivery-ink);
 }
 
-.delivery-drawer section + section {
+.delivery-drawer section + section,
+.delivery-drawer__more {
   margin-top: 18px;
+}
+
+.delivery-drawer__more summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--delivery-ink);
+}
+
+.delivery-drawer__more > *:not(summary) {
+  margin-top: 10px;
 }
 
 .delivery-drawer h3 {
@@ -13726,9 +13738,14 @@ html[data-theme] .delivery-shell .delivery-table th {
 
 .release-readiness__list li {
   display: grid;
-  grid-template-columns: minmax(140px, 180px) minmax(90px, auto) 1fr;
+  grid-template-columns: minmax(140px, 180px) minmax(90px, auto) 1fr auto;
   gap: 8px 12px;
   align-items: start;
+}
+
+.release-readiness__action {
+  justify-self: end;
+  white-space: nowrap;
 }
 
 .release-readiness__check {
@@ -13833,4 +13850,62 @@ html[data-theme] .delivery-shell .delivery-table th {
 
 .jira-onboard-copy .input {
   flex: 1;
+}
+
+.collection-status {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ig-muted);
+}
+.collection-status strong {
+  font-weight: 700;
+  color: var(--ig-text);
+}
+.collection-status--ok strong { color: var(--ig-success); }
+.collection-status--no_findings strong { color: var(--ig-muted); }
+.collection-status--not_connected strong { color: var(--ig-warning); }
+.collection-status--stale strong { color: var(--ig-warning); }
+.collection-status--failed strong { color: var(--ig-danger); }
+
+.devops-navbar__notify-heading {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.devops-navbar__notify-group {
+  display: grid;
+  gap: 8px;
+}
+.devops-navbar__notify-group-label {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.incident-suggest {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--ig-border);
+  border-radius: 12px;
+  background: var(--ig-surface-2);
+}
+.incident-suggest__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.incident-suggest__list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
 }

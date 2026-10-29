@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import CollectionStatus, { collectionStateFromSync } from '../components/CollectionStatus';
 import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -145,6 +146,18 @@ export default function PullRequestsPage() {
             <p className="delivery-kicker">Delivery</p>
             <h1 className="delivery-title">Pull requests</h1>
             <p className="delivery-lede">Review code changes, track checks and follow delivery outcomes.</p>
+            {!loading ? (
+              <CollectionStatus
+                source="GitHub"
+                lastSuccess={null}
+                state={collectionStateFromSync({
+                  connected: !error,
+                  failed: Boolean(error),
+                  empty: items.length === 0,
+                })}
+                detail={error ? 'Pull request collection failed.' : items.length ? `${items.length} open pull requests in this collection.` : 'No findings in this collection.'}
+              />
+            ) : null}
           </div>
         </header>
         <DeliveryHubNav active="pulls" />

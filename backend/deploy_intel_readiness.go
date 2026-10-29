@@ -1,16 +1,20 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
 
 type releaseReadinessCheck struct {
-	Key    string `json:"key"`
-	Label  string `json:"label"`
-	State  string `json:"state"`
-	Detail string `json:"detail"`
-	Owner  string `json:"owner,omitempty"`
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	State       string `json:"state"`
+	Detail      string `json:"detail"`
+	Owner       string `json:"owner,omitempty"`
+	ActionKey   string `json:"action_key,omitempty"`
+	ActionLabel string `json:"action_label,omitempty"`
+	ActionHref  string `json:"action_href,omitempty"`
 }
 
 type releaseReadiness struct {
@@ -72,6 +76,10 @@ func buildPRReleaseReadiness(owner, name string, ev repoDeployEvent) *releaseRea
 		ReviewDetail:   reviewDetail,
 		Change:         change,
 		Environment:    "",
+		PRURL:          strings.TrimSpace(ev.PRURL),
+		RepoOwner:      owner,
+		RepoName:       name,
+		PRNumber:       ev.PRNumber,
 	})
 }
 
@@ -101,6 +109,10 @@ func buildChangeReleaseReadiness(item changeRequestRecord) *releaseReadiness {
 		ReviewDetail:   "",
 		Change:         &item,
 		Environment:    item.Environment,
+		PRURL:          strings.TrimSpace(item.PRURL),
+		RepoOwner:      "",
+		RepoName:       item.Repo,
+		PRNumber:       item.PRNumber,
 	})
 }
 
@@ -115,6 +127,10 @@ type releaseReadinessInput struct {
 	ReviewDetail   string
 	Change         *changeRequestRecord
 	Environment    string
+	PRURL          string
+	RepoOwner      string
+	RepoName       string
+	PRNumber       int
 }
 
 func responsiblePRReviewer(author string, meta *deployIntelOpenPRMeta, change *changeRequestRecord) string {
@@ -137,16 +153,121 @@ func responsiblePRReviewer(author string, meta *deployIntelOpenPRMeta, change *c
 	return ""
 }
 
+func sameCommitSHA(left, right string) bool {
+	left = strings.ToLower(strings.TrimSpace(left))
+	right = strings.ToLower(strings.TrimSpace(right))
+	if left == "" || right == "" {
+		return false
+	}
+	if left == right {
+		return true
+	}
+	n := len(left)
+	if len(right) < n {
+		n = len(right)
+	}
+	if n < 7 {
+		return false
+	}
+	return strings.HasPrefix(left, right[:n]) || strings.HasPrefix(right, left[:n])
+}
+
+func evidenceCommitMoved(current, recorded string) bool {
+	current = strings.TrimSpace(current)
+	recorded = strings.TrimSpace(recorded)
+	return current != "" && recorded != "" && !sameCommitSHA(current, recorded)
+}
+
+func recordedEvidenceSHA(current string, change *changeRequestRecord) string {
+	if change == nil {
+		return strings.TrimSpace(current)
+	}
+	if recorded := strings.TrimSpace(change.SHA); recorded != "" {
+		return recorded
+	}
+	return strings.TrimSpace(current)
+}
+
+func githubReviewURL(in releaseReadinessInput) string {
+	if href := strings.TrimSpace(in.PRURL); href != "" {
+		return href
+	}
+	owner := strings.TrimSpace(in.RepoOwner)
+	name := strings.TrimSpace(in.RepoName)
+	if strings.Contains(name, "/") {
+		parts := strings.SplitN(name, "/", 2)
+		if owner == "" {
+			owner = strings.TrimSpace(parts[0])
+		}
+		name = strings.TrimSpace(parts[1])
+	}
+	if owner == "" || name == "" || in.PRNumber <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("https://github.com/%s/%s/pull/%d", owner, name, in.PRNumber)
+}
+
+func changeDetailWindowHref(change *changeRequestRecord) string {
+	if change == nil || change.ID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("/changes/%d#window", change.ID)
+}
+
+func attachReadinessAction(item *releaseReadinessCheck, key, label, href string) {
+	if item == nil || strings.TrimSpace(label) == "" {
+		return
+	}
+	item.ActionKey = key
+	item.ActionLabel = label
+	item.ActionHref = strings.TrimSpace(href)
+}
+
+func attachMissingReadinessActions(in releaseReadinessInput, checks []releaseReadinessCheck) {
+	reviewHref := githubReviewURL(in)
+	securityHref := "/security/vulnerabilities/policy"
+	windowHref := changeDetailWindowHref(in.Change)
+	for i := range checks {
+		switch checks[i].Key {
+		case "reviews":
+			if checks[i].State == "missing" || checks[i].State == "failed" {
+				attachReadinessAction(&checks[i], "assign_reviewer", "Assign reviewer", reviewHref)
+			}
+		case "change":
+			if checks[i].State == "missing" {
+				attachReadinessAction(&checks[i], "link_change", "Link change", "")
+			}
+		case "security":
+			if checks[i].State == "unavailable" || checks[i].State == "failed" {
+				attachReadinessAction(&checks[i], "configure_security_scan", "Configure security scan", securityHref)
+			}
+		case "window":
+			if checks[i].State == "unavailable" {
+				key := "select_window"
+				href := windowHref
+				if in.Change == nil || in.Change.ID <= 0 {
+					key = "link_change"
+					href = ""
+				}
+				attachReadinessAction(&checks[i], key, "Select deployment window", href)
+			}
+		}
+	}
+}
+
 func finalizeReleaseReadiness(in releaseReadinessInput) *releaseReadiness {
+	recorded := recordedEvidenceSHA(in.SHA, in.Change)
+	moved := evidenceCommitMoved(in.SHA, recorded)
 	checks := []releaseReadinessCheck{
 		readinessCICheck(in.CI),
 		readinessReviewCheck(in.ReviewDecision, in.ReviewDetail),
-		readinessSecurityCheck(in.Change),
-		readinessChangeApprovalCheck(in.Change),
+		readinessSecurityCheck(in.Change, moved, recorded, in.SHA),
+		readinessChangeApprovalCheck(in.Change, moved, recorded, in.SHA),
 		readinessWindowCheck(in.Environment, in.Change),
 		readinessRollbackCheck(in.Change),
-		readinessEvidenceCheck(in.SHA, in.Source, in.EvaluatedAt),
+		readinessEvidenceCheck(in.SHA, recorded, in.Source, in.EvaluatedAt, moved),
 	}
+	attachMissingReadinessActions(in, checks)
 	state, label, reasons := overallReleaseReadiness(checks)
 	evaluated := ""
 	if !in.EvaluatedAt.IsZero() {
@@ -220,11 +341,16 @@ func readinessReviewCheck(decision, detail string) releaseReadinessCheck {
 	return item
 }
 
-func readinessSecurityCheck(change *changeRequestRecord) releaseReadinessCheck {
+func readinessSecurityCheck(change *changeRequestRecord, commitMoved bool, recordedSHA, currentSHA string) releaseReadinessCheck {
 	item := releaseReadinessCheck{Key: "security", Label: "Security policy"}
 	if change == nil {
 		item.State = "unavailable"
 		item.Detail = "Scan unavailable for this pull request."
+		return item
+	}
+	if commitMoved {
+		item.State = "unavailable"
+		item.Detail = "Scan evidence is for commit " + shortCommitSHA(recordedSHA) + ". Re-evaluate for " + shortCommitSHA(currentSHA) + "."
 		return item
 	}
 	status := strings.ToLower(strings.TrimSpace(change.PolicyStatus))
@@ -245,7 +371,7 @@ func readinessSecurityCheck(change *changeRequestRecord) releaseReadinessCheck {
 	return item
 }
 
-func readinessChangeApprovalCheck(change *changeRequestRecord) releaseReadinessCheck {
+func readinessChangeApprovalCheck(change *changeRequestRecord, commitMoved bool, recordedSHA, currentSHA string) releaseReadinessCheck {
 	item := releaseReadinessCheck{Key: "change", Label: "Change approval"}
 	if change == nil {
 		item.State = "missing"
@@ -256,6 +382,11 @@ func readinessChangeApprovalCheck(change *changeRequestRecord) releaseReadinessC
 	status := strings.ToLower(strings.TrimSpace(change.Status))
 	switch {
 	case cab == "approved" || status == "authorized" || status == "approved" || status == "scheduled" || status == "implementing" || status == "monitoring" || status == "implemented" || status == "resolved" || status == "closed":
+		if commitMoved {
+			item.State = "pending"
+			item.Detail = firstNonEmpty(change.ChangeNumber, "Change") + " was approved for " + shortCommitSHA(recordedSHA) + ". Re-evaluate for " + shortCommitSHA(currentSHA) + "."
+			break
+		}
 		item.State = "approved"
 		item.Detail = firstNonEmpty(change.ChangeNumber, "Change") + " is approved or already in progress."
 	case cab == "rejected" || status == "failed" || status == "cancelled":
@@ -315,23 +446,35 @@ func readinessRollbackCheck(change *changeRequestRecord) releaseReadinessCheck {
 	return item
 }
 
-func readinessEvidenceCheck(sha, source string, evaluated time.Time) releaseReadinessCheck {
+func shortCommitSHA(sha string) string {
+	value := strings.TrimSpace(sha)
+	if value == "" {
+		return "unknown"
+	}
+	if len(value) > 12 {
+		return value[:12]
+	}
+	return value
+}
+
+func readinessEvidenceCheck(currentSHA, recordedSHA, source string, evaluated time.Time, commitMoved bool) releaseReadinessCheck {
 	item := releaseReadinessCheck{Key: "evidence", Label: "Evidence freshness"}
 	when := "Unknown"
 	if !evaluated.IsZero() {
 		when = evaluated.UTC().Format(time.RFC3339)
 	}
-	if strings.TrimSpace(sha) == "" {
+	if strings.TrimSpace(currentSHA) == "" {
 		item.State = "unavailable"
 		item.Detail = "Commit SHA is unknown. Approvals must name the commit they cover."
 		return item
 	}
-	short := sha
-	if len(short) > 12 {
-		short = short[:12]
+	if commitMoved {
+		item.State = "unavailable"
+		item.Detail = "Head commit changed. Evidence was recorded for " + shortCommitSHA(recordedSHA) + ". Re-evaluate for " + shortCommitSHA(currentSHA) + "."
+		return item
 	}
 	item.State = "passed"
-	item.Detail = "Commit " + short + " · " + firstNonEmpty(source, "Unknown source") + " · evaluated " + when
+	item.Detail = "Commit " + shortCommitSHA(currentSHA) + " · " + firstNonEmpty(source, "Unknown source") + " · evaluated " + when
 	return item
 }
 

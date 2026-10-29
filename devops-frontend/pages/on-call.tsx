@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { currentMonth, monthTitle, shiftMonth } from '../lib/onCallMonth';
+import { currentMonth, monthTitle, nextSevenDateKeys, shiftMonth } from '../lib/onCallMonth';
 import { useWorkspaceScope } from '@infragate/ui';
 
 const TOKEN_KEY = 'devops_token';
@@ -16,6 +16,8 @@ interface TeamShift {
   team_name: string;
   user_id: number;
   name: string;
+  backup_user_id?: number;
+  backup_name?: string;
   status: string;
   request_id?: number;
   cover_user_id?: number;
@@ -54,7 +56,8 @@ function shiftText(shift: TeamShift): string {
   if (!shift.user_id) return 'Coverage gap';
   if (shift.status === 'covered') return `${known(shift.name)} is covering for ${known(shift.from_name)}`;
   if (shift.status === 'pending') return `Waiting for ${known(shift.cover_name)}`;
-  return known(shift.name);
+  if (shift.backup_user_id) return `Primary ${known(shift.name)} · Backup ${known(shift.backup_name)}`;
+  return `Primary ${known(shift.name)}`;
 }
 
 const WEEK_LETTERS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -114,15 +117,15 @@ function CoverRow({
             {others.length ? (
               <>
                 <label>
-                  Who on {known(row.shift.team_name)} should take this day?
+                  Temporary override: who on {known(row.shift.team_name)} should take this day?
                   <select className="input" value={coverUserId} onChange={(event) => setCoverUserId(event.target.value)}>
                     <option value="">Select a person</option>
                     {others.map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}
                   </select>
                 </label>
-                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send request'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send override'}</button>
               </>
-            ) : <p>Add another person on this team before someone else can take the day.</p>}
+            ) : <p>Add another person on this team before a temporary override can be requested.</p>}
           </form>
         ) : null}
       </td>
@@ -137,7 +140,7 @@ function CoverRow({
               setError('');
             }}
           >
-            Ask someone
+            Temporary override
           </button>
         ) : null}
       </td>
@@ -172,6 +175,7 @@ export default function OnCallPage() {
   const [saving, setSaving] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [selectedDate, setSelectedDate] = useState('');
+  const [calendarView, setCalendarView] = useState<'week' | 'month'>('week');
   const [criticalServices, setCriticalServices] = useState<{ id: number; service: string; team?: string; project_id?: number }[]>([]);
 
   useEffect(() => {
@@ -203,21 +207,33 @@ export default function OnCallPage() {
             code: String(item.code || '').trim(),
           }))
           .filter((item: { id: number }) => item.id > 0);
+        const weekMonths = nextSevenDateKeys(todayKey(timezone)).map((key) => key.slice(0, 7));
+        const monthsToLoad = Array.from(new Set([month, ...weekMonths]));
         const boards = await Promise.all(ids.map(async (project: { id: number; name: string; code: string }) => {
-          const dayRes = await fetch(`${apiUrl}/api/oncall/days?project_id=${project.id}&month=${month}&timezone=${encodeURIComponent(timezone)}`, { headers });
-          const body = await dayRes.json().catch(() => ({}));
-          if (!dayRes.ok) throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to load the roster');
-          const days = Array.isArray(body.days) ? body.days : [];
+          const parts = await Promise.all(monthsToLoad.map(async (monthValue) => {
+            const dayRes = await fetch(`${apiUrl}/api/oncall/days?project_id=${project.id}&month=${monthValue}&timezone=${encodeURIComponent(timezone)}`, { headers });
+            const body = await dayRes.json().catch(() => ({}));
+            if (!dayRes.ok) throw new Error(typeof body?.error === 'string' ? body.error : 'Failed to load the roster');
+            return {
+              days: Array.isArray(body.days) ? body.days as DutyDay[] : [],
+              teams: Array.isArray(body.teams) ? body.teams : [],
+            };
+          }));
+          const daysByDate = new Map<string, DutyDay>();
+          parts.forEach((part) => {
+            part.days.forEach((day) => {
+              if (day.date) daysByDate.set(day.date, day);
+            });
+          });
           const rosters: RosterProject['rosters'] = {};
-          const teamViews = Array.isArray(body.teams) ? body.teams : [];
-          teamViews.forEach((team: { team_id?: number; roster?: { user_id?: number; name?: string }[] }) => {
+          (parts[0]?.teams || []).forEach((team: { team_id?: number; roster?: { user_id?: number; name?: string }[] }) => {
             const id = team.team_id || 0;
             if (!id) return;
             rosters[id] = (Array.isArray(team.roster) ? team.roster : [])
               .map((person) => ({ userId: person.user_id || 0, name: String(person.name || '').trim() || 'Unknown' }))
               .filter((person) => person.userId > 0);
           });
-          return { ...project, days, rosters } as RosterProject;
+          return { ...project, days: [...daysByDate.values()], rosters } as RosterProject;
         }));
         setProjects(boards);
         const servicesRes = await fetch(`${apiUrl}/api/devops/services`, { headers });
@@ -281,11 +297,23 @@ export default function OnCallPage() {
     return todayRows.some((row) => {
       if (item.project_id && row.project.id !== item.project_id) return false;
       const teamName = (row.shift.team_name || '').trim().toLowerCase();
-      return teamName === serviceTeam && !row.shift.user_id;
+      return teamName === serviceTeam && (!row.shift.user_id || !row.shift.backup_user_id);
     });
   });
   const pending = rows.filter((row) => row.shift.status === 'pending');
   const todayDate = todayKey(timezone);
+  const weekDates = nextSevenDateKeys(todayDate);
+  const weekEnd = weekDates[weekDates.length - 1] || todayDate;
+  const weekRows = rows.filter((row) => row.day.date >= todayDate && row.day.date <= weekEnd);
+  const upcomingGaps = weekRows.filter((row) => {
+    if (!row.shift.user_id) return true;
+    const teamName = (row.shift.team_name || '').trim().toLowerCase();
+    const missionCritical = criticalServices.some((item) => {
+      if (item.project_id && row.project.id !== item.project_id) return false;
+      return (item.team || '').trim().toLowerCase() === teamName;
+    });
+    return missionCritical && !row.shift.backup_user_id;
+  });
   const canRequest = (row: RosterRow) => row.shift.user_id > 0 && row.day.date >= todayDate && row.shift.status !== 'pending' && (isManager || (me > 0 && me === row.shift.user_id));
   const rosterFor = (project: RosterProject, teamId: number) => project.rosters[teamId] || [];
 
@@ -393,7 +421,7 @@ export default function OnCallPage() {
     if (!first) return '/on-call/onboard';
     const row = todayRows.find((item) => {
       if (first.project_id && item.project.id !== first.project_id) return false;
-      return (item.shift.team_name || '').trim().toLowerCase() === (first.team || '').trim().toLowerCase() && !item.shift.user_id;
+      return (item.shift.team_name || '').trim().toLowerCase() === (first.team || '').trim().toLowerCase() && (!item.shift.user_id || !item.shift.backup_user_id);
     });
     if (row) return `/on-call/project/${row.project.id}/team/${row.shift.team_id}`;
     if (first.project_id) return `/on-call/project/${first.project_id}`;
@@ -429,7 +457,7 @@ export default function OnCallPage() {
               <p>
                 <strong>Mission-critical coverage gap</strong>
                 {' '}
-                {criticalGaps.length} service{criticalGaps.length === 1 ? '' : 's'} have no one on-call today:
+                {criticalGaps.length} service{criticalGaps.length === 1 ? '' : 's'} have no primary and backup on-call today:
                 {' '}
                 {criticalGaps.map((item, index) => (
                   <span key={item.id}>
@@ -439,7 +467,7 @@ export default function OnCallPage() {
                 ))}
                 .
               </p>
-              <p>Assign coverage before paging from an incident.</p>
+              <p>Assign a primary and a backup, then confirm the handover reminder and overdue minutes. Do not page anyone from this page.</p>
             </div>
             <Link href={coverageAssignHref} className="btn btn-primary">Assign coverage</Link>
           </section>
@@ -467,18 +495,31 @@ export default function OnCallPage() {
               </select>
             </label>
             <label className="oncall-filters__month">
-              Month
+              View
               <span className="oncall-month">
-                <button type="button" className="oncall-month__step" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
-                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                </button>
-                <strong>{monthTitle(month)}</strong>
-                <button type="button" className="oncall-month__step" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>
-                  <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setMonth(currentMonth(timezone)); setSelectedDate(todayDate); }}>Today</button>
+                <button type="button" className={`btn btn-sm ${calendarView === 'week' ? 'btn-primary' : 'btn-secondary'}`} aria-pressed={calendarView === 'week'} onClick={() => setCalendarView('week')}>Next 7 days</button>
+                <button type="button" className={`btn btn-sm ${calendarView === 'month' ? 'btn-primary' : 'btn-secondary'}`} aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Month</button>
               </span>
             </label>
+            {calendarView === 'month' ? (
+              <label className="oncall-filters__month">
+                Month
+                <span className="oncall-month">
+                  <button type="button" className="oncall-month__step" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </button>
+                  <strong>{monthTitle(month)}</strong>
+                  <button type="button" className="oncall-month__step" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setMonth(currentMonth(timezone)); setSelectedDate(todayDate); }}>Today</button>
+                </span>
+              </label>
+            ) : (
+              <div className="oncall-filters__actions">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setMonth(currentMonth(timezone)); setSelectedDate(todayDate); }}>Today</button>
+              </div>
+            )}
             <label className="oncall-filters__zone">
               Timezone
               <select className="input" aria-label="Roster timezone" value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
@@ -493,10 +534,17 @@ export default function OnCallPage() {
           </div>
           <p className="access-hint oncall-filters__hint">
             {scope.projectId
-              ? `The workspace filter is ${scopeProjectName || 'the selected project'}${scope.environment ? ` / ${scope.environment}` : ''}. This roster is limited to that project.`
-              : 'The workspace filter at the top limits this page. Project below further filters the roster you are looking at.'}
-            {' '}A day starts at 00:00 in {timezone}. Today, month changes, and handover use that boundary.
+              ? `Showing ${scopeProjectName || 'the selected project'}${scope.environment ? ` / ${scope.environment}` : ''}.`
+              : 'Use Project and Team to narrow this roster.'}
           </p>
+          <details className="onboard-advanced oncall-filters__hint">
+            <summary>Workspace filter and timezone</summary>
+            <p className="form-section__copy">
+              {scope.projectId
+                ? 'The workspace filter at the top limits this page to that project. A day starts at 00:00 in the timezone below. Today, month changes, and handover use that boundary.'
+                : 'The workspace filter at the top limits this page. Project below further filters the roster you are looking at. A day starts at 00:00 in the timezone below. Today, month changes, and handover use that boundary.'}
+            </p>
+          </details>
 
           {loading ? <div className="empty-state">Loading on-call...</div> : null}
 
@@ -539,8 +587,8 @@ export default function OnCallPage() {
           ) : null}
 
           {!loading && pending.length ? (
-            <section className="oncall-requests" aria-label="Cover requests">
-              <strong>Requests</strong>
+            <section className="oncall-requests" aria-label="Temporary shift overrides">
+              <strong>Temporary shift overrides</strong>
               {pending.map((row) => (
                 <div key={`${row.day.date}-${row.project.id}-${row.shift.team_id}`} className="oncall-requests__row">
                   <span>{row.day.label} · {known(row.project.name)} · {known(row.shift.team_name)} · {known(row.shift.from_name)} asked {known(row.shift.cover_name)}</span>
@@ -556,12 +604,77 @@ export default function OnCallPage() {
           ) : null}
 
           {!loading ? (
-            <section aria-label="Monthly roster">
-              <h2 className="portal-surface__title">Monthly roster</h2>
+            <section aria-label="Upcoming gaps">
+              <h2 className="portal-surface__title">Upcoming gaps</h2>
+              {!upcomingGaps.length ? (
+                <p className="access-hint">No coverage gaps in the next 7 days for this filter.</p>
+              ) : (
+                <ul className="request-timeline">
+                  {upcomingGaps.map((row) => (
+                    <li key={`${row.day.date}-${row.project.id}-${row.shift.team_id}`}>
+                      {row.day.label} · {known(row.project.name)} · {known(row.shift.team_name)}
+                      {' · '}
+                      <Link href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Assign coverage</Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
+
+          {!loading ? (
+            <section aria-label={calendarView === 'week' ? 'Next 7 days' : 'Monthly roster'}>
+              <h2 className="portal-surface__title">{calendarView === 'week' ? 'Next 7 days' : 'Monthly roster'}</h2>
               <p className="portal-page__subtitle">
-                A name means that day is covered. An orange outline means uncovered. The selected day is listed below.
-                {' '}{new Set(rows.filter((row) => !row.shift.user_id).map((row) => row.day.date)).size} uncovered days in this filter.
+                {calendarView === 'week'
+                  ? 'Each day lists who is on-call. Assign coverage from a gap before paging from an incident.'
+                  : 'A name means that day is covered. An orange outline means uncovered. The selected day is listed below.'}
+                {' '}{new Set(upcomingGaps.map((row) => row.day.date)).size} uncovered days in the next 7 days.
               </p>
+              {calendarView === 'week' ? (
+                weekDates.map((dateKey) => {
+                  const dayRows = weekRows.filter((row) => row.day.date === dateKey);
+                  const heading = dayRows[0]?.day.label || dateKey;
+                  return (
+                    <div key={dateKey} className="oncall-week-day">
+                      <h3 className="portal-surface__title">{heading}{dateKey === todayDate ? ' · Today' : ''}</h3>
+                      {!dayRows.length ? <p className="access-hint">No teams match this filter on this day.</p> : (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="templates-table">
+                            <thead>
+                              <tr>
+                                <th>Project</th>
+                                <th>Team</th>
+                                <th>On this day</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {dayRows.map((row) => (
+                                <tr key={`${dateKey}-${row.project.id}-${row.shift.team_id}`}>
+                                  <td>{known(row.project.name)}</td>
+                                  <td>{known(row.shift.team_name)}</td>
+                                  <td>
+                                    {!row.shift.user_id ? (
+                                      <span className="oncall-gap" role="status">Coverage gap. <Link href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Assign people</Link></span>
+                                    ) : shiftText(row.shift)}
+                                  </td>
+                                  <td>
+                                    <button type="button" className="btn btn-secondary btn-sm" disabled={saving} onClick={() => void openHandover(row)}>
+                                      Open handover
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+              <>
               <div className="oncall-board" role="grid" aria-label={monthTitle(month)}>
                 {WEEK_LETTERS.map((letter) => <span key={letter} className="oncall-board__dow">{letter}</span>)}
                 {calendarCells(month).map((cell, index) => {
@@ -629,7 +742,7 @@ export default function OnCallPage() {
                                     setError('');
                                   }}
                                 >
-                                  Ask someone
+                                  Temporary override
                                 </button>
                               ) : null}
                             </td>
@@ -659,6 +772,8 @@ export default function OnCallPage() {
                     ))
                   ) : null}
                 </div>
+              )}
+              </>
               )}
             </section>
           ) : null}

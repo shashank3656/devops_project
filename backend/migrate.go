@@ -1130,6 +1130,7 @@ func MigrateDatabase() error {
 			UNIQUE(repo_owner, repo_name)
 		)
 	`)
+	_, _ = DB.Exec(`ALTER TABLE deploy_intel_repos ADD COLUMN IF NOT EXISTS merge_tracking BOOLEAN NOT NULL DEFAULT FALSE`)
 	ensureDefaultDeployIntelRepo()
 
 	// Migration 56: per-project GitHub repo + high-risk merge notify dedup
@@ -1208,7 +1209,7 @@ func MigrateDatabase() error {
 			files_json TEXT NOT NULL DEFAULT '[]',
 			pipeline_url TEXT NOT NULL DEFAULT '',
 			change_type VARCHAR(40) NOT NULL DEFAULT 'standard',
-			status VARCHAR(40) NOT NULL DEFAULT 'implementing',
+			status VARCHAR(40) NOT NULL DEFAULT 'new',
 			watch_minutes INTEGER NOT NULL DEFAULT 120,
 			watch_started_at TIMESTAMP,
 			watch_until TIMESTAMP,
@@ -1562,6 +1563,9 @@ func MigrateDatabase() error {
 	migrateCostLedgerSchema()
 	migrateRecordDocumentsSchema()
 	migrateJiraIntegrationSchema()
+	_, _ = DB.Exec(`ALTER TABLE change_requests ALTER COLUMN status SET DEFAULT 'new'`)
+	_, _ = DB.Exec(`ALTER TABLE deploy_intel_repos ADD COLUMN IF NOT EXISTS merge_tracking BOOLEAN NOT NULL DEFAULT FALSE`)
+	correctIncompleteExecutingChanges()
 
 	log.Println("Database schema is up to date")
 	return nil

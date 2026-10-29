@@ -82,7 +82,7 @@ function lifecycleIndex(item: ChangeDetailModel): number {
   if (cab === 'approved') return 2;
   if (cab === 'pending') return 1;
   if (status === 'new') return 0;
-  return 3;
+  return 0;
 }
 
 function formatWhen(value?: string): string {
@@ -158,7 +158,7 @@ export default function ChangeDetailPanel({
       <section className="work-board">
         {scopeIncomplete ? (
           <div className="alert alert-warning" role="status">
-            Scope incomplete. The recorded project, environment, or both are missing. The title and description are not treated as the scope.
+            Scope incomplete. The recorded project, environment, or both are missing. The title and description are not treated as the scope. Schedule and implement stay unavailable until both are recorded.
           </div>
         ) : null}
         {item.summary?.trim() ? <p className="chg-detail__prose" style={{ marginTop: 0 }}>{item.summary}</p> : null}
@@ -322,10 +322,11 @@ export function buildChangeDetailActions(
     (opts.portal === 'devops' && Boolean(opts.isManager)) ||
     (opts.portal === 'user' && Boolean(opts.isManager || opts.canAuthorize));
   const open = !opts.finished;
+  const scoped = !changeScopeIncomplete(item);
   return {
     canApprove: canAuthorize && open && status === 'new' && cab !== 'approved',
-    canSchedule: canOperate && open && status === 'new' && cab !== 'pending',
-    canImplement: canOperate && open && status === 'scheduled',
+    canSchedule: canOperate && open && scoped && status === 'new' && cab !== 'pending',
+    canImplement: canOperate && open && scoped && status === 'scheduled',
     canResolve: canOperate && open && status !== 'resolved',
     canClose: canOperate && open,
     canFail: canOperate && open,

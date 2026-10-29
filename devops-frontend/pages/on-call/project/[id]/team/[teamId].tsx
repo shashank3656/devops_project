@@ -16,6 +16,8 @@ interface ScheduleDay {
   day: string;
   name: string;
   user_id: number;
+  backup_name?: string;
+  backup_user_id?: number;
 }
 
 interface SchedulePreview {
@@ -75,6 +77,7 @@ export default function OnCallTeamUsersPage() {
   const [query, setQuery] = useState('');
   const [personFilter, setPersonFilter] = useState('');
   const [schedule, setSchedule] = useState<SchedulePreview | null>(null);
+  const [missionCritical, setMissionCritical] = useState(false);
 
   useEffect(() => {
     if (!router.isReady || !projectId || !teamId) return;
@@ -107,6 +110,7 @@ export default function OnCallTeamUsersPage() {
           if (fallback.ok) members = readPeople(body.members, 'username');
         }
         const roster = rosterResult.ok ? readPeople(rosterResult.body.users, 'name') : [];
+        setMissionCritical(Boolean(rosterResult.body.mission_critical));
         setPeople(members);
         const memberIds = new Set(members.map((person) => person.userId));
         setSelected(roster.map((person) => person.userId).filter((id) => memberIds.has(id)));
@@ -132,6 +136,8 @@ export default function OnCallTeamUsersPage() {
                 day: typeof day.day === 'string' ? day.day : '',
                 name: typeof day.name === 'string' ? day.name : '',
                 user_id: Number(day.user_id) || 0,
+                backup_name: typeof day.backup_name === 'string' ? day.backup_name : '',
+                backup_user_id: Number(day.backup_user_id) || 0,
               };
             }),
           });
@@ -151,6 +157,10 @@ export default function OnCallTeamUsersPage() {
     event.preventDefault();
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
+    if (missionCritical && selected.length < 2) {
+      setError('Mission-critical teams need a primary and a different backup.');
+      return;
+    }
     if (!selected.length) {
       setError('Choose at least one person.');
       return;
@@ -169,7 +179,9 @@ export default function OnCallTeamUsersPage() {
         setError(typeof data?.error === 'string' ? data.error : 'The rotation could not be saved.');
         return;
       }
-      setNote('Saved. The checked people rotate one day at a time.');
+      setNote(missionCritical
+        ? 'Saved. The first checked person is primary; the second is backup. Confirm the weekly schedule still has a different backup for every day.'
+        : 'Saved. The checked people rotate one day at a time.');
     } catch {
       setError('The rotation could not be saved.');
     } finally {
@@ -185,7 +197,9 @@ export default function OnCallTeamUsersPage() {
           <div>
             <span className="portal-page__eyebrow">{loading ? 'Loading project…' : known(projectName)}</span>
             <h1 className="portal-page__title">{loading ? 'Loading team…' : known(teamName)}</h1>
-            <p className="portal-page__subtitle">Choose who rotates. Shift timing, handover, and rotation order are in the weekly schedule on this page.</p>
+            <p className="portal-page__subtitle">{missionCritical
+              ? 'This team covers a mission-critical service. Choose a primary and a backup. Shift timing, handover reminder, and overdue minutes are in the weekly schedule on this page.'
+              : 'Choose who rotates. Shift timing, handover, and rotation order are in the weekly schedule on this page.'}</p>
           </div>
           <Link href={`/on-call/project/${projectId}`} className="btn btn-secondary">Back to teams</Link>
         </div>
@@ -199,7 +213,7 @@ export default function OnCallTeamUsersPage() {
               <p className="access-hint">Timezone: {schedule.timezone}. Handover reminder {schedule.remindMinutes} minutes before shift end, overdue after {schedule.escalateMinutes} minutes. {schedule.reassignIncidents ? 'Acknowledgement reassigns open incidents to the incoming person. Status is not changed to Fixed.' : 'Acknowledgement leaves incident assignment unchanged unless the incoming person opts in on that handover.'}</p>
               <ul>
                 {schedule.days.map((day) => (
-                  <li key={day.day}>{dayLabel(day.day)}: {day.user_id ? known(day.name) : 'Uncovered'}</li>
+                  <li key={day.day}>{dayLabel(day.day)}: {day.user_id ? `Primary ${known(day.name)}` : 'No primary'}{day.backup_user_id ? ` · Backup ${known(day.backup_name)}` : missionCritical ? ' · No backup' : ''}</li>
                 ))}
               </ul>
               <Link href={schedule.id ? `/on-call/${schedule.id}` : `/on-call/new?project_id=${projectId}&team_id=${teamId}`} className="btn btn-secondary">Edit schedule</Link>
@@ -244,7 +258,7 @@ export default function OnCallTeamUsersPage() {
                 }).map((person) => (
                   <label key={person.userId} className="catalog-editor__toggle-label">
                     <input type="checkbox" checked={selected.includes(person.userId)} onChange={() => toggle(person.userId)} />
-                    <span>{known(person.name)}</span>
+                    <span>{known(person.name)}{selected[0] === person.userId ? ' · Primary' : selected[1] === person.userId ? ' · Backup' : ''}</span>
                   </label>
                 ))}
               </div>

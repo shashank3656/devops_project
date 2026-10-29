@@ -5,6 +5,7 @@ import { useConfirm } from '@infragate/ui';
 import DeliveryHubNav from '../../components/DeliveryHubNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import {
   canManageDeliveryRepos,
   formatWhen,
@@ -139,6 +140,13 @@ export default function DeployIntelligenceIndexPage() {
   const failedCount = repos.filter((repo) => repo.github_access === 'failed').length;
   const setupCount = repos.filter((repo) => repo.merge_tracking !== 'configured').length;
   const reviewCount = repos.reduce((sum, repo) => sum + (repo.open_pr_count || 0), 0);
+  const lastRepoSync = repos.map((repo) => repo.last_sync_at || repo.last_merged_at || '').filter(Boolean).sort().at(-1) || '';
+  const repoCollection = collectionStateFromSync({
+    connected: repos.some((repo) => repo.github_access === 'connected') || repos.length > 0,
+    failed: Boolean(error) || repos.some((repo) => repo.github_access === 'failed'),
+    lastSuccess: lastRepoSync,
+    empty: repos.length === 0,
+  });
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -162,6 +170,14 @@ export default function DeployIntelligenceIndexPage() {
             <p className="delivery-kicker">Delivery</p>
             <h1 className="delivery-title">Repositories</h1>
             <p className="delivery-lede">Review code changes, track checks and follow delivery outcomes.</p>
+            {!loading ? (
+              <CollectionStatus
+                source="GitHub"
+                lastSuccess={lastRepoSync}
+                state={repoCollection}
+                detail={repos.length ? `${repos.length} catalog ${repos.length === 1 ? 'repository' : 'repositories'}` : 'Connect a GitHub repository that already exists.'}
+              />
+            ) : null}
           </div>
           <Link href="/deploy-intelligence/onboard" className="btn btn-primary">
             Connect repository

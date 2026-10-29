@@ -9,6 +9,7 @@ import { ServiceClassBadge } from '../../components/SreServiceWorkspace';
 import { SERVICE_CLASSES, catalogueSliTone, inventoryServicesPath, scheduleModeCopy, scoreDisplay } from '../../lib/sreMonitoring';
 import { serviceDetailHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { serviceNeedsSetup } from '../../lib/serviceSetup';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -27,6 +28,10 @@ interface ServiceRow {
   schedule_minutes?: number;
   last_availability_bps?: number;
   last_sli_state?: string;
+  grafana_uid?: string;
+  dashboard_url?: string;
+  metrics_url?: string;
+  promql?: string;
 }
 
 interface ProjectOption {
@@ -83,7 +88,7 @@ function teamMatches(serviceTeam: string, team: OwnerTeam | undefined): boolean 
 }
 
 function needsSetup(item: ServiceRow): boolean {
-  return !(item.repo || '').trim() || label(item.team || '') === 'Unknown';
+  return serviceNeedsSetup(item, true);
 }
 
 function openFindingCount(item: ServiceRow): number {
@@ -237,7 +242,7 @@ export default function ServiceInventoryPage() {
       cell: (item) => (
         <Link className="ig-cell-stack ig-cell-link" href={serviceDetailHref(item.id, router.query)}>
           <span className="ig-cell-title">{item.service || 'Unknown'}</span>
-          <span className="ig-cell-meta">{(item.repo || '').trim() || 'Repository not connected'}</span>
+          <span className="ig-cell-meta">{needsSetup(item) ? 'Setup incomplete — resume from the service' : ((item.repo || '').trim() || 'Repository not connected')}</span>
         </Link>
       ),
     },
@@ -328,7 +333,7 @@ export default function ServiceInventoryPage() {
           <article className="ops-mini ops-mini--lilac">
             <span>Needs setup</span>
             <strong>{loading || error ? 'Unknown' : incompleteCount}</strong>
-            <small>Owner and repository missing</small>
+            <small>Owner, repository, environment, or monitoring missing</small>
           </article>
           <Link href="/security/findings?open=1" className="ops-mini ops-mini--blue">
             <span>Open findings</span>

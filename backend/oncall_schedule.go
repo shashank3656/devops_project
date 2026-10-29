@@ -26,9 +26,11 @@ var oncallTimezones = []string{
 }
 
 type oncallScheduleDay struct {
-	Day    string `json:"day"`
-	UserID int    `json:"user_id"`
-	Name   string `json:"name"`
+	Day          string `json:"day"`
+	UserID       int    `json:"user_id"`
+	Name         string `json:"name"`
+	BackupUserID int    `json:"backup_user_id,omitempty"`
+	BackupName   string `json:"backup_name,omitempty"`
 }
 
 type oncallSchedule struct {
@@ -50,6 +52,7 @@ type oncallScheduleInput struct {
 	ProjectID               int            `json:"project_id"`
 	Timezone                string         `json:"timezone"`
 	Days                    map[string]int `json:"days"`
+	BackupDays              map[string]int `json:"backup_days"`
 	HandoverRemindMinutes   int            `json:"handover_remind_minutes"`
 	HandoverEscalateMinutes int            `json:"handover_escalate_minutes"`
 	ReassignIncidentsOnAck  bool           `json:"reassign_incidents_on_ack"`
@@ -73,6 +76,7 @@ func migrateOncallScheduleSchema() {
 	_, _ = DB.Exec(`ALTER TABLE oncall_schedules ADD COLUMN IF NOT EXISTS handover_remind_minutes INTEGER NOT NULL DEFAULT 30`)
 	_, _ = DB.Exec(`ALTER TABLE oncall_schedules ADD COLUMN IF NOT EXISTS handover_escalate_minutes INTEGER NOT NULL DEFAULT 15`)
 	_, _ = DB.Exec(`ALTER TABLE oncall_schedules ADD COLUMN IF NOT EXISTS reassign_incidents_on_ack BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`ALTER TABLE oncall_schedules ADD COLUMN IF NOT EXISTS backup_days TEXT NOT NULL DEFAULT '{}'`)
 }
 
 func clampHandoverMinutes(value, fallback, min, max int) int {
@@ -162,9 +166,11 @@ func oncallUserNames(ids []int) map[int]string {
 	return names
 }
 
-func oncallDaysFromJSON(raw string, names map[int]string) []oncallScheduleDay {
+func oncallDaysFromJSON(raw, backupRaw string, names map[int]string) []oncallScheduleDay {
 	stored := map[string]int{}
+	backup := map[string]int{}
 	_ = json.Unmarshal([]byte(raw), &stored)
+	_ = json.Unmarshal([]byte(backupRaw), &backup)
 	days := make([]oncallScheduleDay, 0, len(oncallWeekdays))
 	for _, day := range oncallWeekdays {
 		userID := stored[day]
@@ -175,7 +181,15 @@ func oncallDaysFromJSON(raw string, names map[int]string) []oncallScheduleDay {
 				name = "Unknown"
 			}
 		}
-		days = append(days, oncallScheduleDay{Day: day, UserID: userID, Name: name})
+		backupID := backup[day]
+		backupName := ""
+		if backupID > 0 {
+			backupName = names[backupID]
+			if backupName == "" {
+				backupName = "Unknown"
+			}
+		}
+		days = append(days, oncallScheduleDay{Day: day, UserID: userID, Name: name, BackupUserID: backupID, BackupName: backupName})
 	}
 	return days
 }
@@ -186,6 +200,7 @@ func listOncallSchedules() ([]oncallSchedule, error) {
 	}
 	rows, err := DB.Query(`
 		SELECT s.id, s.team_id, COALESCE(t.name, ''), s.project_id, COALESCE(p.name, ''), s.timezone, s.days,
+		       COALESCE(s.backup_days, '{}'),
 		       COALESCE(s.handover_remind_minutes, 30), COALESCE(s.handover_escalate_minutes, 15), COALESCE(s.reassign_incidents_on_ack, FALSE)
 		FROM oncall_schedules s
 		LEFT JOIN teams t ON t.id = s.team_id
@@ -200,14 +215,15 @@ func listOncallSchedules() ([]oncallSchedule, error) {
 	}
 	defer rows.Close()
 	type rawSchedule struct {
-		item oncallSchedule
-		days string
+		item   oncallSchedule
+		days   string
+		backup string
 	}
 	raw := []rawSchedule{}
 	ids := []int{}
 	for rows.Next() {
 		var row rawSchedule
-		if err := rows.Scan(&row.item.ID, &row.item.TeamID, &row.item.TeamName, &row.item.ProjectID, &row.item.ProjectName, &row.item.Timezone, &row.days, &row.item.HandoverRemindMinutes, &row.item.HandoverEscalateMinutes, &row.item.ReassignIncidentsOnAck); err != nil {
+		if err := rows.Scan(&row.item.ID, &row.item.TeamID, &row.item.TeamName, &row.item.ProjectID, &row.item.ProjectName, &row.item.Timezone, &row.days, &row.backup, &row.item.HandoverRemindMinutes, &row.item.HandoverEscalateMinutes, &row.item.ReassignIncidentsOnAck); err != nil {
 			return nil, err
 		}
 		row.item.HandoverRemindMinutes = handoverRemindMinutes(row.item.HandoverRemindMinutes)
@@ -219,8 +235,13 @@ func listOncallSchedules() ([]oncallSchedule, error) {
 			row.item.ProjectName = "Unknown"
 		}
 		stored := map[string]int{}
+		backup := map[string]int{}
 		_ = json.Unmarshal([]byte(row.days), &stored)
+		_ = json.Unmarshal([]byte(row.backup), &backup)
 		for _, id := range stored {
+			ids = append(ids, id)
+		}
+		for _, id := range backup {
 			ids = append(ids, id)
 		}
 		raw = append(raw, row)
@@ -229,7 +250,7 @@ func listOncallSchedules() ([]oncallSchedule, error) {
 	out := make([]oncallSchedule, 0, len(raw))
 	for _, row := range raw {
 		row.item.Today = oncallToday(row.item.Timezone)
-		row.item.Days = oncallDaysFromJSON(row.days, names)
+		row.item.Days = oncallDaysFromJSON(row.days, row.backup, names)
 		out = append(out, row.item)
 	}
 	return out, nil
@@ -278,6 +299,25 @@ func normalizeOncallDays(teamID int, days map[string]int) (string, error) {
 	return string(encoded), nil
 }
 
+func requireMissionCriticalOncallCoverage(teamID, projectID int, primary, backup map[string]int) error {
+	if !teamHasMissionCriticalService(teamID, projectID) {
+		return nil
+	}
+	for _, day := range oncallWeekdays {
+		if primary[day] <= 0 || backup[day] <= 0 || backup[day] == primary[day] {
+			return errOncallNeedBackup
+		}
+	}
+	return nil
+}
+
+func oncallScheduleSaveError(err error) string {
+	if err == errOncallNeedBackup {
+		return "Mission-critical teams need a primary and a different backup for every day. Confirm the handover reminder and overdue minutes."
+	}
+	return "That rotation could not be saved."
+}
+
 func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int, error) {
 	if DB == nil {
 		return nil, 0, errOncallInvalid
@@ -294,6 +334,13 @@ func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int
 	if err != nil {
 		return nil, 0, err
 	}
+	backupDays, err := normalizeOncallDays(input.TeamID, input.BackupDays)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := requireMissionCriticalOncallCoverage(input.TeamID, input.ProjectID, input.Days, input.BackupDays); err != nil {
+		return nil, 0, err
+	}
 	var existingID int
 	err = DB.QueryRow(`SELECT id FROM oncall_schedules WHERE team_id = $1 AND project_id = $2`, input.TeamID, input.ProjectID).Scan(&existingID)
 	if err != nil && err != sql.ErrNoRows {
@@ -305,9 +352,9 @@ func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int
 	if id > 0 {
 		result, err := DB.Exec(`
 			UPDATE oncall_schedules
-			SET team_id = $2, project_id = $3, timezone = $4, days = $5, handover_remind_minutes = $6, handover_escalate_minutes = $7, reassign_incidents_on_ack = $8, updated_at = CURRENT_TIMESTAMP
+			SET team_id = $2, project_id = $3, timezone = $4, days = $5, backup_days = $6, handover_remind_minutes = $7, handover_escalate_minutes = $8, reassign_incidents_on_ack = $9, updated_at = CURRENT_TIMESTAMP
 			WHERE id = $1
-		`, id, input.TeamID, input.ProjectID, input.Timezone, days, remind, escalate, input.ReassignIncidentsOnAck)
+		`, id, input.TeamID, input.ProjectID, input.Timezone, days, backupDays, remind, escalate, input.ReassignIncidentsOnAck)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -320,10 +367,10 @@ func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int
 	}
 	var created int
 	if err := DB.QueryRow(`
-		INSERT INTO oncall_schedules (team_id, project_id, timezone, days, handover_remind_minutes, handover_escalate_minutes, reassign_incidents_on_ack)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO oncall_schedules (team_id, project_id, timezone, days, backup_days, handover_remind_minutes, handover_escalate_minutes, reassign_incidents_on_ack)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
-	`, input.TeamID, input.ProjectID, input.Timezone, days, remind, escalate, input.ReassignIncidentsOnAck).Scan(&created); err != nil {
+	`, input.TeamID, input.ProjectID, input.Timezone, days, backupDays, remind, escalate, input.ReassignIncidentsOnAck).Scan(&created); err != nil {
 		return nil, existingID, err
 	}
 	item, err := getOncallSchedule(created)
@@ -368,7 +415,7 @@ func oncallScheduleHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": "That rotation could not be saved.", "schedule_id": existingID, "status": "error"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": oncallScheduleSaveError(err), "schedule_id": existingID, "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -421,7 +468,7 @@ func oncallScheduleDetailHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
-			_ = json.NewEncoder(w).Encode(map[string]any{"error": "That rotation could not be saved.", "schedule_id": existingID, "status": "error"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": oncallScheduleSaveError(err), "schedule_id": existingID, "status": "error"})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

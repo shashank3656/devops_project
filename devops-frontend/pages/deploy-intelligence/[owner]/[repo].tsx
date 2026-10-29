@@ -2,9 +2,10 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { DeploymentVerificationCard, InspectorDrawer, ReleaseReadinessCard, useConfirm, type DeploymentVerification, type ReleaseReadiness } from '@infragate/ui';
+import { DeploymentVerificationCard, InspectorDrawer, ReleaseReadinessCard, useConfirm, type DeploymentVerification, type ReleaseReadiness, type ReleaseReadinessCheck } from '@infragate/ui';
 import DevOpsLayout from '../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../context/ApiUrlContext';
+import CollectionStatus, { collectionStateFromSync } from '../../../components/CollectionStatus';
 import LinkedJiraWork from '../../../components/LinkedJiraWork';
 import {
   assignedReviewer,
@@ -488,6 +489,12 @@ export default function DeployIntelligenceRepoPage() {
     }
   };
 
+  const repoCollection = collectionStateFromSync({
+    connected: repoMeta?.github_access === 'connected' || githubMeta?.ready,
+    failed: Boolean(tokenFailure || githubFailed || githubMeta?.error),
+    lastSuccess: repoMeta?.last_sync_at || githubMeta?.fetched_at,
+    empty: !events.length,
+  });
   const risk = selected ? formatRisk(selected.score, selected.risk_level) : null;
   const checks = selected ? formatCI(selected.open_pr?.ci, selected.open_pr?.checks) : null;
   const commentPreview = selected?.change_brief?.markdown || selected?.github_post?.preview || selected?.summary || '';
@@ -506,6 +513,12 @@ export default function DeployIntelligenceRepoPage() {
             <p className="delivery-meta">
               {owner || 'Unknown'} · {repoMeta?.base_branch || 'main'} · {access.label} · {tracking.label}
             </p>
+            <CollectionStatus
+              source="GitHub"
+              lastSuccess={repoMeta?.last_sync_at || githubMeta?.fetched_at}
+              state={repoCollection}
+              detail={section === 'open' && !events.length ? 'No open pull requests in this collection.' : undefined}
+            />
           </div>
           {canManage ? (
             <details className="delivery-menu delivery-menu--icon">
@@ -876,52 +889,26 @@ export default function DeployIntelligenceRepoPage() {
         {selected && risk && checks ? (
           <div className="delivery-drawer">
             <section>
-              <h3>Summary</h3>
-              <p>{selected.impact?.summary || selected.summary || 'No summary yet.'}</p>
-              <p className="delivery-table__hint">{risk.note} {selected.impact?.recommended_action || ''}</p>
+              <h3>Review</h3>
+              <p>{selected.impact?.recommended_action || selected.impact?.summary || selected.summary || 'No review summary yet.'}</p>
+              <p className="delivery-table__hint">{risk.label}. {risk.note}</p>
             </section>
-            <ReleaseReadinessCard readiness={selected.readiness} />
-            <DeploymentVerificationCard verification={selected.verification} />
-            <section>
-              <h3>Risk evidence</h3>
-              <p><strong>{risk.label}</strong> · {risk.scale}</p>
-              {(selected.impact?.files || []).length ? (
-                <ul>
-                  {(selected.impact?.files || []).slice(0, 8).map((file) => (
-                    <li key={file.path}>{file.path}{file.category ? ` · ${file.category}` : ''}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No file evidence stored yet.</p>
-              )}
-              {selected.impact?.analyzed_at ? <p className="delivery-table__hint">Analyzed {formatWhen(selected.impact.analyzed_at)}</p> : null}
-            </section>
-            <section>
-              <h3>Checks</h3>
-              <p><span className={`delivery-status delivery-status--${checks.tone}`}>{checks.label}</span></p>
-              {(selected.open_pr?.checks || []).length ? (
-                <ul>
-                  {(selected.open_pr?.checks || []).map((check) => {
-                    const status = check.status === 'ok' ? 'passed' : (check.status || 'unknown');
-                    return (
-                      <li key={check.key || check.label}>
-                        {check.label}: {status}{check.detail ? ` — ${check.detail}` : ''}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p>No GitHub checks on this commit.</p>
-              )}
-              {selected.open_pr?.review_detail ? <p>{selected.open_pr.review_detail}</p> : null}
-            </section>
+            <ReleaseReadinessCard
+              readiness={selected.readiness}
+              compact
+              onAction={(check: ReleaseReadinessCheck) => {
+                if (check.action_key === 'link_change') {
+                  void suggestTicket(selected.pr_number, needsAck);
+                }
+              }}
+            />
             <section>
               <h3>Change request</h3>
               {selected.request_id ? (
                 <p><Link href={`/changes/${selected.request_id}`}>Open linked change</Link></p>
               ) : (
                 <div>
-                  <p>Not linked. Creating a change does not merge the pull request. A low risk score does not approve a release.</p>
+                  <p>Not linked. Creating a change does not merge the pull request.</p>
                   {needsAck ? (
                     <label className="label">
                       Acknowledgement reason
@@ -958,34 +945,60 @@ export default function DeployIntelligenceRepoPage() {
                 suggestBody: selected.summary,
               }}
             />
-            <section>
-              <h3>Pipelines</h3>
+            <details className="delivery-drawer__more">
+              <summary>Checks and verification</summary>
+              <p><span className={`delivery-status delivery-status--${checks.tone}`}>{checks.label}</span></p>
+              {(selected.open_pr?.checks || []).length ? (
+                <ul>
+                  {(selected.open_pr?.checks || []).map((check) => {
+                    const status = check.status === 'ok' ? 'passed' : (check.status || 'unknown');
+                    return (
+                      <li key={check.key || check.label}>
+                        {check.label}: {status}{check.detail ? ` — ${check.detail}` : ''}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p>No GitHub checks on this commit.</p>
+              )}
+              {selected.open_pr?.review_detail ? <p>{selected.open_pr.review_detail}</p> : null}
+              <DeploymentVerificationCard verification={selected.verification} />
+            </details>
+            <details className="delivery-drawer__more">
+              <summary>Technical details</summary>
+              <p>
+                {selected.commit_count || 0} commits · {selected.file_count || 0} files · +{selected.additions || 0} / −{selected.deletions || 0}
+                {selected.impact?.analyzed_at ? ` · analyzed ${formatWhen(selected.impact.analyzed_at)}` : ''}
+              </p>
+              <p>Head: {selected.head_branch || 'Unknown'}</p>
+              {selected.impact?.stack ? <p>Detected stack: {selected.impact.stack}</p> : null}
+              {(selected.impact?.files || []).length ? (
+                <ul>
+                  {(selected.impact?.files || []).slice(0, 8).map((file) => (
+                    <li key={file.path}>{file.path}{file.category ? ` · ${file.category}` : ''}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No file list stored yet.</p>
+              )}
               <p>
                 <Link href={selected.pipeline?.href || pipelinesHref(owner, repo, selected.pr_number)}>
                   {selected.pipeline?.change_number ? `Runs for ${selected.pipeline.change_number}` : 'Open related pipeline runs'}
                 </Link>
+                {selected.pipeline?.pipeline_url ? (
+                  <>
+                    {' · '}
+                    <a href={selected.pipeline.pipeline_url} target="_blank" rel="noreferrer">Open recorded run</a>
+                  </>
+                ) : null}
               </p>
-              {selected.pipeline?.pipeline_url ? (
-                <p>
-                  <a href={selected.pipeline.pipeline_url} target="_blank" rel="noreferrer">Open recorded run</a>
-                </p>
-              ) : (
-                <p className="delivery-table__hint">No recorded run yet. Missing stays Unknown, not Healthy.</p>
-              )}
-            </section>
-            <section>
-              <h3>Technical details</h3>
-              <p>
-                {selected.commit_count || 0} commits · {selected.file_count || 0} files · +{selected.additions || 0} / −{selected.deletions || 0}
-              </p>
-              <p>Head: {selected.head_branch || 'Unknown'}</p>
-              {selected.impact?.stack ? <p>Detected stack: {selected.impact.stack}</p> : null}
-            </section>
-            <section>
-              <h3>Preview GitHub comment</h3>
+            </details>
+            <details className="delivery-drawer__more">
+              <summary>Comment preview</summary>
               <pre className="delivery-preview">{commentPreview || 'No comment preview yet.'}</pre>
               {selected.github_post?.error ? <p className="delivery-table__hint">{selected.github_post.error}</p> : null}
-            </section>
+            </details>
           </div>
         ) : null}
       </InspectorDrawer>

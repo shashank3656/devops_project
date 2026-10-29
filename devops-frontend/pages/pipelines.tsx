@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { DeploymentVerificationCard, InspectorDrawer, useWorkspaceScope, type DeploymentVerification } from '@infragate/ui';
+import CollectionStatus, { collectionStateFromSync } from '../components/CollectionStatus';
 import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -157,6 +158,20 @@ export default function PipelinesPage() {
             <p className="delivery-kicker">Delivery</p>
             <h1 className="delivery-title">Pipelines</h1>
             <p className="delivery-lede">CI runs posted onto a change. Environment comes from the recorded change, not the run title.</p>
+            {!loading ? (
+              <CollectionStatus
+                source="Change webhook"
+                lastSuccess={items.map((item) => item.last_checked || item.updated_at || '').filter(Boolean).sort().at(-1)}
+                state={collectionStateFromSync({
+                  connected: !error,
+                  failed: Boolean(error),
+                  lastSuccess: items.map((item) => item.last_checked || item.updated_at || '').filter(Boolean).sort().at(-1),
+                  empty: items.length === 0,
+                  staleHours: items.some((item) => item.stale) ? 0 : 24,
+                })}
+                detail="Environment comes from the recorded change, not the run title. Missing runs stay Unknown."
+              />
+            ) : null}
           </div>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setConnecting((value) => !value)}>
             {connecting ? 'Hide connect steps' : 'Connect pipeline'}

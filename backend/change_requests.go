@@ -280,6 +280,7 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 		return nil, false, fmt.Errorf("database not available")
 	}
 	projectID := resolveChangeProjectID(&payload)
+	payload.Status = clampChangeStatusToScope(payload.Status, projectID, payload.Environment)
 	payload.ChangeType = normalizeChangeType(payload.ChangeType)
 	payload.Priority = normalizeChangePriority(payload.Priority)
 	payload.RiskLevel = normalizeChangeRisk(payload.RiskLevel)
@@ -311,10 +312,12 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 	filesJSON := encodeChangeFiles(payload.Files)
 	var existingID int
 	var existingStatus string
+	var existingProject sql.NullInt64
+	var existingEnv string
 	err = queryRowContext(`
-		SELECT id, status FROM change_requests
+		SELECT id, status, project_id, COALESCE(environment,'') FROM change_requests
 		WHERE LOWER(repo) = LOWER($1) AND LOWER(sha) = LOWER($2) AND LOWER(environment) = LOWER($3)
-	`, payload.Repo, payload.SHA, payload.Environment).Scan(&existingID, &existingStatus)
+	`, payload.Repo, payload.SHA, payload.Environment).Scan(&existingID, &existingStatus, &existingProject, &existingEnv)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, false, err
 	}
@@ -333,6 +336,16 @@ func upsertChangeRequestWithRetry(payload parsedChangeWebhook, retried bool) (*c
 		if changeStatusRank(payload.Status) > changeStatusRank(existingStatus) || payload.Status == "failed" || payload.Status == "cancelled" {
 			nextStatus = payload.Status
 		}
+		effectiveProject := projectID
+		if effectiveProject == nil && existingProject.Valid {
+			value := int(existingProject.Int64)
+			effectiveProject = &value
+		}
+		effectiveEnv := payload.Environment
+		if changeEnvironmentMissing(effectiveEnv) && !changeEnvironmentMissing(existingEnv) {
+			effectiveEnv = existingEnv
+		}
+		nextStatus = clampChangeStatusToScope(nextStatus, effectiveProject, effectiveEnv)
 		_, err = execContext(`
 			UPDATE change_requests
 			SET title = CASE WHEN COALESCE(title,'') = '' THEN $2 ELSE title END,
@@ -466,7 +479,7 @@ func changeRequestSelect() string {
 		SELECT c.id, COALESCE(c.change_number,''), c.project_id, COALESCE(p.name,''), COALESCE(p.code,''),
 		       COALESCE(c.service,''), COALESCE(c.environment,''), c.repo, c.pr_number, COALESCE(c.pr_url,''),
 		       c.sha, COALESCE(c.previous_sha,''), COALESCE(c.title,''), COALESCE(c.author,''), COALESCE(c.summary,''),
-		       COALESCE(c.files_json,'[]'), COALESCE(c.pipeline_url,''), COALESCE(c.change_type,'standard'), COALESCE(c.status,'implementing'),
+		       COALESCE(c.files_json,'[]'), COALESCE(c.pipeline_url,''), COALESCE(c.change_type,'standard'), COALESCE(c.status,'new'),
 		       c.watch_minutes, c.watch_started_at, c.watch_until, c.request_id,
 		       (SELECT COUNT(*) FROM request_incidents i WHERE i.suspected_change_id = c.id),
 		       c.created_at, c.updated_at, COALESCE(c.baseline_json,''), COALESCE(c.latest_metrics_json,''),
@@ -713,7 +726,7 @@ func prepareManualChange(payload parsedChangeWebhook, author string) (parsedChan
 	if payload.Status == "" {
 		payload.Status = "new"
 	}
-	if payload.ProjectID > 0 && lookupProjectID(payload.ProjectID, "") == nil {
+	if payload.ProjectID > 0 && DB != nil && lookupProjectID(payload.ProjectID, "") == nil {
 		return payload, fmt.Errorf("selected project is not valid")
 	}
 	if payload.ProjectID <= 0 && (payload.Service != "" || payload.Repo != "") {
@@ -722,6 +735,9 @@ func prepareManualChange(payload parsedChangeWebhook, author string) (parsedChan
 				payload.ProjectID = *validated
 			}
 		}
+	}
+	if payload.ProjectID <= 0 || changeEnvironmentMissing(payload.Environment) {
+		return payload, fmt.Errorf("%s", errChangeScopeRequired)
 	}
 	if payload.AssigneeUserID > 0 && DB != nil && !portalUserExists(payload.AssigneeUserID) {
 		return payload, fmt.Errorf("assigned user must be a portal user")
@@ -1122,15 +1138,58 @@ func devopsChangeDetailHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Status string `json:"status"`
+			Status         string `json:"status"`
+			ProjectID      *int   `json:"project_id"`
+			Environment    string `json:"environment"`
+			PlannedStart   string `json:"planned_start"`
+			PlannedEnd     string `json:"planned_end"`
+			CABWindowStart string `json:"cab_window_start"`
+			CABWindowEnd   string `json:"cab_window_end"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "invalid payload", err)
 			return
 		}
-		item, err := transitionChangeStatus(id, body.Status)
-		if err != nil {
-			writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+		var item *changeRequestRecord
+		var err error
+		if body.ProjectID != nil || strings.TrimSpace(body.Environment) != "" {
+			projectID := 0
+			if body.ProjectID != nil {
+				projectID = *body.ProjectID
+			}
+			item, err = updateChangeScope(id, projectID, body.Environment)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+		}
+		windowTouched := strings.TrimSpace(body.PlannedStart+body.PlannedEnd+body.CABWindowStart+body.CABWindowEnd) != ""
+		if windowTouched {
+			start, end, windowErr := changeWindowTimes(parsedChangeWebhook{
+				PlannedStart:   body.PlannedStart,
+				PlannedEnd:     body.PlannedEnd,
+				CABWindowStart: body.CABWindowStart,
+				CABWindowEnd:   body.CABWindowEnd,
+			})
+			if windowErr != nil {
+				writeAPIError(w, r, http.StatusBadRequest, windowErr.Error(), windowErr)
+				return
+			}
+			item, err = updateChangeWindow(id, start, end)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+		}
+		if strings.TrimSpace(body.Status) != "" {
+			item, err = transitionChangeStatus(id, body.Status)
+			if err != nil {
+				writeAPIError(w, r, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+		}
+		if item == nil {
+			writeAPIError(w, r, http.StatusBadRequest, "project, environment, window, or status is required", nil)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

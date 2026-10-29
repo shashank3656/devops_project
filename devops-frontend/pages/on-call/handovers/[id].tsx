@@ -114,7 +114,9 @@ export default function HandoverDetailPage() {
   useEffect(() => { load(); }, [apiUrl, id]);
 
   const openWork = useMemo(() => (item?.items || []).filter((row) => row.section === 'open_work'), [item]);
+  const unresolvedIncidents = useMemo(() => openWork.filter((row) => row.source_type === 'incident'), [openWork]);
   const upcoming = useMemo(() => (item?.items || []).filter((row) => row.section === 'upcoming_risk'), [item]);
+  const plannedChanges = useMemo(() => upcoming.filter((row) => row.source_type === 'change'), [upcoming]);
   const critical = useMemo(() => (item?.items || []).filter((row) => row.critical), [item]);
 
   const post = async (path: string, body: Record<string, unknown>, success: string) => {
@@ -209,7 +211,7 @@ export default function HandoverDetailPage() {
             <div className="portal-tabs" role="tablist">
               {['summary', 'open', 'risk', 'actions', 'changed', 'history'].map((key) => (
                 <button key={key} type="button" className={`btn btn-sm ${tab === key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab(key)}>
-                  {key === 'open' ? 'Open work' : key === 'risk' ? 'Upcoming risk' : key === 'changed' ? 'What changed' : key[0].toUpperCase() + key.slice(1)}
+                  {key === 'open' ? 'Unresolved incidents' : key === 'risk' ? 'Planned changes' : key === 'changed' ? 'What changed' : key[0].toUpperCase() + key.slice(1)}
                 </button>
               ))}
             </div>
@@ -223,6 +225,8 @@ export default function HandoverDetailPage() {
                   </form>
                 </section>
                 <aside className="portal-surface">
+                  <p>Unresolved incidents: {unresolvedIncidents.length}</p>
+                  <p>Planned changes: {plannedChanges.length}</p>
                   <p>Outgoing: {known(item.outgoing_name)}</p>
                   {item.can_edit ? (
                     <label className="label">Incoming
@@ -280,8 +284,8 @@ export default function HandoverDetailPage() {
                 </aside>
               </div>
             ) : null}
-            {tab === 'open' ? <ItemList rows={openWork} empty={item.collection_status === 'partial' ? 'Open work could not be collected.' : 'No matching items as of collection time.'} /> : null}
-            {tab === 'risk' ? <ItemList rows={upcoming} empty={item.collection_status === 'partial' ? 'Upcoming risk could not be collected.' : 'No matching items as of collection time.'} /> : null}
+            {tab === 'open' ? <ItemList rows={unresolvedIncidents.length ? unresolvedIncidents : openWork} empty={item.collection_status === 'partial' ? 'Unresolved incidents could not be collected.' : 'No unresolved incidents at collection time.'} /> : null}
+            {tab === 'risk' ? <ItemList rows={plannedChanges.length ? plannedChanges : upcoming} empty={item.collection_status === 'partial' ? 'Planned changes could not be collected.' : 'No planned changes at collection time.'} /> : null}
             {tab === 'actions' ? (
               <section className="portal-surface">
                 <ul>

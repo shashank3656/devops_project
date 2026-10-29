@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import CostKpiStrip from '../../components/CostKpiStrip';
 import CostNav from '../../components/CostNav';
 import CostTechnicalDetails from '../../components/CostTechnicalDetails';
@@ -43,6 +44,18 @@ export default function CostSavingsPage() {
           </div>
         </div>
         <CostNav current="savings" />
+        {!loading ? (
+          <CollectionStatus
+            source="CUR 2.0"
+            lastSuccess={null}
+            state={collectionStateFromSync({
+              connected: !error,
+              failed: Boolean(error),
+              empty: !(data?.waiting || []).length && !(data?.outcomes || []).length,
+            })}
+            detail="Estimated savings, verified bill reduction, and released capacity stay separate."
+          />
+        ) : null}
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         <CostKpiStrip
           items={[

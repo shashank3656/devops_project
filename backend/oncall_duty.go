@@ -11,18 +11,20 @@ import (
 )
 
 type oncallDutyDay struct {
-	Date       string `json:"date"`
-	Label      string `json:"label"`
-	Weekday    string `json:"weekday"`
-	UserID     int    `json:"user_id"`
-	Name       string `json:"name"`
-	Today      bool   `json:"today"`
-	Status     string `json:"status"`
-	RequestID  int    `json:"request_id,omitempty"`
-	CoverUser  int    `json:"cover_user_id,omitempty"`
-	CoverName  string `json:"cover_name,omitempty"`
-	FromUserID int    `json:"from_user_id,omitempty"`
-	FromName   string `json:"from_name,omitempty"`
+	Date         string `json:"date"`
+	Label        string `json:"label"`
+	Weekday      string `json:"weekday"`
+	UserID       int    `json:"user_id"`
+	Name         string `json:"name"`
+	BackupUserID int    `json:"backup_user_id,omitempty"`
+	BackupName   string `json:"backup_name,omitempty"`
+	Today        bool   `json:"today"`
+	Status       string `json:"status"`
+	RequestID    int    `json:"request_id,omitempty"`
+	CoverUser    int    `json:"cover_user_id,omitempty"`
+	CoverName    string `json:"cover_name,omitempty"`
+	FromUserID   int    `json:"from_user_id,omitempty"`
+	FromName     string `json:"from_name,omitempty"`
 }
 
 type oncallDutyPerson struct {
@@ -87,6 +89,47 @@ func oncallRosterUser(roster []int, day int) int {
 		return 0
 	}
 	return roster[(day-1)%len(roster)]
+}
+
+func oncallRosterBackup(roster []int, day int) int {
+	if len(roster) < 2 || day < 1 {
+		return 0
+	}
+	primary := oncallRosterUser(roster, day)
+	backup := oncallRosterUser(roster, day+1)
+	if backup == primary {
+		return 0
+	}
+	return backup
+}
+
+func teamHasMissionCriticalService(teamID, projectID int) bool {
+	if DB == nil || teamID <= 0 {
+		return false
+	}
+	team, err := GetTeamByID(teamID)
+	if err != nil || team == nil {
+		return false
+	}
+	items, err := listServiceMap(projectID, "", "")
+	if err != nil {
+		return false
+	}
+	name := strings.TrimSpace(team.Name)
+	slug := strings.TrimSpace(team.Slug)
+	for _, item := range items {
+		if normalizeServiceCriticality(item.Criticality) != serviceClassMissionCritical {
+			continue
+		}
+		mapped := strings.TrimSpace(item.Team)
+		if mapped == "" {
+			continue
+		}
+		if strings.EqualFold(mapped, name) || (slug != "" && strings.EqualFold(mapped, slug)) {
+			return true
+		}
+	}
+	return false
 }
 
 func oncallKnownName(names map[int]string, userID int) string {
@@ -166,6 +209,9 @@ func saveOncallRoster(teamID int, userIDs []int) ([]int, error) {
 	}
 	if len(clean) == 0 {
 		return nil, errOncallInvalid
+	}
+	if teamHasMissionCriticalService(teamID, 0) && len(clean) < 2 {
+		return nil, errOncallNeedBackup
 	}
 	tx, err := DB.Begin()
 	if err != nil {
@@ -279,19 +325,26 @@ func buildOncallDays(projectID, teamID int, monthValue, timezone string) ([]onca
 			fromID = row.FromUserID
 			userID = row.FromUserID
 		}
+		backupID := oncallRosterBackup(roster, cursor.Day())
+		backupName := ""
+		if backupID > 0 {
+			backupName = oncallKnownName(names, backupID)
+		}
 		days = append(days, oncallDutyDay{
-			Date:       key,
-			Label:      cursor.Format("2 Jan"),
-			Weekday:    cursor.Weekday().String(),
-			UserID:     userID,
-			Name:       oncallKnownName(names, userID),
-			Today:      key == today,
-			Status:     status,
-			RequestID:  requestID,
-			CoverUser:  coverID,
-			CoverName:  oncallKnownName(names, coverID),
-			FromUserID: fromID,
-			FromName:   oncallKnownName(names, fromID),
+			Date:         key,
+			Label:        cursor.Format("2 Jan"),
+			Weekday:      cursor.Weekday().String(),
+			UserID:       userID,
+			Name:         oncallKnownName(names, userID),
+			BackupUserID: backupID,
+			BackupName:   backupName,
+			Today:        key == today,
+			Status:       status,
+			RequestID:    requestID,
+			CoverUser:    coverID,
+			CoverName:    oncallKnownName(names, coverID),
+			FromUserID:   fromID,
+			FromName:     oncallKnownName(names, fromID),
 		})
 	}
 	return days, people, today, nil
@@ -303,16 +356,18 @@ type oncallProjectTeam struct {
 }
 
 type oncallDutyShift struct {
-	TeamID     int    `json:"team_id"`
-	TeamName   string `json:"team_name"`
-	UserID     int    `json:"user_id"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	RequestID  int    `json:"request_id,omitempty"`
-	CoverUser  int    `json:"cover_user_id,omitempty"`
-	CoverName  string `json:"cover_name,omitempty"`
-	FromUserID int    `json:"from_user_id,omitempty"`
-	FromName   string `json:"from_name,omitempty"`
+	TeamID       int    `json:"team_id"`
+	TeamName     string `json:"team_name"`
+	UserID       int    `json:"user_id"`
+	Name         string `json:"name"`
+	BackupUserID int    `json:"backup_user_id,omitempty"`
+	BackupName   string `json:"backup_name,omitempty"`
+	Status       string `json:"status"`
+	RequestID    int    `json:"request_id,omitempty"`
+	CoverUser    int    `json:"cover_user_id,omitempty"`
+	CoverName    string `json:"cover_name,omitempty"`
+	FromUserID   int    `json:"from_user_id,omitempty"`
+	FromName     string `json:"from_name,omitempty"`
 }
 
 type oncallProjectDay struct {
@@ -500,16 +555,18 @@ func listImplicitOncallTeams(projectID int) ([]oncallProjectTeam, error) {
 
 func shiftFromDutyDay(team oncallProjectTeam, day oncallDutyDay) oncallDutyShift {
 	return oncallDutyShift{
-		TeamID:     team.ID,
-		TeamName:   team.Name,
-		UserID:     day.UserID,
-		Name:       day.Name,
-		Status:     day.Status,
-		RequestID:  day.RequestID,
-		CoverUser:  day.CoverUser,
-		CoverName:  day.CoverName,
-		FromUserID: day.FromUserID,
-		FromName:   day.FromName,
+		TeamID:       team.ID,
+		TeamName:     team.Name,
+		UserID:       day.UserID,
+		Name:         day.Name,
+		BackupUserID: day.BackupUserID,
+		BackupName:   day.BackupName,
+		Status:       day.Status,
+		RequestID:    day.RequestID,
+		CoverUser:    day.CoverUser,
+		CoverName:    day.CoverName,
+		FromUserID:   day.FromUserID,
+		FromName:     day.FromName,
 	}
 }
 
@@ -647,7 +704,12 @@ func oncallRosterHandler(w http.ResponseWriter, r *http.Request) {
 		for _, id := range ids {
 			people = append(people, oncallDutyPerson{UserID: id, Name: oncallKnownName(names, id)})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"team_id": teamID, "users": people, "status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"team_id":          teamID,
+			"users":            people,
+			"mission_critical": teamHasMissionCriticalService(teamID, 0),
+			"status":           "ok",
+		})
 	case "PUT":
 		var body struct {
 			TeamID  int   `json:"team_id"`
@@ -670,6 +732,10 @@ func oncallRosterHandler(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, r, http.StatusBadRequest, "Choose people who belong to this team.", nil)
 				return
 			}
+			if err == errOncallNeedBackup {
+				writeAPIError(w, r, http.StatusBadRequest, "Mission-critical teams need a primary and a different backup.", nil)
+				return
+			}
 			writeAPIError(w, r, http.StatusInternalServerError, "The on-call set could not be saved.", err)
 			return
 		}
@@ -678,7 +744,12 @@ func oncallRosterHandler(w http.ResponseWriter, r *http.Request) {
 		for _, id := range saved {
 			people = append(people, oncallDutyPerson{UserID: id, Name: oncallKnownName(names, id)})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"team_id": body.TeamID, "users": people, "status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"team_id":          body.TeamID,
+			"users":            people,
+			"mission_critical": teamHasMissionCriticalService(body.TeamID, 0),
+			"status":           "ok",
+		})
 	default:
 		writeMethodNotAllowed(w, r)
 	}

@@ -423,6 +423,18 @@ func TestCostVerificationCanBeInconclusive(t *testing.T) {
 	}
 }
 
+func TestCostImplementRequiresLinkedChange(t *testing.T) {
+	rec := costRecommendation{Status: "accepted", Lifecycle: "accepted"}
+	if _, err := transitionCostReview(rec, costReviewAction{Action: "implement"}); err == nil {
+		t.Fatal("must link a change before recording implementation")
+	}
+	linked := costRecommendation{Status: "change_linked", Lifecycle: "change_linked", ChangeID: 9, ChangeNumber: "CHG0000009"}
+	next, err := transitionCostReview(linked, costReviewAction{Action: "implement"})
+	if err != nil || next.Lifecycle != "implemented" || next.Executes {
+		t.Fatalf("implement: %v %+v", err, next)
+	}
+}
+
 func TestCostLinkRequiresAccept(t *testing.T) {
 	rec := costRecommendation{Status: "detected", Lifecycle: "detected"}
 	if _, err := transitionCostReview(rec, costReviewAction{Action: "link", ChangeNumber: "CHG0000001"}); err == nil {

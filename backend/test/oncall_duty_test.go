@@ -34,6 +34,9 @@ func TestOncallProjectDayKeepsEachTeam(t *testing.T) {
 	if days[0].Teams[0].TeamName != "Platform" || days[0].Teams[0].UserID != 4 {
 		t.Fatalf("platform = %#v", days[0].Teams[0])
 	}
+	if shiftFromDutyDay(oncallProjectTeam{ID: 1, Name: "Platform"}, oncallDutyDay{UserID: 4, Name: "Alex", BackupUserID: 9, BackupName: "Priya"}).BackupUserID != 9 {
+		t.Fatal("shift should keep backup")
+	}
 	if days[0].Teams[1].TeamID != 2 || days[0].Teams[1].Status != "pending" || days[0].Teams[1].CoverUser != 3 {
 		t.Fatalf("app = %#v", days[0].Teams[1])
 	}

@@ -226,6 +226,30 @@ interface PendingApprovalItem {
   created_at: string;
 }
 
+interface NotifyFeedItem {
+  id: string;
+  kind: string;
+  title: string;
+  message: string;
+  created_at: string;
+  request_id?: number;
+  project_name?: string;
+  service?: string;
+  group?: string;
+  actionable?: boolean;
+}
+
+function groupNotify<T>(items: T[], keyOf: (item: T) => string): { key: string; items: T[] }[] {
+  const groups = new Map<string, T[]>();
+  items.forEach((item) => {
+    const key = keyOf(item).trim() || 'Unassigned';
+    const current = groups.get(key) || [];
+    current.push(item);
+    groups.set(key, current);
+  });
+  return [...groups.entries()].map(([key, grouped]) => ({ key, items: grouped }));
+}
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
@@ -254,6 +278,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [profileInitials, setProfileInitials] = useState('D');
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
+  const [notifyItems, setNotifyItems] = useState<NotifyFeedItem[]>([]);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [supportSeed, setSupportSeed] = useState('');
@@ -541,6 +566,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       .then((data) => {
         if (data?.status === 'ok' && typeof data.pending_approval_count === 'number')
           setPendingCount(data.pending_approval_count);
+        setNotifyItems(Array.isArray(data?.items) ? data.items : []);
       })
       .catch(() => {})
       .finally(() => setPendingCountKnown(true));
@@ -578,8 +604,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [apiUrl, isManager, clearSessionAndRedirect]);
 
   useEffect(() => {
-    if (notifyOpen) refreshPendingApprovals();
-  }, [notifyOpen, refreshPendingApprovals]);
+    if (!notifyOpen) return;
+    refreshPendingApprovals();
+    refreshPendingCount();
+  }, [notifyOpen, refreshPendingApprovals, refreshPendingCount]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('opstrellis-notify-read') || '';
@@ -1192,9 +1220,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                   </button>
 
                   {notifyOpen && (
-                    <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Pending approvals">
+                    <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Notifications">
                       <div className="devops-navbar__notify-header">
-                        <h3 className="devops-navbar__notify-title">Action required</h3>
+                        <h3 className="devops-navbar__notify-title">Notifications</h3>
                         <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
                           Close
                         </button>
@@ -1203,55 +1231,82 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                         <strong>{!pendingCountKnown || pendingApprovalsLoading ? '…' : pendingCount > 99 ? '99+' : pendingCount}</strong>
                         <span>
                           {!pendingCountKnown || pendingApprovalsLoading
-                            ? 'Checking approval tickets.'
+                            ? 'Checking alerts.'
                             : pendingCount > 0
-                            ? 'Approval work is waiting across projects and release flows.'
-                            : 'No approval tickets are waiting right now.'}
+                            ? 'Actionable alerts are routed to the ticket owner. Repeated items are grouped by service.'
+                            : 'No actionable alerts are waiting. Informational updates stay below.'}
                         </span>
                       </div>
                       <div className="devops-navbar__notify-links">
                         <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                           Open tickets
                         </Link>
+                        <Link href="/profile/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                          Signal routing
+                        </Link>
                         <Link href="/notification-settings" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                           Notification settings
                         </Link>
                       </div>
                       <div className="devops-navbar__notify-list">
+                        <h4 className="devops-navbar__notify-heading">Action required</h4>
                         {pendingApprovalsLoading ? (
                           <p className="devops-navbar__notify-empty" role="status">Loading approvals…</p>
                         ) : pendingApprovals.length === 0 ? (
                           <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
                         ) : (
-                          pendingApprovals.slice(0, 8).map((request) => (
-                            <Link
-                              key={request.id}
-                              href={`/tickets?id=${request.id}`}
-                              className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
-                              onClick={() => {
-                                setSeenNotifyIds((current) => {
-                                  if (current.includes(String(request.id))) return current;
-                                  const next = [...current, String(request.id)];
-                                  window.localStorage.setItem('opstrellis-notify-read', next.join(','));
-                                  return next;
-                                });
-                                setNotifyOpen(false);
-                              }}
-                            >
-                              <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
-                              {request.project_name ? (
-                                <span>
-                                  {request.project_name}
-                                  {request.project_code ? ` (${request.project_code})` : ''}
-                                </span>
-                              ) : null}
-                              <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
-                              <small>Waiting for approval · {formatTime(request.created_at)} · Open the ticket to approve or reject it.</small>
-                            </Link>
+                          groupNotify(pendingApprovals, (request) => request.service || request.project_name || 'Unassigned').map((group) => (
+                            <div key={group.key} className="devops-navbar__notify-group">
+                              <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length} waiting</p>
+                              {group.items.slice(0, 4).map((request) => (
+                                <Link
+                                  key={request.id}
+                                  href={`/tickets?id=${request.id}`}
+                                  className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
+                                  onClick={() => {
+                                    setSeenNotifyIds((current) => {
+                                      if (current.includes(String(request.id))) return current;
+                                      const next = [...current, String(request.id)];
+                                      window.localStorage.setItem('opstrellis-notify-read', next.join(','));
+                                      return next;
+                                    });
+                                    setNotifyOpen(false);
+                                  }}
+                                >
+                                  <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
+                                  {request.project_name ? (
+                                    <span>
+                                      {request.project_name}
+                                      {request.project_code ? ` (${request.project_code})` : ''}
+                                    </span>
+                                  ) : null}
+                                  <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
+                                  <small>Waiting for approval · {formatTime(request.created_at)} · Open the ticket to approve or reject it.</small>
+                                </Link>
+                              ))}
+                            </div>
                           ))
                         )}
+                        <h4 className="devops-navbar__notify-heading">Updates</h4>
+                        {(() => {
+                          const updates = notifyItems.filter((item) => item.actionable === false);
+                          if (!updates.length) {
+                            return <p className="devops-navbar__notify-empty">No informational updates in this window.</p>;
+                          }
+                          return groupNotify(updates, (item) => item.group || item.project_name || 'Updates').map((group) => (
+                            <div key={group.key} className="devops-navbar__notify-group">
+                              <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length}</p>
+                              {group.items.slice(0, 4).map((item) => (
+                                <div key={item.id} className="devops-navbar__notify-ticket is-read">
+                                  <strong>{item.title}</strong>
+                                  <span>{item.message}</span>
+                                  <small>Informational · {formatTime(item.created_at)} · Routed with signal settings, not emailed from this list.</small>
+                                </div>
+                              ))}
+                            </div>
+                          ));
+                        })()}
                       </div>
-                      <p className="devops-navbar__notify-empty">Updates such as status changes stay on the record timeline. This list is only work waiting on you.</p>
                     </div>
                   )}
                 </div>

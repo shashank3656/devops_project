@@ -60,6 +60,8 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
   const [escalateMinutes, setEscalateMinutes] = useState('15');
   const [reassignIncidents, setReassignIncidents] = useState(false);
   const [days, setDays] = useState<Record<string, string>>({});
+  const [backupDays, setBackupDays] = useState<Record<string, string>>({});
+  const [missionCritical, setMissionCritical] = useState(false);
   const [today, setToday] = useState('');
   const [loading, setLoading] = useState(scheduleId > 0);
   const [saving, setSaving] = useState(false);
@@ -130,10 +132,15 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
         setReassignIncidents(Boolean(schedule.reassign_incidents_on_ack));
         setToday(String(schedule.today || ''));
         const next: Record<string, string> = {};
-        (Array.isArray(schedule.days) ? schedule.days : []).forEach((day: { day?: string; user_id?: number }) => {
-          if (day.day) next[day.day] = day.user_id ? String(day.user_id) : '';
+        const nextBackup: Record<string, string> = {};
+        (Array.isArray(schedule.days) ? schedule.days : []).forEach((day: { day?: string; user_id?: number; backup_user_id?: number }) => {
+          if (day.day) {
+            next[day.day] = day.user_id ? String(day.user_id) : '';
+            nextBackup[day.day] = day.backup_user_id ? String(day.backup_user_id) : '';
+          }
         });
         setDays(next);
+        setBackupDays(nextBackup);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load rotation'))
       .finally(() => setLoading(false));
@@ -166,6 +173,12 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
         setMembers([]);
         setMembersNote('Team members could not be loaded.');
       });
+    fetch(`${apiUrl}/api/oncall/roster?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        setMissionCritical(Boolean(data?.mission_critical));
+      })
+      .catch(() => setMissionCritical(false));
   }, [apiUrl, teamId]);
 
   const save = async (event: FormEvent) => {
@@ -176,13 +189,19 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
       setError('Choose a team, a project, and a timezone.');
       return;
     }
+    const payloadDays: Record<string, number> = {};
+    const payloadBackup: Record<string, number> = {};
+    WEEKDAYS.forEach((day) => {
+      payloadDays[day] = days[day] ? Number(days[day]) : 0;
+      payloadBackup[day] = backupDays[day] ? Number(backupDays[day]) : 0;
+    });
+    if (missionCritical && WEEKDAYS.some((day) => !payloadDays[day] || !payloadBackup[day] || payloadDays[day] === payloadBackup[day])) {
+      setError('Mission-critical teams need a primary and a different backup for every day.');
+      return;
+    }
     setSaving(true);
     setError('');
     setExistingId(0);
-    const payloadDays: Record<string, number> = {};
-    WEEKDAYS.forEach((day) => {
-      payloadDays[day] = days[day] ? Number(days[day]) : 0;
-    });
     try {
       const response = await fetch(scheduleId ? `${apiUrl}/api/oncall/schedules/${scheduleId}` : `${apiUrl}/api/oncall/schedules`, {
         method: scheduleId ? 'PATCH' : 'POST',
@@ -195,6 +214,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
           handover_escalate_minutes: Number(escalateMinutes) || 15,
           reassign_incidents_on_ack: reassignIncidents,
           days: payloadDays,
+          backup_days: payloadBackup,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -221,7 +241,13 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
           <div>
             <span className="portal-page__eyebrow">On-call</span>
             <h1 className="portal-page__title">{title}</h1>
-            <p className="portal-page__subtitle">Monday through Sunday is the rotation order. The timezone is when each day starts. Leave a day empty for a coverage gap. Handover reminder, overdue windows, and incident reassignment on acknowledgement are per team. Reassignment does not mark incidents Fixed.</p>
+            <p className="portal-page__subtitle">{missionCritical
+              ? 'Choose a primary and a different backup for every day.'
+              : 'Choose who is on-call each day. Leave a day empty only if a gap is intended.'}</p>
+            <details className="onboard-advanced">
+              <summary>Handover and escalation</summary>
+              <p className="form-section__copy">The timezone is when each day starts. Handover reminder, overdue minutes, and incident reassignment on acknowledgement are per team. Reassignment does not mark incidents Fixed. Do not page anyone from this page.</p>
+            </details>
           </div>
           <Link href="/on-call" className="btn btn-secondary">Back to on-call</Link>
         </div>
@@ -277,20 +303,34 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
                       </span>
                     </span>
                     {isManager ? (
-                      <select
-                        className="input"
-                        aria-label={dayLabel(day)}
-                        value={days[day] || ''}
-                        disabled={!teamId}
-                        onChange={(event) => setDays((current) => ({ ...current, [day]: event.target.value }))}
-                      >
-                        <option value="">{membersNote}</option>
-                        {members.map((member) => (
-                          <option key={member.user_id} value={member.user_id}>{known(member.name)}</option>
-                        ))}
-                      </select>
+                      <>
+                        <select
+                          className="input"
+                          aria-label={`${dayLabel(day)} primary`}
+                          value={days[day] || ''}
+                          disabled={!teamId}
+                          onChange={(event) => setDays((current) => ({ ...current, [day]: event.target.value }))}
+                        >
+                          <option value="">{missionCritical ? 'Primary' : membersNote}</option>
+                          {members.map((member) => (
+                            <option key={member.user_id} value={member.user_id}>{known(member.name)}</option>
+                          ))}
+                        </select>
+                        <select
+                          className="input"
+                          aria-label={`${dayLabel(day)} backup`}
+                          value={backupDays[day] || ''}
+                          disabled={!teamId}
+                          onChange={(event) => setBackupDays((current) => ({ ...current, [day]: event.target.value }))}
+                        >
+                          <option value="">{missionCritical ? 'Backup' : 'No backup'}</option>
+                          {members.filter((member) => String(member.user_id) !== (days[day] || '')).map((member) => (
+                            <option key={member.user_id} value={member.user_id}>{known(member.name)}</option>
+                          ))}
+                        </select>
+                      </>
                     ) : (
-                      <small>{known(members.find((member) => String(member.user_id) === days[day])?.name)}</small>
+                      <small>{days[day] ? `Primary ${known(members.find((member) => String(member.user_id) === days[day])?.name)}` : 'Uncovered'}{backupDays[day] ? ` · Backup ${known(members.find((member) => String(member.user_id) === backupDays[day])?.name)}` : ''}</small>
                     )}
                   </li>
                 ))}

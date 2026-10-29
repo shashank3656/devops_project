@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '@infragate/ui';
+import CollectionStatus, { collectionStateFromSync } from '../components/CollectionStatus';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
@@ -73,6 +74,18 @@ export default function ServiceSLOPage() {
             <p className="portal-page__subtitle">
               Error, latency, and saturation budgets stored on the service. Missing samples stay Unknown, never healthy. A freeze is recorded here; it does not patch production.
             </p>
+            {!loading ? (
+              <CollectionStatus
+                source="Service SLO samples"
+                lastSuccess={null}
+                state={collectionStateFromSync({
+                  connected: !error,
+                  failed: Boolean(error),
+                  empty: items.length === 0,
+                })}
+                detail="Missing samples stay Unknown, never Healthy. A freeze does not patch production."
+              />
+            ) : null}
           </div>
           <Link href="/scorecards" className="btn btn-secondary">Open scorecards</Link>
         </div>

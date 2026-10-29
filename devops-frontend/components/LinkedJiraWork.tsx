@@ -557,8 +557,8 @@ export default function LinkedJiraWork({
         </div>
         {allowActions && source ? (
           <div className="request-actions" style={{ marginTop: 0 }}>
-            <button type="button" className="btn btn-secondary btn-sm" disabled={loading || !canLink} onClick={() => { setMode('link'); setHits([]); }}>Link existing</button>
-            <button type="button" className="btn btn-primary btn-sm" disabled={loading || !canCreate} onClick={() => { setMode('create'); const first = spaces.find((s) => s.can_create); if (first) { setSpaceId(first.id); void loadTypes(first.id); } }}>Create issue</button>
+            <button type="button" className="btn btn-primary btn-sm" disabled={loading || !canLink} onClick={() => { setMode('link'); setHits([]); }}>Link existing</button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={loading || !canCreate} onClick={() => { setMode('create'); const first = spaces.find((s) => s.can_create); if (first) { setSpaceId(first.id); void loadTypes(first.id); } }}>Create issue</button>
             {links.some((link) => link.issue.stale) ? (
               <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void refreshIssues(links.filter((link) => link.issue.stale))}>Refresh stale</button>
             ) : null}
@@ -576,8 +576,8 @@ export default function LinkedJiraWork({
       ) : null}
       {allowActions && suggestions.length ? (
         <div className="portal-surface" style={{ marginBottom: 16 }}>
-          <h3 className="portal-surface__title">Suggested Jira work</h3>
-          <p className="form-section__copy">Matched from the title, branch, or description. Nothing is linked until you confirm.</p>
+          <h3 className="portal-surface__title">Possible duplicates</h3>
+          <p className="form-section__copy">Link existing work first. These matches are not created until you confirm.</p>
           <ul className="jira-link-list">
             {suggestions.map((item) => (
               <li key={`${item.issue.cloud_id || 'pending'}:${item.issue.issue_id || item.key}`} className="jira-link-card">
@@ -632,7 +632,9 @@ export default function LinkedJiraWork({
                   {' '}{link.issue.summary}
                 </strong>
                 <p>
-                  <span className={`jira-health jira-health--${jiraHealthTone(link.issue.stale ? 'delayed' : 'synced')}`}>{link.issue.status || 'Unknown'}</span>
+                  <span className={`jira-health jira-health--${jiraHealthTone(link.issue.stale ? 'stale' : (link.issue.freshness || 'synced'))}`}>{link.issue.status || 'Unknown'}</span>
+                  {' · '}
+                  <span>{jiraHealthLabel(link.issue.stale ? 'stale' : (link.issue.freshness || 'synced'))}</span>
                   {' · '}{link.issue.assignee || 'Unassigned'}
                   {' · '}{link.issue.site_name || 'Jira'} / {link.issue.space_key || link.issue.space_name || 'Space'}
                   {' · '}{jiraRelationshipLabel(link.relationship)}
@@ -755,6 +757,20 @@ export default function LinkedJiraWork({
           </>
         ) : (
           <>
+            {suggestions.length ? (
+              <div>
+                <p className="form-section__copy">Possible duplicates. Link existing first. Creating a new issue does not close this portal record.</p>
+                <ul className="jira-link-list">
+                  {suggestions.map((item) => (
+                    <li key={`create-dup-${item.issue.cloud_id || 'pending'}:${item.issue.issue_id || item.key}`}>
+                      <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void confirmSuggestion(item)}>
+                        Link {item.issue.issue_key || item.key} {item.issue.summary}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <label className="label">Issue type
               <select className="input" value={issueTypeId} onChange={(event) => { setIssueTypeId(event.target.value); void loadMeta(spaceId, event.target.value); }}>
                 {issueTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}

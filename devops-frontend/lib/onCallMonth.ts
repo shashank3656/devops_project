@@ -79,6 +79,20 @@ function formatDay(parts: { day: number; month: number }): string {
   return `${parts.day} ${MONTHS[parts.month - 1] || 'Unknown'}`;
 }
 
+export function addCalendarDays(dateKey: string, days: number): string {
+  const [yearText, monthText, dayText] = dateKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!year || !month || !day) return dateKey;
+  const next = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+}
+
+export function nextSevenDateKeys(fromKey: string): string[] {
+  return Array.from({ length: 7 }, (_, index) => addCalendarDays(fromKey, index));
+}
+
 export function currentMonth(timeZone: string): string {
   const parts = zonedParts(new Date(), timeZone);
   return `${parts.year}-${String(parts.month).padStart(2, '0')}`;

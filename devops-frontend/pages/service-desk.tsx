@@ -229,6 +229,7 @@ export default function ServiceDeskPage() {
   const viewHydrated = useRef(false);
   const urlWriteReady = useRef(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
   const confirm = useConfirm();
   const { scope } = useWorkspaceScope();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -700,6 +701,12 @@ export default function ServiceDeskPage() {
       setOwnerFilter('');
     });
 
+  const focusFilters = () => {
+    filtersRef.current?.scrollIntoView({ block: 'nearest' });
+    const search = filtersRef.current?.querySelector('input[type="search"]');
+    if (search instanceof HTMLInputElement) search.focus();
+  };
+
   const sortBy = (key: SortKey) =>
     changeView(() => {
       if (sortKey === key) {
@@ -887,7 +894,7 @@ export default function ServiceDeskPage() {
               ))}
             </div>
 
-            <div className="sd-filters">
+            <div className="sd-filters" ref={filtersRef}>
               <input
                 className="input sd-search"
                 type="search"
@@ -975,7 +982,10 @@ export default function ServiceDeskPage() {
                 <div className="sd-empty">
                   <h3>{items.length === 0 ? 'No tickets yet' : 'No tickets in this scope'}</h3>
                   <p>{items.length === 0 ? 'Incidents, changes, problems and requests you can see will appear here.' : 'The selected project and environment have no matching tickets. Tickets from other environments stay out of this list.'}</p>
-                  <Link href="/incidents/new" className="btn btn-primary btn-sm">Report an incident</Link>
+                  <div className="sd-empty__actions">
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={focusFilters}>Change filters</button>
+                    <Link href="/incidents/new" className="btn btn-primary btn-sm">Report an incident</Link>
+                  </div>
                 </div>
               ) : null}
               {!loading && scopedItems.length > 0 && filtered.length === 0 ? (
