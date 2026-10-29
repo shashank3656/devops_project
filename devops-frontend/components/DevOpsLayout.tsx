@@ -901,9 +901,14 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     const extra = grants.operations ? [] : [{ href: '/integrations', label: 'Integration health', Icon: IconFileText }];
     sidebarSections.push({ title: 'Cost', items: visibleNav([...costNavItems, ...extra]) });
   }
-  if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
+  if (grants.infrastructure) {
+    const extra = (!grants.operations && !grants.cost && !grants.daily && !grants.security)
+      ? [{ href: '/integrations', label: 'Integration health', Icon: IconFileText }]
+      : [];
+    sidebarSections.push({ title: 'Infrastructure', items: visibleNav([...infrastructureNavItems, ...extra]) });
+  }
   if (grants.security) {
-    const extra = (!grants.operations && !grants.cost) ? [{ href: '/integrations', label: 'Integration health', Icon: IconShield }] : [];
+    const extra = (!grants.operations && !grants.cost && !grants.daily) ? [{ href: '/integrations', label: 'Integration health', Icon: IconShield }] : [];
     sidebarSections.push({ title: 'Security', items: visibleNav([...securityNavItems, ...extra]) });
   }
   if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });

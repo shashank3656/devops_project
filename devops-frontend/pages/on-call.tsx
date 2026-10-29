@@ -14,6 +14,8 @@ import {
   nextDateKeys,
   nextSevenDateKeys,
   shiftMonth,
+  timezoneAbbrev,
+  timezoneCompactLabel,
   weekdayShort,
 } from '../lib/onCallMonth';
 import { InspectorDrawer, useWorkspaceScope } from '@infragate/ui';
@@ -22,7 +24,6 @@ const TOKEN_KEY = 'devops_token';
 const USER_KEY = 'devops_user';
 const TIMEZONES = ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney'];
 const WEEK_LETTERS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-const SHIFT_HOURS = '00:00–24:00';
 const FORECAST_DAYS = [7, 14, 30] as const;
 type ForecastDays = (typeof FORECAST_DAYS)[number];
 
@@ -62,11 +63,12 @@ interface RosterRow {
   shift: TeamShift;
 }
 
-interface CriticalService {
+interface CatalogService {
   id: number;
   service: string;
   team?: string;
   project_id?: number;
+  criticality?: string;
 }
 
 type CoverageKind = 'covered' | 'primary' | 'backup' | 'none';
@@ -101,10 +103,11 @@ function calendarCells(monthValue: string): Array<{ day: number; date: string } 
   return cells;
 }
 
-function teamIsCritical(services: CriticalService[], projectId: number, teamName: string): boolean {
+function teamIsCritical(services: CatalogService[], projectId: number, teamName: string): boolean {
   const name = teamName.trim().toLowerCase();
   if (!name) return false;
   return services.some((item) => {
+    if (String(item.criticality || '').toLowerCase() !== 'mission_critical') return false;
     if (item.project_id && item.project_id !== projectId) return false;
     return (item.team || '').trim().toLowerCase() === name;
   });
@@ -118,8 +121,8 @@ function coverageOf(shift: TeamShift | undefined, missionCritical: boolean): Cov
 }
 
 function coverageLabel(kind: CoverageKind): string {
-  if (kind === 'primary') return 'Primary missing';
-  if (kind === 'backup') return 'Backup missing';
+  if (kind === 'primary') return 'Unassigned';
+  if (kind === 'backup') return 'Backup unassigned';
   if (kind === 'covered') return 'Covered';
   return 'No shift required';
 }
@@ -130,6 +133,20 @@ function isCoverageGap(kind: CoverageKind): boolean {
 
 function rowKey(row: RosterRow): string {
   return `${row.day.date}-${row.project.id}-${row.shift.team_id}`;
+}
+
+function assignCoverageHref(projectId: number, teamId: number, date: string, timezone: string): string {
+  const params = new URLSearchParams({ date, timezone });
+  return `/on-call/project/${projectId}/team/${teamId}?${params.toString()}`;
+}
+
+function WarningIcon() {
+  return (
+    <svg className="oncall-warn-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 1.6 14.6 14H1.4L8 1.6Z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M8 6.2v3.4M8 11.6h.01" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export default function OnCallPage() {
@@ -145,6 +162,7 @@ export default function OnCallPage() {
   const [note, setNote] = useState('');
   const [projectId, setProjectId] = useState('');
   const [team, setTeam] = useState('');
+  const [mineOnly, setMineOnly] = useState(false);
   const [me, setMe] = useState(0);
   const [isManager, setIsManager] = useState(false);
   const [coverUserId, setCoverUserId] = useState('');
@@ -152,8 +170,9 @@ export default function OnCallPage() {
   const [refresh, setRefresh] = useState(0);
   const [calendarView, setCalendarView] = useState<CalendarView>('week');
   const [panel, setPanel] = useState<PanelState | null>(null);
-  const [criticalServices, setCriticalServices] = useState<CriticalService[]>([]);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [forecastDays, setForecastDays] = useState<ForecastDays>(7);
+  const [gapsOpen, setGapsOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -219,19 +238,19 @@ export default function OnCallPage() {
         const servicesRes = await fetch(`${apiUrl}/api/devops/services`, { headers });
         const servicesBody = servicesRes.ok ? await servicesRes.json().catch(() => ({})) : {};
         const catalog = Array.isArray(servicesBody?.services) ? servicesBody.services : [];
-        setCriticalServices(catalog
-          .filter((item: { criticality?: string }) => String(item.criticality || '').toLowerCase() === 'mission_critical')
-          .map((item: { id?: number; service?: string; team?: string; project_id?: number }) => ({
+        setCatalogServices(catalog
+          .map((item: { id?: number; service?: string; team?: string; project_id?: number; criticality?: string }) => ({
             id: typeof item.id === 'number' ? item.id : 0,
             service: String(item.service || '').trim(),
             team: String(item.team || '').trim(),
             project_id: typeof item.project_id === 'number' ? item.project_id : undefined,
+            criticality: String(item.criticality || '').trim(),
           }))
-          .filter((item: { id: number; service: string }) => item.id > 0 && item.service));
+          .filter((item: CatalogService) => item.id > 0 && item.service));
       })
       .catch((err) => {
         setProjects([]);
-        setCriticalServices([]);
+        setCatalogServices([]);
         setError(err instanceof Error ? err.message : 'Failed to load on-call');
       })
       .finally(() => setLoading(false));
@@ -241,8 +260,8 @@ export default function OnCallPage() {
     if (!scope.projectId) return projects;
     return projects.filter((project) => String(project.id) === scope.projectId);
   }, [projects, scope.projectId]);
-  const scopeProjectName = scopedProjects[0]?.name || scopedProjects[0]?.code || '';
   const hideProjectFilter = Boolean(scope.projectId) && scopedProjects.length <= 1;
+  const criticalServices = catalogServices.filter((item) => String(item.criticality || '').toLowerCase() === 'mission_critical');
 
   const teamNames = useMemo(() => {
     const names = new Set<string>();
@@ -259,23 +278,25 @@ export default function OnCallPage() {
     if (team && shift.team_name !== team) return false;
     return true;
   };
-  const rows = scopedProjects.flatMap((project) => project.days.flatMap((day) => (
+  const isMine = (shift: TeamShift) => me > 0 && (shift.user_id === me || shift.backup_user_id === me || shift.cover_user_id === me);
+  const scopedRows = scopedProjects.flatMap((project) => project.days.flatMap((day) => (
     day.teams.filter((shift) => matches(project, shift)).map((shift) => ({ project, day, shift }))
   )));
-  const kindOf = (row: RosterRow) => coverageOf(row.shift, teamIsCritical(criticalServices, row.project.id, row.shift.team_name));
+  const rows = mineOnly ? scopedRows.filter((row) => isMine(row.shift)) : scopedRows;
+  const kindOf = (row: RosterRow) => coverageOf(row.shift, teamIsCritical(catalogServices, row.project.id, row.shift.team_name));
 
   const todayDate = todayKey(timezone);
-  const todayRows = rows.filter((row) => row.day.date === todayDate);
+  const todayRows = scopedRows.filter((row) => row.day.date === todayDate);
   const weekDates = nextSevenDateKeys(periodStart);
   const weekEnd = weekDates[weekDates.length - 1] || periodStart;
   const lookaheadDates = nextDateKeys(todayDate, forecastDays);
   const lookaheadEnd = lookaheadDates[lookaheadDates.length - 1] || todayDate;
   const weekRows = rows.filter((row) => row.day.date >= periodStart && row.day.date <= weekEnd);
-  const upcomingRows = rows.filter((row) => row.day.date >= todayDate && row.day.date <= lookaheadEnd);
+  const upcomingRows = scopedRows.filter((row) => row.day.date >= todayDate && row.day.date <= lookaheadEnd);
+  const myUpcomingRows = upcomingRows.filter((row) => isMine(row.shift));
   const upcomingGaps = upcomingRows.filter((row) => isCoverageGap(kindOf(row)));
   const affectedDates = new Set(upcomingGaps.map((row) => row.day.date));
   const teamDaysWithoutCoverage = upcomingGaps.filter((row) => kindOf(row) === 'primary').length;
-  const uncoveredShifts = upcomingGaps.length;
 
   const criticalWithoutPrimary = criticalServices.filter((item) => {
     if (scope.projectId && item.project_id && String(item.project_id) !== scope.projectId) return false;
@@ -287,7 +308,7 @@ export default function OnCallPage() {
       return teamName === serviceTeam && !row.shift.user_id;
     });
   });
-  const pending = rows.filter((row) => row.shift.status === 'pending');
+  const pending = scopedRows.filter((row) => row.shift.status === 'pending');
   const teamsToday = new Map<string, RosterRow>();
   todayRows.forEach((row) => teamsToday.set(`${row.project.id}-${row.shift.team_id}`, row));
   const teamsCoveredNow = [...teamsToday.values()].filter((row) => kindOf(row) === 'covered').length;
@@ -297,7 +318,7 @@ export default function OnCallPage() {
     upcomingGaps.forEach((row) => {
       const key = `${row.project.id}-${row.shift.team_id}`;
       const current = grouped.get(key);
-      const kind = coverageOf(row.shift, teamIsCritical(criticalServices, row.project.id, row.shift.team_name));
+      const kind = coverageOf(row.shift, teamIsCritical(catalogServices, row.project.id, row.shift.team_name));
       if (current) {
         current.dates.push(row.day.date);
         current.kinds.add(kind);
@@ -308,37 +329,42 @@ export default function OnCallPage() {
     return [...grouped.values()].map((item) => ({
       ...item,
       dates: [...new Set(item.dates)].sort(),
-      label: item.kinds.has('primary') ? 'Primary missing' : 'Backup missing',
+      label: item.kinds.has('primary') ? 'Unassigned' : 'Backup unassigned',
     }));
-  }, [upcomingGaps, criticalServices]);
+  }, [upcomingGaps, catalogServices]);
 
   const overlapGroups = useMemo(() => {
-    const byPerson = new Map<string, RosterRow[]>();
-    upcomingRows.forEach((row) => {
-      if (!row.shift.user_id) return;
-      const key = `${row.day.date}-${row.shift.user_id}`;
-      const current = byPerson.get(key) || [];
-      current.push(row);
+    const byPerson = new Map<string, { name: string; rows: RosterRow[] }>();
+    const add = (row: RosterRow, userId: number, name: string) => {
+      if (!userId) return;
+      const key = `${row.day.date}-${userId}`;
+      const current = byPerson.get(key) || { name: known(name), rows: [] };
+      current.rows.push(row);
+      if (current.name === 'Unknown' && known(name) !== 'Unknown') current.name = known(name);
       byPerson.set(key, current);
+    };
+    upcomingRows.forEach((row) => {
+      add(row, row.shift.user_id, row.shift.name);
+      add(row, row.shift.backup_user_id || 0, row.shift.backup_name || '');
     });
     return [...byPerson.values()]
-      .map((list) => {
+      .map((item) => {
         const unique = new Map<string, RosterRow>();
-        list.forEach((row) => unique.set(`${row.project.id}-${row.shift.team_id}`, row));
-        return [...unique.values()];
+        item.rows.forEach((row) => unique.set(`${row.project.id}-${row.shift.team_id}`, row));
+        return { name: item.name, list: [...unique.values()] };
       })
-      .filter((list) => list.length > 1)
-      .map((list) => ({
-        date: list[0].day.date,
-        name: known(list[0].shift.name),
-        teams: list.map((row) => ({
+      .filter((item) => item.list.length > 1)
+      .map((item) => ({
+        date: item.list[0].day.date,
+        name: item.name,
+        teams: item.list.map((row) => ({
           project: known(row.project.name),
           team: known(row.shift.team_name),
-          href: `/on-call/project/${row.project.id}/team/${row.shift.team_id}`,
+          href: assignCoverageHref(row.project.id, row.shift.team_id, row.day.date, timezone),
         })),
       }))
       .sort((left, right) => left.date.localeCompare(right.date) || left.name.localeCompare(right.name));
-  }, [upcomingRows]);
+  }, [upcomingRows, timezone]);
 
   const scheduleTeams = useMemo(() => {
     const order: { key: string; project: RosterProject; teamId: number; teamName: string }[] = [];
@@ -352,8 +378,22 @@ export default function OnCallPage() {
     return order;
   }, [weekRows]);
 
+  const myNextHandover = useMemo(() => {
+    if (me <= 0) return '';
+    const mine = myUpcomingRows
+      .filter((row) => row.shift.user_id === me)
+      .sort((left, right) => left.day.date.localeCompare(right.day.date));
+    if (!mine.length) return 'No upcoming handover';
+    const handoff = addCalendarDays(mine[0].day.date, 1);
+    return `Next handover ${formatCompactDay(handoff)} 00:00 ${timezoneAbbrev(timezone)}`;
+  }, [me, myUpcomingRows, timezone]);
+
   const canRequest = (row: RosterRow) => row.shift.user_id > 0 && row.day.date >= todayDate && row.shift.status !== 'pending' && (isManager || (me > 0 && me === row.shift.user_id));
   const rosterFor = (project: RosterProject, teamId: number) => project.rosters[teamId] || [];
+  const servicesFor = (row: RosterRow) => catalogServices.filter((item) => {
+    if (item.project_id && item.project_id !== row.project.id) return false;
+    return (item.team || '').trim().toLowerCase() === (row.shift.team_name || '').trim().toLowerCase();
+  });
 
   const sendRequest = async (event: FormEvent, row: RosterRow) => {
     event.preventDefault();
@@ -468,6 +508,15 @@ export default function OnCallPage() {
     setPeriodStart(addCalendarDays(periodStart, delta * 7));
   };
 
+  const reviewGaps = () => {
+    setGapsOpen(true);
+    setCalendarView('week');
+    setPeriodStart(todayDate);
+    window.requestAnimationFrame(() => {
+      document.getElementById('oncall-gaps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const panelRows = panel
     ? rows.filter((row) => {
       if (row.day.date !== panel.date) return false;
@@ -478,43 +527,67 @@ export default function OnCallPage() {
     : [];
   const panelRow = panelRows.length === 1 ? panelRows[0] : null;
   const manageHref = scheduleTeams.length === 1
-    ? `/on-call/project/${scheduleTeams[0].project.id}/team/${scheduleTeams[0].teamId}`
+    ? assignCoverageHref(scheduleTeams[0].project.id, scheduleTeams[0].teamId, todayDate, timezone)
     : '/on-call/projects';
   const rangeLabel = calendarView === 'month' ? monthTitle(month) : formatDateRange(periodStart, weekEnd);
-  const countCopy = `${affectedDates.size} affected date${affectedDates.size === 1 ? '' : 's'} · ${teamDaysWithoutCoverage} team-day${teamDaysWithoutCoverage === 1 ? '' : 's'} without coverage`;
-  const shiftCopy = uncoveredShifts !== teamDaysWithoutCoverage
-    ? `${countCopy} · ${uncoveredShifts} uncovered shift${uncoveredShifts === 1 ? '' : 's'}`
-    : countCopy;
+  const scoreCopy = `${affectedDates.size} dates · ${teamDaysWithoutCoverage} team-days`;
+  const zoneLabel = timezoneCompactLabel(timezone);
+  let gapsSummary = 'Coverage gaps';
+  if (gapGroups.length) gapsSummary += ` · ${gapGroups.length} team${gapGroups.length === 1 ? '' : 's'}`;
+  if (overlapGroups.length) gapsSummary += ` · ${overlapGroups.length} overlapping`;
+  if (!gapGroups.length && !overlapGroups.length) gapsSummary += ' · 0 teams';
 
   const openCell = (row: RosterRow | undefined, date: string) => {
     if (row) setPanel({ date, projectId: row.project.id, teamId: row.shift.team_id });
     else setPanel({ date });
   };
 
-  const renderShiftBody = (row: RosterRow) => {
+  const renderShiftBody = (row: RosterRow, showTeam: boolean) => {
     const kind = kindOf(row);
     const people = rosterFor(row.project, row.shift.team_id);
     const others = people.filter((person) => person.userId !== row.shift.user_id);
+    const needsBackup = teamIsCritical(catalogServices, row.project.id, row.shift.team_name);
+    const affected = servicesFor(row);
+    const assignHref = assignCoverageHref(row.project.id, row.shift.team_id, row.day.date, timezone);
     return (
       <article key={rowKey(row)} className="oncall-shift-detail">
-        <p className="oncall-shift-detail__meta">
-          {!hideProjectFilter ? `${known(row.project.name)} · ` : ''}
-          {known(row.shift.team_name)} · {row.day.label} · {SHIFT_HOURS} {timezone}
-        </p>
-        <span className={`oncall-badge oncall-badge--${kind}`}>{coverageLabel(kind)}</span>
-        <p>{row.shift.user_id ? `Primary ${known(row.shift.name)}` : 'Primary missing'}</p>
-        <p>{row.shift.backup_user_id ? `Backup ${known(row.shift.backup_name)}` : teamIsCritical(criticalServices, row.project.id, row.shift.team_name) ? 'Backup missing' : 'Backup not required'}</p>
+        {showTeam ? (
+          <p className="oncall-shift-detail__team">
+            {hideProjectFilter ? known(row.shift.team_name) : `${known(row.project.name)} · ${known(row.shift.team_name)}`}
+          </p>
+        ) : null}
+        <div className="oncall-shift-role">
+          <span>Primary</span>
+          <strong>{row.shift.user_id ? known(row.shift.name) : 'Unassigned'}</strong>
+        </div>
+        <div className="oncall-shift-role">
+          <span>Backup</span>
+          <strong>
+            {row.shift.backup_user_id
+              ? known(row.shift.backup_name)
+              : needsBackup ? 'Unassigned' : 'Not required'}
+          </strong>
+        </div>
+        <p className="oncall-shift-detail__hours">24-hour coverage · {zoneLabel}</p>
         {row.shift.status === 'covered' ? <p>{known(row.shift.name)} is covering for {known(row.shift.from_name)}.</p> : null}
         {row.shift.status === 'pending' ? <p>Waiting for {known(row.shift.cover_name)} to accept a temporary override.</p> : null}
-        {kind === 'primary' ? (
-          <p>Assign people on this team before paging from an incident.</p>
-        ) : (
-          <p>Handover reminder and overdue minutes are set on the team schedule. Do not page anyone from this page.</p>
-        )}
+        <div className="oncall-shift-services">
+          <span>Affected services</span>
+          {affected.length ? (
+            <ul>
+              {affected.map((item) => (
+                <li key={item.id}>
+                  {item.service}
+                  {String(item.criticality || '').toLowerCase() === 'mission_critical' ? ' · Mission-critical' : ''}
+                </li>
+              ))}
+            </ul>
+          ) : <p>No services mapped to this team.</p>}
+        </div>
+        {kind === 'primary' ? <p>Assign coverage to enable incident escalation.</p> : null}
         <div className="portal-page__actions">
-          {kind === 'primary' ? <Link className="btn btn-primary" href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Assign people</Link> : null}
+          <Link className="btn btn-primary" href={assignHref}>Assign coverage</Link>
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void openHandover(row)}>Open handover</button>
-          <Link className="btn btn-secondary" href={`/on-call/project/${row.project.id}/team/${row.shift.team_id}`}>Manage schedule</Link>
         </div>
         {canRequest(row) ? (
           <form className="oncall-ask" onSubmit={(event) => sendRequest(event, row)}>
@@ -537,19 +610,21 @@ export default function OnCallPage() {
   };
 
   const renderCell = (row: RosterRow | undefined, date: string) => {
-    const kind = coverageOf(row?.shift, row ? teamIsCritical(criticalServices, row.project.id, row.shift.team_name) : false);
+    const kind = coverageOf(row?.shift, row ? teamIsCritical(catalogServices, row.project.id, row.shift.team_name) : false);
     const selected = panel?.date === date && panel.projectId === row?.project.id && panel.teamId === row?.shift.team_id;
     return (
       <button
         type="button"
-        className={`oncall-grid__cell${date === todayDate ? ' is-today' : ''}${selected ? ' is-selected' : ''}`}
+        className={`oncall-grid__cell${date === todayDate ? ' is-today' : ''}${selected ? ' is-selected' : ''}${kind === 'primary' ? ' is-unassigned' : ''}`}
         onClick={() => openCell(row, date)}
-        aria-label={`${row ? known(row.shift.team_name) : 'Shift'} ${formatCompactDay(date)} ${coverageLabel(kind)}`}
+        aria-label={`${row ? known(row.shift.team_name) : 'Shift'} ${formatCompactDay(date)} ${coverageLabel(kind)}. Open to assign coverage.`}
       >
+        {kind === 'primary' ? (
+          <span className="oncall-grid__unassigned"><WarningIcon />Unassigned</span>
+        ) : null}
         {row?.shift.user_id ? <span className="oncall-grid__name">{known(row.shift.name)}</span> : null}
         {row?.shift.backup_user_id ? <span className="oncall-grid__backup">{known(row.shift.backup_name)}</span> : null}
-        <span className="oncall-grid__hours">{SHIFT_HOURS}</span>
-        <span className={`oncall-badge oncall-badge--${kind}`}>{coverageLabel(kind)}</span>
+        {kind === 'backup' ? <span className="oncall-badge oncall-badge--backup">Backup</span> : null}
       </button>
     );
   };
@@ -557,23 +632,15 @@ export default function OnCallPage() {
   return (
     <DevOpsLayout>
       <Head><title>On-call</title></Head>
-      <div className="portal-page">
+      <div className="portal-page oncall-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">On-call</h1>
-            <p className="portal-page__subtitle">Coverage, schedules and handovers.</p>
           </div>
           <div className="portal-page__actions">
             <Link href={manageHref} className="btn btn-primary">Manage schedule</Link>
             <Link href="/on-call/handovers" className="btn btn-secondary">Handovers</Link>
-            <details className="oncall-setup">
-              <summary>Setup</summary>
-              <div className="oncall-setup__menu">
-                <Link href="/on-call/onboard">Onboard project</Link>
-                <Link href="/on-call/projects">Projects</Link>
-              </div>
-            </details>
           </div>
         </div>
         {error ? (
@@ -584,122 +651,28 @@ export default function OnCallPage() {
         ) : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
 
-        <section className="portal-stat-grid portal-stat-grid--three" aria-label="On-call summary">
+        <section className="portal-stat-grid portal-stat-grid--three oncall-summary" aria-label="On-call summary">
           <button type="button" className="portal-stat-card" onClick={goToday}>
-            <span className="portal-stat-card__label">Teams covered now</span>
+            <span className="portal-stat-card__label">Teams covered</span>
             <span className="portal-stat-card__value">{loading ? '…' : `${teamsCoveredNow}/${teamsToday.size || 0}`}</span>
-            <p className="portal-stat-card__copy">Primary and required backup in place today.</p>
+            <p className="portal-stat-card__copy">Primary and backup in place today</p>
           </button>
-          <button
-            type="button"
-            className="portal-stat-card"
-            onClick={() => {
-              document.getElementById('oncall-gaps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              setCalendarView('week');
-              setPeriodStart(todayDate);
-            }}
-          >
-            <span className="portal-stat-card__label">Services without primary coverage</span>
+          <button type="button" className="portal-stat-card" onClick={reviewGaps} aria-label="Review gaps. Critical services uncovered">
+            <span className="portal-stat-card__label">Critical services uncovered</span>
             <span className="portal-stat-card__value">{loading ? '…' : criticalWithoutPrimary.length}</span>
-            <p className="portal-stat-card__copy">Mission-critical services with no primary today.</p>
+            <p className="portal-stat-card__copy">Review gaps</p>
           </button>
-          <button
-            type="button"
-            className="portal-stat-card"
-            onClick={() => {
-              document.getElementById('oncall-gaps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              setCalendarView('week');
-              setPeriodStart(todayDate);
-            }}
-          >
-            <span className="portal-stat-card__label">Upcoming gaps · {forecastDays} days</span>
+          <button type="button" className="portal-stat-card" onClick={reviewGaps} aria-label={`Review gaps. Upcoming gaps ${loading ? '' : scoreCopy}`}>
+            <span className="portal-stat-card__label">Upcoming gaps</span>
             <span className="portal-stat-card__value">{loading ? '…' : affectedDates.size}</span>
-            <p className="portal-stat-card__copy">{shiftCopy}</p>
+            <p className="portal-stat-card__copy">{loading ? 'Review gaps' : `Review gaps · ${scoreCopy}`}</p>
           </button>
         </section>
-
-        {!loading && criticalWithoutPrimary.length ? (
-          <section className="ops-notice" role="alert" aria-label="Coverage warning">
-            <p>
-              {criticalWithoutPrimary.length} mission-critical service{criticalWithoutPrimary.length === 1 ? '' : 's'} need coverage today.
-            </p>
-            <a className="btn btn-primary" href="#oncall-gaps">Review gaps</a>
-          </section>
-        ) : null}
-
-        {!loading ? (
-          <section id="oncall-gaps" className="oncall-forecast" aria-label="Coverage forecast">
-            <div className="oncall-forecast__head">
-              <div>
-                <strong>Coverage forecast</strong>
-                <p>Uncovered shifts, missing backups, and overlapping assignments. Do not page from this page.</p>
-              </div>
-              <div className="oncall-forecast__horizons" role="group" aria-label="Forecast horizon">
-                {FORECAST_DAYS.map((days) => (
-                  <button
-                    key={days}
-                    type="button"
-                    className={`btn btn-sm ${forecastDays === days ? 'btn-primary' : 'btn-secondary'}`}
-                    aria-pressed={forecastDays === days}
-                    onClick={() => setForecastDays(days)}
-                  >
-                    {days} days
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="oncall-gap-groups">
-              {gapGroups.map((group) => (
-                <div key={`${group.row.project.id}-${group.row.shift.team_id}`} className="oncall-gap-groups__row">
-                  <div>
-                    <strong>{known(group.row.shift.team_name)}</strong>
-                    <span>
-                      {hideProjectFilter ? '' : `${known(group.row.project.name)} · `}
-                      {formatDateList(group.dates)} · {group.label}
-                    </span>
-                  </div>
-                  <Link className="btn btn-secondary btn-sm" href={`/on-call/project/${group.row.project.id}/team/${group.row.shift.team_id}`}>Assign coverage</Link>
-                </div>
-              ))}
-              {overlapGroups.map((group) => (
-                <div key={`${group.date}-${group.name}`} className="oncall-gap-groups__row">
-                  <div>
-                    <strong>{group.name}</strong>
-                    <span>
-                      {formatCompactDay(group.date)} · Overlapping assignment · {group.teams.map((item) => hideProjectFilter ? item.team : `${item.project} · ${item.team}`).join(', ')}
-                    </span>
-                  </div>
-                  <Link className="btn btn-secondary btn-sm" href={group.teams[0]?.href || '/on-call/projects'}>Review schedule</Link>
-                </div>
-              ))}
-              {!gapGroups.length && !overlapGroups.length ? (
-                <p className="access-hint">No uncovered shifts, missing backups, or overlapping assignments in the next {forecastDays} days.</p>
-              ) : null}
-            </div>
-          </section>
-        ) : <div id="oncall-gaps" />}
-
-        {!loading && pending.length ? (
-          <section className="oncall-requests" aria-label="Temporary shift overrides">
-            <strong>Temporary shift overrides</strong>
-            {pending.map((row) => (
-              <div key={rowKey(row)} className="oncall-requests__row">
-                <span>{row.day.label} · {hideProjectFilter ? '' : `${known(row.project.name)} · `}{known(row.shift.team_name)} · {known(row.shift.from_name)} asked {known(row.shift.cover_name)}</span>
-                {me > 0 && me === row.shift.cover_user_id ? (
-                  <span>
-                    <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void decide(row.shift.request_id || 0, 'approve')}>Approve</button>
-                    <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => void decide(row.shift.request_id || 0, 'decline')}>Decline</button>
-                  </span>
-                ) : <span>Waiting for {known(row.shift.cover_name)}</span>}
-              </div>
-            ))}
-          </section>
-        ) : null}
 
         <section className="portal-surface oncall-roster">
           <div className="oncall-toolbar">
             {hideProjectFilter ? null : (
-              <label>
+              <label className="oncall-toolbar__grow">
                 Project
                 <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
                   <option value="">All projects</option>
@@ -707,13 +680,23 @@ export default function OnCallPage() {
                 </select>
               </label>
             )}
-            <label>
+            <label className="oncall-toolbar__grow">
               Team
               <select className="input" value={team} onChange={(event) => setTeam(event.target.value)}>
                 <option value="">All teams</option>
                 {teamNames.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
+            {me > 0 ? (
+              <button
+                type="button"
+                className={`btn btn-sm ${mineOnly ? 'btn-primary' : 'btn-secondary'}`}
+                aria-pressed={mineOnly}
+                onClick={() => setMineOnly((value) => !value)}
+              >
+                My shifts
+              </button>
+            ) : null}
             <div className="oncall-toolbar__view" role="group" aria-label="Schedule period">
               <button
                 type="button"
@@ -747,21 +730,46 @@ export default function OnCallPage() {
               </button>
               <button type="button" className="btn btn-secondary btn-sm" onClick={goToday}>Today</button>
             </div>
-            <label className="oncall-filters__zone">
-              Timezone
+            <label className="oncall-tz">
+              <span className="ig-sr-only">Timezone</span>
               <select className="input" aria-label="Roster timezone" value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
-                {TIMEZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+                {TIMEZONES.map((zone) => <option key={zone} value={zone}>{timezoneCompactLabel(zone)}</option>)}
               </select>
             </label>
             <details className="oncall-help">
-              <summary aria-label="Workspace filter and timezone help">?</summary>
-              <p>
-                {scope.projectId
-                  ? 'The workspace filter at the top limits this page to that project. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'
-                  : 'The workspace filter at the top limits this page. Project below further filters the roster. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'}
-              </p>
+              <summary aria-label="On-call help">?</summary>
+              <div className="oncall-help__panel">
+                <p>
+                  {scope.projectId
+                    ? 'The workspace filter at the top limits this page to that project. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'
+                    : 'The workspace filter at the top limits this page. Project below further filters the roster. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'}
+                  {' '}Do not page from this page. Assign coverage to enable incident escalation.
+                </p>
+                <div className="oncall-help__links">
+                  <Link href="/on-call/onboard">Onboard project</Link>
+                  <Link href="/on-call/projects">Projects</Link>
+                </div>
+              </div>
             </details>
           </div>
+          {mineOnly && me > 0 ? <p className="oncall-mine-hint">{myNextHandover}</p> : null}
+
+          {!loading && pending.length ? (
+            <div className="oncall-requests" aria-label="Temporary shift overrides">
+              <strong>Temporary shift overrides</strong>
+              {pending.map((row) => (
+                <div key={rowKey(row)} className="oncall-requests__row">
+                  <span>{row.day.label} · {hideProjectFilter ? '' : `${known(row.project.name)} · `}{known(row.shift.team_name)} · {known(row.shift.from_name)} asked {known(row.shift.cover_name)}</span>
+                  {me > 0 && me === row.shift.cover_user_id ? (
+                    <span>
+                      <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void decide(row.shift.request_id || 0, 'approve')}>Approve</button>
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={saving} onClick={() => void decide(row.shift.request_id || 0, 'decline')}>Decline</button>
+                    </span>
+                  ) : <span>Waiting for {known(row.shift.cover_name)}</span>}
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {loading ? <div className="empty-state">Loading on-call...</div> : null}
 
@@ -773,6 +781,7 @@ export default function OnCallPage() {
                   <div key={date} className={`oncall-grid__head${date === todayDate ? ' is-today' : ''}`}>
                     <span>{weekdayShort(date)}</span>
                     <strong>{Number(date.slice(-2))}</strong>
+                    {date === todayDate ? <span className="oncall-today-badge">Today</span> : null}
                   </div>
                 ))}
                 {scheduleTeams.map((item) => (
@@ -780,6 +789,7 @@ export default function OnCallPage() {
                     <div className="oncall-grid__team">
                       <strong>{known(item.teamName)}</strong>
                       {hideProjectFilter ? null : <span>{known(item.project.name)}</span>}
+                      <span className="oncall-grid__hours-note">24-hour coverage</span>
                     </div>
                     {weekDates.map((date) => {
                       const row = weekRows.find((itemRow) => itemRow.project.id === item.project.id && itemRow.shift.team_id === item.teamId && itemRow.day.date === date);
@@ -788,7 +798,7 @@ export default function OnCallPage() {
                   </div>
                 ))}
               </div>
-              {!scheduleTeams.length ? <div className="empty-state">No teams match this filter in this week.</div> : null}
+              {!scheduleTeams.length ? <div className="empty-state">{mineOnly ? 'No shifts assigned to you in this week.' : 'No teams match this filter in this week.'}</div> : null}
               <div className="oncall-agenda" aria-label="Weekly agenda">
                 {weekDates.map((date) => {
                   const dayRows = weekRows.filter((row) => row.day.date === date);
@@ -798,7 +808,7 @@ export default function OnCallPage() {
                       {!dayRows.length ? <p className="access-hint">No teams match this filter on this day.</p> : dayRows.map((row) => (
                         <button key={rowKey(row)} type="button" className="oncall-agenda__row" onClick={() => openCell(row, date)}>
                           <span>{hideProjectFilter ? known(row.shift.team_name) : `${known(row.project.name)} · ${known(row.shift.team_name)}`}</span>
-                          <span className={`oncall-badge oncall-badge--${kindOf(row)}`}>{coverageLabel(kindOf(row))}</span>
+                          {kindOf(row) === 'primary' ? <span className="oncall-grid__unassigned"><WarningIcon />Unassigned</span> : kindOf(row) === 'backup' ? <span className="oncall-badge oncall-badge--backup">Backup</span> : <span className="oncall-grid__name">{known(row.shift.name)}</span>}
                         </button>
                       ))}
                     </section>
@@ -823,10 +833,12 @@ export default function OnCallPage() {
                       type="button"
                       className={`oncall-month-grid__cell${cell.date === todayDate ? ' is-today' : ''}${panel?.date === cell.date ? ' is-selected' : ''}`}
                       onClick={() => setPanel({ date: cell.date })}
-                      aria-label={`${formatCompactDay(cell.date)} ${coverageLabel(kind)}`}
+                      aria-label={`${formatCompactDay(cell.date)} ${coverageLabel(kind)}. Open to assign coverage.`}
                     >
                       <span className="oncall-month-grid__num">{cell.day}</span>
-                      <span className={`oncall-badge oncall-badge--${kind}`}>{coverageLabel(kind)}</span>
+                      {cell.date === todayDate ? <span className="oncall-today-badge">Today</span> : null}
+                      {kind === 'primary' ? <span className="oncall-grid__unassigned"><WarningIcon />Unassigned</span> : null}
+                      {kind === 'backup' ? <span className="oncall-badge oncall-badge--backup">Backup</span> : null}
                     </button>
                   );
                 })}
@@ -840,7 +852,7 @@ export default function OnCallPage() {
                       {!dayRows.length ? <p className="access-hint">No teams match this filter on this day.</p> : dayRows.map((row) => (
                         <button key={rowKey(row)} type="button" className="oncall-agenda__row" onClick={() => openCell(row, cell.date)}>
                           <span>{hideProjectFilter ? known(row.shift.team_name) : `${known(row.project.name)} · ${known(row.shift.team_name)}`}</span>
-                          <span className={`oncall-badge oncall-badge--${kindOf(row)}`}>{coverageLabel(kindOf(row))}</span>
+                          {kindOf(row) === 'primary' ? <span className="oncall-grid__unassigned"><WarningIcon />Unassigned</span> : kindOf(row) === 'backup' ? <span className="oncall-badge oncall-badge--backup">Backup</span> : <span className="oncall-grid__name">{known(row.shift.name)}</span>}
                         </button>
                       ))}
                     </section>
@@ -850,6 +862,58 @@ export default function OnCallPage() {
             </>
           ) : null}
         </section>
+
+        {!loading ? (
+          <details
+            id="oncall-gaps"
+            className="oncall-gaps"
+            open={gapsOpen}
+            onToggle={(event) => setGapsOpen((event.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>{gapsSummary}</summary>
+            <div className="oncall-forecast__horizons" role="group" aria-label="Forecast horizon">
+              {FORECAST_DAYS.map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className={`btn btn-sm ${forecastDays === days ? 'btn-primary' : 'btn-secondary'}`}
+                  aria-pressed={forecastDays === days}
+                  onClick={() => setForecastDays(days)}
+                >
+                  {days} days
+                </button>
+              ))}
+            </div>
+            <div className="oncall-gap-groups">
+              {gapGroups.map((group) => (
+                <div key={`${group.row.project.id}-${group.row.shift.team_id}`} className="oncall-gap-groups__row">
+                  <div>
+                    <strong>{known(group.row.shift.team_name)}</strong>
+                    <span>
+                      {hideProjectFilter ? '' : `${known(group.row.project.name)} · `}
+                      {formatDateList(group.dates)} · {group.label}
+                    </span>
+                  </div>
+                  <Link className="btn btn-secondary btn-sm" href={assignCoverageHref(group.row.project.id, group.row.shift.team_id, group.dates[0], timezone)}>Assign coverage</Link>
+                </div>
+              ))}
+              {overlapGroups.map((group) => (
+                <div key={`${group.date}-${group.name}`} className="oncall-gap-groups__row">
+                  <div>
+                    <strong>{group.name}</strong>
+                    <span>
+                      {formatCompactDay(group.date)} · Overlapping assignment · {group.teams.map((item) => hideProjectFilter ? item.team : `${item.project} · ${item.team}`).join(', ')}
+                    </span>
+                  </div>
+                  <Link className="btn btn-secondary btn-sm" href={group.teams[0]?.href || '/on-call/projects'}>Assign coverage</Link>
+                </div>
+              ))}
+              {!gapGroups.length && !overlapGroups.length ? (
+                <p className="access-hint">No uncovered shifts, missing backups, or overlapping assignments in the next {forecastDays} days.</p>
+              ) : null}
+            </div>
+          </details>
+        ) : <div id="oncall-gaps" />}
       </div>
       <InspectorDrawer
         open={Boolean(panel)}
@@ -858,9 +922,9 @@ export default function OnCallPage() {
         label="Shift details"
         eyebrow="On-call"
         title={panelRow ? known(panelRow.shift.team_name) : panel ? formatCompactDay(panel.date) : 'Shift'}
-        subtitle={panelRow ? `${panelRow.day.label} · ${SHIFT_HOURS} ${timezone}` : panel ? timezone : undefined}
+        subtitle={panelRow ? `${panelRow.day.label} · 24-hour coverage` : panel ? formatCompactDay(panel.date) : undefined}
       >
-        {panelRows.length ? panelRows.map((row) => renderShiftBody(row)) : <p>No teams match this filter on the selected day.</p>}
+        {panelRows.length ? panelRows.map((row) => renderShiftBody(row, panelRows.length > 1)) : <p>No teams match this filter on the selected day.</p>}
       </InspectorDrawer>
     </DevOpsLayout>
   );

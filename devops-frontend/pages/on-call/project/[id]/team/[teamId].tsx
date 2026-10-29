@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../../context/ApiUrlContext';
+import { formatCompactDay, timezoneCompactLabel, weekdayLong } from '../../../../../lib/onCallMonth';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -66,6 +67,9 @@ export default function OnCallTeamUsersPage() {
   const teamRaw = Array.isArray(router.query.teamId) ? router.query.teamId[0] : router.query.teamId;
   const projectId = Number.parseInt(projectRaw || '', 10);
   const teamId = Number.parseInt(teamRaw || '', 10);
+  const focusDate = typeof router.query.date === 'string' ? router.query.date : '';
+  const focusTimezone = typeof router.query.timezone === 'string' ? router.query.timezone : '';
+  const focusWeekday = focusDate ? weekdayLong(focusDate) : '';
   const [projectName, setProjectName] = useState('');
   const [teamName, setTeamName] = useState('');
   const [people, setPeople] = useState<Person[]>([]);
@@ -200,6 +204,13 @@ export default function OnCallTeamUsersPage() {
             <p className="portal-page__subtitle">{missionCritical
               ? 'This team covers a mission-critical service. Choose a primary and a backup. Shift timing, handover reminder, and overdue minutes are in the weekly schedule on this page.'
               : 'Choose who rotates. Shift timing, handover, and rotation order are in the weekly schedule on this page.'}</p>
+            {focusDate ? (
+              <p className="access-hint">
+                Assigning coverage for {formatCompactDay(focusDate)}
+                {focusTimezone ? ` · ${timezoneCompactLabel(focusTimezone)}` : ''}.
+                The highlighted day is the shift you opened.
+              </p>
+            ) : null}
           </div>
           <Link href={`/on-call/project/${projectId}`} className="btn btn-secondary">Back to teams</Link>
         </div>
@@ -213,7 +224,9 @@ export default function OnCallTeamUsersPage() {
               <p className="access-hint">Timezone: {schedule.timezone}. Handover reminder {schedule.remindMinutes} minutes before shift end, overdue after {schedule.escalateMinutes} minutes. {schedule.reassignIncidents ? 'Acknowledgement reassigns open incidents to the incoming person. Status is not changed to Fixed.' : 'Acknowledgement leaves incident assignment unchanged unless the incoming person opts in on that handover.'}</p>
               <ul>
                 {schedule.days.map((day) => (
-                  <li key={day.day}>{dayLabel(day.day)}: {day.user_id ? `Primary ${known(day.name)}` : 'No primary'}{day.backup_user_id ? ` · Backup ${known(day.backup_name)}` : missionCritical ? ' · No backup' : ''}</li>
+                  <li key={day.day} className={focusWeekday && day.day.toLowerCase() === focusWeekday ? 'oncall-focus-day' : undefined}>
+                    {dayLabel(day.day)}: {day.user_id ? `Primary ${known(day.name)}` : 'No primary'}{day.backup_user_id ? ` · Backup ${known(day.backup_name)}` : missionCritical ? ' · No backup' : ''}
+                  </li>
                 ))}
               </ul>
               <Link href={schedule.id ? `/on-call/${schedule.id}` : `/on-call/new?project_id=${projectId}&team_id=${teamId}`} className="btn btn-secondary">Edit schedule</Link>

@@ -76,8 +76,9 @@ func TestSectionForPath(t *testing.T) {
 		t.Fatal("admin section was rejected")
 	}
 	costOnly := sectionGrants{Cost: true}
-	if !costOnly.allows("integrations-health") || requester.allows("integrations-health") {
-		t.Fatalf("health grants cost=%v requester=%v", costOnly.allows("integrations-health"), requester.allows("integrations-health"))
+	infraOnly := sectionGrants{Infrastructure: true}
+	if !costOnly.allows("integrations-health") || !infraOnly.allows("integrations-health") || requester.allows("integrations-health") {
+		t.Fatalf("health grants cost=%v infra=%v requester=%v", costOnly.allows("integrations-health"), infraOnly.allows("integrations-health"), requester.allows("integrations-health"))
 	}
 }
 

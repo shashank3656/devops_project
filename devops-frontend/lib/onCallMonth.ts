@@ -143,6 +143,39 @@ export function weekdayShort(dateKey: string): string {
   return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][weekday] || '';
 }
 
+export function weekdayLong(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return '';
+  const weekday = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)).getUTCDay();
+  return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][weekday] || '';
+}
+
+function timezonePart(timeZone: string, name: 'short' | 'shortOffset' | 'longOffset', at = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', timeZoneName: name }).formatToParts(at);
+    return parts.find((part) => part.type === 'timeZoneName')?.value || '';
+  } catch {
+    return '';
+  }
+}
+
+export function timezoneAbbrev(timeZone: string, at = new Date()): string {
+  const value = timezonePart(timeZone, 'short', at);
+  if (!value || value.startsWith('GMT') || value.startsWith('UTC')) return timeZone === 'UTC' ? 'UTC' : value.replace(/^GMT/, 'UTC') || timeZone;
+  return value;
+}
+
+export function timezoneUtcOffset(timeZone: string, at = new Date()): string {
+  const raw = (timezonePart(timeZone, 'longOffset', at) || timezonePart(timeZone, 'shortOffset', at)).replace(/^GMT/, 'UTC') || 'UTC';
+  const match = raw.match(/^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return raw === 'UTC' ? 'UTC+00:00' : raw;
+  return `UTC${match[1]}${match[2].padStart(2, '0')}:${(match[3] || '00').padStart(2, '0')}`;
+}
+
+export function timezoneCompactLabel(timeZone: string, at = new Date()): string {
+  return `${timezoneAbbrev(timeZone, at)} · ${timezoneUtcOffset(timeZone, at)}`;
+}
+
 export function currentMonth(timeZone: string): string {
   const parts = zonedParts(new Date(), timeZone);
   return `${parts.year}-${String(parts.month).padStart(2, '0')}`;

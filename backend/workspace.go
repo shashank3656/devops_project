@@ -191,7 +191,7 @@ func workspaceCoverageGap(projectID string) workspaceQueueItem {
 		Title:  "On-call coverage gap",
 		Meta:   fmt.Sprintf("%d %s", gaps, label),
 		Href:   fmt.Sprintf("/on-call?project_id=%d", id),
-		Action: "Assign people",
+		Action: "Assign coverage",
 		Tone:   "medium",
 	}
 }
