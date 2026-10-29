@@ -6,6 +6,15 @@ import (
 	"time"
 )
 
+func TestExpiryOwnerNameNeverUsesEmail(t *testing.T) {
+	if got := expiryPersonName(""); got != "Unknown" {
+		t.Fatalf("blank = %s", got)
+	}
+	if got := expiryPersonName("  alice  "); got != "alice" {
+		t.Fatalf("trimmed = %s", got)
+	}
+}
+
 func TestExpiryRejectsPrivateAndMetadataIPs(t *testing.T) {
 	denied := []string{"127.0.0.1", "10.1.2.3", "192.168.0.8", "172.16.1.1", "169.254.169.254", "::1", "fc00::1"}
 	for _, raw := range denied {

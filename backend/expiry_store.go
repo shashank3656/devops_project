@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -682,4 +683,82 @@ func addManualExpiryEvidence(assetID, userID int, expiresAt time.Time, source, n
 	}
 	applyExpiryObservation(asset, obs)
 	return nil
+}
+
+type expiryTeamChoice struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type expiryMemberChoice struct {
+	UserID int    `json:"user_id"`
+	Name   string `json:"name"`
+}
+
+func expiryPersonName(username string) string {
+	name := strings.TrimSpace(username)
+	if name == "" {
+		return "Unknown"
+	}
+	return name
+}
+
+func listExpiryAssignableTeams(projectID int) ([]expiryTeamChoice, error) {
+	if DB == nil {
+		return []expiryTeamChoice{}, nil
+	}
+	catalog, err := GetTeams()
+	if err != nil {
+		return nil, err
+	}
+	byID := map[int]expiryTeamChoice{}
+	add := func(id int, name string) {
+		if id <= 0 {
+			return
+		}
+		label := strings.TrimSpace(name)
+		if label == "" {
+			label = "Unknown"
+		}
+		byID[id] = expiryTeamChoice{ID: id, Name: label}
+	}
+	for _, team := range catalog {
+		add(team.ID, team.Name)
+	}
+	if projectID > 0 {
+		if onCall, onErr := listProjectOncallTeams(projectID); onErr == nil {
+			for _, team := range onCall {
+				add(team.ID, team.Name)
+			}
+		}
+	}
+	out := make([]expiryTeamChoice, 0, len(byID))
+	for _, team := range byID {
+		out = append(out, team)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out, nil
+}
+
+func listExpiryTeamMembers(teamID int) ([]expiryMemberChoice, error) {
+	if teamID <= 0 || DB == nil {
+		return []expiryMemberChoice{}, nil
+	}
+	members, err := GetTeamMembers(teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]expiryMemberChoice, 0, len(members))
+	for _, member := range members {
+		if member.UserID <= 0 {
+			continue
+		}
+		out = append(out, expiryMemberChoice{UserID: member.UserID, Name: expiryPersonName(member.Username)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out, nil
 }

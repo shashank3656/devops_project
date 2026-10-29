@@ -14,8 +14,10 @@ export default function ServiceSetupChecklist({
 }) {
   const mandatory = steps.filter((step) => step.mandatory);
   const done = mandatory.filter((step) => step.done).length;
+  const total = mandatory.length;
   const next = mandatory.find((step) => !step.done);
-  const complete = Boolean(mandatory.length) && done === mandatory.length;
+  const complete = Boolean(total) && done === total;
+  const percent = total ? Math.round((done / total) * 100) : 0;
   return (
     <article className="ops-card ops-card--ready ops-ready" aria-label="Complete service setup">
       <h2>Complete service setup</h2>
@@ -25,26 +27,31 @@ export default function ServiceSetupChecklist({
           : <><strong>{serviceName}</strong> can resume from {next ? next.label.toLowerCase() : 'the next required step'}.</>}
         {' '}Service setup is not release approval.
       </p>
-      <div className="ops-ready__meter">
-        <strong>{`${done} / ${mandatory.length || 0}`}</strong>
-        <span>Required setup checks completed</span>
+      <div className="ops-ready__meter" role="status">
+        <div className="ops-ready__meter-copy">
+          <strong>{`${done} / ${total}`}</strong>
+          <span>Required setup checks completed</span>
+        </div>
+        <div className="ops-ready__track" aria-hidden="true">
+          <span style={{ width: `${percent}%` }} />
+        </div>
       </div>
       <ol className="ops-ready__steps">
         {mandatory.map((step) => (
-          <li key={step.key}>
-            <span aria-hidden>{step.done ? '●' : '○'}</span>
+          <li key={step.key} className={step.done ? 'is-done' : undefined}>
+            <span className="ops-ready__mark" aria-hidden="true">{step.done ? '●' : '○'}</span>
             <span>
               <strong>{step.label}</strong>
               <small>{step.done ? 'Done' : step.detail}</small>
             </span>
             {step.done ? null : (
-              <Link href={step.href} className="btn btn-secondary btn-sm">{step.actionLabel}</Link>
+              <Link href={step.href} className="ops-ready__action">{step.actionLabel}</Link>
             )}
           </li>
         ))}
       </ol>
       {optional.length ? (
-        <details className="onboard-advanced">
+        <details className="onboard-advanced ops-ready__optional">
           <summary>Optional integrations</summary>
           <ul>
             {optional.map((item) => (
@@ -56,7 +63,7 @@ export default function ServiceSetupChecklist({
         </details>
       ) : null}
       {resumeHref && next ? (
-        <Link href={resumeHref} className="btn btn-primary btn-sm">Resume setup</Link>
+        <Link href={resumeHref} className="btn btn-primary btn-sm ops-ready__resume">Resume setup</Link>
       ) : null}
     </article>
   );

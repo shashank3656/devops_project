@@ -4,12 +4,16 @@ import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import {
+  loadCertificateMembers,
+  loadCertificateTeams,
+  type CertificateMemberOption,
+  type CertificateTeamOption,
+} from '../../lib/certificateOwnership';
 
 const TOKEN_KEY = 'devops_token';
 
 type ProjectOption = { id: number; name: string };
-type TeamOption = { id: number; name: string };
-type MemberOption = { user_id: number; name: string };
 type Suggestion = {
   hostname: string;
   registered: boolean;
@@ -35,8 +39,10 @@ export default function NewCertificateAssetPage() {
   const [ownerUserId, setOwnerUserId] = useState('');
   const [runbook, setRunbook] = useState('');
   const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [teams, setTeams] = useState<TeamOption[]>([]);
-  const [members, setMembers] = useState<MemberOption[]>([]);
+  const [teams, setTeams] = useState<CertificateTeamOption[]>([]);
+  const [members, setMembers] = useState<CertificateMemberOption[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -56,30 +62,57 @@ export default function NewCertificateAssetPage() {
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
-    const headers = { Authorization: `Bearer ${token}` };
-    fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))).then((data) => {
-      const rows = Array.isArray(data?.projects) ? data.projects : [];
-      setProjects(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: ProjectOption) => row.id > 0));
-    }).catch(() => undefined);
-    fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => res.json().catch(() => ({}))).then((data) => {
-      const rows = Array.isArray(data?.teams) ? data.teams : [];
-      setTeams(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: TeamOption) => row.id > 0));
-    }).catch(() => undefined);
+    fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        const rows = Array.isArray(data?.projects) ? data.projects : [];
+        setProjects(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: ProjectOption) => row.id > 0));
+      })
+      .catch(() => undefined);
   }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    let cancelled = false;
+    setTeamsLoading(true);
+    loadCertificateTeams(apiUrl, token, projectId)
+      .then((rows) => {
+        if (!cancelled) setTeams(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setTeams([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTeamsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, projectId]);
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token || !teamId) {
       setMembers([]);
+      setMembersLoading(false);
       return;
     }
-    fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        const rows = Array.isArray(data?.members) ? data.members : [];
-        setMembers(rows.map((row: { user_id?: number; name?: string }) => ({ user_id: Number(row.user_id) || 0, name: String(row.name || 'Unknown') })).filter((row: MemberOption) => row.user_id > 0));
+    let cancelled = false;
+    setMembersLoading(true);
+    loadCertificateMembers(apiUrl, token, teamId)
+      .then((rows) => {
+        if (!cancelled) setMembers(rows);
       })
-      .catch(() => setMembers([]));
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [apiUrl, teamId]);
 
   useEffect(() => {
@@ -217,18 +250,20 @@ export default function NewCertificateAssetPage() {
             <>
               <h2 className="portal-surface__title">Ownership and policy</h2>
               <label className="label">Team
-                <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }}>
-                  <option value="">No team</option>
+                <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }} disabled={teamsLoading}>
+                  <option value="">{teamsLoading ? 'Loading teams…' : 'Select a team'}</option>
                   {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                 </select>
               </label>
+              {!teamsLoading && !teams.length ? <p className="access-hint">No teams were returned for this workspace.</p> : null}
               <label className="label">Owner
-                <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)}>
-                  <option value="">Unknown</option>
+                <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId || membersLoading}>
+                  <option value="">{!teamId ? 'Select a team first' : membersLoading ? 'Loading members…' : 'Select an owner'}</option>
                   {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
                 </select>
               </label>
               <p className="access-hint">Owner is a team member name only. Emails are not shown.</p>
+              {teamId && !membersLoading && !members.length ? <p className="access-hint">This team has no members.</p> : null}
               <label className="label">Reminder windows
                 <select className="input" value={warnPolicy} onChange={(event) => setWarnPolicy(event.target.value)}>
                   <option value="standard">Standard: 30, 14, 7, 3, and 1 days</option>

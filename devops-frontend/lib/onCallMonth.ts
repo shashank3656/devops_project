@@ -159,9 +159,24 @@ function timezonePart(timeZone: string, name: 'short' | 'shortOffset' | 'longOff
   }
 }
 
+const ZONE_ABBREV: Record<string, string> = {
+  UTC: 'UTC',
+  'America/New_York': 'ET',
+  'America/Chicago': 'CT',
+  'America/Denver': 'MT',
+  'America/Los_Angeles': 'PT',
+  'Europe/London': 'UK',
+  'Europe/Berlin': 'CET',
+  'Asia/Kolkata': 'IST',
+  'Asia/Singapore': 'SGT',
+  'Asia/Tokyo': 'JST',
+  'Australia/Sydney': 'AET',
+};
+
 export function timezoneAbbrev(timeZone: string, at = new Date()): string {
+  if (ZONE_ABBREV[timeZone]) return ZONE_ABBREV[timeZone];
   const value = timezonePart(timeZone, 'short', at);
-  if (!value || value.startsWith('GMT') || value.startsWith('UTC')) return timeZone === 'UTC' ? 'UTC' : value.replace(/^GMT/, 'UTC') || timeZone;
+  if (!value || value.startsWith('GMT') || value.startsWith('UTC')) return timeZone === 'UTC' ? 'UTC' : timezoneUtcOffset(timeZone, at);
   return value;
 }
 
@@ -173,7 +188,11 @@ export function timezoneUtcOffset(timeZone: string, at = new Date()): string {
 }
 
 export function timezoneCompactLabel(timeZone: string, at = new Date()): string {
-  return `${timezoneAbbrev(timeZone, at)} · ${timezoneUtcOffset(timeZone, at)}`;
+  if (timeZone === 'UTC') return 'UTC';
+  const abbrev = timezoneAbbrev(timeZone, at);
+  const offset = timezoneUtcOffset(timeZone, at).replace(/^UTC/, '');
+  if (!abbrev) return offset || 'Unknown';
+  return `${abbrev} ${offset}`;
 }
 
 export function currentMonth(timeZone: string): string {

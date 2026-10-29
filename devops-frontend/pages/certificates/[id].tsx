@@ -4,6 +4,12 @@ import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import {
+  loadCertificateMembers,
+  loadCertificateTeams,
+  type CertificateMemberOption,
+  type CertificateTeamOption,
+} from '../../lib/certificateOwnership';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -36,6 +42,7 @@ type Asset = {
   owner_name: string;
   owner_user_id?: number;
   team_id?: number;
+  project_id?: number;
   remaining_days?: number | null;
   paused?: boolean;
   paused_reason?: string;
@@ -70,8 +77,10 @@ export default function CertificateAssetDetailPage() {
   const [archiveReason, setArchiveReason] = useState('');
   const [pauseReason, setPauseReason] = useState('');
   const [dnsNote, setDnsNote] = useState('');
-  const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
-  const [members, setMembers] = useState<{ user_id: number; name: string }[]>([]);
+  const [teams, setTeams] = useState<CertificateTeamOption[]>([]);
+  const [members, setMembers] = useState<CertificateMemberOption[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [teamId, setTeamId] = useState('');
   const [ownerUserId, setOwnerUserId] = useState('');
 
@@ -98,28 +107,46 @@ export default function CertificateAssetDetailPage() {
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
-    fetch(`${apiUrl}/api/devops/my-teams`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        const rows = Array.isArray(data?.teams) ? data.teams : [];
-        setTeams(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: { id: number }) => row.id > 0));
+    let cancelled = false;
+    setTeamsLoading(true);
+    const scopedProject = item?.project_id ? String(item.project_id) : '';
+    loadCertificateTeams(apiUrl, token, scopedProject)
+      .then((rows) => {
+        if (!cancelled) setTeams(rows);
       })
-      .catch(() => undefined);
-  }, [apiUrl]);
+      .catch(() => {
+        if (!cancelled) setTeams([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTeamsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, item?.project_id]);
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token || !teamId) {
       setMembers([]);
+      setMembersLoading(false);
       return;
     }
-    fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        const rows = Array.isArray(data?.members) ? data.members : [];
-        setMembers(rows.map((row: { user_id?: number; name?: string }) => ({ user_id: Number(row.user_id) || 0, name: String(row.name || 'Unknown') })).filter((row: { user_id: number }) => row.user_id > 0));
+    let cancelled = false;
+    setMembersLoading(true);
+    loadCertificateMembers(apiUrl, token, teamId)
+      .then((rows) => {
+        if (!cancelled) setMembers(rows);
       })
-      .catch(() => setMembers([]));
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [apiUrl, teamId]);
 
   const post = async (path: string, body: Record<string, unknown>, success: string, method = 'POST') => {
@@ -235,17 +262,23 @@ export default function CertificateAssetDetailPage() {
                 {typeof item.remaining_days === 'number' ? <p>{item.remaining_days} days remaining. Owner emails go out at 30, 14, 7, 3, and 1 days.</p> : <p>Remaining days are Unknown until a check stores expiry evidence.</p>}
                 <form onSubmit={saveOwner}>
                   <label className="label">Team
-                    <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }}>
-                      <option value="">No team</option>
+                    <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }} disabled={teamsLoading}>
+                      <option value="">{teamsLoading ? 'Loading teams…' : 'Select a team'}</option>
                       {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                     </select>
                   </label>
+                  {!teamsLoading && !teams.length ? <p className="access-hint">No teams were returned for this workspace.</p> : null}
                   <label className="label">Owner
-                    <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)}>
-                      <option value="">Unknown</option>
-                      {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
+                    <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId || membersLoading}>
+                      <option value="">{!teamId ? 'Select a team first' : membersLoading ? 'Loading members…' : 'Select an owner'}</option>
+                      {(ownerUserId && !members.some((member) => String(member.user_id) === ownerUserId)
+                        ? [{ user_id: Number(ownerUserId) || 0, name: known(item.owner_name) }, ...members]
+                        : members
+                      ).filter((member) => member.user_id > 0).map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
                     </select>
                   </label>
+                  <p className="access-hint">Owner is a team member name only. Emails are not shown.</p>
+                  {teamId && !membersLoading && !members.length ? <p className="access-hint">This team has no members.</p> : null}
                   <button type="submit" className="btn btn-secondary" disabled={saving}>Save owner</button>
                 </form>
                 <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void post('check', {}, 'Check queued. The page will refresh from saved evidence.')}>Check now</button>

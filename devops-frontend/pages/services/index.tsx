@@ -275,31 +275,34 @@ export default function ServiceInventoryPage() {
     {
       id: 'evaluation',
       header: 'Last evaluation',
-      cell: (item) => (
-        <div className="ig-cell-stack">
-          <span className={`sre-sli sre-sli--${catalogueSliTone(item.last_sli_state)}`}>
-            {scoreDisplay({ state: item.last_sli_state, availability_bps: item.last_availability_bps })}
-          </span>
-          <span className="ig-cell-title">{item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : 'Unknown'}</span>
-          <span className="ig-cell-meta">{scheduleModeCopy(item.schedule_minutes)}</span>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={evaluatingId === item.id}
-            onClick={(event) => {
-              event.stopPropagation();
-              void evaluateService(item);
-            }}
-          >
-            {evaluatingId === item.id ? 'Evaluating…' : 'Evaluate now'}
-          </button>
-        </div>
-      ),
+      width: '11rem',
+      cell: (item) => {
+        const score = scoreDisplay({ state: item.last_sli_state, availability_bps: item.last_availability_bps });
+        const when = item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : '';
+        return (
+          <div className="svc-eval">
+            <span className={`sre-sli sre-sli--${catalogueSliTone(item.last_sli_state)}`}>{score}</span>
+            {when ? <span className="ig-cell-meta">{when}</span> : null}
+            <button
+              type="button"
+              className="svc-eval__run"
+              disabled={evaluatingId === item.id}
+              title={scheduleModeCopy(item.schedule_minutes)}
+              onClick={(event) => {
+                event.stopPropagation();
+                void evaluateService(item);
+              }}
+            >
+              {evaluatingId === item.id ? 'Evaluating…' : 'Evaluate'}
+            </button>
+          </div>
+        );
+      },
     },
     {
       id: 'tickets',
       header: 'Tickets',
-      className: 'ig-cell-actions',
+      width: '10.5rem',
       cell: (item) => (
         <div className="runbooks__action-row">
           <Link className="btn btn-secondary btn-sm" href={serviceTicketHref('/changes/new', item)}>Change</Link>

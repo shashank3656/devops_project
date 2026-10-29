@@ -724,15 +724,15 @@ export default function OnCallPage() {
               <button type="button" className="oncall-month__step" aria-label={calendarView === 'month' ? 'Previous month' : 'Previous week'} onClick={() => shiftPeriod(-1)}>
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-              <p className="oncall-toolbar__range" aria-live="polite">{rangeLabel}</p>
+              <span className="oncall-toolbar__range" aria-live="polite">{rangeLabel}</span>
               <button type="button" className="oncall-month__step" aria-label={calendarView === 'month' ? 'Next month' : 'Next week'} onClick={() => shiftPeriod(1)}>
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={goToday}>Today</button>
             </div>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={goToday}>Today</button>
             <label className="oncall-tz">
               <span className="ig-sr-only">Timezone</span>
-              <select className="input" aria-label="Roster timezone" value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
+              <select className="input" aria-label="Roster timezone" title={timezone} value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
                 {TIMEZONES.map((zone) => <option key={zone} value={zone}>{timezoneCompactLabel(zone)}</option>)}
               </select>
             </label>

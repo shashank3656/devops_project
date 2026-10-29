@@ -32,6 +32,10 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if rest == "ownership" {
+		serveExpiryOwnership(w, r)
+		return
+	}
 	if rest == "collectors" {
 		serveExpiryCollectors(w, r, userID)
 		return
@@ -252,6 +256,34 @@ func expiryCollectorsRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serveExpiryCollectors(w, r, userID)
+}
+
+func serveExpiryOwnership(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
+	teamID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("team_id")))
+	teams, err := listExpiryAssignableTeams(projectID)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "Teams could not be loaded.", err)
+		return
+	}
+	members := []expiryMemberChoice{}
+	if teamID > 0 {
+		loaded, memberErr := listExpiryTeamMembers(teamID)
+		if memberErr != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "Team members could not be loaded.", memberErr)
+			return
+		}
+		members = loaded
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"teams":   teams,
+		"members": members,
+		"status":  "ok",
+	})
 }
 
 func writeExpiryMutation(w http.ResponseWriter, r *http.Request, item expiryAssetView, err error, fallback string) {
