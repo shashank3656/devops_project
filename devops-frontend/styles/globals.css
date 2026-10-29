@@ -12993,7 +12993,7 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
 
 .delivery-hub {
   margin: 0 0 20px;
-  border-bottom: 1px solid var(--delivery-line);
+  border-bottom: 1px solid var(--delivery-line, var(--ig-border));
 }
 
 .delivery-hub__tabs {
@@ -13003,21 +13003,36 @@ html[data-theme='dark'] .sec-vuln-filters__chip.is-on {
 
 .delivery-hub__tab {
   padding: 10px 12px 12px;
-  color: var(--delivery-muted);
+  color: var(--delivery-muted, var(--ig-muted));
   font-size: 14px;
   font-weight: 650;
   text-decoration: none;
+  background: transparent;
+  border: 0;
   border-bottom: 2px solid transparent;
+  border-radius: 0;
 }
 
 .delivery-hub__tab:hover {
-  color: var(--delivery-ink);
+  color: var(--delivery-ink, var(--ig-text));
 }
 
 .delivery-hub__tab.is-active,
 .delivery-hub__tab.is-selected {
-  color: var(--delivery-ink);
-  border-bottom-color: var(--delivery-violet);
+  color: var(--delivery-ink, var(--ig-text));
+  border-bottom-color: var(--delivery-violet, var(--ig-accent));
+  background: transparent;
+}
+
+.delivery-hub__count {
+  margin-left: 6px;
+  color: var(--delivery-muted, var(--ig-muted));
+  font-weight: 600;
+}
+
+.delivery-hub__tab.is-active .delivery-hub__count,
+.delivery-hub__tab.is-selected .delivery-hub__count {
+  color: inherit;
 }
 
 .delivery-subtabs {

@@ -339,12 +339,20 @@ export default function JiraConnectionPage() {
             <span className={`jira-health jira-health--${jiraHealthTone(conn.sync_health)}`}>{jiraHealthLabel(conn.sync_health)}</span>
           </p>
         ) : null}
-        <div className="delivery-filters" role="tablist">
-          {(['overview', 'mappings', 'access', 'sync', 'activity'] as Screen[]).map((item) => (
-            <Link key={item} href={`/integrations/jira/${id}?screen=${item}`} className={`delivery-filter${screen === item ? ' is-selected' : ''}`}>
-              {item === 'sync' ? 'Sync rules' : item[0].toUpperCase() + item.slice(1)}
-            </Link>
-          ))}
+        <div className="delivery-hub" role="tablist" aria-label="Connection views">
+          <div className="delivery-hub__tabs">
+            {(['overview', 'mappings', 'access', 'sync', 'activity'] as Screen[]).map((item) => (
+              <Link
+                key={item}
+                href={`/integrations/jira/${id}?screen=${item}`}
+                className={`delivery-hub__tab${screen === item ? ' is-active' : ''}`}
+                role="tab"
+                aria-selected={screen === item}
+              >
+                {item === 'sync' ? 'Sync rules' : item[0].toUpperCase() + item.slice(1)}
+              </Link>
+            ))}
+          </div>
         </div>
         {loading ? <p className="work-empty">Loading connection…</p> : null}
         {screen === 'overview' && conn ? (

@@ -143,12 +143,20 @@ export default function JiraIntegrationsPage() {
           </section>
         ) : null}
         {!loading ? (
-          <div className="delivery-filters" role="tablist" aria-label="Jira views">
-            {tabs.map((item) => (
-              <Link key={item.id} href={`/integrations/jira?tab=${item.id}`} className={`delivery-filter${tab === item.id ? ' is-selected' : ''}`}>
-                {item.label} {item.count}
-              </Link>
-            ))}
+          <div className="delivery-hub" role="tablist" aria-label="Jira views">
+            <div className="delivery-hub__tabs">
+              {tabs.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/integrations/jira?tab=${item.id}`}
+                  className={`delivery-hub__tab${tab === item.id ? ' is-active' : ''}`}
+                  role="tab"
+                  aria-selected={tab === item.id}
+                >
+                  {item.label} <span className="delivery-hub__count">{item.count}</span>
+                </Link>
+              ))}
+            </div>
           </div>
         ) : null}
         {tab === 'connections' && !loading ? (
