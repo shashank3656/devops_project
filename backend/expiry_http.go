@@ -91,6 +91,8 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 					msg = "This project is not available for certificate registration."
 				case errExpiryInvalid:
 					msg = "Owner must be a member of the selected team."
+				case errExpiryNotRegistrable:
+					msg = "Enter the domain you registered. Railway hostnames and other hosting names are certificate endpoints, not domain registrations."
 				}
 				writeAPIError(w, r, status, msg, err)
 				return

@@ -10,6 +10,7 @@ import {
   type CertificateMemberOption,
   type CertificateTeamOption,
 } from '../../lib/certificateOwnership';
+import { domainRegisterHost, isHostingHostname } from '../../lib/expiryDisplay';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -129,10 +130,17 @@ export default function NewCertificateAssetPage() {
       .catch(() => setSuggestions([]));
   }, [apiUrl, assetType, projectId]);
 
+  const hostingBlocked = assetType === 'domain' && isHostingHostname(input);
+  const domainHost = assetType === 'domain' ? domainRegisterHost(input) : '';
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
+    if (assetType === 'domain' && isHostingHostname(input)) {
+      setError('Enter the domain you registered. Railway hostnames are certificate endpoints.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -188,7 +196,7 @@ export default function NewCertificateAssetPage() {
           {step === 1 ? (
             <>
               <h2 className="portal-surface__title">Scope and asset</h2>
-              <p className="access-hint">{assetType === 'certificate' ? 'Tracks the TLS leaf NotAfter on the served endpoint.' : 'Tracks one domain registration expiry from RDAP and WHOIS. DNS confirms the name resolves. That is not the HTTPS certificate.'}</p>
+              <p className="access-hint">{assetType === 'certificate' ? 'Tracks the TLS leaf NotAfter on the served endpoint.' : 'Register the domain you own. The check uses RDAP and WHOIS on that name, then DNS. A Railway hostname is a certificate endpoint, not a domain registration.'}</p>
               <div className="portal-field-grid portal-field-grid--two">
               <label className="label">Asset type
                 <select className="input" value={assetType} onChange={(event) => setAssetType(event.target.value)}>
@@ -196,7 +204,7 @@ export default function NewCertificateAssetPage() {
                   <option value="domain">Registered domain</option>
                 </select>
               </label>
-              <label className="label">{assetType === 'certificate' ? 'Hostname' : 'Domain'}
+              <label className="label">{assetType === 'certificate' ? 'Hostname' : 'Domain you registered'}
                 <input className="input" value={input} onChange={(event) => setInput(event.target.value)} placeholder={assetType === 'certificate' ? 'app.example.com' : 'example.com'} required />
               </label>
               {assetType === 'certificate' ? (
@@ -220,6 +228,12 @@ export default function NewCertificateAssetPage() {
                 <input className="input" value={service} onChange={(event) => setService(event.target.value)} />
               </label>
               </div>
+              {assetType === 'domain' && hostingBlocked ? (
+                <p className="access-hint">That name is a hosting hostname. Register it as a certificate endpoint, or enter the domain you registered with a registrar.</p>
+              ) : null}
+              {assetType === 'domain' && domainHost && !hostingBlocked ? (
+                <p className="access-hint">On register, this portal will check registration expiry and DNS for {domainHost}.</p>
+              ) : null}
               {assetType === 'certificate' && suggestions.length ? (
                 <div>
                   <p className="access-hint">Suggested from Kubernetes ingress, cert-manager, and certificate-manager inventory. Registering is still a choice. Issued is not served.</p>
@@ -248,7 +262,7 @@ export default function NewCertificateAssetPage() {
                 </div>
               ) : null}
               <div className="portal-form-actions">
-                <button type="button" className="btn btn-primary" onClick={() => setStep(2)} disabled={!input.trim()}>Continue</button>
+                <button type="button" className="btn btn-primary" onClick={() => setStep(2)} disabled={!input.trim() || hostingBlocked}>Continue</button>
               </div>
             </>
           ) : null}

@@ -69,8 +69,9 @@ type expirySummary struct {
 }
 
 var (
-	errExpiryDenied  = errors.New("expiry asset not available")
-	errExpiryInvalid = errors.New("expiry asset invalid")
+	errExpiryDenied         = errors.New("expiry asset not available")
+	errExpiryInvalid        = errors.New("expiry asset invalid")
+	errExpiryNotRegistrable = errors.New("not a registrable domain")
 )
 
 func loadExpiryProjectVisibility(userID int) map[int]struct{} {
@@ -453,6 +454,9 @@ func createExpiryAsset(userID int, assetType, input, service, env, runbook, coll
 	} else {
 		normalized, err := normalizeRegistrableDomain(original)
 		if err != nil {
+			if err == errOncallInvalid {
+				return expiryAssetView{}, errExpiryNotRegistrable
+			}
 			return expiryAssetView{}, err
 		}
 		domain = normalized

@@ -74,6 +74,26 @@ func TestNormalizeRegistrableDomainKeepsApex(t *testing.T) {
 	if got != "example.com" {
 		t.Fatalf("domain = %s", got)
 	}
+	got, err = normalizeRegistrableDomain("www.example.co.uk")
+	if err != nil || got != "example.co.uk" {
+		t.Fatalf("co.uk = %s %v", got, err)
+	}
+}
+
+func TestNormalizeRegistrableDomainRejectsRailwayHosts(t *testing.T) {
+	denied := []string{
+		"railway.app",
+		"https://devopsproject-devops-frontend-production.up.railway.app/health",
+		"backend-api-production-ed.up.railway.app",
+		"foo.railway.app",
+		"github.io",
+		"user.github.io",
+	}
+	for _, raw := range denied {
+		if _, err := normalizeRegistrableDomain(raw); err != errExpiryNotRegistrable {
+			t.Fatalf("%s must not be stored as a registered domain: %v", raw, err)
+		}
+	}
 }
 
 func TestCertificateAssessmentDoesNotTreatTCPAsValid(t *testing.T) {

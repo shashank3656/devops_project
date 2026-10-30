@@ -1,3 +1,24 @@
+const HOSTING_DOMAIN_SUFFIXES = ['railway.app', 'github.io', 'herokuapp.com', 'vercel.app', 'netlify.app'];
+
+export function domainRegisterHost(raw: string): string {
+  let value = (raw || '').trim().toLowerCase();
+  value = value.replace(/^https?:\/\//, '');
+  const slash = value.indexOf('/');
+  if (slash >= 0) value = value.slice(0, slash);
+  const at = value.lastIndexOf('@');
+  if (at >= 0) value = value.slice(at + 1);
+  if (!value || value.includes(' ') || value.startsWith('[')) return '';
+  const colon = value.lastIndexOf(':');
+  if (colon >= 0) value = value.slice(0, colon);
+  return value.replace(/\.$/, '');
+}
+
+export function isHostingHostname(raw: string): boolean {
+  const host = domainRegisterHost(raw);
+  if (!host) return false;
+  return HOSTING_DOMAIN_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
+
 export function publishedDomainExpiry(registrar?: string | null, registry?: string | null): string {
   const dates = [registrar, registry]
     .map((value) => (value || '').trim())
