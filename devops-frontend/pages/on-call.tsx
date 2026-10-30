@@ -280,13 +280,15 @@ export default function OnCallPage() {
     fetch(`${apiUrl}/api/oncall/covers?project_id=${panel.projectId}&team_id=${panel.teamId}`, {
       headers: { Authorization: `Bearer ${auth}` },
     })
-      .then(async (res) => (res.ok ? res.json() : {}))
-      .then((data) => setCoverHistory(Array.isArray(data?.covers) ? data.covers : []))
+      .then(async (res) => (res.ok ? res.json() : { covers: [] }))
+      .then((data: { covers?: unknown }) => setCoverHistory(Array.isArray(data?.covers) ? data.covers as typeof coverHistory : []))
       .catch(() => setCoverHistory([]));
   }, [apiUrl, panel?.projectId, panel?.teamId, refresh]);
 
   useEffect(() => {
-    if (panel?.date) setCoverUntilDate((current) => current && current >= panel.date ? current : panel.date);
+    const date = panel?.date || '';
+    if (!date) return;
+    setCoverUntilDate((current) => (current && current >= date ? current : date));
   }, [panel?.date]);
 
   const scopedProjects = useMemo(() => {

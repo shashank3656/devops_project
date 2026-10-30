@@ -223,10 +223,10 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
     const months = [month, shiftMonth(month, 1)];
     Promise.all(months.map((value) => fetch(`${apiUrl}/api/oncall/days?project_id=${projectId}&month=${value}&timezone=${encodeURIComponent(timezone)}`, {
       headers: { Authorization: `Bearer ${token}` },
-    }).then(async (res) => (res.ok ? res.json() : {})).catch(() => ({})))).then((payloads) => {
+    }).then(async (res) => (res.ok ? res.json() as { days?: unknown } : { days: [] })).catch(() => ({ days: [] })))).then((payloads) => {
       const next: OccupiedShift[] = [];
       payloads.forEach((data) => {
-        const rows = Array.isArray(data?.days) ? data.days : [];
+        const rows = Array.isArray(data.days) ? data.days : [];
         rows.forEach((day: { date?: string; teams?: { team_id?: number; user_id?: number; backup_user_id?: number; team_name?: string }[] }) => {
           (Array.isArray(day.teams) ? day.teams : []).forEach((shift) => {
             if (Number(shift.team_id) === Number(teamId)) return;

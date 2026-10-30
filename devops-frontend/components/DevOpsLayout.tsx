@@ -628,10 +628,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         }
         const unreadBody = unreadRes.ok ? await unreadRes.json().catch(() => ({})) : {};
         const recentBody = recentRes.ok ? await recentRes.json().catch(() => ({})) : {};
-        const unread = (Array.isArray(unreadBody?.notifications) ? unreadBody.notifications : [])
+        const unread: InboxNotification[] = (Array.isArray(unreadBody?.notifications) ? unreadBody.notifications : [])
           .map(asInboxNotification)
           .filter((item: InboxNotification | null): item is InboxNotification => Boolean(item));
-        const recent = (Array.isArray(recentBody?.notifications) ? recentBody.notifications : [])
+        const recent: InboxNotification[] = (Array.isArray(recentBody?.notifications) ? recentBody.notifications : [])
           .map(asInboxNotification)
           .filter((item: InboxNotification | null): item is InboxNotification => Boolean(item));
         const seen = new Set(unread.map((item) => item.id));
