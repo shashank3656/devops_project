@@ -20,6 +20,7 @@ type repoDeployEvent struct {
 	Author        string                    `json:"author"`
 	BaseBranch    string                    `json:"base_branch"`
 	HeadBranch    string                    `json:"head_branch"`
+	HeadSHA       string                    `json:"head_sha,omitempty"`
 	MergedAt      time.Time                 `json:"merged_at"`
 	CommitCount   int                       `json:"commit_count"`
 	FileCount     int                       `json:"file_count"`
@@ -35,6 +36,8 @@ type repoDeployEvent struct {
 	GitHubPost    *deployIntelGitHubPost    `json:"github_post,omitempty"`
 	SimilarMerges []deployIntelSimilarMerge `json:"similar_merges,omitempty"`
 	Pipeline      *deployIntelPipelineLink  `json:"pipeline,omitempty"`
+	Readiness     *releaseReadiness         `json:"readiness,omitempty"`
+	Verification  *deploymentVerification   `json:"verification,omitempty"`
 }
 
 func isProductionBaseBranch(ref string) bool {
@@ -480,10 +483,12 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 					limit = n
 				}
 			}
+			events := listDeliveryOpenPullRequests(limit)
 			w.Header().Set("Content-Type", "application/json")
 			encodeJSON(w, map[string]interface{}{
-				"status": "ok",
-				"events": listDeliveryOpenPullRequests(limit),
+				"status":            "ok",
+				"events":            events,
+				"review_bottleneck": buildReviewBottleneckSummary(events),
 			})
 			return
 		}
@@ -627,6 +632,7 @@ func devopsDeployIntelligenceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if section == "open" {
 		payload["github"] = githubFetch
+		payload["review_bottleneck"] = buildReviewBottleneckSummary(events)
 		payload["open_pr_filters"] = map[string]interface{}{
 			"base_filter":     r.URL.Query().Get("base_filter"),
 			"include_drafts":  strings.TrimSpace(r.URL.Query().Get("include_drafts")) == "1",

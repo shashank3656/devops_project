@@ -81,6 +81,12 @@ export default function OnboardOnCallProjectPage() {
       .finally(() => setLoading(false));
   }, [apiUrl]);
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    const queryProject = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id;
+    if (queryProject) setProjectId(queryProject);
+  }, [router.isReady, router.query.project_id]);
+
   const needle = query.trim().toLowerCase();
   const visibleTeams = useMemo(
     () => teams.filter((team) => !needle || team.name.toLowerCase().includes(needle)),

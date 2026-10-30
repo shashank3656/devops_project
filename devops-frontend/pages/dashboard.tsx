@@ -5,8 +5,11 @@ import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { useWorkspaceScope, WORKSPACE_SCOPE_EVENT, WorkQueue, readWorkspaceScope, type QueueItem, type WorkspacePayload } from '@infragate/ui';
+import { environmentMatches } from '../lib/operationalViews';
 import { loadTicketAudience } from '../lib/ticketAudience';
 import { readRecentServices, type RecentService } from '../lib/recentServices';
+import ServiceSetupChecklist from '../components/ServiceSetupChecklist';
+import { buildServiceSetupOptional, buildServiceSetupSteps, type ServiceSetupFields } from '../lib/serviceSetup';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const emptyWorkspace: WorkspacePayload = {
@@ -17,11 +20,8 @@ const emptyWorkspace: WorkspacePayload = {
   pipeline: { stages: [] },
   activity: [],
 };
-interface SetupService {
-  id: number;
+interface SetupService extends ServiceSetupFields {
   name: string;
-  missingOwner: boolean;
-  missingRepo: boolean;
 }
 
 export default function DevOpsDashboard() {
@@ -34,6 +34,7 @@ export default function DevOpsDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [serviceCount, setServiceCount] = useState<number | null>(null);
   const [setupService, setSetupService] = useState<SetupService | null>(null);
+  const [onCallReady, setOnCallReady] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [recentServices, setRecentServices] = useState<RecentService[]>([]);
   const { scope } = useWorkspaceScope();
@@ -48,8 +49,12 @@ export default function DevOpsDashboard() {
     setError(null);
     const current = readWorkspaceScope();
     const headers = { Authorization: `Bearer ${token}` };
-    const workspaceUrl = current.projectId.trim()
-      ? `${apiUrl}/api/devops/workspace?project_id=${encodeURIComponent(current.projectId)}`
+    const workspaceParams = new URLSearchParams();
+    if (current.projectId.trim()) workspaceParams.set('project_id', current.projectId);
+    if (current.environment.trim()) workspaceParams.set('environment', current.environment);
+    const workspaceQuery = workspaceParams.toString();
+    const workspaceUrl = workspaceQuery
+      ? `${apiUrl}/api/devops/workspace?${workspaceQuery}`
       : `${apiUrl}/api/devops/workspace`;
     const serviceUrl = current.projectId.trim()
       ? `${apiUrl}/api/devops/services?view=summary&project_id=${encodeURIComponent(current.projectId)}`
@@ -69,12 +74,11 @@ export default function DevOpsDashboard() {
         if (!data?.workspace) throw new Error('Home response was empty.');
         const summaryTotal = typeof servicesBody?.total === 'number' ? servicesBody.total : null;
         setServiceCount(summaryTotal);
-        const incomplete = servicesBody?.setup && typeof servicesBody.setup === 'object' ? servicesBody.setup as { id?: number; service?: string; team?: string; repo?: string } : null;
-        setSetupService(incomplete ? {
+        const incomplete = servicesBody?.setup && typeof servicesBody.setup === 'object' ? servicesBody.setup as ServiceSetupFields : null;
+        setSetupService(incomplete && (Number(incomplete.id) || 0) > 0 ? {
+          ...incomplete,
           id: Number(incomplete.id) || 0,
           name: String(incomplete.service || 'Service'),
-          missingOwner: !String(incomplete.team || '').trim() || String(incomplete.team || '') === 'Unknown',
-          missingRepo: !String(incomplete.repo || '').trim(),
         } : null);
         return loadTicketAudience(apiUrl).then((audience) => {
           setUpdatedAt(new Date());
@@ -89,6 +93,7 @@ export default function DevOpsDashboard() {
         setWorkspace(emptyWorkspace);
         setServiceCount(null);
         setSetupService(null);
+        setOnCallReady(false);
         setError(err?.message || 'Home could not load.');
       })
       .finally(() => setLoading(false));
@@ -105,9 +110,20 @@ export default function DevOpsDashboard() {
     return () => window.removeEventListener(WORKSPACE_SCOPE_EVENT, onScope);
   }, [loadWorkspace]);
 
+  useEffect(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    const projectId = setupService?.project_id;
+    if (!token || !projectId) {
+      setOnCallReady(false);
+      return;
+    }
+    fetch(`${apiUrl}/api/oncall/project-teams?project_id=${projectId}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data: { teams?: unknown[] }) => setOnCallReady(Array.isArray(data?.teams) && data.teams.length > 0))
+      .catch(() => setOnCallReady(false));
+  }, [apiUrl, setupService?.project_id]);
+
   const allProjects = scope.projectId.trim() === '';
-  const incidentCount = (workspace.needs_you || []).filter((item) => String(item.kind || '').toLowerCase().includes('incident')).length;
-  const waitingCount = (workspace.needs_you || []).length + (workspace.failed?.length || 0);
   const envLabel = scope.environment || 'all environments';
   const freshness = updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
   const countText = (value: number) => (loading || error ? 'Unknown' : String(value));
@@ -122,9 +138,13 @@ export default function DevOpsDashboard() {
   const actionItems: QueueItem[] = [
     ...(workspace.needs_you || []),
     ...(workspace.failed || []),
-  ].map((item) => ({ ...item, href: scoped(item.href) }));
+  ]
+    .filter((item) => environmentMatches(item.environment, scope.environment))
+    .map((item) => ({ ...item, href: scoped(item.href) }));
+  const incidentCount = actionItems.filter((item) => String(item.kind || '').toLowerCase().includes('incident')).length;
+  const waitingCount = actionItems.length;
   const setupHref = setupService?.id ? `/services/${setupService.id}` : scoped('/services');
-  const setupDone = setupService ? Number(!setupService.missingOwner) + Number(!setupService.missingRepo) : 0;
+  const setupSteps = setupService ? buildServiceSetupSteps(setupService, onCallReady) : [];
 
   return (
     <>
@@ -136,7 +156,7 @@ export default function DevOpsDashboard() {
           <header className="ops-home__head">
             <div>
               <p className="ops-home__eyebrow">Your control room</p>
-              <h1>Attention</h1>
+              <h1>Overview</h1>
               <p>{allProjects ? 'Across every project you can access.' : `Work that needs you in this project · ${envLabel}.`}</p>
             </div>
             <Link href={scoped('/my-work')} className="ops-home__primary">Open my work</Link>
@@ -278,28 +298,12 @@ export default function DevOpsDashboard() {
           ) : null}
 
               {setupService ? (
-                <section className="ops-notice" aria-label="Service needs setup">
-                  <p>
-                    <strong>{setupService.name}</strong> is missing {setupService.missingOwner && setupService.missingRepo ? 'an owner and a repository' : setupService.missingOwner ? 'an owner' : 'a repository'}.
-                  </p>
-                  <Link href={setupHref} className="btn btn-primary btn-sm">Complete service setup</Link>
-                </section>
-              ) : null}
-
-              {setupService ? (
-                <article className="ops-card ops-card--ready ops-ready">
-                  <h2>Make your service production-ready</h2>
-                  <p>{setupService.name}</p>
-                  <div className="ops-ready__meter">
-                    <strong>{`${setupDone} / 2`}</strong>
-                    <span>Required setup checks completed</span>
-                  </div>
-                  <ul>
-                    <li><span aria-hidden>{setupService.missingOwner ? '○' : '●'}</span><span><strong>Assign an owner</strong><small>{setupService.missingOwner ? 'Not done' : 'Done'}</small></span></li>
-                    <li><span aria-hidden>{setupService.missingRepo ? '○' : '●'}</span><span><strong>Connect repository</strong><small>{setupService.missingRepo ? 'Not done' : 'Done'}</small></span></li>
-                  </ul>
-                  <Link href={setupHref}>Open service →</Link>
-                </article>
+                <ServiceSetupChecklist
+                  serviceName={setupService.name}
+                  steps={setupSteps}
+                  optional={buildServiceSetupOptional(setupService)}
+                  resumeHref={setupSteps.find((step) => !step.done)?.href || setupHref}
+                />
               ) : (
                 <p className="ops-scores__meta">
                   Delivery counts appear after a repository is connected. <Link href={scoped('/deploy-intelligence')}>Connect delivery data</Link>

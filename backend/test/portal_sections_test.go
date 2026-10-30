@@ -32,32 +32,36 @@ func TestSectionGrantsMergeAndAdmin(t *testing.T) {
 
 func TestSectionForPath(t *testing.T) {
 	cases := map[string]string{
-		"/api/admin/users":                   "portal",
-		"/api/admin/teams/4/grants":          "portal",
-		"/api/history":                       "requests",
-		"/api/request":                       "requests-or-daily",
-		"/api/oncall/days":                   "operations",
-		"/api/oncall/handovers":              "operations",
-		"/api/expiry/assets":                 "operations",
-		"/api/cost/overview":                 "cost",
-		"/api/cost/tree":                     "cost",
-		"/api/cost/connections":              "cost",
-		"/api/devops/inbound-sources":        "operations",
-		"/api/devops/projects":               "projects",
-		"/api/devops/environment-catalog":    "catalog",
-		"/api/devops/k8s-pods":               "infrastructure",
-		"/api/scans/jobs":                    "security",
-		"/api/devops/security/overview":      "security",
-		"/api/devops/evidence":               "records",
-		"/api/devops/pipelines":              "records-or-infrastructure",
-		"/api/devops/me":                     "",
-		"/api/webhooks/github":               "",
-		"/api/deployments/callbacks":         "",
-		"/api/security/agent/enroll":         "",
-		"/api/security/webhooks/github":      "",
-		"/api/expiry/collector/observations": "",
-		"/api/cost/collector/snapshots":      "",
-		"/health":                            "",
+		"/api/admin/users":                      "portal",
+		"/api/admin/teams/4/grants":             "portal",
+		"/api/history":                          "requests",
+		"/api/request":                          "requests-or-daily",
+		"/api/oncall/days":                      "operations",
+		"/api/oncall/handovers":                 "operations",
+		"/api/expiry/assets":                    "operations",
+		"/api/cost/overview":                    "cost",
+		"/api/cost/tree":                        "cost",
+		"/api/cost/connections":                 "cost",
+		"/api/devops/inbound-sources":           "operations",
+		"/api/devops/integrations/jira":         "operations",
+		"/api/devops/integrations/health":       "integrations-health",
+		"/api/integrations/jira/oauth/callback": "",
+		"/api/webhooks/jira":                    "",
+		"/api/devops/projects":                  "projects",
+		"/api/devops/environment-catalog":       "catalog",
+		"/api/devops/k8s-pods":                  "infrastructure",
+		"/api/scans/jobs":                       "security",
+		"/api/devops/security/overview":         "security",
+		"/api/devops/evidence":                  "records",
+		"/api/devops/pipelines":                 "records-or-infrastructure",
+		"/api/devops/me":                        "",
+		"/api/webhooks/github":                  "",
+		"/api/deployments/callbacks":            "",
+		"/api/security/agent/enroll":            "",
+		"/api/security/webhooks/github":         "",
+		"/api/expiry/collector/observations":    "",
+		"/api/cost/collector/snapshots":         "",
+		"/health":                               "",
 	}
 	for path, want := range cases {
 		if got := sectionForPath(path); got != want {
@@ -70,6 +74,11 @@ func TestSectionForPath(t *testing.T) {
 	}
 	if !allSectionGrants().allows("security") {
 		t.Fatal("admin section was rejected")
+	}
+	costOnly := sectionGrants{Cost: true}
+	infraOnly := sectionGrants{Infrastructure: true}
+	if !costOnly.allows("integrations-health") || !infraOnly.allows("integrations-health") || requester.allows("integrations-health") {
+		t.Fatalf("health grants cost=%v infra=%v requester=%v", costOnly.allows("integrations-health"), infraOnly.allows("integrations-health"), requester.allows("integrations-health"))
 	}
 }
 

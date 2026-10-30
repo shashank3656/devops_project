@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import RecordDocuments from '../../components/RecordDocuments';
 import ExecutionStage from '../../components/ExecutionStage';
@@ -11,17 +11,31 @@ import {
   ChangeDetailPanel,
   changeScopeIncomplete,
   DeliveryVisibilityCard,
+  DeploymentVerificationCard,
+  ReleaseReadinessCard,
   ResourceContextPanel,
   parsePortalNumericId,
   parsePortalPathSegment,
   portalFetch,
   type ChangeDetailModel,
   type DeliveryVisibility,
+  type DeploymentVerification,
+  type ReleaseEvidenceSnapshot,
+  type ReleaseReadiness,
 } from '@infragate/ui';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import LinkedJiraWork from '../../components/LinkedJiraWork';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const CHANGE_STATUS_ACTIONS = new Set(['resolve', 'close', 'fail', 'cancel', 'reopen']);
+
+function toLocalInput(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 interface ChangeBrief {
   headline?: string;
@@ -37,6 +51,82 @@ interface LinkedIncident {
   status: string;
 }
 
+interface ScopeProject {
+  id: number;
+  name: string;
+  code: string;
+  environments: string[];
+}
+
+function shortEvidenceSHA(sha?: string) {
+  const value = (sha || '').trim();
+  if (!value) return 'Unknown';
+  return value.length > 12 ? value.slice(0, 12) : value;
+}
+
+function ReleaseEvidencePanel({
+  evidence,
+  currentSHA,
+}: {
+  evidence?: ReleaseEvidenceSnapshot | null;
+  currentSHA?: string;
+}) {
+  if (!evidence) {
+    return (
+      <section className="release-readiness" aria-label="Release evidence snapshot">
+        <div className="release-readiness__head">
+          <strong>Release evidence snapshot</strong>
+          <span className="delivery-status delivery-status--unknown">Not captured</span>
+        </div>
+        <p className="release-readiness__note">A snapshot is saved when this change is approved. Live readiness above is not a stored decision record.</p>
+      </section>
+    );
+  }
+  const invalidated = Boolean(evidence.invalidated);
+  return (
+    <section className="release-readiness" aria-label="Release evidence snapshot">
+      <div className="release-readiness__head">
+        <strong>Release evidence snapshot</strong>
+        <span className={`delivery-status delivery-status--${invalidated ? 'failed' : 'ok'}`}>
+          {invalidated ? 'Invalidated' : 'Captured'}
+        </span>
+      </div>
+      <p className="release-readiness__note">
+        {invalidated
+          ? evidence.invalidated_reason || `A newer commit replaced ${shortEvidenceSHA(evidence.sha)}. Re-evaluate this evidence.`
+          : 'This is the commit, approvals, checks, security, window, and rollback recorded for the approval decision.'}
+      </p>
+      <p className="release-readiness__evidence">
+        Snapshot {shortEvidenceSHA(evidence.sha)}
+        {currentSHA ? ` · current ${shortEvidenceSHA(currentSHA)}` : ''}
+        {evidence.captured_at ? ` · captured ${evidence.captured_at}` : ''}
+      </p>
+      <ul className="release-readiness__list">
+        <li>
+          <span className="release-readiness__check">Approvals</span>
+          <span className="release-readiness__detail">{evidence.approvals || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Checks</span>
+          <span className="release-readiness__detail">{evidence.checks || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Security</span>
+          <span className="release-readiness__detail">{evidence.security || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Deployment window</span>
+          <span className="release-readiness__detail">{evidence.window || 'Unknown'}</span>
+        </li>
+        <li>
+          <span className="release-readiness__check">Rollback plan</span>
+          <span className="release-readiness__detail">{evidence.rollback || 'Unknown'}</span>
+        </li>
+      </ul>
+    </section>
+  );
+}
+
 export default function ChangeDetailPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -46,10 +136,18 @@ export default function ChangeDetailPage() {
   const [blastRadius, setBlastRadius] = useState<string[]>([]);
   const [drift, setDrift] = useState<{ drifted?: boolean; detail?: string } | null>(null);
   const [delivery, setDelivery] = useState<DeliveryVisibility | null>(null);
+  const [readiness, setReadiness] = useState<ReleaseReadiness | null>(null);
+  const [verification, setVerification] = useState<DeploymentVerification | null>(null);
   const [isManager, setIsManager] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState('');
+  const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
+  const [scopeProjectId, setScopeProjectId] = useState('');
+  const [scopeEnvironment, setScopeEnvironment] = useState('');
+  const [plannedStart, setPlannedStart] = useState('');
+  const [plannedEnd, setPlannedEnd] = useState('');
+  const [reloadAt, setReloadAt] = useState(0);
   const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
   const id = Array.isArray(router.query.id) ? router.query.id[0] : router.query.id;
   const resourceId = parsePortalNumericId(id);
@@ -109,6 +207,35 @@ export default function ChangeDetailPage() {
       .finally(() => setActing(''));
   };
 
+  const saveScope = (event: FormEvent) => {
+    event.preventDefault();
+    const authToken = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    const projectId = Number(scopeProjectId);
+    const environment = scopeEnvironment.trim();
+    if (!authToken || !resourceId || projectId <= 0 || !environment) {
+      setError('Choose a project and environment from the catalog. The title is not used as scope.');
+      return;
+    }
+    setActing('scope');
+    setError('');
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/changes/${resourceId}`), {
+      method: 'PATCH',
+      token: authToken,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, environment }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || 'Failed to record project and environment');
+          return;
+        }
+        if (data.change) setItem(data.change);
+      })
+      .catch(() => setError('Failed to record project and environment'))
+      .finally(() => setActing(''));
+  };
+
   const applyRollback = () => {
     const authToken = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!authToken || !resourceId) return;
@@ -160,10 +287,76 @@ export default function ChangeDetailPage() {
         setBlastRadius(Array.isArray(data.blast_radius) ? data.blast_radius : []);
         setDrift(data.drift && typeof data.drift === 'object' ? data.drift : null);
         setDelivery((data.delivery as DeliveryVisibility | undefined) ?? null);
+        setReadiness((data.readiness as ReleaseReadiness | undefined) ?? null);
+        setVerification((data.verification as DeploymentVerification | undefined) ?? null);
       })
       .catch(() => setError('Failed to load change'))
       .finally(() => setLoading(false));
-  }, [apiUrl, resourceId]);
+  }, [apiUrl, resourceId, reloadAt]);
+
+  useEffect(() => {
+    if (!item) return;
+    setScopeProjectId(item.project_id && item.project_id > 0 ? String(item.project_id) : '');
+    const env = (item.environment || '').trim().toLowerCase();
+    setScopeEnvironment(!env || env === 'unspecified' || env === 'unknown' ? '' : item.environment);
+    setPlannedStart(toLocalInput(item.cab_window_start));
+    setPlannedEnd(toLocalInput(item.cab_window_end));
+  }, [item]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.hash !== '#window') return;
+    document.getElementById('window')?.scrollIntoView({ block: 'start' });
+  }, [item]);
+
+  const saveWindow = (event: FormEvent) => {
+    event.preventDefault();
+    const authToken = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!authToken || !resourceId || !plannedStart.trim()) {
+      setError('Select a planned start for the deployment window.');
+      return;
+    }
+    setActing('window');
+    setError('');
+    portalFetch(buildPortalApiUrl(apiUrl, `/api/devops/changes/${resourceId}`), {
+      method: 'PATCH',
+      token: authToken,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planned_start: plannedStart, planned_end: plannedEnd }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data?.error || 'Failed to record the deployment window');
+          return;
+        }
+        if (data.change) setItem(data.change);
+        setReloadAt(Date.now());
+      })
+      .catch(() => setError('Failed to record the deployment window'))
+      .finally(() => setActing(''));
+  };
+
+  useEffect(() => {
+    if (!isManager || !item || !changeScopeIncomplete(item)) return;
+    const authToken = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!authToken) return;
+    portalFetch(buildPortalApiUrl(apiUrl, '/api/devops/projects'), { token: authToken })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data?.projects) ? data.projects : [];
+        setScopeProjects(list
+          .map((row: { id?: number; name?: string; code?: string; environments?: unknown }) => ({
+            id: typeof row.id === 'number' ? row.id : 0,
+            name: typeof row.name === 'string' ? row.name : '',
+            code: typeof row.code === 'string' ? row.code : '',
+            environments: Array.isArray(row.environments)
+              ? row.environments.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim()))
+              : [],
+          }))
+          .filter((row: ScopeProject) => row.id > 0));
+      })
+      .catch(() => setScopeProjects([]));
+  }, [apiUrl, isManager, item]);
 
   const detailActions = useMemo(() => {
     if (!item) return undefined;
@@ -232,8 +425,77 @@ export default function ChangeDetailPage() {
         {loading ? <p className="work-empty">Loading change…</p> : null}
         {item ? (
           <>
+            <ReleaseReadinessCard readiness={readiness} />
+            <ReleaseEvidencePanel evidence={item.release_evidence} currentSHA={item.sha} />
+            <DeploymentVerificationCard verification={verification} />
+            {isManager && !finished ? (
+              <section className="work-board" id="window" aria-label="Deployment window">
+                <h2 className="chg-detail__section-title">Deployment window</h2>
+                <p className="chg-detail__hint">Release readiness stays unevaluated until a planned window is recorded. Saving a window does not deploy.</p>
+                <form className="svc-filters" onSubmit={saveWindow}>
+                  <label>
+                    Planned start
+                    <input className="input" type="datetime-local" value={plannedStart} onChange={(event) => setPlannedStart(event.target.value)} required />
+                  </label>
+                  <label>
+                    Planned end
+                    <input className="input" type="datetime-local" value={plannedEnd} onChange={(event) => setPlannedEnd(event.target.value)} />
+                  </label>
+                  <div className="svc-filters__actions">
+                    <button type="submit" className="btn btn-primary" disabled={!!acting || !plannedStart}>
+                      {acting === 'window' ? 'Saving…' : 'Save window'}
+                    </button>
+                  </div>
+                </form>
+              </section>
+            ) : null}
+            {isManager && changeScopeIncomplete(item) ? (
+              <section className="work-board" aria-label="Correct change scope">
+                <h2 className="chg-detail__section-title">Record project and environment</h2>
+                <p className="chg-detail__hint">Choose from the catalog. The title and description are not treated as the scope. Execution stays blocked until both are recorded.</p>
+                <form className="svc-filters" onSubmit={saveScope}>
+                  <label>
+                    Project
+                    <select className="input" value={scopeProjectId} onChange={(event) => { setScopeProjectId(event.target.value); setScopeEnvironment(''); }}>
+                      <option value="">Select a project</option>
+                      {scopeProjects.map((project) => (
+                        <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : project.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Environment
+                    <select className="input" value={scopeEnvironment} onChange={(event) => setScopeEnvironment(event.target.value)} disabled={!scopeProjectId}>
+                      <option value="">{scopeProjectId ? 'Select an environment' : 'Select a project first'}</option>
+                      {(scopeProjects.find((project) => String(project.id) === scopeProjectId)?.environments || []).map((environment) => (
+                        <option key={environment} value={environment}>{environment}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="svc-filters__actions">
+                    <button type="submit" className="btn btn-primary" disabled={!!acting || !scopeProjectId || !scopeEnvironment}>
+                      {acting === 'scope' ? 'Saving…' : 'Save scope'}
+                    </button>
+                  </div>
+                </form>
+                {scopeProjectId && !(scopeProjects.find((project) => String(project.id) === scopeProjectId)?.environments || []).length ? (
+                  <p className="chg-detail__hint">This project has no environments in the catalog. Add one before this change can enter execution.</p>
+                ) : null}
+              </section>
+            ) : null}
             <ChangeDetailPanel item={item} actions={detailActions} />
             {resourceId ? <RecordDocuments apiUrl={apiUrl} kind="changes" recordId={resourceId} /> : null}
+            {resourceId ? (
+              <LinkedJiraWork
+                apiUrl={apiUrl}
+                source={{
+                  sourceType: 'change',
+                  sourceId: Number(resourceId),
+                  defaultSummary: item.title || item.change_number,
+                  defaultDescription: item.title,
+                }}
+              />
+            ) : null}
             <ResourceContextPanel
               apiUrl={apiUrl}
               token={token}

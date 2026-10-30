@@ -26,6 +26,12 @@ type costVerificationResult struct {
 
 func costNormalizeLifecycle(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "new":
+		return "detected"
+	case "investigating", "reviewing":
+		return "under_review"
+	case "approved":
+		return "accepted"
 	case "under_review", "accepted", "change_linked", "implemented", "measuring", "verified", "inconclusive", "regressed", "dismissed", "blocked":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
@@ -46,13 +52,13 @@ func countCostWaiting(recs []costRecommendation) int {
 func costWaitingFor(lifecycle string) string {
 	switch costNormalizeLifecycle(lifecycle) {
 	case "under_review":
-		return "Waiting for acceptance"
+		return "Waiting for approval"
 	case "accepted":
 		return "Waiting for a linked change"
-	case "change_linked", "implemented":
+	case "change_linked":
+		return "Waiting to record implementation"
+	case "implemented", "measuring":
 		return "Waiting for a complete comparison window"
-	case "measuring":
-		return "Waiting for verification"
 	default:
 		return ""
 	}
@@ -104,7 +110,7 @@ func transitionCostReview(rec costRecommendation, action costReviewAction) (cost
 			}
 		}
 	}
-	if rec.Status == "blocked" && (actionName == "accept" || actionName == "link" || actionName == "verify" || actionName == "measure") {
+	if rec.Status == "blocked" && (actionName == "accept" || actionName == "link" || actionName == "implement" || actionName == "verify" || actionName == "measure") {
 		return rec, fmt.Errorf("blocked recommendations cannot be accepted")
 	}
 	rec.Executes = false
@@ -152,6 +158,13 @@ func transitionCostReview(rec costRecommendation, action costReviewAction) (cost
 		rec.Lifecycle = "change_linked"
 		rec.Status = "change_linked"
 		rec.Note = "Linked to " + number + ". Existing CHG approvals govern the change. This product will not apply it."
+	case "implement":
+		if lifecycle != "change_linked" && lifecycle != "implemented" {
+			return rec, fmt.Errorf("link a change before recording implementation")
+		}
+		rec.Lifecycle = "implemented"
+		rec.Status = "implemented"
+		rec.Note = "Recorded as implemented. This product did not apply the change. Measured savings stay separate from the estimate."
 	case "measure", "verify":
 		if rec.ChangeID <= 0 {
 			return rec, fmt.Errorf("link a change before measuring savings")

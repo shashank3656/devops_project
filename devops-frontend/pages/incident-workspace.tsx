@@ -145,6 +145,19 @@ interface ReviewDraft {
   acknowledged_by?: string;
 }
 
+interface ImprovementAction {
+  id: number;
+  incident_id: number;
+  title: string;
+  owner_user_id?: number | null;
+  owner_username?: string;
+  due_at?: string | null;
+  status: string;
+  evidence_ref?: string;
+  implemented_at?: string | null;
+  verified_at?: string | null;
+}
+
 interface WorkspaceDetail {
   incident: IncidentItem;
   request?: RequestSummary | null;
@@ -154,6 +167,7 @@ interface WorkspaceDetail {
   runbooks: RunbookItem[];
   gate_approvals: GateApproval[];
   rollback_operations: RollbackOperation[];
+  improvement_actions?: ImprovementAction[];
 }
 
 interface WorkspacePayload {
@@ -228,6 +242,11 @@ export default function IncidentWorkspacePage() {
   const [incidentId, setIncidentId] = useState('');
   const [form, setForm] = useState<PostmortemFormState>(defaultPostmortemForm);
   const [showFilters, setShowFilters] = useState(false);
+  const [actionTitle, setActionTitle] = useState('');
+  const [actionOwner, setActionOwner] = useState('');
+  const [actionDue, setActionDue] = useState('');
+  const [actionEvidence, setActionEvidence] = useState<Record<number, string>>({});
+  const [actionSaving, setActionSaving] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -372,6 +391,42 @@ export default function IncidentWorkspacePage() {
       setError(err instanceof Error ? err.message : 'Failed to save postmortem workspace');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveImprovement = async (method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>) => {
+    if (!workspace?.detail?.incident?.id) {
+      setError('Select an incident before saving an improvement action.');
+      return;
+    }
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) {
+      clearSessionAndRedirect(router);
+      return;
+    }
+    setActionSaving(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch(`${apiUrl}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (response.status === 401 || response.status === 403) {
+        clearSessionAndRedirect(router);
+        return;
+      }
+      const payload = asRecord(await response.json().catch(() => ({})));
+      if (!response.ok) throw new Error(getString(payload.error, 'That improvement action could not be saved.'));
+      setNotice('Improvement action updated. Implemented is not verified until evidence is recorded.');
+      setActionTitle('');
+      setActionDue('');
+      await loadWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That improvement action could not be saved.');
+    } finally {
+      setActionSaving(false);
     }
   };
 
@@ -655,6 +710,87 @@ export default function IncidentWorkspacePage() {
                               </span>
                             ) : null}
                           </div>
+                        </div>
+                      </div>
+
+                      <div className="portal-surface incident-workspace__subsurface">
+                        <h3 className="portal-surface__title incident-workspace__section-title">Improvement actions</h3>
+                        <p className="portal-surface__subtitle">Each follow-up has an owner, a due date, and source evidence. Implemented means the change was made. Verified effective needs evidence and stays separate.</p>
+                        {(detail.improvement_actions || []).length ? (
+                          <div className="table-wrap">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Action</th>
+                                  <th>Owner</th>
+                                  <th>Due</th>
+                                  <th>State</th>
+                                  <th>Evidence</th>
+                                  <th></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(detail.improvement_actions || []).map((item) => (
+                                  <tr key={item.id}>
+                                    <td>{item.title}</td>
+                                    <td>{item.owner_username || 'Unassigned'}</td>
+                                    <td>{item.due_at ? formatDateTime(item.due_at) : 'Unknown'}</td>
+                                    <td>{item.status === 'verified' ? 'Verified effective' : item.status === 'implemented' ? 'Implemented' : 'Open'}</td>
+                                    <td>{item.evidence_ref || 'Unknown'}</td>
+                                    <td>
+                                      {item.status === 'open' ? (
+                                        <button type="button" className="btn btn-secondary btn-sm" disabled={actionSaving} onClick={() => void saveImprovement('PATCH', `/api/devops/incidents/${detail.incident.id}/actions/${item.id}`, { status: 'implemented' })}>Mark implemented</button>
+                                      ) : null}
+                                      {item.status === 'implemented' ? (
+                                        <span className="incident-workspace__verify">
+                                          <input
+                                            className="input"
+                                            aria-label={`Evidence for ${item.title}`}
+                                            placeholder="Change, SLO, or watch evidence"
+                                            value={actionEvidence[item.id] ?? item.evidence_ref ?? ''}
+                                            onChange={(event) => setActionEvidence((current) => ({ ...current, [item.id]: event.target.value }))}
+                                          />
+                                          <button
+                                            type="button"
+                                            className="btn btn-primary btn-sm"
+                                            disabled={actionSaving}
+                                            onClick={() => void saveImprovement('PATCH', `/api/devops/incidents/${detail.incident.id}/actions/${item.id}`, { status: 'verified', evidence_ref: actionEvidence[item.id] || item.evidence_ref || '' })}
+                                          >
+                                            Verify effective
+                                          </button>
+                                        </span>
+                                      ) : null}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : <p className="access-hint">No improvement actions yet. Completing a note does not mark an action Implemented.</p>}
+                        <div className="incident-workspace__form">
+                          <label className="credential-audit-label" htmlFor="improvement-title">New action</label>
+                          <input id="improvement-title" className="input" value={actionTitle} onChange={(event) => setActionTitle(event.target.value)} placeholder="What should change" />
+                          <label className="credential-audit-label" htmlFor="improvement-owner">Owner</label>
+                          <select id="improvement-owner" className="input" value={actionOwner} onChange={(event) => setActionOwner(event.target.value)}>
+                            <option value="">Unassigned</option>
+                            {owners.map((owner) => (
+                              <option key={owner.id} value={owner.id}>{owner.username}</option>
+                            ))}
+                          </select>
+                          <label className="credential-audit-label" htmlFor="improvement-due">Due date</label>
+                          <input id="improvement-due" className="input" type="date" value={actionDue} onChange={(event) => setActionDue(event.target.value)} />
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={actionSaving || !actionTitle.trim()}
+                            onClick={() => void saveImprovement('POST', `/api/devops/incidents/${detail.incident.id}/actions`, {
+                              title: actionTitle,
+                              owner_user_id: actionOwner ? Number(actionOwner) : null,
+                              due_at: actionDue,
+                            })}
+                          >
+                            {actionSaving ? 'Saving...' : 'Add action'}
+                          </button>
                         </div>
                       </div>
                     </div>

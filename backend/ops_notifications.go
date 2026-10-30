@@ -19,6 +19,9 @@ type OpsNotificationItem struct {
 	ProjectID   *int      `json:"project_id,omitempty"`
 	ProjectName string    `json:"project_name,omitempty"`
 	ProjectCode string    `json:"project_code,omitempty"`
+	Service     string    `json:"service,omitempty"`
+	Group       string    `json:"group,omitempty"`
+	Actionable  bool      `json:"actionable"`
 	Status      string    `json:"status,omitempty"`
 	Action      string    `json:"action,omitempty"`
 }
@@ -37,6 +40,13 @@ func buildPendingRequestNotification(req PRRequest, kind string) OpsNotification
 		message = fmt.Sprintf("%s (%s) - %s", req.ProjectName, req.ProjectCode, message)
 	}
 	requestID := req.ID
+	group := strings.TrimSpace(req.Service)
+	if group == "" {
+		group = strings.TrimSpace(req.ProjectName)
+	}
+	if group == "" {
+		group = "Unassigned"
+	}
 	return OpsNotificationItem{
 		ID:          fmt.Sprintf("request-%d", req.ID),
 		Kind:        kind,
@@ -47,6 +57,9 @@ func buildPendingRequestNotification(req PRRequest, kind string) OpsNotification
 		ProjectID:   req.ProjectID,
 		ProjectName: req.ProjectName,
 		ProjectCode: req.ProjectCode,
+		Service:     strings.TrimSpace(req.Service),
+		Group:       group,
+		Actionable:  true,
 		Status:      req.Status,
 	}
 }
@@ -65,6 +78,10 @@ func buildAuditNotification(entry AuditLogEntry) OpsNotificationItem {
 	if entry.ProjectName != "" {
 		message = fmt.Sprintf("%s (%s) - %s", entry.ProjectName, entry.ProjectCode, entry.Details)
 	}
+	group := strings.TrimSpace(entry.ProjectName)
+	if group == "" {
+		group = "Updates"
+	}
 	return OpsNotificationItem{
 		ID:          fmt.Sprintf("audit-%d", entry.ID),
 		Kind:        "project_event",
@@ -74,6 +91,8 @@ func buildAuditNotification(entry AuditLogEntry) OpsNotificationItem {
 		ProjectID:   entry.ProjectID,
 		ProjectName: entry.ProjectName,
 		ProjectCode: entry.ProjectCode,
+		Group:       group,
+		Actionable:  false,
 		Action:      entry.Action,
 	}
 }

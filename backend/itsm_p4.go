@@ -162,6 +162,10 @@ func approveChangeCAB(id, userID int) (*changeRequestRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	snap := captureReleaseEvidence(*item)
+	if err := persistReleaseEvidence(item.ID, snap); err == nil {
+		item.ReleaseEvidence = &snap
+	}
 	applyChangePolicies(id, parsedChangeWebhook{
 		Environment: item.Environment,
 		ChangeType:  item.ChangeType,
@@ -192,6 +196,9 @@ func scheduleChangeRequest(id, userID int) (*changeRequestRecord, error) {
 	if item.CABStatus == "pending" {
 		return nil, fmt.Errorf("approve the change before scheduling")
 	}
+	if err := requireChangeScopeForExecution(item, "scheduled"); err != nil {
+		return nil, err
+	}
 	return transitionChangeStatus(id, "scheduled")
 }
 
@@ -202,6 +209,9 @@ func startChangeImplementation(id, userID int) (*changeRequestRecord, error) {
 	}
 	if normalizeChangeStatus(item.Status) != "scheduled" {
 		return nil, fmt.Errorf("change must be scheduled before implementation")
+	}
+	if err := requireChangeScopeForExecution(item, "implementing"); err != nil {
+		return nil, err
 	}
 	return transitionChangeStatus(id, "implementing")
 }

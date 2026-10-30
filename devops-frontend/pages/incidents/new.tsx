@@ -12,6 +12,7 @@ import { asRecord, getString } from '../../lib/payload';
 import { expireSession } from '../../lib/sessionExpiry';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
 import { inventoryServicesPath } from '../../lib/sreMonitoring';
+import { defaultEnvironmentForProject, useConfirm, useWorkspaceScope } from '@infragate/ui';
 
 const INCIDENT_ATTEMPT_KEY = 'opstrellis-incident-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -37,6 +38,28 @@ interface Incident {
   id: number;
   incident_number?: string;
   request_id: number;
+  project_id?: number | null;
+  summary?: string;
+  status?: string;
+  request_service?: string;
+  request_env?: string;
+}
+
+interface Runbook {
+  id: number;
+  project_id: number;
+  service: string;
+  title: string;
+  link_url: string;
+}
+
+function suggestionTokens(value: string): string[] {
+  return value.toLowerCase().split(/[^a-z0-9]+/).filter((part) => part.length > 2);
+}
+
+function tokenOverlap(left: string[], right: string[]): number {
+  const set = new Set(left);
+  return right.filter((item) => set.has(item)).length;
 }
 
 interface ScopeProject {
@@ -59,6 +82,11 @@ function normalizeIncident(incident: unknown): Incident {
     id: typeof item.id === 'number' ? item.id : 0,
     incident_number: typeof item.incident_number === 'string' ? item.incident_number : '',
     request_id: typeof item.request_id === 'number' ? item.request_id : 0,
+    project_id: typeof item.project_id === 'number' ? item.project_id : null,
+    summary: typeof item.summary === 'string' ? item.summary : '',
+    status: typeof item.status === 'string' ? item.status : '',
+    request_service: typeof item.request_service === 'string' ? item.request_service : '',
+    request_env: typeof item.request_env === 'string' ? item.request_env : '',
   };
 }
 
@@ -106,6 +134,18 @@ function clearSessionAndRedirect() {
   expireSession();
 }
 
+function matchProjectEnvironment(options: string[], wanted: string): string {
+  const names = options.map((item) => item.trim()).filter(Boolean);
+  const needle = wanted.trim().toLowerCase();
+  if (!needle) return '';
+  const exact = names.find((item) => item.toLowerCase() === needle);
+  if (exact) return exact;
+  if (needle.startsWith('prod')) {
+    return names.find((item) => item.toLowerCase().startsWith('prod')) || '';
+  }
+  return names.includes(wanted.trim()) ? wanted.trim() : '';
+}
+
 function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== 'string') return null;
@@ -135,6 +175,8 @@ function resolveIncidentReferenceInput(value: string, incidents: Incident[]): nu
 export default function NewIncidentPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const { scope } = useWorkspaceScope();
+  const confirm = useConfirm();
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [membersByTeam, setMembersByTeam] = useState<Record<number, TeamMemberOption[]>>({});
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -189,10 +231,11 @@ export default function NewIncidentPage() {
   const returnPath = safeReturnPath(router.query.return);
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
   const [scopeServices, setScopeServices] = useState<ScopeService[]>([]);
+  const [runbooks, setRunbooks] = useState<Runbook[]>([]);
   const [projectChoice, setProjectChoice] = useState('');
   const [incidentEnvironment, setIncidentEnvironment] = useState('');
   const [incidentService, setIncidentService] = useState('');
-  const scopeReady = useRef(false);
+  const appliedWorkspace = useRef(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('opstrellis-incident-draft');
@@ -321,11 +364,29 @@ export default function NewIncidentPage() {
   };
 
   useEffect(() => {
-    if (!router.isReady || scopeReady.current) return;
-    scopeReady.current = true;
-    if (scopedProjectId) setProjectChoice(String(scopedProjectId));
-    if (scopedEnvironment) setIncidentEnvironment(scopedEnvironment);
-  }, [router.isReady, scopedEnvironment, scopedProjectId]);
+    if (!router.isReady || appliedWorkspace.current) return;
+    if (projectChoice) {
+      appliedWorkspace.current = true;
+      return;
+    }
+    const fromQuery = scopedProjectId;
+    const fromScope = Number(scope.projectId) || 0;
+    const projectId = fromQuery || fromScope;
+    if (!projectId) return;
+    setProjectChoice(String(projectId));
+    appliedWorkspace.current = true;
+  }, [projectChoice, router.isReady, scopedProjectId, scope.projectId]);
+
+  useEffect(() => {
+    if (!projectChoice || projectChoice === 'cross') return;
+    const project = scopeProjects.find((item) => String(item.id) === projectChoice);
+    if (!project) return;
+    setIncidentEnvironment((current) => {
+      if (current && project.environments.includes(current)) return current;
+      const wanted = scopedEnvironment || scope.environment;
+      return matchProjectEnvironment(project.environments, wanted) || defaultEnvironmentForProject(scopeProjects, projectChoice, wanted);
+    });
+  }, [projectChoice, scope.environment, scopeProjects, scopedEnvironment]);
 
   useEffect(() => {
     void loadData();
@@ -339,7 +400,8 @@ export default function NewIncidentPage() {
     Promise.all([
       fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))),
       fetch(`${apiUrl}${inventoryServicesPath()}`, { headers }).then((res) => res.json().catch(() => ({}))),
-    ]).then(([projectBody, serviceBody]) => {
+      fetch(`${apiUrl}/api/devops/runbooks`, { headers }).then((res) => res.json().catch(() => ({}))),
+    ]).then(([projectBody, serviceBody, runbookBody]) => {
       const projectRows = Array.isArray(projectBody?.projects) ? projectBody.projects : [];
       setScopeProjects(projectRows.map((item: { id?: number; name?: string; code?: string; environments?: unknown }) => ({
         id: typeof item.id === 'number' ? item.id : 0,
@@ -354,6 +416,14 @@ export default function NewIncidentPage() {
         service: item.service || '',
         environment: item.environment || '',
       })).filter((item: ScopeService) => item.service));
+      const runbookRows = Array.isArray(runbookBody?.runbooks) ? runbookBody.runbooks : [];
+      setRunbooks(runbookRows.map((item: { id?: number; project_id?: number; service?: string; title?: string; link_url?: string }) => ({
+        id: typeof item.id === 'number' ? item.id : 0,
+        project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+        service: item.service || '',
+        title: item.title || '',
+        link_url: item.link_url || '',
+      })).filter((item: Runbook) => item.id > 0));
     }).catch(() => undefined);
   }, [apiUrl]);
 
@@ -376,6 +446,47 @@ export default function NewIncidentPage() {
       setIncidentEnvironment((current) => current || match.environment || 'production');
     }
   }, [incidentEnvironment, projectChoice, scopeServices, scopedService, scopedServiceId]);
+
+  const relatedIncidents = useMemo(() => {
+    const words = suggestionTokens([summary, incidentService].filter(Boolean).join(' '));
+    return incidents
+      .filter((item) => item.id > 0 && (item.status || '').toLowerCase() !== 'closed')
+      .filter((item) => {
+        if (projectChoice && projectChoice !== 'cross' && item.project_id && String(item.project_id) !== projectChoice) return false;
+        if (!words.length) return Boolean(projectChoice || incidentService);
+        if (incidentService && item.request_service && item.request_service.toLowerCase() !== incidentService.toLowerCase()) {
+          return tokenOverlap(words, suggestionTokens(`${item.summary || ''} ${item.request_service}`)) > 0;
+        }
+        return tokenOverlap(words, suggestionTokens(`${item.summary || ''} ${item.request_service || ''}`)) > 0 || Boolean(incidentService && item.request_service && item.request_service.toLowerCase() === incidentService.toLowerCase());
+      })
+      .slice(0, 4);
+  }, [incidentService, incidents, projectChoice, summary]);
+
+  const suggestedServices = useMemo(() => {
+    const words = suggestionTokens(summary);
+    return scopeServices
+      .filter((item) => {
+        if (projectChoice && projectChoice !== 'cross' && String(item.project_id) !== projectChoice) return false;
+        if (incidentEnvironment && item.environment && item.environment.toLowerCase() !== incidentEnvironment.toLowerCase()) return false;
+        if (incidentService && item.service.toLowerCase() === incidentService.toLowerCase()) return false;
+        if (!words.length) return Boolean(incidentEnvironment || projectChoice);
+        return tokenOverlap(words, suggestionTokens(item.service)) > 0;
+      })
+      .slice(0, 4);
+  }, [incidentEnvironment, incidentService, projectChoice, scopeServices, summary]);
+
+  const suggestedRunbooks = useMemo(() => {
+    const words = suggestionTokens([summary, incidentService].filter(Boolean).join(' '));
+    return runbooks
+      .filter((item) => {
+        if (projectChoice && projectChoice !== 'cross' && item.project_id && String(item.project_id) !== projectChoice) return false;
+        if (incidentService && item.service && item.service.toLowerCase() !== incidentService.toLowerCase()) {
+          return tokenOverlap(words, suggestionTokens(`${item.title} ${item.service}`)) > 0;
+        }
+        return !incidentService || item.service.toLowerCase() === incidentService.toLowerCase() || tokenOverlap(words, suggestionTokens(`${item.title} ${item.service}`)) > 0;
+      })
+      .slice(0, 4);
+  }, [incidentService, projectChoice, runbooks, summary]);
 
   useEffect(() => {
     if (!teamId || !ownerUserId) return;
@@ -548,9 +659,13 @@ export default function NewIncidentPage() {
                 <legend className="form-section__title">Affected scope</legend>
                 <p className="form-section__copy">
                   {returnPath
-                    ? 'These values came from Service inventory. You can change the project or the service.'
-                    : 'Choose the project first. The service list is Service inventory for that project (production). Use Unknown / cross-project when it is not one project.'}
+                    ? 'These values came from Service inventory. You can change them if this incident belongs somewhere else.'
+                    : 'Project and environment start from the workspace.'}
                 </p>
+                <details className="onboard-advanced">
+                  <summary>How scope is filled</summary>
+                  <p className="form-section__copy">Changing project or environment resets the service list. Use Unknown / cross-project when it is not one project. The title is not used as scope.</p>
+                </details>
                 <div className="portal-form-grid">
                   <label className="label">
                     Project<span className="form-req" aria-hidden="true"> *</span>
@@ -573,31 +688,48 @@ export default function NewIncidentPage() {
                     </select>
                   </label>
                   <label className="label">
+                    Environment
+                    <select
+                      className="input"
+                      value={incidentEnvironment}
+                      onChange={(event) => {
+                        setIncidentEnvironment(event.target.value);
+                        setIncidentService('');
+                      }}
+                      disabled={!projectChoice || projectChoice === 'cross'}
+                    >
+                      <option value="">{projectChoice === 'cross' ? 'Not tied to one environment' : projectChoice ? 'Select an environment' : 'Select a project first'}</option>
+                      {projectChoice && projectChoice !== 'cross'
+                        ? (() => {
+                          const listed = scopeProjects.find((item) => String(item.id) === projectChoice)?.environments || [];
+                          return (listed.length ? listed : ['dev', 'uat', 'prod']).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ));
+                        })()
+                        : null}
+                    </select>
+                  </label>
+                  <label className="label">
                     Service
                     <select
                       className="input"
                       value={incidentService}
-                      onChange={(event) => {
-                        const name = event.target.value;
-                        setIncidentService(name);
-                        const mapped = scopeServices.find((item) => item.service === name && String(item.project_id) === projectChoice);
-                        setIncidentEnvironment(mapped?.environment || (name ? 'production' : ''));
-                      }}
+                      onChange={(event) => setIncidentService(event.target.value)}
                       disabled={!projectChoice || projectChoice === 'cross'}
                     >
                       <option value="">{projectChoice === 'cross' ? 'Not tied to one service' : projectChoice ? 'Select a service from inventory' : 'Select a project first'}</option>
                       {projectChoice && projectChoice !== 'cross'
                         ? scopeServices
-                          .filter((item) => String(item.project_id) === projectChoice)
+                          .filter((item) => {
+                            if (String(item.project_id) !== projectChoice) return false;
+                            if (!incidentEnvironment) return true;
+                            return !item.environment || item.environment.toLowerCase() === incidentEnvironment.toLowerCase() || (incidentEnvironment.toLowerCase().startsWith('prod') && item.environment.toLowerCase().startsWith('prod'));
+                          })
                           .map((item) => (
                             <option key={item.id} value={item.service}>{item.service}</option>
                           ))
                         : null}
                     </select>
-                  </label>
-                  <label className="label">
-                    Monitored environment
-                    <input className="input" value={incidentService ? 'Production' : incidentEnvironment || ''} readOnly placeholder={projectChoice === 'cross' ? 'Not tied to one service' : 'Filled from the service'} />
                   </label>
                 </div>
               </fieldset>
@@ -607,6 +739,102 @@ export default function NewIncidentPage() {
                   Short description<span className="form-req" aria-hidden="true"> *</span>
                   <input id="incident-summary" className="input" required value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production checkout is returning 5xx" />
                 </label>
+                {(relatedIncidents.length || suggestedServices.length || suggestedRunbooks.length) ? (
+                  <div className="incident-suggest">
+                    <p className="form-section__copy">Suggestions from existing records. Confirm before applying. Nothing is changed until you confirm.</p>
+                    {relatedIncidents.length ? (
+                      <div>
+                        <p className="form-section__title">Related incidents</p>
+                        <ul className="incident-suggest__list">
+                          {relatedIncidents.map((item) => (
+                            <li key={item.id}>
+                              <span>{getIncidentReference(item)} · {item.summary || 'No summary'} · {item.status || 'Unknown'}{item.request_service ? ` · ${item.request_service}` : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Link this incident as parent?',
+                                    message: `${getIncidentReference(item)} stays in its current state. This form does not close it.`,
+                                    confirmLabel: 'Link parent',
+                                    cancelLabel: 'Keep current',
+                                  }).then((ok) => {
+                                    if (ok) setParentIncidentId(String(item.id));
+                                  });
+                                }}
+                              >
+                                Use as parent
+                              </button>
+                              <Link href={`/incidents/${item.id}/edit`} className="btn btn-ghost btn-sm">Open</Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {suggestedServices.length ? (
+                      <div>
+                        <p className="form-section__title">Affected services</p>
+                        <ul className="incident-suggest__list">
+                          {suggestedServices.map((item) => (
+                            <li key={`${item.id}-${item.service}`}>
+                              <span>{item.service}{item.environment ? ` · ${item.environment}` : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Use this service?',
+                                    message: `${item.service} will fill the service field. The incident is not submitted yet.`,
+                                    confirmLabel: 'Use service',
+                                    cancelLabel: 'Keep current',
+                                  }).then((ok) => {
+                                    if (!ok) return;
+                                    if (item.project_id) setProjectChoice(String(item.project_id));
+                                    if (item.environment) setIncidentEnvironment(item.environment);
+                                    setIncidentService(item.service);
+                                  });
+                                }}
+                              >
+                                Use service
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {suggestedRunbooks.length ? (
+                      <div>
+                        <p className="form-section__title">Guides</p>
+                        <ul className="incident-suggest__list">
+                          {suggestedRunbooks.map((item) => (
+                            <li key={item.id}>
+                              <span>{item.title || 'Untitled guide'}{item.service ? ` · ${item.service}` : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Add this guide to the work note?',
+                                    message: `${item.title || 'This guide'} will be appended to the internal note. The incident is not submitted yet.`,
+                                    confirmLabel: 'Add to notes',
+                                    cancelLabel: 'Skip',
+                                  }).then((ok) => {
+                                    if (!ok) return;
+                                    const line = `Guide: ${item.title}${item.link_url ? ` ${item.link_url}` : ''}`;
+                                    setNotes((current) => current.includes(line) ? current : [current.trim(), line].filter(Boolean).join('\n'));
+                                  });
+                                }}
+                              >
+                                Add to notes
+                              </button>
+                              <Link href={`/runbooks/${item.id}/edit`} className="btn btn-ghost btn-sm">Open guide</Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="portal-form-grid">
                   <label className="label">
                     Impact

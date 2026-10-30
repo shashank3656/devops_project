@@ -79,6 +79,153 @@ function formatDay(parts: { day: number; month: number }): string {
   return `${parts.day} ${MONTHS[parts.month - 1] || 'Unknown'}`;
 }
 
+export function addCalendarDays(dateKey: string, days: number): string {
+  const [yearText, monthText, dayText] = dateKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!year || !month || !day) return dateKey;
+  const next = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`;
+}
+
+export function nextDateKeys(fromKey: string, count: number): string[] {
+  const length = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  return Array.from({ length }, (_, index) => addCalendarDays(fromKey, index));
+}
+
+export function nextSevenDateKeys(fromKey: string): string[] {
+  return nextDateKeys(fromKey, 7);
+}
+
+function dateParts(dateKey: string): { year: number; month: number; day: number } | null {
+  const [yearText, monthText, dayText] = dateKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+export function formatCompactDay(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return dateKey;
+  return `${parts.day} ${MONTHS[parts.month - 1] || 'Unknown'}`;
+}
+
+export function formatDateRange(startKey: string, endKey: string): string {
+  const start = dateParts(startKey);
+  const end = dateParts(endKey);
+  if (!start || !end) return `${startKey}–${endKey}`;
+  const startMonth = MONTHS[start.month - 1] || 'Unknown';
+  const endMonth = MONTHS[end.month - 1] || 'Unknown';
+  if (start.year !== end.year) return `${start.day} ${startMonth} ${start.year}–${end.day} ${endMonth} ${end.year}`;
+  if (start.month === end.month && start.day === end.day) return `${start.day} ${startMonth}`;
+  return `${start.day} ${startMonth}–${end.day} ${endMonth}`;
+}
+
+export function formatDateList(dateKeys: string[]): string {
+  const unique = Array.from(new Set(dateKeys)).sort();
+  if (!unique.length) return '';
+  const spans: string[][] = [];
+  unique.forEach((key) => {
+    const last = spans[spans.length - 1];
+    if (last && addCalendarDays(last[last.length - 1], 1) === key) last.push(key);
+    else spans.push([key]);
+  });
+  return spans.map((span) => (span.length === 1 ? formatCompactDay(span[0]) : formatDateRange(span[0], span[span.length - 1]))).join(', ');
+}
+
+export function weekdayShort(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return '';
+  const weekday = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)).getUTCDay();
+  return ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][weekday] || '';
+}
+
+export function weekdayLong(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return '';
+  const weekday = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12)).getUTCDay();
+  return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][weekday] || '';
+}
+
+const LONG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export function formatLongDay(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return dateKey;
+  return `${parts.day} ${LONG_MONTHS[parts.month - 1] || 'Unknown'}`;
+}
+
+export function onCallTeamHref(projectId: number, teamId: number, date?: string, timezone?: string): string {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  if (timezone) params.set('timezone', timezone);
+  const query = params.toString();
+  return `/on-call/project/${projectId}/team/${teamId}${query ? `?${query}` : ''}`;
+}
+
+export function onCallRotationHref(projectId: number, teamId: number, options?: { scheduleId?: number; date?: string; timezone?: string; intent?: 'assign' | 'recurring' }): string {
+  const params = new URLSearchParams();
+  if (options?.date) params.set('date', options.date);
+  if (options?.timezone) params.set('timezone', options.timezone);
+  if (options?.intent) params.set('intent', options.intent);
+  if (options?.scheduleId && options.scheduleId > 0) {
+    const query = params.toString();
+    return `/on-call/${options.scheduleId}${query ? `?${query}` : ''}`;
+  }
+  if (projectId > 0) params.set('project_id', String(projectId));
+  if (teamId > 0) params.set('team_id', String(teamId));
+  const query = params.toString();
+  return `/on-call/new${query ? `?${query}` : ''}`;
+}
+
+function timezonePart(timeZone: string, name: 'short' | 'shortOffset' | 'longOffset', at = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', timeZoneName: name }).formatToParts(at);
+    return parts.find((part) => part.type === 'timeZoneName')?.value || '';
+  } catch {
+    return '';
+  }
+}
+
+const ZONE_ABBREV: Record<string, string> = {
+  UTC: 'UTC',
+  'America/New_York': 'ET',
+  'America/Chicago': 'CT',
+  'America/Denver': 'MT',
+  'America/Los_Angeles': 'PT',
+  'Europe/London': 'UK',
+  'Europe/Berlin': 'CET',
+  'Asia/Kolkata': 'IST',
+  'Asia/Singapore': 'SGT',
+  'Asia/Tokyo': 'JST',
+  'Australia/Sydney': 'AET',
+};
+
+export function timezoneAbbrev(timeZone: string, at = new Date()): string {
+  if (ZONE_ABBREV[timeZone]) return ZONE_ABBREV[timeZone];
+  const value = timezonePart(timeZone, 'short', at);
+  if (!value || value.startsWith('GMT') || value.startsWith('UTC')) return timeZone === 'UTC' ? 'UTC' : timezoneUtcOffset(timeZone, at);
+  return value;
+}
+
+export function timezoneUtcOffset(timeZone: string, at = new Date()): string {
+  const raw = (timezonePart(timeZone, 'longOffset', at) || timezonePart(timeZone, 'shortOffset', at)).replace(/^GMT/, 'UTC') || 'UTC';
+  const match = raw.match(/^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return raw === 'UTC' ? 'UTC+00:00' : raw;
+  return `UTC${match[1]}${match[2].padStart(2, '0')}:${(match[3] || '00').padStart(2, '0')}`;
+}
+
+export function timezoneCompactLabel(timeZone: string, at = new Date()): string {
+  if (timeZone === 'UTC') return 'UTC';
+  const abbrev = timezoneAbbrev(timeZone, at);
+  const offset = timezoneUtcOffset(timeZone, at).replace(/^UTC/, '');
+  if (!abbrev) return offset || 'Unknown';
+  return `${abbrev} ${offset}`;
+}
+
 export function currentMonth(timeZone: string): string {
   const parts = zonedParts(new Date(), timeZone);
   return `${parts.year}-${String(parts.month).padStart(2, '0')}`;

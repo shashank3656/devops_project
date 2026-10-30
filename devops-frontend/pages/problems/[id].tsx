@@ -9,6 +9,7 @@ import ITSMJournal from '../../components/ITSMJournal';
 import RecordDocuments from '../../components/RecordDocuments';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { ITSMJournalEntry, ITSM_PRIORITIES, IncidentSLA, PROBLEM_STATES, normalizeJournal, normalizeSLA, priorityLabel, problemStateLabel } from '../../lib/itsm';
+import LinkedJiraWork from '../../components/LinkedJiraWork';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -261,6 +262,17 @@ export default function ProblemDetailPage() {
               </select>
               </label>
             </div>
+            {resourceId ? (
+              <LinkedJiraWork
+                apiUrl={apiUrl}
+                source={{
+                  sourceType: 'problem',
+                  sourceId: Number(resourceId),
+                  defaultSummary: item.summary || item.problem_number,
+                  defaultDescription: item.summary,
+                }}
+              />
+            ) : null}
             {resourceId ? <RecordDocuments apiUrl={apiUrl} kind="problems" recordId={resourceId} /> : null}
             <ITSMJournal
               apiUrl={apiUrl}

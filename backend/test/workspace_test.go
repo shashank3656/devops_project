@@ -81,7 +81,7 @@ func TestBuildWorkspacePayloadWithoutDB(t *testing.T) {
 	DB = nil
 	defer func() { DB = saved }()
 
-	payload := buildWorkspacePayload("devops", "", 0)
+	payload := buildWorkspacePayload("devops", "", "", 0)
 	if payload.Title != "Operations queue" {
 		t.Fatalf("title = %q", payload.Title)
 	}
@@ -112,11 +112,20 @@ func TestWorkspaceDeliveryClassification(t *testing.T) {
 }
 
 func TestWorkspaceIncidentHref(t *testing.T) {
-	if got := workspaceIncidentHref(42); got != "/incidents?mine=1" {
+	if got := workspaceIncidentHref(42); got != "/incidents/42/edit" {
 		t.Fatalf("workspaceIncidentHref(42) = %q", got)
 	}
 	if got := workspaceIncidentHref(0); got != "/incidents" {
 		t.Fatalf("workspaceIncidentHref(0) = %q", got)
+	}
+}
+
+func TestWorkspaceChangeHref(t *testing.T) {
+	if got := workspaceChangeHref(3); got != "/changes/3" {
+		t.Fatalf("workspaceChangeHref(3) = %q", got)
+	}
+	if got := workspaceChangeHref(0); got != "/changes" {
+		t.Fatalf("workspaceChangeHref(0) = %q", got)
 	}
 }
 
@@ -192,5 +201,28 @@ func TestCapWorkspaceQueue(t *testing.T) {
 	got := capWorkspaceQueue(items, 2)
 	if len(got) != 2 || got[0].ID != "a" {
 		t.Fatalf("unexpected cap: %+v", got)
+	}
+}
+
+func TestWorkspaceEnvironmentMatches(t *testing.T) {
+	if workspaceEnvironmentMatches("prod", "dev") {
+		t.Fatal("prod work must not appear in a dev workspace")
+	}
+	if !workspaceEnvironmentMatches("prod", "prod") || !workspaceEnvironmentMatches("production", "prod") {
+		t.Fatal("production records must match a prod workspace")
+	}
+	if !workspaceEnvironmentMatches("", "dev") {
+		t.Fatal("records without an environment stay visible")
+	}
+	if !workspaceEnvironmentMatches("dev", "") {
+		t.Fatal("an empty workspace filter keeps every record")
+	}
+	got := filterWorkspaceQueueByEnvironment([]workspaceQueueItem{
+		{ID: "chg-prod", Environment: "prod"},
+		{ID: "chg-dev", Environment: "dev"},
+		{ID: "gap"},
+	}, "dev")
+	if len(got) != 2 || got[0].ID != "chg-dev" || got[1].ID != "gap" {
+		t.Fatalf("dev filter = %+v", got)
 	}
 }

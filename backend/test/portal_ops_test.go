@@ -113,6 +113,30 @@ func TestAdminAndOperatorListsUseTheSameMatrix(t *testing.T) {
 	}
 }
 
+func TestIncidentInScopeAllowsUnscopedAcknowledge(t *testing.T) {
+	admin := portalAdminSubject(8)
+	unscoped := requestIncident{ID: 1, IncidentNumber: "INC0000001"}
+	if !incidentInScope(admin, unscoped, authzRead) {
+		t.Fatal("admin should see a cross-project incident")
+	}
+	if !incidentInScope(admin, unscoped, authzWrite) {
+		t.Fatal("admin should acknowledge a cross-project incident")
+	}
+	operator := authzSubject{
+		UserID:         4,
+		OrganizationID: pilotOrganizationID,
+		Grants: []projectGrant{{
+			OrganizationID: pilotOrganizationID,
+			ProjectID:      7,
+			Role:           "operator",
+			Environments:   []string{"*"},
+		}},
+	}
+	if incidentInScope(operator, unscoped, authzWrite) {
+		t.Fatal("operator without an org grant must not write a cross-project incident")
+	}
+}
+
 func TestAdminRoleSubjectSeesIncidentsAndChanges(t *testing.T) {
 	subject, ok := subjectFromRole(8, "admin")
 	if !ok {

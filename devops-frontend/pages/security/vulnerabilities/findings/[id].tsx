@@ -7,6 +7,7 @@ import DevOpsLayout from '../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../context/ApiUrlContext';
 import { recordReference } from '../../../../lib/recordRef';
 import { epssLabel, lifecycleLabel, matchSourceLabel, patchLabel, queryText, reachabilityLabel, sessionCanManageVulnWorkspace, severityBadge, severityLabel, usageLabel, vulnRequest } from '../../../../lib/securityVuln';
+import LinkedJiraWork from '../../../../components/LinkedJiraWork';
 
 type Finding = {
   id: number;
@@ -247,6 +248,17 @@ export default function VulnFindingDetailPage() {
                 </div>
               </form>
             </section>
+            {finding ? (
+              <LinkedJiraWork
+                apiUrl={apiUrl}
+                source={{
+                  sourceType: 'security_finding',
+                  sourceId: finding.id,
+                  defaultSummary: finding.title,
+                  defaultDescription: finding.title,
+                }}
+              />
+            ) : null}
             <section className="portal-surface">
                 <div className="portal-surface__header">
                   <div>

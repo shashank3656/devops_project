@@ -40,6 +40,8 @@ const serviceMapSelectCols = `s.id, s.project_id, COALESCE(p.name,''), COALESCE(
 		       COALESCE(s.environment,''), COALESCE(s.grafana_uid,''), COALESCE(s.promql,''), COALESCE(s.dashboard_url,''), COALESCE(s.metrics_url,''), COALESCE(s.team,''),
 		       COALESCE(NULLIF(s.criticality,''),'unclassified'), COALESCE(s.support_team,''), COALESCE(s.escalation_route,''), COALESCE(s.runbook_url,'')`
 
+const serviceSetupIncompleteSQL = `(COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '' OR COALESCE(s.environment,'') = '' OR (COALESCE(s.grafana_uid,'') = '' AND COALESCE(s.dashboard_url,'') = '' AND COALESCE(s.metrics_url,'') = '' AND COALESCE(s.promql,'') = ''))`
+
 func listServiceMap(projectID int, environment, query string) ([]serviceMapEntry, error) {
 	if DB == nil {
 		return []serviceMapEntry{}, nil
@@ -222,7 +224,7 @@ func listServiceMapSummary(projectID int, visible []int, restrict, monitored boo
 	}
 	incompleteWhere, incompleteArgs := serviceMapConditions(projectID, "", "", "", visible, restrict, monitored)
 	incompleteSQL := `SELECT COUNT(*) FROM service_map s LEFT JOIN projects p ON p.id = s.project_id` + incompleteWhere
-	incompleteClause := "(COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '')"
+	incompleteClause := serviceSetupIncompleteSQL
 	if incompleteWhere == "" {
 		incompleteSQL += " WHERE " + incompleteClause
 	} else {
@@ -241,9 +243,9 @@ func listServiceMapSummary(projectID int, visible []int, restrict, monitored boo
 		FROM service_map s
 		LEFT JOIN projects p ON p.id = s.project_id` + setupWhere
 	if setupWhere == "" {
-		setupSQL += " WHERE (COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '')"
+		setupSQL += " WHERE " + serviceSetupIncompleteSQL
 	} else {
-		setupSQL += " AND (COALESCE(s.repo,'') = '' OR COALESCE(s.team,'') = '')"
+		setupSQL += " AND " + serviceSetupIncompleteSQL
 	}
 	setupSQL += " ORDER BY s.id LIMIT 1"
 	setupRows, setupCancel, err := queryRowsWithTimeout(setupSQL, setupArgs...)

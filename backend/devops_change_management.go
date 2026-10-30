@@ -114,6 +114,7 @@ type incidentWorkspaceDetail struct {
 	Runbooks           []projectRunbook                 `json:"runbooks"`
 	GateApprovals      []deploymentGateApprovalRecord   `json:"gate_approvals"`
 	RollbackOperations []rollbackOperationRecord        `json:"rollback_operations"`
+	ImprovementActions []incidentImprovementAction      `json:"improvement_actions"`
 }
 
 type incidentWorkspacePayload struct {
@@ -931,6 +932,7 @@ func buildIncidentWorkspacePayload(projectID, incidentID int, statusFilter strin
 	approvals, _ := listDeploymentGateApprovalsForRequest(selected.RequestID)
 	rollbacks, _ := listRollbackOperationRecords(0, selected.RequestID, 25)
 	review := buildIncidentReview(*selected)
+	actions, _ := listIncidentImprovementActions(selected.ID)
 	payload.Detail = &incidentWorkspaceDetail{
 		Incident:           *selected,
 		Request:            request,
@@ -940,6 +942,7 @@ func buildIncidentWorkspacePayload(projectID, incidentID int, statusFilter strin
 		Runbooks:           runbooks,
 		GateApprovals:      approvals,
 		RollbackOperations: rollbacks,
+		ImprovementActions: actions,
 	}
 	return payload, nil
 }

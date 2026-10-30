@@ -591,6 +591,25 @@ func findGitOpsProjectIDByGitHubRepo(owner, name string) int {
 	return id
 }
 
+func markDeployIntelMergeTracking(owner, name string) error {
+	if DB == nil {
+		return fmt.Errorf("database not available")
+	}
+	result, err := DB.Exec(`
+		UPDATE deploy_intel_repos
+		   SET merge_tracking = TRUE, updated_at = CURRENT_TIMESTAMP
+		 WHERE lower(repo_owner) = lower($1) AND lower(repo_name) = lower($2) AND enabled = TRUE
+	`, owner, name)
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("repository is not onboarded for deploy intelligence")
+	}
+	return nil
+}
+
 func enableMergeTrackingForRepo(userID int, owner, name string, projectID int) error {
 	if DB == nil {
 		return fmt.Errorf("database not available")
@@ -603,35 +622,35 @@ func enableMergeTrackingForRepo(userID int, owner, name string, projectID int) e
 	if rec == nil || !rec.Enabled {
 		return fmt.Errorf("repository is not onboarded for deploy intelligence")
 	}
-	if linked := findGitOpsProjectIDByGitHubRepo(owner, name); linked > 0 && (projectID == 0 || projectID == linked) {
-		return nil
-	}
 	if projectID > 0 {
 		identity := resolveGitHubRepoForProject(projectID)
 		if identity.Source == "project" && identity.Owner != "" && identity.Name != "" {
 			if !strings.EqualFold(identity.Owner, owner) || !strings.EqualFold(identity.Name, name) {
 				return fmt.Errorf("that GitOps project is already linked to %s/%s", identity.Owner, identity.Name)
 			}
-			return nil
-		}
-		return setGitOpsProjectGitHubRepo(projectID, owner, name)
-	}
-	teamID, err := resolveGitOpsCreateTeamID(userID, 0, "")
-	if err != nil {
-		return err
-	}
-	if !CanUserCreateGitOpsProjectInTeam(userID, teamID) {
-		return fmt.Errorf("GitOps admin access is required to create a project in this team")
-	}
-	projectName := name
-	project, err := CreateGitOpsCatalogProject(teamID, projectName, "", nil, nil, "", userID)
-	if err != nil {
-		project, err = CreateGitOpsCatalogProject(teamID, owner+"/"+name, normalizeGitOpsProjectSlug(owner+"-"+name), nil, nil, "", userID)
-		if err != nil {
+		} else if err := setGitOpsProjectGitHubRepo(projectID, owner, name); err != nil {
 			return err
 		}
+	} else if findGitOpsProjectIDByGitHubRepo(owner, name) == 0 {
+		teamID, teamErr := resolveGitOpsCreateTeamID(userID, 0, "")
+		if teamErr == nil && CanUserCreateGitOpsProjectInTeam(userID, teamID) {
+			projectName := name
+			project, createErr := CreateGitOpsCatalogProject(teamID, projectName, "", nil, nil, "", userID)
+			if createErr != nil {
+				project, createErr = CreateGitOpsCatalogProject(teamID, owner+"/"+name, normalizeGitOpsProjectSlug(owner+"-"+name), nil, nil, "", userID)
+			}
+			if createErr == nil && project != nil {
+				if applyErr := applyGitHubRepoToCatalogProject(project, owner, name); applyErr != nil {
+					log.Printf("[deploy-intel] gitops link for %s/%s: %v", owner, name, applyErr)
+				}
+			} else if createErr != nil {
+				log.Printf("[deploy-intel] gitops project for %s/%s: %v", owner, name, createErr)
+			}
+		} else if teamErr != nil {
+			log.Printf("[deploy-intel] gitops team for %s/%s: %v", owner, name, teamErr)
+		}
 	}
-	return applyGitHubRepoToCatalogProject(project, owner, name)
+	return markDeployIntelMergeTracking(owner, name)
 }
 
 func setGitOpsProjectGitHubRepo(projectID int, owner, name string) error {

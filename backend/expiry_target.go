@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"golang.org/x/net/idna"
+	"golang.org/x/net/publicsuffix"
 )
 
 var expiryAllowedPorts = map[int]bool{443: true, 8443: true}
@@ -48,13 +49,35 @@ func normalizeRegistrableDomain(raw string) (string, error) {
 		return "", err
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		return "", errOncallInvalid
+		return "", errExpiryNotRegistrable
 	}
-	labels := strings.Split(host, ".")
-	if len(labels) < 2 {
-		return "", errOncallInvalid
+	if expiryHostingDomain(host) {
+		return "", errExpiryNotRegistrable
 	}
-	return strings.Join(labels[len(labels)-2:], "."), nil
+	apex, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil || strings.TrimSpace(apex) == "" {
+		return "", errExpiryNotRegistrable
+	}
+	apex = strings.ToLower(apex)
+	if expiryHostingDomain(apex) {
+		return "", errExpiryNotRegistrable
+	}
+	return apex, nil
+}
+
+func expiryHostingDomain(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return true
+	}
+	if host == "railway.app" || strings.HasSuffix(host, ".railway.app") {
+		return true
+	}
+	suffix, icann := publicsuffix.PublicSuffix(host)
+	if suffix == "" || suffix == host {
+		return true
+	}
+	return !icann
 }
 
 func parseExpiryPort(raw string, fallback int) int {

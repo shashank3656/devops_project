@@ -106,6 +106,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/cost/kubernetes': 'Kubernetes cost',
   '/cost/configuration': 'Data sources',
   '/operations/webhooks': 'Webhooks',
+  '/integrations': 'Integration health',
+  '/integrations/jira': 'Jira',
+  '/integrations/jira/onboard': 'Onboard Jira',
   '/maintenance': 'Maintenance',
   '/service-desk': 'Service desk',
   '/approval-center': 'Approval queue',
@@ -224,6 +227,66 @@ interface PendingApprovalItem {
   created_at: string;
 }
 
+interface NotifyFeedItem {
+  id: string;
+  kind: string;
+  title: string;
+  message: string;
+  created_at: string;
+  request_id?: number;
+  project_name?: string;
+  service?: string;
+  group?: string;
+  actionable?: boolean;
+}
+
+interface InboxNotification {
+  id: number;
+  kind: string;
+  message: string;
+  created_at: string;
+  read_at?: string | null;
+  request_id?: number | null;
+  project_name?: string;
+}
+
+function asInboxNotification(item: unknown): InboxNotification | null {
+  const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+  const id = typeof row.id === 'number' ? row.id : Number(row.id) || 0;
+  if (id <= 0) return null;
+  const requestId = typeof row.request_id === 'number' ? row.request_id : Number(row.request_id) || 0;
+  return {
+    id,
+    kind: String(row.kind || '').trim(),
+    message: String(row.message || '').trim() || 'Update',
+    created_at: String(row.created_at || ''),
+    read_at: row.read_at ? String(row.read_at) : null,
+    request_id: requestId > 0 ? requestId : null,
+    project_name: String(row.project_name || '').trim(),
+  };
+}
+
+function notifyKindLabel(kind: string): string {
+  const value = kind.trim().toLowerCase();
+  if (value === 'approved') return 'Approved';
+  if (value === 'rejected') return 'Rejected';
+  if (value === 'assigned') return 'Assigned';
+  if (value === 'pr_created') return 'Pull request';
+  if (value === 'pending_approval') return 'Waiting for approval';
+  return kind.trim() || 'Update';
+}
+
+function groupNotify<T>(items: T[], keyOf: (item: T) => string): { key: string; items: T[] }[] {
+  const groups = new Map<string, T[]>();
+  items.forEach((item) => {
+    const key = keyOf(item).trim() || 'Unassigned';
+    const current = groups.get(key) || [];
+    current.push(item);
+    groups.set(key, current);
+  });
+  return [...groups.entries()].map(([key, grouped]) => ({ key, items: grouped }));
+}
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
@@ -252,6 +315,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [profileInitials, setProfileInitials] = useState('D');
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
+  const [notifyItems, setNotifyItems] = useState<NotifyFeedItem[]>([]);
+  const [inboxItems, setInboxItems] = useState<InboxNotification[]>([]);
+  const [inboxUnread, setInboxUnread] = useState(0);
+  const [inboxLoading, setInboxLoading] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [supportSeed, setSupportSeed] = useState('');
@@ -539,14 +606,78 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       .then((data) => {
         if (data?.status === 'ok' && typeof data.pending_approval_count === 'number')
           setPendingCount(data.pending_approval_count);
+        setNotifyItems(Array.isArray(data?.items) ? data.items : []);
       })
       .catch(() => {})
       .finally(() => setPendingCountKnown(true));
   }, [isManager, apiUrl, clearSessionAndRedirect]);
 
+  const refreshInbox = useCallback(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    setInboxLoading(true);
+    Promise.all([
+      fetch(`${apiUrl}/api/me/notifications?unread_only=1&limit=100`, { headers }),
+      fetch(`${apiUrl}/api/me/notifications?limit=50`, { headers }),
+    ])
+      .then(async ([unreadRes, recentRes]) => {
+        if (unreadRes.status === 401 || recentRes.status === 401) {
+          clearSessionAndRedirect();
+          return;
+        }
+        const unreadBody = unreadRes.ok ? await unreadRes.json().catch(() => ({})) : {};
+        const recentBody = recentRes.ok ? await recentRes.json().catch(() => ({})) : {};
+        const unread: InboxNotification[] = (Array.isArray(unreadBody?.notifications) ? unreadBody.notifications : [])
+          .map(asInboxNotification)
+          .filter((item: InboxNotification | null): item is InboxNotification => Boolean(item));
+        const recent: InboxNotification[] = (Array.isArray(recentBody?.notifications) ? recentBody.notifications : [])
+          .map(asInboxNotification)
+          .filter((item: InboxNotification | null): item is InboxNotification => Boolean(item));
+        const seen = new Set(unread.map((item) => item.id));
+        setInboxItems([...unread, ...recent.filter((item) => !seen.has(item.id))]);
+        const unreadCount = typeof recentBody?.unread_count === 'number'
+          ? recentBody.unread_count
+          : typeof unreadBody?.unread_count === 'number'
+            ? unreadBody.unread_count
+            : unread.length;
+        setInboxUnread(unreadCount);
+      })
+      .catch(() => {
+        setInboxItems([]);
+        setInboxUnread(0);
+      })
+      .finally(() => setInboxLoading(false));
+  }, [apiUrl, clearSessionAndRedirect]);
+
+  const markInboxRead = useCallback((ids?: number[]) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/me/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(ids && ids.length ? { ids } : { mark_read: 'all' }),
+    })
+      .then((res) => {
+        if (res.status === 401) {
+          clearSessionAndRedirect();
+          return;
+        }
+        refreshInbox();
+      })
+      .catch(() => undefined);
+  }, [apiUrl, clearSessionAndRedirect, refreshInbox]);
+
   useEffect(() => {
     refreshPendingCount();
   }, [refreshPendingCount]);
+
+  useEffect(() => {
+    refreshInbox();
+    const onFocus = () => refreshInbox();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshInbox]);
 
   useEffect(() => {
     if (!isManager) return;
@@ -576,8 +707,11 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   }, [apiUrl, isManager, clearSessionAndRedirect]);
 
   useEffect(() => {
-    if (notifyOpen) refreshPendingApprovals();
-  }, [notifyOpen, refreshPendingApprovals]);
+    if (!notifyOpen) return;
+    refreshInbox();
+    refreshPendingApprovals();
+    refreshPendingCount();
+  }, [notifyOpen, refreshInbox, refreshPendingApprovals, refreshPendingCount]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('opstrellis-notify-read') || '';
@@ -698,6 +832,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   ];
 
   const leafIsActive = (href: string) => {
+    if (href === '/integrations') return pathname === '/integrations';
     if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
     if (href === '/iam' || href === '/service-desk' || href === '/portal-access') return pathname === href;
     if (href === '/cost') {
@@ -742,6 +877,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
+        { href: '/integrations', label: 'Integrations', Icon: IconProjects, children: [
+          { href: '/integrations', label: 'Health' },
+          { href: '/integrations/jira', label: 'Jira' },
+        ] },
         { href: '/runbooks', label: 'Guides', Icon: IconBookOpen },
         {
           href: '/notification-settings',
@@ -763,6 +902,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
         { href: '/operations/webhooks', label: 'Webhooks', Icon: IconFileText },
+        { href: '/integrations', label: 'Integrations', Icon: IconProjects, children: [
+          { href: '/integrations', label: 'Health' },
+          { href: '/integrations/jira', label: 'Jira' },
+        ] },
         { href: '/reports-automation', label: 'Reports and automation', Icon: IconFileText },
       ];
   const iamNavItem: NavItem = {
@@ -846,7 +989,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       ]),
     });
   }
-  if (grants.daily) sidebarSections.push({ title: 'Daily', items: visibleNav(dailyNavItems) });
+  if (grants.daily) {
+    const extra = (!grants.operations && !grants.cost) ? [{ href: '/integrations', label: 'Integration health', Icon: IconFileText }] : [];
+    sidebarSections.push({ title: 'Daily', items: visibleNav([...dailyNavItems, ...extra]) });
+  }
   if (grants.operations) sidebarSections.push({ title: 'Operations', items: visibleNav(operationsNavItems) });
   else if (user?.maintenance_approver) {
     sidebarSections.push({
@@ -854,9 +1000,20 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       items: [{ href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle }],
     });
   }
-  if (grants.cost) sidebarSections.push({ title: 'Cost', items: visibleNav(costNavItems) });
-  if (grants.infrastructure) sidebarSections.push({ title: 'Infrastructure', items: visibleNav(infrastructureNavItems) });
-  if (grants.security) sidebarSections.push({ title: 'Security', items: visibleNav(securityNavItems) });
+  if (grants.cost) {
+    const extra = grants.operations ? [] : [{ href: '/integrations', label: 'Integration health', Icon: IconFileText }];
+    sidebarSections.push({ title: 'Cost', items: visibleNav([...costNavItems, ...extra]) });
+  }
+  if (grants.infrastructure) {
+    const extra = (!grants.operations && !grants.cost && !grants.daily && !grants.security)
+      ? [{ href: '/integrations', label: 'Integration health', Icon: IconFileText }]
+      : [];
+    sidebarSections.push({ title: 'Infrastructure', items: visibleNav([...infrastructureNavItems, ...extra]) });
+  }
+  if (grants.security) {
+    const extra = (!grants.operations && !grants.cost && !grants.daily) ? [{ href: '/integrations', label: 'Integration health', Icon: IconShield }] : [];
+    sidebarSections.push({ title: 'Security', items: visibleNav([...securityNavItems, ...extra]) });
+  }
   if (grants.records && recordsNavItems.length) sidebarSections.push({ title: 'Records', items: visibleNav(recordsNavItems) });
   if (grants.portalAccess) {
     sidebarSections.push({
@@ -1166,92 +1323,177 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 {compactRows ? 'Compact' : 'Comfortable'}
               </button>
               <ThemeToggle />
-              {isManager && (
-                <div className="devops-navbar__notify-wrap" ref={notifyRef}>
-                  <button
-                    type="button"
-                    className="devops-navbar__icon-btn"
+              <div className="devops-navbar__notify-wrap" ref={notifyRef}>
+                <button
+                  type="button"
+                  className="devops-navbar__icon-btn"
                   onClick={() => {
-                      setNotifyOpen((open) => !open);
-                      setProfileOpen(false);
-                      setSupportOpen(false);
-                    }}
-                    ref={notifyButtonRef}
-                    title={!pendingCountKnown ? 'Checking approvals' : pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
-                    aria-label={!pendingCountKnown ? 'Notifications, checking approvals' : pendingCount > seenNotifyIds.length ? `Notifications, ${Math.max(pendingCount - seenNotifyIds.length, 0)} unread` : pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
-                    aria-expanded={notifyOpen}
-                    aria-haspopup="dialog"
-                    aria-controls="devops-notify-panel"
-                  >
-                    <IconBell />
-                    {pendingCountKnown && pendingCount > seenNotifyIds.length && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
-                  </button>
+                    setNotifyOpen((open) => !open);
+                    setProfileOpen(false);
+                    setSupportOpen(false);
+                  }}
+                  ref={notifyButtonRef}
+                  title={inboxUnread > 0 ? `${inboxUnread} unread notifications` : 'Notifications'}
+                  aria-label={inboxUnread > 0 ? `Notifications, ${inboxUnread} unread` : isManager && pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
+                  aria-expanded={notifyOpen}
+                  aria-haspopup="dialog"
+                  aria-controls="devops-notify-panel"
+                >
+                  <IconBell />
+                  {(inboxUnread > 0 || (isManager && pendingCountKnown && pendingCount > 0)) ? <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden /> : null}
+                </button>
 
-                  {notifyOpen && (
-                    <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Pending approvals">
-                      <div className="devops-navbar__notify-header">
-                        <h3 className="devops-navbar__notify-title">Action required</h3>
+                {notifyOpen && (
+                  <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Notifications">
+                    <div className="devops-navbar__notify-header">
+                      <h3 className="devops-navbar__notify-title">Notifications</h3>
+                      <div className="devops-navbar__notify-header-actions">
+                        {inboxUnread > 0 ? (
+                          <button type="button" className="devops-navbar__notify-close" onClick={() => markInboxRead()}>
+                            Mark all read
+                          </button>
+                        ) : null}
                         <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
                           Close
                         </button>
                       </div>
-                      <div className="devops-navbar__notify-summary">
-                        <strong>{!pendingCountKnown || pendingApprovalsLoading ? '…' : pendingCount > 99 ? '99+' : pendingCount}</strong>
-                        <span>
-                          {!pendingCountKnown || pendingApprovalsLoading
-                            ? 'Checking approval tickets.'
-                            : pendingCount > 0
-                            ? 'Approval work is waiting across projects and release flows.'
-                            : 'No approval tickets are waiting right now.'}
-                        </span>
-                      </div>
-                      <div className="devops-navbar__notify-links">
-                        <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                          Open tickets
-                        </Link>
+                    </div>
+                    <div className="devops-navbar__notify-summary">
+                      <strong>{inboxLoading ? '…' : inboxUnread > 99 ? '99+' : inboxUnread}</strong>
+                      <span>
+                        {inboxLoading
+                          ? 'Loading notifications for this account.'
+                          : inboxUnread > 0
+                            ? 'Unread items stay here until opened, including older ones that were not opened yet.'
+                            : 'No unread notifications. Older items remain in the list below.'}
+                      </span>
+                    </div>
+                    <div className="devops-navbar__notify-list">
+                      <h4 className="devops-navbar__notify-heading">Your account</h4>
+                      {inboxLoading ? (
+                        <p className="devops-navbar__notify-empty" role="status">Loading notifications…</p>
+                      ) : inboxItems.length === 0 ? (
+                        <p className="devops-navbar__notify-empty">No notifications are stored for this account.</p>
+                      ) : (
+                        inboxItems.map((item) => {
+                          const href = item.request_id ? `/tickets?id=${item.request_id}` : '';
+                          const unread = !item.read_at;
+                          const body = (
+                            <>
+                              <strong>{notifyKindLabel(item.kind)}</strong>
+                              <span>{item.message}</span>
+                              <small>
+                                {unread ? 'Unread' : 'Read'}
+                                {item.project_name ? ` · ${item.project_name}` : ''}
+                                {item.created_at ? ` · ${formatTime(item.created_at)}` : ''}
+                              </small>
+                            </>
+                          );
+                          if (href) {
+                            return (
+                              <Link
+                                key={item.id}
+                                href={href}
+                                className={`devops-navbar__notify-ticket ${unread ? 'is-unread' : 'is-read'}`}
+                                onClick={() => {
+                                  markInboxRead([item.id]);
+                                  setNotifyOpen(false);
+                                }}
+                              >
+                                {body}
+                              </Link>
+                            );
+                          }
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`devops-navbar__notify-ticket ${unread ? 'is-unread' : 'is-read'}`}
+                              onClick={() => markInboxRead([item.id])}
+                            >
+                              {body}
+                            </button>
+                          );
+                        })
+                      )}
+                      {isManager ? (
+                        <>
+                          <h4 className="devops-navbar__notify-heading">Action required</h4>
+                          {pendingApprovalsLoading ? (
+                            <p className="devops-navbar__notify-empty" role="status">Loading approvals…</p>
+                          ) : pendingApprovals.length === 0 ? (
+                            <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
+                          ) : (
+                            groupNotify(pendingApprovals, (request) => request.service || request.project_name || 'Unassigned').map((group) => (
+                              <div key={group.key} className="devops-navbar__notify-group">
+                                <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length} waiting</p>
+                                {group.items.map((request) => (
+                                  <Link
+                                    key={request.id}
+                                    href={`/tickets?id=${request.id}`}
+                                    className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
+                                    onClick={() => {
+                                      setSeenNotifyIds((current) => {
+                                        if (current.includes(String(request.id))) return current;
+                                        const next = [...current, String(request.id)];
+                                        window.localStorage.setItem('opstrellis-notify-read', next.join(','));
+                                        return next;
+                                      });
+                                      setNotifyOpen(false);
+                                    }}
+                                  >
+                                    <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
+                                    {request.project_name ? (
+                                      <span>
+                                        {request.project_name}
+                                        {request.project_code ? ` (${request.project_code})` : ''}
+                                      </span>
+                                    ) : null}
+                                    <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
+                                    <small>Waiting for approval · {formatTime(request.created_at)} · Open the ticket to approve or reject it.</small>
+                                  </Link>
+                                ))}
+                              </div>
+                            ))
+                          )}
+                          <h4 className="devops-navbar__notify-heading">Updates</h4>
+                          {(() => {
+                            const updates = notifyItems.filter((item) => item.actionable === false);
+                            if (!updates.length) {
+                              return <p className="devops-navbar__notify-empty">No informational updates in this window.</p>;
+                            }
+                            return groupNotify(updates, (item) => item.group || item.project_name || 'Updates').map((group) => (
+                              <div key={group.key} className="devops-navbar__notify-group">
+                                <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length}</p>
+                                {group.items.map((item) => (
+                                  <div key={item.id} className="devops-navbar__notify-ticket is-read">
+                                    <strong>{item.title}</strong>
+                                    <span>{item.message}</span>
+                                    <small>Informational · {formatTime(item.created_at)} · Routed with signal settings, not emailed from this list.</small>
+                                  </div>
+                                ))}
+                              </div>
+                            ));
+                          })()}
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="devops-navbar__notify-links">
+                      <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open tickets
+                      </Link>
+                      <Link href="/profile/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Signal routing
+                      </Link>
+                      {isManager ? (
                         <Link href="/notification-settings" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                           Notification settings
                         </Link>
-                      </div>
-                      <div className="devops-navbar__notify-list">
-                        {pendingApprovalsLoading ? (
-                          <p className="devops-navbar__notify-empty" role="status">Loading approvals…</p>
-                        ) : pendingApprovals.length === 0 ? (
-                          <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
-                        ) : (
-                          pendingApprovals.slice(0, 8).map((request) => (
-                            <Link
-                              key={request.id}
-                              href={`/tickets?id=${request.id}`}
-                              className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
-                              onClick={() => {
-                                setSeenNotifyIds((current) => {
-                                  if (current.includes(String(request.id))) return current;
-                                  const next = [...current, String(request.id)];
-                                  window.localStorage.setItem('opstrellis-notify-read', next.join(','));
-                                  return next;
-                                });
-                                setNotifyOpen(false);
-                              }}
-                            >
-                              <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
-                              {request.project_name ? (
-                                <span>
-                                  {request.project_name}
-                                  {request.project_code ? ` (${request.project_code})` : ''}
-                                </span>
-                              ) : null}
-                              <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
-                              <small>Waiting for approval · {formatTime(request.created_at)} · Open the ticket to approve or reject it.</small>
-                            </Link>
-                          ))
-                        )}
-                      </div>
-                      <p className="devops-navbar__notify-empty">Updates such as status changes stay on the record timeline. This list is only work waiting on you.</p>
+                      ) : null}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="devops-navbar__profile-wrap" ref={profileRef}>
               <button
@@ -1400,6 +1642,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
           { id: 'change-calendar', label: 'Change calendar', href: '/change-calendar', hint: 'Scheduled changes' },
           { id: 'release-notes', label: 'Release notes', href: '/release-notes', hint: 'What shipped' },
           { id: 'cost', label: 'Cost', href: '/cost', hint: 'Operating bill and request estimates' },
+          { id: 'integration-health', label: 'Integration health', href: '/integrations', hint: 'Connector health and recovery' },
           { id: 'services', label: 'Service inventory', href: '/services', hint: 'Production services, observability, and findings' },
           { id: 'slos', label: 'Service SLOs', href: '/slos', hint: 'Error and latency budgets' },
           { id: 'add-service', label: 'Add service', href: '/services/new', hint: 'Register a service' },

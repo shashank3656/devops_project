@@ -11,6 +11,8 @@ import { SERVICE_CLASSES, monitoredEnvironmentName } from '../../lib/sreMonitori
 import { serviceCatalogueBackHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import { rememberService } from '../../lib/recentServices';
+import ServiceSetupChecklist from '../../components/ServiceSetupChecklist';
+import { buildServiceSetupOptional, buildServiceSetupSteps, serviceNeedsSetup } from '../../lib/serviceSetup';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -216,6 +218,7 @@ export default function ServiceDetailPage() {
   const [escalationRoute, setEscalationRoute] = useState('');
   const [runbookURL, setRunbookURL] = useState('');
   const [editFocus, setEditFocus] = useState('');
+  const [onCallReady, setOnCallReady] = useState(false);
   useUnsavedChanges(editing && Boolean(item) && (
     service !== (item?.service || '')
     || repo !== (item?.repo || '')
@@ -269,6 +272,18 @@ export default function ServiceDetailPage() {
       })
       .catch(() => setError('Failed to load service'));
   }, [apiUrl, resourceId]);
+
+  useEffect(() => {
+    const projectId = item?.project_id;
+    if (!projectId || !sessionToken) {
+      setOnCallReady(false);
+      return;
+    }
+    fetch(`${apiUrl}/api/oncall/project-teams?project_id=${projectId}`, { headers: { Authorization: `Bearer ${sessionToken}` } })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data: { teams?: unknown[] }) => setOnCallReady(Array.isArray(data?.teams) && data.teams.length > 0))
+      .catch(() => setOnCallReady(false));
+  }, [apiUrl, item?.project_id, sessionToken]);
 
   useEffect(() => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -356,6 +371,12 @@ export default function ServiceDetailPage() {
     const query = { ...router.query, tab: 'configuration' };
     void router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
+
+  useEffect(() => {
+    if (!item || !isManager || editing) return;
+    const focus = Array.isArray(router.query.focus) ? router.query.focus[0] : router.query.focus;
+    if (typeof focus === 'string' && focus.trim()) startEdit(focus);
+  }, [editing, isManager, item, router.query.focus]);
 
   useEffect(() => {
     if (!editing || !editFocus) return;
@@ -453,8 +474,13 @@ export default function ServiceDetailPage() {
             {editing ? (
               <p className="ops-note"><strong>Editing service identity</strong><span>Overview, observability, and findings stay open. Save or cancel in Configuration.</span></p>
             ) : null}
-            {(!(item.repo || '').trim() || !(item.team || '').trim() || !(item.dashboard_url || item.grafana_uid || item.metrics_url || item.promql)) ? (
-              <p className="ops-note ops-note--warn"><strong>Setup incomplete</strong><span>Repository, service owner team, or monitoring is still missing. Missing telemetry stays Unknown.</span></p>
+            {serviceNeedsSetup(item, onCallReady) ? (
+              <ServiceSetupChecklist
+                serviceName={item.service}
+                steps={buildServiceSetupSteps(item, onCallReady)}
+                optional={buildServiceSetupOptional(item)}
+                resumeHref={buildServiceSetupSteps(item, onCallReady).find((step) => !step.done)?.href}
+              />
             ) : null}
             {sessionToken ? (
               <SreServiceWorkspace
@@ -482,7 +508,7 @@ export default function ServiceDetailPage() {
                           <legend className="form-section__title">Basics</legend>
                           <div className="portal-form-grid">
                             <label className="label">Service<span className="form-req" aria-hidden="true"> *</span><input className="input" value={service} onChange={(event) => setService(event.target.value)} required /></label>
-                            <label className="label">Repo <span className="onboard-optional">Optional</span><input id="service-repo" className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
+                            <label className="label">Repo<input id="service-repo" className="input" value={repo} onChange={(event) => setRepo(event.target.value)} /></label>
                             <label className="label">
                               Project
                               <select className="input" value={projectId} onChange={(event) => {
@@ -520,21 +546,22 @@ export default function ServiceDetailPage() {
                           </div>
                         </fieldset>
                         <fieldset className="form-section">
-                          <legend className="form-section__title">Support and response</legend>
-                          <div className="portal-form-grid">
-                            <label className="label">Support team <span className="onboard-optional">Optional</span><input id="service-support" className="input" value={supportTeam} onChange={(event) => setSupportTeam(event.target.value)} /></label>
-                            <label className="label">Escalation route <span className="onboard-optional">Optional</span><input id="service-escalation" className="input" value={escalationRoute} onChange={(event) => setEscalationRoute(event.target.value)} /></label>
-                            <label className="label">Runbook URL <span className="onboard-optional">Optional</span><input id="service-runbook" className="input" value={runbookURL} onChange={(event) => setRunbookURL(event.target.value)} /></label>
-                          </div>
-                        </fieldset>
-                        <details className="onboard-advanced" open={editFocus === 'monitoring' || Boolean(grafanaUID || dashboardURL || metricsURL || promql) || undefined}>
-                          <summary>Monitoring evidence <span className="onboard-optional">Optional</span></summary>
-                          <p className="form-section__copy">A dashboard URL is evidence, not an executable query. Health stays Unknown until a monitor is evaluated.</p>
+                          <legend className="form-section__title">Monitoring</legend>
+                          <p className="form-section__copy">Required to finish setup. A dashboard URL is evidence, not an executable query. Health stays Unknown until a monitor is evaluated.</p>
                           <div className="portal-form-grid">
                             <label className="label">Grafana UID<input className="input" value={grafanaUID} onChange={(event) => setGrafanaUID(event.target.value)} /></label>
                             <label className="label">Dashboard URL<input id="service-dashboard" className="input" value={dashboardURL} onChange={(event) => setDashboardURL(event.target.value)} /></label>
                             <label className="label">Metrics JSON URL<input className="input" value={metricsURL} onChange={(event) => setMetricsURL(event.target.value)} /></label>
                             <label className="label">PromQL<textarea className="input" rows={3} value={promql} onChange={(event) => setPromql(event.target.value)} /></label>
+                          </div>
+                        </fieldset>
+                        <details className="onboard-advanced" open={editFocus === 'support' || editFocus === 'runbook' || Boolean(supportTeam || escalationRoute || runbookURL) || undefined}>
+                          <summary>Optional integrations</summary>
+                          <p className="form-section__copy">Support, escalation, and runbook stay on the service. They are not required to finish setup and are not a health signal.</p>
+                          <div className="portal-form-grid">
+                            <label className="label">Support team<input id="service-support" className="input" value={supportTeam} onChange={(event) => setSupportTeam(event.target.value)} /></label>
+                            <label className="label">Escalation route<input id="service-escalation" className="input" value={escalationRoute} onChange={(event) => setEscalationRoute(event.target.value)} /></label>
+                            <label className="label">Runbook URL<input id="service-runbook" className="input" value={runbookURL} onChange={(event) => setRunbookURL(event.target.value)} /></label>
                           </div>
                         </details>
                         <div className="portal-form-actions">
@@ -608,6 +635,7 @@ export default function ServiceDetailPage() {
                       <Service360
                         apiUrl={apiUrl}
                         token={sessionToken}
+                        serviceId={item.id}
                         serviceName={item.service}
                         projectId={item.project_id}
                         environment={item.environment}

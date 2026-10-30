@@ -10,21 +10,21 @@ import (
 )
 
 type environmentCatalogRow struct {
-	ProjectID          int      `json:"project_id"`
-	ProjectName        string   `json:"project_name"`
-	ProjectCode        string   `json:"project_code,omitempty"`
-	Name               string   `json:"name"`
-	EnvType            string   `json:"env_type"`
-	CloudAccountID          *int   `json:"cloud_account_id,omitempty"`
-	CloudAccountLabel       string `json:"cloud_account_label,omitempty"`
-	CloudAccountExternalID  string `json:"cloud_account_external_id,omitempty"`
-	CloudProvider           string `json:"cloud_provider,omitempty"`
-	DefaultRegion      string   `json:"default_region,omitempty"`
-	DefaultCluster     string   `json:"default_cluster,omitempty"`
-	Owners             []string `json:"owners"`
-	Frozen             bool     `json:"frozen"`
-	FreezeReason       string   `json:"freeze_reason,omitempty"`
-	FreezeEndsAt       string   `json:"freeze_ends_at,omitempty"`
+	ProjectID              int      `json:"project_id"`
+	ProjectName            string   `json:"project_name"`
+	ProjectCode            string   `json:"project_code,omitempty"`
+	Name                   string   `json:"name"`
+	EnvType                string   `json:"env_type"`
+	CloudAccountID         *int     `json:"cloud_account_id,omitempty"`
+	CloudAccountLabel      string   `json:"cloud_account_label,omitempty"`
+	CloudAccountExternalID string   `json:"cloud_account_external_id,omitempty"`
+	CloudProvider          string   `json:"cloud_provider,omitempty"`
+	DefaultRegion          string   `json:"default_region,omitempty"`
+	DefaultCluster         string   `json:"default_cluster,omitempty"`
+	Owners                 []string `json:"owners"`
+	Frozen                 bool     `json:"frozen"`
+	FreezeReason           string   `json:"freeze_reason,omitempty"`
+	FreezeEndsAt           string   `json:"freeze_ends_at,omitempty"`
 }
 
 func migrateEnvironmentCatalogSchema() {
@@ -80,14 +80,14 @@ func devopsEnvironmentCatalogHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type environmentCatalogPatchInput struct {
-	ProjectID        int      `json:"project_id"`
-	Environment      string   `json:"environment"`
-	EnvType          string   `json:"env_type"`
-	DefaultRegion    string   `json:"default_region"`
-	DefaultCluster   string   `json:"default_cluster_name"`
-	Owners           []string `json:"owners"`
-	CloudAccountID   *int     `json:"cloud_account_id"`
-	ClearCloudAccount bool    `json:"clear_cloud_account"`
+	ProjectID         int      `json:"project_id"`
+	Environment       string   `json:"environment"`
+	EnvType           string   `json:"env_type"`
+	DefaultRegion     string   `json:"default_region"`
+	DefaultCluster    string   `json:"default_cluster_name"`
+	Owners            []string `json:"owners"`
+	CloudAccountID    *int     `json:"cloud_account_id"`
+	ClearCloudAccount bool     `json:"clear_cloud_account"`
 }
 
 func patchEnvironmentCatalogMetadata(managerID int, r *http.Request) (*environmentCatalogRow, error) {
@@ -547,13 +547,14 @@ func workspaceEnvironmentFreezeQueue(portal string, viewerID int) []workspaceQue
 		}
 		reason := firstNonEmpty(row.FreezeReason, "Deployment freeze")
 		items = append(items, workspaceQueueItem{
-			ID:     "env-freeze-" + strconv.Itoa(row.ProjectID) + "-" + row.Name,
-			Kind:   "freeze",
-			Title:  "Freeze: " + row.Name + " (" + row.ProjectName + ")",
-			Meta:   meta + " — " + reason,
-			Href:   "/environments?project_id=" + strconv.Itoa(row.ProjectID),
-			Action: "Catalog",
-			Tone:   "danger",
+			ID:          "env-freeze-" + strconv.Itoa(row.ProjectID) + "-" + row.Name,
+			Kind:        "freeze",
+			Title:       "Freeze: " + row.Name + " (" + row.ProjectName + ")",
+			Meta:        meta + " — " + reason,
+			Href:        "/environments?project_id=" + strconv.Itoa(row.ProjectID),
+			Action:      "Catalog",
+			Tone:        "danger",
+			Environment: row.Name,
 		})
 		if len(items) >= 6 {
 			break

@@ -8,6 +8,7 @@ import { useApiUrl } from '../../context/ApiUrlContext';
 import { canCloseFinding, nextFindingAction, textField } from '../../lib/securityDesk';
 import { asRecord } from '../../lib/payload';
 import { deskCanWrite } from '../../shared-ui/deskRules';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import { EmptyState } from '@infragate/ui';
 
 interface LoadedFinding {
@@ -61,6 +62,7 @@ export default function FindingsPage() {
   const [monitorFindings, setMonitorFindings] = useState<MonitorFindingRow[]>([]);
   const [cloudFindings, setCloudFindings] = useState<CloudFindingRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  const [listFailed, setListFailed] = useState(false);
   const [lifecycle, setLifecycle] = useState('open');
   const [severity, setSeverity] = useState('');
   const [owner, setOwner] = useState('Unknown');
@@ -103,16 +105,19 @@ export default function FindingsPage() {
     if (lifecycle === 'open') cloudQuery.set('open', '1');
     else if (lifecycle) cloudQuery.set('state', lifecycle);
     setListLoading(true);
+    setListFailed(false);
     Promise.all([
-      fetch(`${apiUrl}/api/devops/monitor-findings?${monitorQuery.toString()}`, { headers }).then((res) => (res.ok ? res.json() : { findings: [] })),
-      fetch(`${apiUrl}/api/findings?${cloudQuery.toString()}`, { headers }).then((res) => (res.ok ? res.json() : { findings: [] })),
+      fetch(`${apiUrl}/api/devops/monitor-findings?${monitorQuery.toString()}`, { headers }).then(async (res) => ({ ok: res.ok, body: await res.json().catch(() => ({})) })),
+      fetch(`${apiUrl}/api/findings?${cloudQuery.toString()}`, { headers }).then(async (res) => ({ ok: res.ok, body: await res.json().catch(() => ({})) })),
     ])
-      .then(([monitorBody, cloudBody]) => {
-        setMonitorFindings(Array.isArray(monitorBody?.findings) ? monitorBody.findings : []);
-        const cloudRows = Array.isArray(cloudBody?.findings) ? cloudBody.findings : Array.isArray(cloudBody) ? cloudBody : [];
+      .then(([monitorResult, cloudResult]) => {
+        setListFailed(!monitorResult.ok && !cloudResult.ok);
+        setMonitorFindings(Array.isArray(monitorResult.body?.findings) ? monitorResult.body.findings : []);
+        const cloudRows = Array.isArray(cloudResult.body?.findings) ? cloudResult.body.findings : Array.isArray(cloudResult.body) ? cloudResult.body : [];
         setCloudFindings(cloudRows.filter((item: { id?: number }) => typeof item.id === 'number'));
       })
       .catch(() => {
+        setListFailed(true);
         setMonitorFindings([]);
         setCloudFindings([]);
       })
@@ -120,6 +125,18 @@ export default function FindingsPage() {
   }, [apiUrl, lifecycle, router.isReady, severity]);
 
   const visibleMonitor = useMemo(() => monitorFindings, [monitorFindings]);
+  const findingsLastSuccess = useMemo(() => {
+    const stamps = [
+      ...monitorFindings.map((item) => item.last_evaluated_at || item.last_seen_at || ''),
+    ].filter(Boolean).sort();
+    return stamps.at(-1) || '';
+  }, [monitorFindings]);
+  const findingsCollection = collectionStateFromSync({
+    connected: !listFailed,
+    failed: listFailed,
+    lastSuccess: findingsLastSuccess,
+    empty: !monitorFindings.length && !cloudFindings.length,
+  });
 
   const gate = finding ? canCloseFinding(finding.coverage, finding.rescanState, finding.latestResult) : { allowed: false, reason: 'Load a finding before choosing a next action.' };
   const action = finding ? nextFindingAction(finding.state, finding.coverage, finding.rescanState, finding.latestResult) : 'Load a finding to see evidence, owner, and the next action.';
@@ -230,6 +247,14 @@ export default function FindingsPage() {
           <div>
             <h1 className="portal-page__title">Findings</h1>
             <p className="portal-page__subtitle">Open monitor and cloud findings. Empty coverage stays Unknown, never Secure. An exception is not cloud access.</p>
+            {!listLoading ? (
+              <CollectionStatus
+                source="Monitor findings · Cloud scan"
+                lastSuccess={findingsLastSuccess}
+                state={findingsCollection}
+                detail="Empty coverage stays Unknown, never Secure."
+              />
+            ) : null}
           </div>
         </header>
         {error ? <div className="alert alert-error">{error}</div> : null}

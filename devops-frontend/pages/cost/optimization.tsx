@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import CostAskButton from '../../components/CostAskButton';
 import CostDrawer from '../../components/CostDrawer';
 import CostSetupFlow from '../../components/CostSetupFlow';
@@ -10,8 +11,9 @@ import CostSampleBanner from '../../components/CostSampleBanner';
 import CostTechnicalDetails from '../../components/CostTechnicalDetails';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
-import { CostOptimization, CostRecommendation, costHref, costLifecycleLabel, costQuery, costRiskLabel, fetchCostJson } from '../../lib/cost';
+import { COST_LIFECYCLE_STEPS, CostOptimization, CostRecommendation, costConfidenceLabel, costHref, costLifecycleLabel, costLifecycleStepIndex, costQuery, costRiskLabel, fetchCostJson } from '../../lib/cost';
 import { COST_SAMPLE_RECS } from '../../lib/costSample';
+import LinkedJiraWork from '../../components/LinkedJiraWork';
 
 export default function CostOptimizationPage() {
   const apiUrl = useApiUrl();
@@ -89,7 +91,18 @@ export default function CostOptimizationPage() {
           <h1 className="portal-page__title">Optimization</h1>
         </div>
         <CostNav current="optimization" sample={showSample} />
-        {showSample ? <CostSampleBanner /> : null}
+        {showSample ? <CostSampleBanner /> : !loading ? (
+          <CollectionStatus
+            source="CUR 2.0"
+            lastSuccess={null}
+            state={collectionStateFromSync({
+              connected: data?.can_operate !== false,
+              failed: Boolean(error),
+              empty: !recommendations.length,
+            })}
+            detail="Estimated savings and measured bill reduction stay separate. Approval does not execute the change."
+          />
+        ) : null}
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
         {notice ? <div className="alert alert-info" role="status">{notice}</div> : null}
         {recommendations.length ? <p className="cost-review-note">Recommendations require review before changes.</p> : null}
@@ -138,9 +151,10 @@ export default function CostOptimizationPage() {
               <thead>
                 <tr>
                   <th>Recommendation</th>
-                  <th>Opportunity</th>
-                  <th>Evidence</th>
-                  <th>Risk</th>
+                  <th>Estimated savings</th>
+                  <th>Measured savings</th>
+                  <th>Confidence</th>
+                  <th>Operational risk</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
@@ -152,8 +166,9 @@ export default function CostOptimizationPage() {
                       {row.finding_type}
                       <div className="portal-surface__subtitle">{row.service || row.resource_id}</div>
                     </td>
-                    <td>{row.savings_high?.display || 'Unknown'} estimate</td>
-                    <td>{row.evidence}</td>
+                    <td>{row.savings_high?.display || 'Unknown'}</td>
+                    <td>{row.bill_reduction?.display || 'Not measured'}</td>
+                    <td>{costConfidenceLabel(row.confidence)}</td>
                     <td>{costRiskLabel(row.risk)}{row.impact ? ` · ${row.impact}` : ''}</td>
                     <td>{costLifecycleLabel(row.lifecycle || row.status)}{row.waiting_for ? ` · ${row.waiting_for}` : ''}</td>
                     <td>
@@ -180,20 +195,33 @@ export default function CostOptimizationPage() {
               >
                 Explain this recommendation
               </CostAskButton>
-              <button type="button" className="btn btn-secondary" disabled={!!acting || sampleLocked || data?.can_operate === false} onClick={() => void act('review')}>Under review</button>
-              <button type="button" className="btn btn-primary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('accept')}>Accept</button>
+              <button type="button" className="btn btn-secondary" disabled={!!acting || sampleLocked || data?.can_operate === false} onClick={() => void act('review')}>Investigating</button>
+              <button type="button" className="btn btn-primary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('accept')}>Approve</button>
             </div>
           )}
         >
           {open ? (
             <>
+              <ol className="chg-lifecycle" aria-label="Recommendation workflow">
+                {COST_LIFECYCLE_STEPS.map((step, index) => {
+                  const current = costLifecycleStepIndex(open.lifecycle || open.status);
+                  return (
+                    <li key={step} className={`chg-lifecycle__step${index < current ? ' is-done' : ''}${index === current ? ' is-current' : ''}`}>
+                      <span className="chg-lifecycle__dot" aria-hidden />
+                      <span className="chg-lifecycle__label">{step}</span>
+                    </li>
+                  );
+                })}
+              </ol>
               <dl className="sre-meta">
                 <div className="sre-meta__item"><dt>Current configuration</dt><dd>{open.evidence}</dd></div>
                 <div className="sre-meta__item"><dt>Proposed change</dt><dd>{open.proposed_action}</dd></div>
-                <div className="sre-meta__item"><dt>Expected savings</dt><dd>{open.savings_high?.display || 'Unknown'} estimate</dd></div>
-                <div className="sre-meta__item"><dt>Bill reduction</dt><dd>{open.bill_reduction?.display || 'Unknown'}</dd></div>
+                <div className="sre-meta__item"><dt>Estimated savings</dt><dd>{open.savings_high?.display || 'Unknown'}</dd></div>
+                <div className="sre-meta__item"><dt>Measured savings</dt><dd>{open.bill_reduction?.display || 'Not measured'}</dd></div>
+                <div className="sre-meta__item"><dt>Confidence</dt><dd>{costConfidenceLabel(open.confidence)}</dd></div>
+                <div className="sre-meta__item"><dt>Operational risk</dt><dd>{costRiskLabel(open.risk)}{open.impact ? ` · ${open.impact}` : ''}</dd></div>
                 <div className="sre-meta__item"><dt>Rollback</dt><dd>Link an existing change. This page never resizes, deletes, or applies the change.</dd></div>
-                <div className="sre-meta__item"><dt>Verification</dt><dd>{open.verification || open.lifecycle || 'Not measured'}</dd></div>
+                <div className="sre-meta__item"><dt>Verification</dt><dd>{open.verification || 'Not measured'}</dd></div>
                 {open.change_id ? <div className="sre-meta__item"><dt>Linked change</dt><dd><Link href={open.change_href || `/changes/${open.change_id}`}>{open.change_number}</Link></dd></div> : null}
                 {open.blocked_reason ? <div className="sre-meta__item"><dt>Blocked</dt><dd>{open.blocked_reason}</dd></div> : null}
               </dl>
@@ -214,14 +242,24 @@ export default function CostOptimizationPage() {
               <div className="portal-page__actions">
                 <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || !changeNumber || data?.can_operate === false} onClick={() => void act('link')}>Link change</button>
                 <Link href="/changes/new" className="btn btn-secondary">Open a change</Link>
-                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('verify')}>Measure</button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || !open.change_id || data?.can_operate === false} onClick={() => void act('implement')}>Mark implemented</button>
+                <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('verify')}>Verify measured savings</button>
                 <button type="button" className="btn btn-secondary" disabled={!!acting || blocked || sampleLocked || data?.can_operate === false} onClick={() => void act('verify', { result: 'inconclusive' })}>Mark Inconclusive</button>
                 <button type="button" className="btn btn-secondary" disabled={!!acting || sampleLocked || !reason || !reviewBy || data?.can_operate === false} onClick={() => void act('dismiss')}>Dismiss</button>
               </div>
+              <LinkedJiraWork
+                apiUrl={apiUrl}
+                source={{
+                  sourceType: 'cost_recommendation',
+                  sourceKey: open.calc_id,
+                  defaultSummary: open.finding_type,
+                  defaultDescription: open.proposed_action || open.finding_type,
+                }}
+              />
               <CostTechnicalDetails>
                 <p>{open.calc_id}</p>
                 <p>{open.calculation}</p>
-                <p>Approval does not execute the change. This page does not pause workloads. Overlapping savings are not summed.</p>
+                <p>Approval does not execute the change. This page does not pause workloads. Overlapping savings are not summed. Jira ticket completion is not verified savings.</p>
               </CostTechnicalDetails>
             </>
           ) : null}

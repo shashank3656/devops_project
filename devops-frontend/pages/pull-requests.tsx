@@ -2,10 +2,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
+import CollectionStatus, { collectionStateFromSync } from '../components/CollectionStatus';
 import DeliveryHubNav from '../components/DeliveryHubNav';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
-import { formatCI, formatReviewAge, formatRisk, pipelinesHref, type DeliveryCheck, type DeliveryCISummary } from '../lib/delivery';
+import { assignedReviewer, formatCI, formatReviewAge, formatRisk, pipelinesHref, type DeliveryCheck, type DeliveryCISummary } from '../lib/delivery';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -23,6 +24,12 @@ interface OpenPR {
   open_pr?: {
     age_days?: number;
     review_sla?: string;
+    review_decision?: string;
+    assignees?: string[];
+    requested_reviewers?: string[];
+    awaiting_owner?: boolean;
+    approval_delay_days?: number;
+    delay_known?: boolean;
     checks?: DeliveryCheck[];
     ci?: DeliveryCISummary;
   };
@@ -33,13 +40,37 @@ interface OpenPR {
   };
 }
 
+type ReviewBottleneckTeam = {
+  repository?: string;
+  open?: number;
+  awaiting_owner?: number;
+  overdue?: number;
+  median_age_days?: number;
+  median_approval_delay_days?: number;
+  approval_sample?: number;
+  delay_known?: boolean;
+};
+
+type ReviewBottleneck = {
+  awaiting_owner?: number;
+  overdue?: number;
+  open?: number;
+  median_age_days?: number;
+  median_approval_delay_days?: number;
+  approval_sample?: number;
+  delay_known?: boolean;
+  note?: string;
+  teams?: ReviewBottleneckTeam[];
+};
+
 type RiskFilter = 'all' | 'high' | 'medium' | 'low';
-type AgeFilter = 'all' | 'overdue';
+type AgeFilter = 'all' | 'overdue' | 'awaiting';
 
 export default function PullRequestsPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
   const [items, setItems] = useState<OpenPR[]>([]);
+  const [bottleneck, setBottleneck] = useState<ReviewBottleneck | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -70,6 +101,7 @@ export default function PullRequestsPage() {
             owner: event.owner || event.repo_owner,
             repo: event.repo || event.repo_name,
           })));
+          setBottleneck((data?.review_bottleneck as ReviewBottleneck | undefined) || null);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load pull requests');
@@ -96,6 +128,7 @@ export default function PullRequestsPage() {
       const age = formatReviewAge(item.open_pr?.age_days, item.open_pr?.review_sla);
       if (riskFilter !== 'all' && risk !== riskFilter) return false;
       if (ageFilter === 'overdue' && !age.overdue) return false;
+      if (ageFilter === 'awaiting' && !item.open_pr?.awaiting_owner) return false;
       if (repoFilter !== 'all' && item.repo !== repoFilter) return false;
       if (!needle) return true;
       return `${item.title} ${item.repo} ${item.author} #${item.pr_number}`.toLowerCase().includes(needle);
@@ -113,9 +146,44 @@ export default function PullRequestsPage() {
             <p className="delivery-kicker">Delivery</p>
             <h1 className="delivery-title">Pull requests</h1>
             <p className="delivery-lede">Review code changes, track checks and follow delivery outcomes.</p>
+            {!loading ? (
+              <CollectionStatus
+                source="GitHub"
+                lastSuccess={null}
+                state={collectionStateFromSync({
+                  connected: !error,
+                  failed: Boolean(error),
+                  empty: items.length === 0,
+                })}
+                detail={error ? 'Pull request collection failed.' : items.length ? `${items.length} open pull requests in this collection.` : 'No findings in this collection.'}
+              />
+            ) : null}
           </div>
         </header>
         <DeliveryHubNav active="pulls" />
+        {bottleneck ? (
+          <section className="delivery-stats" aria-label="Review bottlenecks">
+            <article className="delivery-stat">
+              <span className="delivery-stat__label">Awaiting reviewer</span>
+              <strong className="delivery-stat__value">{bottleneck.awaiting_owner ?? 0}</strong>
+              <p className="delivery-stat__hint">No assigned reviewer besides the author</p>
+            </article>
+            <article className="delivery-stat">
+              <span className="delivery-stat__label">Overdue reviews</span>
+              <strong className="delivery-stat__value">{bottleneck.overdue ?? 0}</strong>
+              <p className="delivery-stat__hint">Past the seven-day review SLA</p>
+            </article>
+            <article className="delivery-stat">
+              <span className="delivery-stat__label">Median age</span>
+              <strong className="delivery-stat__value">{typeof bottleneck.median_age_days === 'number' ? `${bottleneck.median_age_days}d` : 'Unknown'}</strong>
+              <p className="delivery-stat__hint">
+                {bottleneck.delay_known
+                  ? `Median approval delay ${bottleneck.median_approval_delay_days ?? 0}d · ${bottleneck.approval_sample ?? 0} PR${bottleneck.approval_sample === 1 ? '' : 's'}`
+                  : 'No approvals yet'}
+              </p>
+            </article>
+          </section>
+        ) : null}
         {error ? <div className="alert alert-error">{error}</div> : null}
         <div className="delivery-toolbar delivery-toolbar--pipe">
           <label className="delivery-search">
@@ -152,6 +220,13 @@ export default function PullRequestsPage() {
             >
               Overdue
             </button>
+            <button
+              type="button"
+              className={`delivery-filter delivery-filter--pending${ageFilter === 'awaiting' ? ' is-active' : ''}`}
+              onClick={() => setAgeFilter(ageFilter === 'awaiting' ? 'all' : 'awaiting')}
+            >
+              Awaiting reviewer
+            </button>
           </div>
           {repos.length > 1 ? (
             <label className="delivery-search delivery-search--repo">
@@ -186,6 +261,7 @@ export default function PullRequestsPage() {
                     <th>Risk</th>
                     <th>CI checks</th>
                     <th>Review age</th>
+                    <th>Reviewer</th>
                     <th>Change request</th>
                     <th>Action</th>
                   </tr>
@@ -218,6 +294,11 @@ export default function PullRequestsPage() {
                           {age.overdue ? <span className="delivery-status delivery-status--failed">Overdue</span> : null}
                         </td>
                         <td>
+                          {item.open_pr?.awaiting_owner
+                            ? <span className="delivery-status delivery-status--pending">Awaiting reviewer</span>
+                            : (assignedReviewer(item.author, item.open_pr?.assignees, item.open_pr?.requested_reviewers) || 'Assigned')}
+                        </td>
+                        <td>
                           {item.request_id ? <Link href={`/changes/${item.request_id}`}>CHG linked</Link> : 'Not linked'}
                         </td>
                         <td>
@@ -229,6 +310,38 @@ export default function PullRequestsPage() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+            {bottleneck?.note ? <p className="delivery-table__hint">{bottleneck.note}</p> : null}
+          </section>
+        ) : null}
+        {!loading && bottleneck?.teams?.length ? (
+          <section className="delivery-panel">
+            <p className="delivery-table__hint"><strong>Review trends by repository</strong></p>
+            <div className="table-scroll">
+              <table className="delivery-table">
+                <thead>
+                  <tr>
+                    <th>Repository</th>
+                    <th>Open</th>
+                    <th>Awaiting reviewer</th>
+                    <th>Overdue</th>
+                    <th>Median age</th>
+                    <th>Median approval delay</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bottleneck.teams.map((team) => (
+                    <tr key={team.repository}>
+                      <td>{team.repository || 'Unknown'}</td>
+                      <td>{team.open ?? 0}</td>
+                      <td>{team.awaiting_owner ?? 0}</td>
+                      <td>{team.overdue ?? 0}</td>
+                      <td>{typeof team.median_age_days === 'number' ? `${team.median_age_days}d` : 'Unknown'}</td>
+                      <td>{team.delay_known ? `${team.median_approval_delay_days ?? 0}d · ${team.approval_sample ?? 0}` : 'No approvals yet'}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
