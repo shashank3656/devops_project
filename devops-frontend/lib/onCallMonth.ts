@@ -150,6 +150,37 @@ export function weekdayLong(dateKey: string): string {
   return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][weekday] || '';
 }
 
+const LONG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export function formatLongDay(dateKey: string): string {
+  const parts = dateParts(dateKey);
+  if (!parts) return dateKey;
+  return `${parts.day} ${LONG_MONTHS[parts.month - 1] || 'Unknown'}`;
+}
+
+export function onCallTeamHref(projectId: number, teamId: number, date?: string, timezone?: string): string {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  if (timezone) params.set('timezone', timezone);
+  const query = params.toString();
+  return `/on-call/project/${projectId}/team/${teamId}${query ? `?${query}` : ''}`;
+}
+
+export function onCallRotationHref(projectId: number, teamId: number, options?: { scheduleId?: number; date?: string; timezone?: string; intent?: 'assign' | 'recurring' }): string {
+  const params = new URLSearchParams();
+  if (options?.date) params.set('date', options.date);
+  if (options?.timezone) params.set('timezone', options.timezone);
+  if (options?.intent) params.set('intent', options.intent);
+  if (options?.scheduleId && options.scheduleId > 0) {
+    const query = params.toString();
+    return `/on-call/${options.scheduleId}${query ? `?${query}` : ''}`;
+  }
+  if (projectId > 0) params.set('project_id', String(projectId));
+  if (teamId > 0) params.set('team_id', String(teamId));
+  const query = params.toString();
+  return `/on-call/new${query ? `?${query}` : ''}`;
+}
+
 function timezonePart(timeZone: string, name: 'short' | 'shortOffset' | 'longOffset', at = new Date()): string {
   try {
     const parts = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', timeZoneName: name }).formatToParts(at);

@@ -100,6 +100,65 @@ func handoverEscalateMinutes(value int) int {
 	return clampHandoverMinutes(value, 15, 5, 120)
 }
 
+func lookupOncallSchedule(teamID, projectID int) *oncallSchedule {
+	if DB == nil || teamID <= 0 || projectID <= 0 {
+		return nil
+	}
+	var id int
+	var timezone, daysJSON, backupJSON string
+	err := DB.QueryRow(`
+		SELECT id, timezone, days, COALESCE(backup_days, '{}')
+		FROM oncall_schedules
+		WHERE team_id = $1 AND project_id = $2
+	`, teamID, projectID).Scan(&id, &timezone, &daysJSON, &backupJSON)
+	if err != nil {
+		return nil
+	}
+	ids := []int{}
+	stored := map[string]int{}
+	backup := map[string]int{}
+	_ = json.Unmarshal([]byte(daysJSON), &stored)
+	_ = json.Unmarshal([]byte(backupJSON), &backup)
+	for _, userID := range stored {
+		ids = append(ids, userID)
+	}
+	for _, userID := range backup {
+		ids = append(ids, userID)
+	}
+	return &oncallSchedule{
+		ID:        id,
+		TeamID:    teamID,
+		ProjectID: projectID,
+		Timezone:  timezone,
+		Days:      oncallDaysFromJSON(daysJSON, backupJSON, oncallUserNames(ids)),
+	}
+}
+
+func oncallScheduleHasAssignment(item *oncallSchedule) bool {
+	if item == nil {
+		return false
+	}
+	for _, day := range item.Days {
+		if day.UserID > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func oncallScheduleAssignment(item *oncallSchedule, weekday time.Weekday) (int, int) {
+	if item == nil {
+		return 0, 0
+	}
+	name := strings.ToLower(weekday.String())
+	for _, day := range item.Days {
+		if day.Day == name {
+			return day.UserID, day.BackupUserID
+		}
+	}
+	return 0, 0
+}
+
 func oncallTimezoneAllowed(value string) bool {
 	for _, zone := range oncallTimezones {
 		if zone == value {

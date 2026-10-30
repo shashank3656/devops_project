@@ -1,7 +1,7 @@
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
-import { CopyButton, DataTable, InspectorDrawer, SavedViews, type DataTableColumn, type SavedView } from '@infragate/ui';
+import { CopyButton, DataTable, InspectorDrawer, SavedViews, useSavedFilterViews, type DataTableColumn, type SavedView } from '@infragate/ui';
 import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
@@ -10,14 +10,16 @@ import { INCIDENT_STATES, ITSM_PRIORITIES, IncidentSLA, incidentCanFinish, incid
 import { asRecord, getString } from '../lib/payload';
 import { expireSession } from '../lib/sessionExpiry';
 import BlockedAction from '../components/BlockedAction';
+import { OPERATIONS_SCOPE, OPERATIONS_STORAGE_KEY, OPERATIONS_VIEW_PRESETS, environmentMatches } from '../lib/operationalViews';
 
-type IncidentView = { severity: string; status: string; environment: string; mine: string };
+type IncidentView = { team: string; environment: string; mine: string; unassigned: string; severity: string; status: string };
 
 const INCIDENT_VIEW_PRESETS: SavedView<IncidentView>[] = [
-  { name: 'Active & owned', filters: { severity: '', status: 'in_progress', environment: '', mine: '1' } },
-  { name: 'Assigned to me', filters: { severity: '', status: '', environment: '', mine: '1' } },
-  { name: 'Open incidents', filters: { severity: '', status: 'new', environment: '', mine: '' } },
-  { name: 'My production incidents', filters: { severity: '', status: '', environment: 'prod', mine: '1' } },
+  ...OPERATIONS_VIEW_PRESETS.map((preset) => ({ name: preset.name, filters: { ...preset.filters, severity: '', status: '' } })),
+  { name: 'Active & owned', filters: { team: '', environment: '', mine: '1', unassigned: '', severity: '', status: 'in_progress' } },
+  { name: 'Assigned to me', filters: { team: '', environment: '', mine: '1', unassigned: '', severity: '', status: '' } },
+  { name: 'Open incidents', filters: { team: '', environment: '', mine: '', unassigned: '', severity: '', status: 'new' } },
+  { name: 'My production incidents', filters: { team: '', environment: 'prod', mine: '1', unassigned: '', severity: '', status: '' } },
 ];
 
 function slaBadgeClass(tone: ReturnType<typeof slaClockTone>): string | undefined {
@@ -42,6 +44,16 @@ function currentUsername(): string {
     return typeof user?.username === 'string' ? user.username : '';
   } catch {
     return '';
+  }
+}
+
+function currentUserId(): number {
+  try {
+    const raw = localStorage.getItem(DEVOPS_USER_KEY);
+    const user = raw ? JSON.parse(raw) as { id?: number } : null;
+    return typeof user?.id === 'number' ? user.id : 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -300,14 +312,26 @@ export default function DevOpsIncidentsPage() {
   const activeSeverityFilter = useMemo(() => normalizeQueryValue(router.query.severity), [router.query.severity]);
   const activeStatusFilter = useMemo(() => normalizeQueryValue(router.query.status), [router.query.status]);
   const activeEnvironmentFilter = useMemo(() => normalizeQueryValue(router.query.environment), [router.query.environment]);
+  const activeTeamFilter = typeof router.query.team === 'string' ? router.query.team : '';
   const activeMine = router.query.mine === '1';
+  const activeUnassigned = router.query.unassigned === '1';
   const [preview, setPreview] = useState<Incident | null>(null);
+  const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+  const { remoteViews, ready: savedViewsReady, saveRemote, deleteRemote } = useSavedFilterViews<IncidentView>({
+    apiUrl,
+    token,
+    scope: OPERATIONS_SCOPE,
+    storageKey: OPERATIONS_STORAGE_KEY,
+    portal: 'devops',
+  });
   const activeFilterCount = [
     activeRequestID ? String(activeRequestID) : '',
     activeSeverityFilter,
     activeStatusFilter,
     activeEnvironmentFilter,
+    activeTeamFilter,
     activeMine ? 'mine' : '',
+    activeUnassigned ? 'unassigned' : '',
   ].filter(Boolean).length;
 
   const environmentOptions = useMemo(() => {
@@ -320,26 +344,44 @@ export default function DevOpsIncidentsPage() {
     ).sort();
   }, [incidents]);
 
+  const myTeamNames = useMemo(() => {
+    const me = currentUserId();
+    if (me <= 0) return new Set<string>();
+    const names = new Set<string>();
+    teams.forEach((team) => {
+      const members = membersByTeam[team.id] || [];
+      if (members.some((member) => member.user_id === me)) names.add(team.name);
+    });
+    return names;
+  }, [membersByTeam, teams]);
+
+  const teamOptions = useMemo(() => {
+    return Array.from(new Set(incidents.map((incident) => (incident.team_name || incident.request_team || '').trim()).filter(Boolean))).sort();
+  }, [incidents]);
+
   const filteredIncidents = useMemo(() => {
     return incidents.filter((incident) => {
       if (activeRequestID && incident.request_id !== activeRequestID) return false;
       if (activeSeverityFilter && severityToPriority(incident.severity) !== activeSeverityFilter) return false;
       if (activeStatusFilter && incidentStateValue(incident.status) !== incidentStateValue(activeStatusFilter)) return false;
-      if (activeEnvironmentFilter) {
-        const env = incident.request_env?.trim().toLowerCase() || '';
-        const matches = activeEnvironmentFilter === 'prod' ? env.startsWith('prod') : env === activeEnvironmentFilter;
-        if (!matches) return false;
+      if (!environmentMatches(incident.request_env, activeEnvironmentFilter)) return false;
+      const teamName = (incident.team_name || incident.request_team || '').trim();
+      if (activeTeamFilter === 'mine') {
+        if (!teamName || !myTeamNames.has(teamName)) return false;
+      } else if (activeTeamFilter && teamName.toLowerCase() !== activeTeamFilter.toLowerCase()) {
+        return false;
       }
       if (activeMine) {
         const owner = (incident.owner_username || '').trim().toLowerCase();
         if (!owner || owner !== currentUsername().toLowerCase()) return false;
       }
+      if (activeUnassigned && (incident.owner_user_id || incident.owner_username)) return false;
       return true;
     });
-  }, [activeEnvironmentFilter, activeMine, activeRequestID, activeSeverityFilter, activeStatusFilter, incidents]);
+  }, [activeEnvironmentFilter, activeMine, activeRequestID, activeSeverityFilter, activeStatusFilter, activeTeamFilter, activeUnassigned, incidents, myTeamNames]);
 
   const hasActiveFilters = Boolean(
-    activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter || activeMine,
+    activeRequestID || activeSeverityFilter || activeStatusFilter || activeEnvironmentFilter || activeTeamFilter || activeMine || activeUnassigned,
   );
   const resolvedIncidentRequestId = useMemo(() => resolveIncidentReferenceInput(requestId, incidents), [incidents, requestId]);
 
@@ -653,11 +695,15 @@ export default function DevOpsIncidentsPage() {
     const nextSeverity = next.severity ?? activeSeverityFilter;
     const nextStatus = next.status ?? activeStatusFilter;
     const nextEnvironment = next.environment ?? activeEnvironmentFilter;
+    const nextTeam = next.team ?? activeTeamFilter;
     const nextMine = next.mine ?? (activeMine ? '1' : '');
+    const nextUnassigned = next.unassigned ?? (activeUnassigned ? '1' : '');
     if (nextSeverity) query.severity = nextSeverity;
     if (nextStatus) query.status = nextStatus;
     if (nextEnvironment) query.environment = nextEnvironment;
+    if (nextTeam) query.team = nextTeam;
     if (nextMine === '1') query.mine = '1';
+    if (nextUnassigned === '1') query.unassigned = '1';
     void router.push({ pathname: '/incidents', query }, undefined, { shallow: true });
   };
 
@@ -799,11 +845,14 @@ export default function DevOpsIncidentsPage() {
         </section>
 
         <SavedViews<IncidentView>
-          storageKey="opstrellis.incidents.views"
-          current={{ severity: activeSeverityFilter, status: activeStatusFilter, environment: activeEnvironmentFilter, mine: activeMine ? '1' : '' }}
+          storageKey={OPERATIONS_STORAGE_KEY}
+          current={{ team: activeTeamFilter, environment: activeEnvironmentFilter, mine: activeMine ? '1' : '', unassigned: activeUnassigned ? '1' : '', severity: activeSeverityFilter, status: activeStatusFilter }}
           onApply={updateQueueFilters}
           presets={INCIDENT_VIEW_PRESETS}
           canSave={activeFilterCount > 0}
+          serverViews={savedViewsReady ? remoteViews : undefined}
+          onServerSave={saveRemote}
+          onServerDelete={deleteRemote}
         />
 
         <section className="devops-incident-filter-surface">
@@ -835,6 +884,20 @@ export default function DevOpsIncidentsPage() {
               </select>
             </label>
             <label className="devops-incident-filter-chip">
+              <span className="devops-incident-filter-chip__label">Team</span>
+              <select
+                className="devops-incident-filter-chip__control"
+                value={activeTeamFilter}
+                onChange={(event) => updateQueueFilters({ team: event.target.value })}
+              >
+                <option value="">All teams</option>
+                <option value="mine">My team</option>
+                {teamOptions.map((team) => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            </label>
+            <label className="devops-incident-filter-chip">
               <span className="devops-incident-filter-chip__label">Environment</span>
               <select
                 className="devops-incident-filter-chip__control"
@@ -849,6 +912,22 @@ export default function DevOpsIncidentsPage() {
                 ))}
               </select>
             </label>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeMine ? 'btn-primary' : 'btn-secondary'}`}
+              aria-pressed={activeMine}
+              onClick={() => updateQueueFilters({ mine: activeMine ? '' : '1' })}
+            >
+              Mine
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeUnassigned ? 'btn-primary' : 'btn-secondary'}`}
+              aria-pressed={activeUnassigned}
+              onClick={() => updateQueueFilters({ unassigned: activeUnassigned ? '' : '1' })}
+            >
+              Unassigned
+            </button>
             <div className="devops-incident-filter-row__actions">
               {activeFilterCount > 0 ? <span className="devops-incident-filter-row__badge">{activeFilterCount} active</span> : null}
               {hasActiveFilters ? (

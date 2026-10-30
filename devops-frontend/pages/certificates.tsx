@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
+import { formatExpiryOn } from '../lib/expiryDisplay';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -306,7 +307,7 @@ export default function CertificatesPage() {
                     <th>{tab === 'domain' ? 'Registered domain' : 'Endpoint'}</th>
                     <th>Service</th>
                     <th>Assessment</th>
-                    <th>{tab === 'domain' ? 'Registrar / registry' : 'Certificate expiry'}</th>
+                    <th>{tab === 'domain' ? 'Registration expiry' : 'Expires on'}</th>
                     <th>Owner</th>
                     <th>Last verified</th>
                     <th></th>
@@ -329,15 +330,17 @@ export default function CertificatesPage() {
                       <td>
                         {row.asset_type === 'domain' ? (
                           <>
-                            <div>Registrar {row.registrar_expires_at || 'Unknown'}</div>
-                            <div>Registry {row.registry_expires_at || 'Unknown'}</div>
+                            <div>Registrar {formatExpiryOn(row.registrar_expires_at)}</div>
+                            <div>Registry {formatExpiryOn(row.registry_expires_at)}</div>
                             {row.auto_renew ? <div>Auto-renew reported. Not verified.</div> : null}
                           </>
-                        ) : (row.certificate_expires_at || 'Unknown')}
-                        {typeof row.remaining_days === 'number' ? <div>{row.remaining_days} days remaining</div> : null}
+                        ) : formatExpiryOn(row.certificate_expires_at)}
+                        {typeof row.remaining_days === 'number' ? (
+                          <div>{row.remaining_days} days until {row.asset_type === 'domain' ? 'registration expiry' : 'certificate expiry'}</div>
+                        ) : null}
                       </td>
                       <td>{known(row.owner_name)}</td>
-                      <td>{row.last_checked_at || 'Unknown'}</td>
+                      <td>{row.last_checked_at ? formatExpiryOn(row.last_checked_at) : 'Unknown'}</td>
                       <td><Link href={`/certificates/${row.id}`}>Open</Link></td>
                     </tr>
                   ))}

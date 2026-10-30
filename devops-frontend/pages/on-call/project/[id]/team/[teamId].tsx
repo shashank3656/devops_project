@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../../../../components/DevOpsLayout';
 import { useApiUrl } from '../../../../../context/ApiUrlContext';
-import { formatCompactDay, timezoneCompactLabel, weekdayLong } from '../../../../../lib/onCallMonth';
+import { formatLongDay, onCallRotationHref, timezoneCompactLabel, weekdayLong } from '../../../../../lib/onCallMonth';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -204,11 +204,11 @@ export default function OnCallTeamUsersPage() {
             <p className="portal-page__subtitle">{missionCritical
               ? 'This team covers a mission-critical service. Choose a primary and a backup. Shift timing, handover reminder, and overdue minutes are in the weekly schedule on this page.'
               : 'Choose who rotates. Shift timing, handover, and rotation order are in the weekly schedule on this page.'}</p>
-            {focusDate ? (
+            {focusDate && schedule ? (
               <p className="access-hint">
-                Assigning coverage for {formatCompactDay(focusDate)}
+                Assign this shift for {formatLongDay(focusDate)}
                 {focusTimezone ? ` · ${timezoneCompactLabel(focusTimezone)}` : ''}.
-                The highlighted day is the shift you opened.
+                The highlighted day is the weekday you opened.
               </p>
             ) : null}
           </div>
@@ -229,12 +229,33 @@ export default function OnCallTeamUsersPage() {
                   </li>
                 ))}
               </ul>
-              <Link href={schedule.id ? `/on-call/${schedule.id}` : `/on-call/new?project_id=${projectId}&team_id=${teamId}`} className="btn btn-secondary">Edit schedule</Link>
+              {focusDate ? (
+                <>
+                  <Link
+                    href={onCallRotationHref(projectId, teamId, { scheduleId: schedule.id, date: focusDate, timezone: focusTimezone || schedule.timezone, intent: 'assign' })}
+                    className="btn btn-primary"
+                  >
+                    Assign this shift
+                  </Link>
+                  {' '}
+                </>
+              ) : null}
+              <Link
+                href={onCallRotationHref(projectId, teamId, { scheduleId: schedule.id, date: focusDate, timezone: focusTimezone || schedule.timezone, intent: 'recurring' })}
+                className={focusDate ? 'btn btn-secondary' : 'btn btn-primary'}
+              >
+                {focusDate ? 'Edit recurring rotation' : 'Create recurring rotation'}
+              </Link>
             </>
           ) : (
             <>
-              <p className="access-hint">No weekly schedule yet.</p>
-              <Link href={`/on-call/new?project_id=${projectId}&team_id=${teamId}`} className="btn btn-secondary">Set shift timing and rotation order</Link>
+              <p className="access-hint">{focusDate ? `Create a schedule before assigning coverage for ${formatLongDay(focusDate)}. Saving the weekly rotation is what covers that date.` : 'No weekly schedule yet. A recurring rotation is required before a selected date can stay covered.'}</p>
+              <Link
+                href={onCallRotationHref(projectId, teamId, { date: focusDate, timezone: focusTimezone, intent: 'recurring' })}
+                className="btn btn-primary"
+              >
+                Create recurring rotation
+              </Link>
             </>
           )}
         </section>
@@ -259,7 +280,12 @@ export default function OnCallTeamUsersPage() {
             ) : null}
           </div>
           {loading ? <div className="empty-state">Loading people...</div> : null}
-          {!loading && !people.length ? <div className="empty-state">This team has no members yet.</div> : null}
+          {!loading && !people.length ? (
+            <div className="empty-state" role="status">
+              <p>This team has no members yet. Add people before a rotation can be assigned.</p>
+              <Link href="/team" className="btn btn-primary">Add team members</Link>
+            </div>
+          ) : null}
           {!loading && people.length ? (
             <form onSubmit={(event) => void save(event)}>
               <div className="catalog-editor__choice-row">

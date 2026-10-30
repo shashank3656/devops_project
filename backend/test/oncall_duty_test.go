@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestOncallRosterUserRotatesByDay(t *testing.T) {
 	roster := []int{4, 9, 2}
@@ -39,5 +42,34 @@ func TestOncallProjectDayKeepsEachTeam(t *testing.T) {
 	}
 	if days[0].Teams[1].TeamID != 2 || days[0].Teams[1].Status != "pending" || days[0].Teams[1].CoverUser != 3 {
 		t.Fatalf("app = %#v", days[0].Teams[1])
+	}
+}
+
+func TestOncallCoverIntervalAppliesWithoutRewritingRotation(t *testing.T) {
+	row := oncallCoverRow{Date: "2026-10-30", EndDate: "2026-11-02", Status: "approved", FromUserID: 4, ToUserID: 9}
+	if !oncallCoverCoversDate(row, "2026-10-30") || !oncallCoverCoversDate(row, "2026-11-02") || oncallCoverCoversDate(row, "2026-11-03") {
+		t.Fatalf("interval overlay = %#v", row)
+	}
+	single := oncallCoverRow{Date: "2026-10-31", Status: "pending"}
+	if !oncallCoverCoversDate(single, "2026-10-31") || oncallCoverCoversDate(single, "2026-11-01") {
+		t.Fatalf("single-day overlay = %#v", single)
+	}
+}
+
+func TestOncallWeeklyAssignmentUsesWeekday(t *testing.T) {
+	schedule := &oncallSchedule{Days: []oncallScheduleDay{
+		{Day: "friday", UserID: 4, BackupUserID: 9},
+		{Day: "saturday", UserID: 2},
+	}}
+	if !oncallScheduleHasAssignment(schedule) {
+		t.Fatal("assigned weekly schedule should count")
+	}
+	primary, backup := oncallScheduleAssignment(schedule, time.Friday)
+	if primary != 4 || backup != 9 {
+		t.Fatalf("friday = %d/%d", primary, backup)
+	}
+	primary, backup = oncallScheduleAssignment(schedule, time.Sunday)
+	if primary != 0 || backup != 0 {
+		t.Fatalf("sunday = %d/%d", primary, backup)
 	}
 }

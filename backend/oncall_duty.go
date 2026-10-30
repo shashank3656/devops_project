@@ -25,6 +25,7 @@ type oncallDutyDay struct {
 	CoverName    string `json:"cover_name,omitempty"`
 	FromUserID   int    `json:"from_user_id,omitempty"`
 	FromName     string `json:"from_name,omitempty"`
+	CoverEnd     string `json:"cover_end_date,omitempty"`
 }
 
 type oncallDutyPerson struct {
@@ -71,6 +72,8 @@ func migrateOncallDutySchema() {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
+	_, _ = DB.Exec(`ALTER TABLE oncall_cover_requests ADD COLUMN IF NOT EXISTS cover_end_date DATE`)
+	_, _ = DB.Exec(`UPDATE oncall_cover_requests SET cover_end_date = cover_date WHERE cover_end_date IS NULL`)
 }
 
 func setProjectOncall(projectID int, enabled bool) {
@@ -235,16 +238,32 @@ func saveOncallRoster(teamID int, userIDs []int) ([]int, error) {
 type oncallCoverRow struct {
 	ID         int
 	Date       string
+	EndDate    string
 	FromUserID int
 	ToUserID   int
 	Status     string
+	CreatedAt  string
+}
+
+func oncallCoverCoversDate(row oncallCoverRow, date string) bool {
+	if date == "" || row.Date == "" {
+		return false
+	}
+	end := row.EndDate
+	if end == "" {
+		end = row.Date
+	}
+	return row.Date <= date && date <= end
 }
 
 func listOncallCovers(projectID, teamID int, start, end time.Time) ([]oncallCoverRow, error) {
 	rows, err := DB.Query(`
-		SELECT id, to_char(cover_date, 'YYYY-MM-DD'), from_user_id, to_user_id, status
+		SELECT id, to_char(cover_date, 'YYYY-MM-DD'), to_char(COALESCE(cover_end_date, cover_date), 'YYYY-MM-DD'),
+		       from_user_id, to_user_id, status, COALESCE(to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
 		FROM oncall_cover_requests
-		WHERE project_id = $1 AND team_id = $2 AND cover_date >= $3 AND cover_date < $4
+		WHERE project_id = $1 AND team_id = $2
+		  AND cover_date < $4
+		  AND COALESCE(cover_end_date, cover_date) >= $3
 		ORDER BY id
 	`, projectID, teamID, start, end)
 	if err != nil {
@@ -254,8 +273,11 @@ func listOncallCovers(projectID, teamID int, start, end time.Time) ([]oncallCove
 	out := []oncallCoverRow{}
 	for rows.Next() {
 		var row oncallCoverRow
-		if err := rows.Scan(&row.ID, &row.Date, &row.FromUserID, &row.ToUserID, &row.Status); err != nil {
+		if err := rows.Scan(&row.ID, &row.Date, &row.EndDate, &row.FromUserID, &row.ToUserID, &row.Status, &row.CreatedAt); err != nil {
 			return nil, err
+		}
+		if row.EndDate == "" {
+			row.EndDate = row.Date
 		}
 		out = append(out, row)
 	}
@@ -293,14 +315,25 @@ func buildOncallDays(projectID, teamID int, monthValue, timezone string) ([]onca
 	for _, id := range roster {
 		people = append(people, oncallDutyPerson{UserID: id, Name: oncallKnownName(names, id)})
 	}
-	approved := map[string]oncallCoverRow{}
-	pending := map[string]oncallCoverRow{}
-	for _, cover := range covers {
-		if cover.Status == "approved" {
-			approved[cover.Date] = cover
+	weekly := lookupOncallSchedule(teamID, projectID)
+	useWeekly := weekly != nil && oncallScheduleHasAssignment(weekly)
+	if useWeekly {
+		seen := map[int]bool{}
+		for _, person := range people {
+			seen[person.UserID] = true
 		}
-		if cover.Status == "pending" {
-			pending[cover.Date] = cover
+		for _, day := range weekly.Days {
+			ids = append(ids, day.UserID, day.BackupUserID)
+		}
+		names = oncallUserNames(ids)
+		for _, day := range weekly.Days {
+			for _, id := range []int{day.UserID, day.BackupUserID} {
+				if id <= 0 || seen[id] {
+					continue
+				}
+				seen[id] = true
+				people = append(people, oncallDutyPerson{UserID: id, Name: oncallKnownName(names, id)})
+			}
 		}
 	}
 	today := time.Now().In(loc).Format("2006-01-02")
@@ -308,24 +341,34 @@ func buildOncallDays(projectID, teamID int, monthValue, timezone string) ([]onca
 	for cursor := start; cursor.Before(end); cursor = cursor.AddDate(0, 0, 1) {
 		key := cursor.Format("2006-01-02")
 		userID := oncallRosterUser(roster, cursor.Day())
+		backupID := oncallRosterBackup(roster, cursor.Day())
+		if useWeekly {
+			userID, backupID = oncallScheduleAssignment(weekly, cursor.Weekday())
+		}
 		status := "scheduled"
 		fromID := userID
 		requestID := 0
 		coverID := 0
-		if row, ok := approved[key]; ok {
-			fromID = row.FromUserID
-			userID = row.ToUserID
-			status = "covered"
-			requestID = row.ID
+		coverEnd := ""
+		for _, row := range covers {
+			if row.Status == "approved" && oncallCoverCoversDate(row, key) {
+				fromID = row.FromUserID
+				userID = row.ToUserID
+				status = "covered"
+				requestID = row.ID
+				coverEnd = row.EndDate
+			}
 		}
-		if row, ok := pending[key]; ok {
-			status = "pending"
-			requestID = row.ID
-			coverID = row.ToUserID
-			fromID = row.FromUserID
-			userID = row.FromUserID
+		for _, row := range covers {
+			if row.Status == "pending" && oncallCoverCoversDate(row, key) {
+				status = "pending"
+				requestID = row.ID
+				coverID = row.ToUserID
+				fromID = row.FromUserID
+				userID = row.FromUserID
+				coverEnd = row.EndDate
+			}
 		}
-		backupID := oncallRosterBackup(roster, cursor.Day())
 		backupName := ""
 		if backupID > 0 {
 			backupName = oncallKnownName(names, backupID)
@@ -345,6 +388,7 @@ func buildOncallDays(projectID, teamID int, monthValue, timezone string) ([]onca
 			CoverName:    oncallKnownName(names, coverID),
 			FromUserID:   fromID,
 			FromName:     oncallKnownName(names, fromID),
+			CoverEnd:     coverEnd,
 		})
 	}
 	return days, people, today, nil
@@ -368,6 +412,7 @@ type oncallDutyShift struct {
 	CoverName    string `json:"cover_name,omitempty"`
 	FromUserID   int    `json:"from_user_id,omitempty"`
 	FromName     string `json:"from_name,omitempty"`
+	CoverEnd     string `json:"cover_end_date,omitempty"`
 }
 
 type oncallProjectDay struct {
@@ -567,6 +612,7 @@ func shiftFromDutyDay(team oncallProjectTeam, day oncallDutyDay) oncallDutyShift
 		CoverName:    day.CoverName,
 		FromUserID:   day.FromUserID,
 		FromName:     day.FromName,
+		CoverEnd:     day.CoverEnd,
 	}
 }
 
@@ -896,6 +942,10 @@ func oncallCoverHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if r.Method == "GET" {
+		listOncallCoverHistory(w, r)
+		return
+	}
 	if r.Method != "POST" {
 		writeMethodNotAllowed(w, r)
 		return
@@ -908,6 +958,7 @@ func oncallCoverHandler(w http.ResponseWriter, r *http.Request) {
 		ProjectID   int    `json:"project_id"`
 		TeamID      int    `json:"team_id"`
 		Date        string `json:"date"`
+		UntilDate   string `json:"until_date"`
 		CoverUserID int    `json:"cover_user_id"`
 		Timezone    string `json:"timezone"`
 	}
@@ -927,6 +978,27 @@ func oncallCoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "Choose the day and the person who can cover.", err)
 		return
 	}
+	until := when
+	if strings.TrimSpace(body.UntilDate) != "" {
+		parsed, untilErr := time.Parse("2006-01-02", strings.TrimSpace(body.UntilDate))
+		if untilErr != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "Choose the last day of cover.", untilErr)
+			return
+		}
+		until = parsed
+	}
+	if until.Before(when) {
+		writeAPIError(w, r, http.StatusBadRequest, "Cover must end on or after the start day.", nil)
+		return
+	}
+	span := 0
+	for cursor := when; !cursor.After(until); cursor = cursor.AddDate(0, 0, 1) {
+		span++
+	}
+	if span > 30 {
+		writeAPIError(w, r, http.StatusBadRequest, "Temporary cover is at most 30 days.", nil)
+		return
+	}
 	loc, locErr := time.LoadLocation(body.Timezone)
 	if locErr != nil {
 		loc = time.UTC
@@ -936,19 +1008,50 @@ func oncallCoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "A past day cannot be changed.", nil)
 		return
 	}
-	days, _, _, err := buildOncallDays(body.ProjectID, body.TeamID, when.Format("2006-01"), body.Timezone)
-	if err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "That day could not be checked.", err)
-		return
+	months := map[string][]oncallDutyDay{}
+	loadMonth := func(monthValue string) ([]oncallDutyDay, error) {
+		if cached, ok := months[monthValue]; ok {
+			return cached, nil
+		}
+		days, _, _, err := buildOncallDays(body.ProjectID, body.TeamID, monthValue, body.Timezone)
+		if err != nil {
+			return nil, err
+		}
+		months[monthValue] = days
+		return days, nil
 	}
-	var assigned int
-	for _, day := range days {
-		if day.Date == body.Date {
-			assigned = day.UserID
+	assigned := 0
+	for cursor := when; !cursor.After(until); cursor = cursor.AddDate(0, 0, 1) {
+		days, err := loadMonth(cursor.Format("2006-01"))
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "That day could not be checked.", err)
+			return
+		}
+		key := cursor.Format("2006-01-02")
+		found := false
+		for _, day := range days {
+			if day.Date != key {
+				continue
+			}
+			found = true
 			if day.Status == "pending" {
-				writeAPIError(w, r, http.StatusConflict, "A cover request is already waiting for this day.", nil)
+				writeAPIError(w, r, http.StatusConflict, "A cover request is already waiting for this interval.", nil)
 				return
 			}
+			if day.UserID <= 0 {
+				writeAPIError(w, r, http.StatusBadRequest, "Assign coverage before asking for a temporary override.", nil)
+				return
+			}
+			if assigned == 0 {
+				assigned = day.UserID
+			} else if assigned != day.UserID {
+				writeAPIError(w, r, http.StatusBadRequest, "Ask for cover on days assigned to one person.", nil)
+				return
+			}
+		}
+		if !found {
+			writeAPIError(w, r, http.StatusBadRequest, "That interval could not be checked.", nil)
+			return
 		}
 	}
 	profile, _ := GetDevopsProfile(userID)
@@ -961,14 +1064,14 @@ func oncallCoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "Choose a different person.", nil)
 		return
 	}
-	roster, err := listOncallRoster(body.TeamID)
+	_, people, _, err := buildOncallDays(body.ProjectID, body.TeamID, when.Format("2006-01"), body.Timezone)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "The on-call set could not be loaded.", err)
 		return
 	}
 	allowed := false
-	for _, id := range roster {
-		if id == body.CoverUserID {
+	for _, person := range people {
+		if person.UserID == body.CoverUserID {
 			allowed = true
 		}
 	}
@@ -976,17 +1079,18 @@ func oncallCoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "That person is not in the on-call set.", nil)
 		return
 	}
+	endDate := until.Format("2006-01-02")
 	var id int
 	if err := DB.QueryRow(`
-		INSERT INTO oncall_cover_requests (project_id, team_id, cover_date, from_user_id, to_user_id, status)
-		VALUES ($1, $2, $3, $4, $5, 'pending')
+		INSERT INTO oncall_cover_requests (project_id, team_id, cover_date, cover_end_date, from_user_id, to_user_id, status)
+		VALUES ($1, $2, $3, $4, $5, $6, 'pending')
 		RETURNING id
-	`, body.ProjectID, body.TeamID, body.Date, assigned, body.CoverUserID).Scan(&id); err != nil {
+	`, body.ProjectID, body.TeamID, body.Date, endDate, assigned, body.CoverUserID).Scan(&id); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "The cover request could not be saved.", err)
 		return
 	}
-	notifyOncallCoverRequest(body.CoverUserID, assigned, body.ProjectID, body.Date)
-	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "pending"})
+	notifyOncallCoverRequest(body.CoverUserID, assigned, body.ProjectID, body.Date, endDate)
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "pending", "cover_date": body.Date, "cover_end_date": endDate})
 }
 
 func decideOncallCover(w http.ResponseWriter, r *http.Request, userID int) {
@@ -1005,11 +1109,12 @@ func decideOncallCover(w http.ResponseWriter, r *http.Request, userID int) {
 	}
 	var projectID, teamID, fromUserID, toUserID int
 	var coverDate time.Time
+	var coverEnd sql.NullTime
 	var status string
 	err := DB.QueryRow(`
-		SELECT project_id, team_id, cover_date, from_user_id, to_user_id, status
+		SELECT project_id, team_id, cover_date, cover_end_date, from_user_id, to_user_id, status
 		FROM oncall_cover_requests WHERE id = $1
-	`, body.ID).Scan(&projectID, &teamID, &coverDate, &fromUserID, &toUserID, &status)
+	`, body.ID).Scan(&projectID, &teamID, &coverDate, &coverEnd, &fromUserID, &toUserID, &status)
 	if err != nil || status != "pending" {
 		writeAPIError(w, r, http.StatusNotFound, "That request is no longer waiting.", err)
 		return
@@ -1017,6 +1122,10 @@ func decideOncallCover(w http.ResponseWriter, r *http.Request, userID int) {
 	if userID != toUserID {
 		writeAPIError(w, r, http.StatusForbidden, "Only the person asked to cover can approve.", nil)
 		return
+	}
+	endDate := coverDate
+	if coverEnd.Valid {
+		endDate = coverEnd.Time
 	}
 	next := "declined"
 	if decision == "approve" {
@@ -1030,10 +1139,12 @@ func decideOncallCover(w http.ResponseWriter, r *http.Request, userID int) {
 		_, _ = DB.Exec(`
 			UPDATE oncall_cover_requests
 			SET status = 'declined'
-			WHERE project_id = $1 AND team_id = $2 AND cover_date = $3 AND id <> $4 AND status = 'pending'
-		`, projectID, teamID, coverDate, body.ID)
+			WHERE project_id = $1 AND team_id = $2 AND id <> $4 AND status = 'pending'
+			  AND cover_date <= $5
+			  AND COALESCE(cover_end_date, cover_date) >= $3
+		`, projectID, teamID, coverDate, body.ID, endDate)
 	}
-	notifyOncallCoverDecision(fromUserID, toUserID, projectID, coverDate.Format("2006-01-02"), next)
+	notifyOncallCoverDecision(fromUserID, toUserID, projectID, coverDate.Format("2006-01-02"), endDate.Format("2006-01-02"), next)
 	writeJSON(w, http.StatusOK, map[string]any{"id": body.ID, "status": next})
 }
 
@@ -1049,16 +1160,20 @@ func notifyOncallUser(userID, projectID int, kind, subject, message string) {
 	sendNotificationEmailIfConfigured(userID, kind, subject, message)
 }
 
-func notifyOncallCoverRequest(toUserID, fromUserID, projectID int, date string) {
+func notifyOncallCoverRequest(toUserID, fromUserID, projectID int, date, until string) {
 	fromName := "Someone"
 	if user, err := GetUserByID(fromUserID); err == nil && user != nil && strings.TrimSpace(user.Username) != "" {
 		fromName = user.Username
 	}
-	message := fmt.Sprintf("%s asked you to cover on-call on %s. Open On-call to approve or decline.", fromName, date)
+	interval := date
+	if until != "" && until != date {
+		interval = date + " to " + until
+	}
+	message := fmt.Sprintf("%s asked you to cover on-call on %s. Open On-call to approve or decline. The original rotation is not rewritten.", fromName, interval)
 	notifyOncallUser(toUserID, projectID, "oncall_cover", "On-call cover request", message)
 }
 
-func notifyOncallCoverDecision(fromUserID, toUserID, projectID int, date, status string) {
+func notifyOncallCoverDecision(fromUserID, toUserID, projectID int, date, until, status string) {
 	toName := "The person you asked"
 	if user, err := GetUserByID(toUserID); err == nil && user != nil && strings.TrimSpace(user.Username) != "" {
 		toName = user.Username
@@ -1067,8 +1182,74 @@ func notifyOncallCoverDecision(fromUserID, toUserID, projectID int, date, status
 	if status == "approved" {
 		verb = "approved"
 	}
-	message := fmt.Sprintf("%s %s the on-call cover for %s.", toName, verb, date)
+	interval := date
+	if until != "" && until != date {
+		interval = date + " to " + until
+	}
+	message := fmt.Sprintf("%s %s the on-call cover for %s.", toName, verb, interval)
 	notifyOncallUser(fromUserID, projectID, "oncall_cover", "On-call cover "+verb, message)
+}
+
+func listOncallCoverHistory(w http.ResponseWriter, r *http.Request) {
+	projectID, _ := strconv.Atoi(r.URL.Query().Get("project_id"))
+	teamID, _ := strconv.Atoi(r.URL.Query().Get("team_id"))
+	if projectID <= 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "project is required", nil)
+		return
+	}
+	if DB == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"covers": []any{}, "status": "ok"})
+		return
+	}
+	rows, err := DB.Query(`
+		SELECT id, project_id, team_id, to_char(cover_date, 'YYYY-MM-DD'),
+		       to_char(COALESCE(cover_end_date, cover_date), 'YYYY-MM-DD'),
+		       from_user_id, to_user_id, status,
+		       COALESCE(to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
+		FROM oncall_cover_requests
+		WHERE project_id = $1 AND ($2 = 0 OR team_id = $2)
+		ORDER BY created_at DESC, id DESC
+		LIMIT 80
+	`, projectID, teamID)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "Cover history could not be loaded.", err)
+		return
+	}
+	defer rows.Close()
+	type coverHistory struct {
+		ID        int    `json:"id"`
+		ProjectID int    `json:"project_id"`
+		TeamID    int    `json:"team_id"`
+		Date      string `json:"cover_date"`
+		EndDate   string `json:"cover_end_date"`
+		FromID    int    `json:"from_user_id"`
+		FromName  string `json:"from_name"`
+		ToID      int    `json:"to_user_id"`
+		ToName    string `json:"to_name"`
+		Status    string `json:"status"`
+		CreatedAt string `json:"created_at"`
+	}
+	items := []coverHistory{}
+	ids := []int{}
+	for rows.Next() {
+		var item coverHistory
+		if err := rows.Scan(&item.ID, &item.ProjectID, &item.TeamID, &item.Date, &item.EndDate, &item.FromID, &item.ToID, &item.Status, &item.CreatedAt); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "Cover history could not be loaded.", err)
+			return
+		}
+		ids = append(ids, item.FromID, item.ToID)
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "Cover history could not be loaded.", err)
+		return
+	}
+	names := oncallUserNames(ids)
+	for i := range items {
+		items[i].FromName = oncallKnownName(names, items[i].FromID)
+		items[i].ToName = oncallKnownName(names, items[i].ToID)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"covers": items, "status": "ok"})
 }
 
 func oncallUsersToPage(item *requestIncident) []int {

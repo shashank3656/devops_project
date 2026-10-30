@@ -80,6 +80,84 @@ func TestIntegrationWorstStatePrefersFailed(t *testing.T) {
 	}
 }
 
+func TestIntegrationFamilyStatePartialWhenSourcesMix(t *testing.T) {
+	if integrationFamilyState("ok", "not_connected") != "partial" {
+		t.Fatal("mixed current and missing must be Partially connected")
+	}
+	if integrationFamilyState("ok", "stale") != "stale" {
+		t.Fatal("stale still wins over mixed current")
+	}
+	current, total := integrationCurrentSourceCount([]string{"ok", "not_connected"})
+	if current != 1 || total != 2 {
+		t.Fatalf("source counts = %d/%d", current, total)
+	}
+}
+
+func TestIntegrationBillingUsesSelectedProjectProvider(t *testing.T) {
+	family := billingFamilyFrom([]costConnection{
+		{ID: 1, ProjectID: 10, AccountID: "123456789012", Provider: "aws", DisplayName: "AWS prod"},
+		{ID: 2, ProjectID: 20, AccountID: "gcp-prod", Provider: "gcp", DisplayName: "GCP prod"},
+	}, 20)
+	if family.Source != "GCP Cloud Billing" {
+		t.Fatalf("source = %s", family.Source)
+	}
+	if family.Action != nil {
+		t.Fatalf("GCP project must not show CUR import %+v", family.Action)
+	}
+	if family.State != "not_connected" {
+		t.Fatalf("state = %s", family.State)
+	}
+	if len(family.Connectors) != 1 || family.Connectors[0].Source != "GCP Cloud Billing" {
+		t.Fatalf("connectors = %+v", family.Connectors)
+	}
+	if strings.Contains(family.Connectors[0].Name, "Organization-wide") {
+		t.Fatal("selected project connector must not be labelled organization-wide")
+	}
+}
+
+func TestIntegrationBillingOrgWideLabelsAWSAccount(t *testing.T) {
+	family := billingFamilyFrom([]costConnection{
+		{ID: 1, ProjectID: 10, AccountID: "123456789012", Provider: "aws", DisplayName: "Prod"},
+	}, 99)
+	if !strings.Contains(family.Source, "Organization-wide") {
+		t.Fatalf("source = %s", family.Source)
+	}
+	if !strings.Contains(family.Detail, "Organization-wide") {
+		t.Fatalf("detail = %s", family.Detail)
+	}
+	if len(family.Connectors) != 1 {
+		t.Fatalf("connectors = %d", len(family.Connectors))
+	}
+	name := family.Connectors[0].Name
+	if !strings.Contains(name, "Organization-wide") || !strings.Contains(name, "AWS account 123456789012") {
+		t.Fatalf("connector name = %s", name)
+	}
+}
+
 func integrationBillingFamilyFromConnections(conns []costConnection) integrationFamily {
-	return billingFamilyFrom(conns)
+	return billingFamilyFrom(conns, 0)
+}
+
+func TestDecorateConnectorFillsDiagnosticsWithoutSecrets(t *testing.T) {
+	now := time.Now().UTC()
+	item := decorateConnector(integrationConnector{
+		ID: "jira-1", Name: "Company Jira", State: "failed", Source: "Jira Cloud",
+		LastSuccessAt: &now, FailedJobs: 2,
+		Action: &integrationAction{Label: "Review failed jobs", Href: "/integrations/jira?tab=activity"},
+	}, "Jira")
+	if item.LastAttemptAt == nil || item.FailureReason != "2 failed jobs." {
+		t.Fatalf("diagnostics = %+v", item)
+	}
+	if len(item.AffectedServices) != 1 || item.AffectedServices[0] != "Jira" {
+		t.Fatalf("affected = %+v", item.AffectedServices)
+	}
+	if !strings.Contains(item.Recovery, "Review failed jobs") {
+		t.Fatalf("recovery = %s", item.Recovery)
+	}
+	lower := strings.ToLower(item.FailureReason + " " + item.Recovery + " " + item.Detail)
+	for _, word := range []string{"password", "secret", "token", "database_url", "hmac"} {
+		if strings.Contains(lower, word) {
+			t.Fatalf("diagnostics contained %s", word)
+		}
+	}
 }

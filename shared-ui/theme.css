@@ -1275,6 +1275,17 @@ html[data-theme] .devops-navbar__dropdown-item {
   letter-spacing: 0;
 }
 
+html[data-theme] .devops-navbar__notify-ticket.is-unread {
+  background: rgba(109, 74, 255, 0.12);
+  border-color: rgba(109, 74, 255, 0.28);
+}
+
+html[data-theme='dark'] .devops-layout .devops-navbar__notify-ticket.is-unread {
+  background: #2a2348;
+  border-color: #6d4aff;
+  color: #f2f4f8;
+}
+
 html[data-theme] .user-topbar__notify-ticket:hover,
 html[data-theme] .admin-topbar__notify-ticket:hover,
 html[data-theme] .devops-navbar__notify-ticket:hover,
@@ -8465,7 +8476,7 @@ html[data-theme] .devops-layout .devops-navbar__right {
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 html[data-theme] .devops-layout .ig-search-trigger {

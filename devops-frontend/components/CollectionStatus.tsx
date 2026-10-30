@@ -1,4 +1,4 @@
-export type CollectionState = 'ok' | 'no_findings' | 'not_connected' | 'stale' | 'failed';
+export type CollectionState = 'ok' | 'partial' | 'no_findings' | 'not_connected' | 'stale' | 'failed';
 
 export function collectionStateFromSync(input: {
   connected?: boolean;
@@ -22,6 +22,8 @@ export function collectionStateLabel(state: CollectionState): string {
   switch (state) {
     case 'ok':
       return 'Current';
+    case 'partial':
+      return 'Partially connected';
     case 'no_findings':
       return 'No findings';
     case 'not_connected':

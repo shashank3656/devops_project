@@ -1,9 +1,11 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from './DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
+import { currentMonth, formatLongDay, onCallTeamHref, shiftMonth, timezoneCompactLabel, weekdayLong } from '../lib/onCallMonth';
+import { previewKindLabel, previewRotation, previewSummary, type OccupiedShift } from '../lib/onCallPreview';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -53,6 +55,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
   const [timezones, setTimezones] = useState<string[]>(TIMEZONES);
   const [members, setMembers] = useState<Member[]>([]);
   const [membersNote, setMembersNote] = useState('Select a team first');
+  const [membersReady, setMembersReady] = useState(false);
   const [teamId, setTeamId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
@@ -68,12 +71,14 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
   const [error, setError] = useState('');
   const [existingId, setExistingId] = useState(0);
   const [isManager, setIsManager] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [occupied, setOccupied] = useState<OccupiedShift[]>([]);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DEVOPS_USER_KEY);
-      const parsed = raw ? (JSON.parse(raw) as { devops_profile?: { is_manager?: boolean } }) : null;
-      setIsManager(Boolean(parsed?.devops_profile?.is_manager));
+      const parsed = raw ? (JSON.parse(raw) as { role?: string; devops_profile?: { is_manager?: boolean } }) : null;
+      setIsManager(Boolean(parsed?.devops_profile?.is_manager) || String(parsed?.role || '').toLowerCase() === 'admin');
     } catch {
       setIsManager(false);
     }
@@ -111,9 +116,11 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
     if (!router.isReady || scheduleId > 0) return;
     const project = Array.isArray(router.query.project_id) ? router.query.project_id[0] : router.query.project_id;
     const team = Array.isArray(router.query.team_id) ? router.query.team_id[0] : router.query.team_id;
+    const zone = Array.isArray(router.query.timezone) ? router.query.timezone[0] : router.query.timezone;
     if (project) setProjectId(String(project));
     if (team) setTeamId(String(team));
-  }, [router.isReady, router.query.project_id, router.query.team_id, scheduleId]);
+    if (zone) setTimezone(String(zone));
+  }, [router.isReady, router.query.project_id, router.query.team_id, router.query.timezone, scheduleId]);
 
   useEffect(() => {
     if (!scheduleId) return;
@@ -126,7 +133,8 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
         const schedule = data.schedule || {};
         setTeamId(schedule.team_id ? String(schedule.team_id) : '');
         setProjectId(schedule.project_id ? String(schedule.project_id) : '');
-        setTimezone(schedule.timezone || 'Asia/Kolkata');
+        const zone = typeof router.query.timezone === 'string' && router.query.timezone ? router.query.timezone : schedule.timezone;
+        setTimezone(zone || 'Asia/Kolkata');
         setRemindMinutes(String(schedule.handover_remind_minutes || 30));
         setEscalateMinutes(String(schedule.handover_escalate_minutes || 15));
         setReassignIncidents(Boolean(schedule.reassign_incidents_on_ack));
@@ -144,16 +152,18 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load rotation'))
       .finally(() => setLoading(false));
-  }, [apiUrl, scheduleId]);
+  }, [apiUrl, router.query.timezone, scheduleId]);
 
   useEffect(() => {
     if (!teamId) {
       setMembers([]);
       setMembersNote('Select a team first');
+      setMembersReady(true);
       return;
     }
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
+    setMembersReady(false);
     const params = new URLSearchParams({ team_id: teamId });
     fetch(`${apiUrl}/api/oncall/team-members?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
@@ -161,17 +171,34 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
         if (!res.ok) throw new Error('members');
         const list = Array.isArray(data?.members) ? data.members : [];
         const next = list
-          .map((item: { user_id?: number; name?: string }) => ({
+          .map((item: { user_id?: number; name?: string; username?: string }) => ({
             user_id: typeof item.user_id === 'number' ? item.user_id : 0,
-            name: String(item.name || '').trim(),
+            name: String(item.name || item.username || '').trim(),
           }))
           .filter((item: Member) => item.user_id > 0);
-        setMembers(next);
-        setMembersNote(next.length ? 'Unassigned' : 'No one on this team');
+        if (next.length) {
+          setMembers(next);
+          setMembersNote('Unassigned');
+          setMembersReady(true);
+          return;
+        }
+        const fallback = await fetch(`${apiUrl}/api/devops/teams/${teamId}/members`, { headers: { Authorization: `Bearer ${token}` } });
+        const body = await fallback.json().catch(() => ({}));
+        const rows = fallback.ok && Array.isArray(body?.members) ? body.members : [];
+        const recovered = rows
+          .map((item: { user_id?: number; name?: string; username?: string }) => ({
+            user_id: typeof item.user_id === 'number' ? item.user_id : 0,
+            name: String(item.name || item.username || '').trim(),
+          }))
+          .filter((item: Member) => item.user_id > 0);
+        setMembers(recovered);
+        setMembersNote(recovered.length ? 'Unassigned' : 'No one on this team');
+        setMembersReady(true);
       })
       .catch(() => {
         setMembers([]);
         setMembersNote('Team members could not be loaded.');
+        setMembersReady(true);
       });
     fetch(`${apiUrl}/api/oncall/roster?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
@@ -181,12 +208,47 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
       .catch(() => setMissionCritical(false));
   }, [apiUrl, teamId]);
 
+  useEffect(() => {
+    setPreviewing(false);
+  }, [days, backupDays, teamId, projectId, timezone, missionCritical]);
+
+  useEffect(() => {
+    if (!previewing || !projectId) {
+      setOccupied([]);
+      return;
+    }
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const month = currentMonth(timezone);
+    const months = [month, shiftMonth(month, 1)];
+    Promise.all(months.map((value) => fetch(`${apiUrl}/api/oncall/days?project_id=${projectId}&month=${value}&timezone=${encodeURIComponent(timezone)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(async (res) => (res.ok ? res.json() : {})).catch(() => ({})))).then((payloads) => {
+      const next: OccupiedShift[] = [];
+      payloads.forEach((data) => {
+        const rows = Array.isArray(data?.days) ? data.days : [];
+        rows.forEach((day: { date?: string; teams?: { team_id?: number; user_id?: number; backup_user_id?: number; team_name?: string }[] }) => {
+          (Array.isArray(day.teams) ? day.teams : []).forEach((shift) => {
+            if (Number(shift.team_id) === Number(teamId)) return;
+            if (shift.user_id) next.push({ date: String(day.date || ''), userId: Number(shift.user_id), team: String(shift.team_name || '') });
+            if (shift.backup_user_id) next.push({ date: String(day.date || ''), userId: Number(shift.backup_user_id), team: String(shift.team_name || '') });
+          });
+        });
+      });
+      setOccupied(next);
+    }).catch(() => setOccupied([]));
+  }, [apiUrl, previewing, projectId, teamId, timezone]);
+
   const save = async (event: FormEvent) => {
     event.preventDefault();
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     if (!teamId || !projectId || !timezone) {
       setError('Choose a team, a project, and a timezone.');
+      return;
+    }
+    if (!previewing) {
+      setPreviewing(true);
       return;
     }
     const payloadDays: Record<string, number> = {};
@@ -231,7 +293,24 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
     }
   };
 
-  const title = scheduleId ? 'Edit rotation' : 'New rotation';
+  const focusDate = typeof router.query.date === 'string' ? router.query.date : '';
+  const focusWeekday = focusDate ? weekdayLong(focusDate) : '';
+  const intent = typeof router.query.intent === 'string' ? router.query.intent : '';
+  const assigningShift = intent === 'assign' && Boolean(focusDate);
+  const title = scheduleId ? 'Edit rotation' : assigningShift ? 'Assign this shift' : 'Create recurring rotation';
+  const membersHref = projectId && teamId ? onCallTeamHref(Number(projectId), Number(teamId), focusDate, timezone) : '/team';
+  const canAssign = isManager;
+  const needsPeople = Boolean(teamId) && membersReady && !members.length;
+  const assignmentReady = canAssign && (!teamId || membersReady) && !needsPeople;
+  const fromDate = focusDate || new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const previewDays = useMemo(() => previewRotation({
+    fromDate,
+    days,
+    backupDays,
+    members,
+    missionCritical,
+    occupied,
+  }), [backupDays, days, fromDate, members, missionCritical, occupied]);
 
   return (
     <DevOpsLayout>
@@ -243,7 +322,16 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
             <h1 className="portal-page__title">{title}</h1>
             <p className="portal-page__subtitle">{missionCritical
               ? 'Choose a primary and a different backup for every day.'
-              : 'Choose who is on-call each day. Leave a day empty only if a gap is intended.'}</p>
+              : assigningShift
+                ? `Assign coverage for ${formatLongDay(focusDate)}. Saving writes the weekly rotation, so this weekday stays covered after that date too.`
+                : 'Create the Monday–Sunday rotation first. A specific date stays uncovered until this weekly schedule exists.'}</p>
+            {focusDate ? (
+              <p className="access-hint">
+                {assigningShift ? 'Assign this shift' : 'Create recurring rotation'} for {formatLongDay(focusDate)}
+                {timezone ? ` · ${timezoneCompactLabel(timezone)}` : ''}.
+                A recurring weekly schedule is required for that date to stay covered.
+              </p>
+            ) : null}
             <details className="onboard-advanced">
               <summary>Handover and escalation</summary>
               <p className="form-section__copy">The timezone is when each day starts. Handover reminder, overdue minutes, and incident reassignment on acknowledgement are per team. Reassignment does not mark incidents Fixed. Do not page anyone from this page.</p>
@@ -255,6 +343,12 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
         {existingId ? <p><Link href={`/on-call/${existingId}`}>Open the existing rotation</Link></p> : null}
         {loading ? <div className="empty-state">Loading rotation...</div> : (
           <section className="portal-surface">
+            {needsPeople ? (
+              <div className="empty-state" role="status">
+                <p>Add team members before this rotation can be assigned. There is no one eligible for primary or backup.</p>
+                <Link href={membersHref} className="btn btn-primary">Add team members</Link>
+              </div>
+            ) : null}
             <form onSubmit={(event) => void save(event)}>
               <div className="svc-filters">
                 <label>
@@ -295,16 +389,18 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
               </label>
               <ul className="svc-tree">
                 {WEEKDAYS.map((day) => (
-                  <li key={day} className="svc-tree__row">
+                  <li key={day} className={`svc-tree__row${focusWeekday === day ? ' oncall-focus-day' : ''}`}>
                     <span className="svc-tree__folder">
                       <span>
                         {dayLabel(day)}
                         {today === day ? <small className="svc-tree__meta">Today</small> : null}
+                        {focusWeekday === day ? <small className="svc-tree__meta">Opened shift</small> : null}
                       </span>
                     </span>
-                    {isManager ? (
+                    {assignmentReady ? (
                       <>
                         <select
+                          id={`oncall-day-${day}`}
                           className="input"
                           aria-label={`${dayLabel(day)} primary`}
                           value={days[day] || ''}
@@ -330,16 +426,46 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
                         </select>
                       </>
                     ) : (
-                      <small>{days[day] ? `Primary ${known(members.find((member) => String(member.user_id) === days[day])?.name)}` : 'Uncovered'}{backupDays[day] ? ` · Backup ${known(members.find((member) => String(member.user_id) === backupDays[day])?.name)}` : ''}</small>
+                      <small>
+                        {days[day] ? `Primary ${known(members.find((member) => String(member.user_id) === days[day])?.name)}` : 'Uncovered'}
+                        {backupDays[day] ? ` · Backup ${known(members.find((member) => String(member.user_id) === backupDays[day])?.name)}` : ''}
+                        {needsPeople ? ' · Add team members first' : canAssign ? '' : ' · A manager assigns coverage'}
+                      </small>
                     )}
                   </li>
                 ))}
               </ul>
-              {isManager ? (
+              {assignmentReady && previewing ? (
+                <section className="oncall-preview" aria-label="Schedule preview">
+                  <h2 className="portal-surface__title">Preview next 30 days</h2>
+                  <p className="access-hint">{previewSummary(previewDays)}. Uncovered, overlapping, and missing backups are listed before this rotation is published. Cover requests do not rewrite the weekly rotation.</p>
+                  <ul className="oncall-preview__list">
+                    {previewDays.filter((item) => item.kinds.some((kind) => kind !== 'covered')).map((item) => (
+                      <li key={item.date}>
+                        <strong>{item.label}</strong>
+                        {' · '}
+                        {item.kinds.map(previewKindLabel).join(', ')}
+                        {item.primaryName ? ` · Primary ${item.primaryName}` : ' · No primary'}
+                        {item.backupName ? ` · Backup ${item.backupName}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                  {!previewDays.some((item) => item.kinds.some((kind) => kind !== 'covered')) ? (
+                    <p className="access-hint">No uncovered periods, overlapping shifts, or missing backups in the next 30 days.</p>
+                  ) : null}
+                </section>
+              ) : null}
+              {assignmentReady ? (
                 <div className="portal-form-actions">
-                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save rotation'}</button>
+                  {previewing ? (
+                    <button type="button" className="btn btn-secondary" onClick={() => setPreviewing(false)}>Edit rotation</button>
+                  ) : null}
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Publishing...' : previewing ? 'Publish rotation' : 'Preview next 30 days'}
+                  </button>
                 </div>
               ) : null}
+              {!canAssign ? <p className="access-hint">A DevOps manager assigns primary and backup. This page stays read-only.</p> : null}
             </form>
           </section>
         )}

@@ -240,6 +240,42 @@ interface NotifyFeedItem {
   actionable?: boolean;
 }
 
+interface InboxNotification {
+  id: number;
+  kind: string;
+  message: string;
+  created_at: string;
+  read_at?: string | null;
+  request_id?: number | null;
+  project_name?: string;
+}
+
+function asInboxNotification(item: unknown): InboxNotification | null {
+  const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+  const id = typeof row.id === 'number' ? row.id : Number(row.id) || 0;
+  if (id <= 0) return null;
+  const requestId = typeof row.request_id === 'number' ? row.request_id : Number(row.request_id) || 0;
+  return {
+    id,
+    kind: String(row.kind || '').trim(),
+    message: String(row.message || '').trim() || 'Update',
+    created_at: String(row.created_at || ''),
+    read_at: row.read_at ? String(row.read_at) : null,
+    request_id: requestId > 0 ? requestId : null,
+    project_name: String(row.project_name || '').trim(),
+  };
+}
+
+function notifyKindLabel(kind: string): string {
+  const value = kind.trim().toLowerCase();
+  if (value === 'approved') return 'Approved';
+  if (value === 'rejected') return 'Rejected';
+  if (value === 'assigned') return 'Assigned';
+  if (value === 'pr_created') return 'Pull request';
+  if (value === 'pending_approval') return 'Waiting for approval';
+  return kind.trim() || 'Update';
+}
+
 function groupNotify<T>(items: T[], keyOf: (item: T) => string): { key: string; items: T[] }[] {
   const groups = new Map<string, T[]>();
   items.forEach((item) => {
@@ -280,6 +316,9 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [pendingApprovalsLoading, setPendingApprovalsLoading] = useState(false);
   const [notifyItems, setNotifyItems] = useState<NotifyFeedItem[]>([]);
+  const [inboxItems, setInboxItems] = useState<InboxNotification[]>([]);
+  const [inboxUnread, setInboxUnread] = useState(0);
+  const [inboxLoading, setInboxLoading] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportTab, setSupportTab] = useState<'chat' | 'docs'>('chat');
   const [supportSeed, setSupportSeed] = useState('');
@@ -573,9 +612,72 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
       .finally(() => setPendingCountKnown(true));
   }, [isManager, apiUrl, clearSessionAndRedirect]);
 
+  const refreshInbox = useCallback(() => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    setInboxLoading(true);
+    Promise.all([
+      fetch(`${apiUrl}/api/me/notifications?unread_only=1&limit=100`, { headers }),
+      fetch(`${apiUrl}/api/me/notifications?limit=50`, { headers }),
+    ])
+      .then(async ([unreadRes, recentRes]) => {
+        if (unreadRes.status === 401 || recentRes.status === 401) {
+          clearSessionAndRedirect();
+          return;
+        }
+        const unreadBody = unreadRes.ok ? await unreadRes.json().catch(() => ({})) : {};
+        const recentBody = recentRes.ok ? await recentRes.json().catch(() => ({})) : {};
+        const unread = (Array.isArray(unreadBody?.notifications) ? unreadBody.notifications : [])
+          .map(asInboxNotification)
+          .filter((item: InboxNotification | null): item is InboxNotification => Boolean(item));
+        const recent = (Array.isArray(recentBody?.notifications) ? recentBody.notifications : [])
+          .map(asInboxNotification)
+          .filter((item: InboxNotification | null): item is InboxNotification => Boolean(item));
+        const seen = new Set(unread.map((item) => item.id));
+        setInboxItems([...unread, ...recent.filter((item) => !seen.has(item.id))]);
+        const unreadCount = typeof recentBody?.unread_count === 'number'
+          ? recentBody.unread_count
+          : typeof unreadBody?.unread_count === 'number'
+            ? unreadBody.unread_count
+            : unread.length;
+        setInboxUnread(unreadCount);
+      })
+      .catch(() => {
+        setInboxItems([]);
+        setInboxUnread(0);
+      })
+      .finally(() => setInboxLoading(false));
+  }, [apiUrl, clearSessionAndRedirect]);
+
+  const markInboxRead = useCallback((ids?: number[]) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    fetch(`${apiUrl}/api/me/notifications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(ids && ids.length ? { ids } : { mark_read: 'all' }),
+    })
+      .then((res) => {
+        if (res.status === 401) {
+          clearSessionAndRedirect();
+          return;
+        }
+        refreshInbox();
+      })
+      .catch(() => undefined);
+  }, [apiUrl, clearSessionAndRedirect, refreshInbox]);
+
   useEffect(() => {
     refreshPendingCount();
   }, [refreshPendingCount]);
+
+  useEffect(() => {
+    refreshInbox();
+    const onFocus = () => refreshInbox();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshInbox]);
 
   useEffect(() => {
     if (!isManager) return;
@@ -606,9 +708,10 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!notifyOpen) return;
+    refreshInbox();
     refreshPendingApprovals();
     refreshPendingCount();
-  }, [notifyOpen, refreshPendingApprovals, refreshPendingCount]);
+  }, [notifyOpen, refreshInbox, refreshPendingApprovals, refreshPendingCount]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('opstrellis-notify-read') || '';
@@ -1220,119 +1323,177 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
                 {compactRows ? 'Compact' : 'Comfortable'}
               </button>
               <ThemeToggle />
-              {isManager && (
-                <div className="devops-navbar__notify-wrap" ref={notifyRef}>
-                  <button
-                    type="button"
-                    className="devops-navbar__icon-btn"
+              <div className="devops-navbar__notify-wrap" ref={notifyRef}>
+                <button
+                  type="button"
+                  className="devops-navbar__icon-btn"
                   onClick={() => {
-                      setNotifyOpen((open) => !open);
-                      setProfileOpen(false);
-                      setSupportOpen(false);
-                    }}
-                    ref={notifyButtonRef}
-                    title={!pendingCountKnown ? 'Checking approvals' : pendingCount > 0 ? `${pendingCount} pending approvals` : 'Pending approvals'}
-                    aria-label={!pendingCountKnown ? 'Notifications, checking approvals' : pendingCount > seenNotifyIds.length ? `Notifications, ${Math.max(pendingCount - seenNotifyIds.length, 0)} unread` : pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
-                    aria-expanded={notifyOpen}
-                    aria-haspopup="dialog"
-                    aria-controls="devops-notify-panel"
-                  >
-                    <IconBell />
-                    {pendingCountKnown && pendingCount > seenNotifyIds.length && <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden />}
-                  </button>
+                    setNotifyOpen((open) => !open);
+                    setProfileOpen(false);
+                    setSupportOpen(false);
+                  }}
+                  ref={notifyButtonRef}
+                  title={inboxUnread > 0 ? `${inboxUnread} unread notifications` : 'Notifications'}
+                  aria-label={inboxUnread > 0 ? `Notifications, ${inboxUnread} unread` : isManager && pendingCount > 0 ? `Notifications, ${pendingCount} waiting` : 'Notifications'}
+                  aria-expanded={notifyOpen}
+                  aria-haspopup="dialog"
+                  aria-controls="devops-notify-panel"
+                >
+                  <IconBell />
+                  {(inboxUnread > 0 || (isManager && pendingCountKnown && pendingCount > 0)) ? <span className="devops-navbar__badge devops-navbar__badge--dot" aria-hidden /> : null}
+                </button>
 
-                  {notifyOpen && (
-                    <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Notifications">
-                      <div className="devops-navbar__notify-header">
-                        <h3 className="devops-navbar__notify-title">Notifications</h3>
+                {notifyOpen && (
+                  <div className="devops-navbar__notify-panel" id="devops-notify-panel" role="dialog" aria-label="Notifications">
+                    <div className="devops-navbar__notify-header">
+                      <h3 className="devops-navbar__notify-title">Notifications</h3>
+                      <div className="devops-navbar__notify-header-actions">
+                        {inboxUnread > 0 ? (
+                          <button type="button" className="devops-navbar__notify-close" onClick={() => markInboxRead()}>
+                            Mark all read
+                          </button>
+                        ) : null}
                         <button type="button" className="devops-navbar__notify-close" onClick={() => setNotifyOpen(false)} aria-label="Close">
                           Close
                         </button>
                       </div>
-                      <div className="devops-navbar__notify-summary">
-                        <strong>{!pendingCountKnown || pendingApprovalsLoading ? '…' : pendingCount > 99 ? '99+' : pendingCount}</strong>
-                        <span>
-                          {!pendingCountKnown || pendingApprovalsLoading
-                            ? 'Checking alerts.'
-                            : pendingCount > 0
-                            ? 'Actionable alerts are routed to the ticket owner. Repeated items are grouped by service.'
-                            : 'No actionable alerts are waiting. Informational updates stay below.'}
-                        </span>
-                      </div>
-                      <div className="devops-navbar__notify-links">
-                        <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                          Open tickets
-                        </Link>
-                        <Link href="/profile/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
-                          Signal routing
-                        </Link>
+                    </div>
+                    <div className="devops-navbar__notify-summary">
+                      <strong>{inboxLoading ? '…' : inboxUnread > 99 ? '99+' : inboxUnread}</strong>
+                      <span>
+                        {inboxLoading
+                          ? 'Loading notifications for this account.'
+                          : inboxUnread > 0
+                            ? 'Unread items stay here until opened, including older ones that were not opened yet.'
+                            : 'No unread notifications. Older items remain in the list below.'}
+                      </span>
+                    </div>
+                    <div className="devops-navbar__notify-list">
+                      <h4 className="devops-navbar__notify-heading">Your account</h4>
+                      {inboxLoading ? (
+                        <p className="devops-navbar__notify-empty" role="status">Loading notifications…</p>
+                      ) : inboxItems.length === 0 ? (
+                        <p className="devops-navbar__notify-empty">No notifications are stored for this account.</p>
+                      ) : (
+                        inboxItems.map((item) => {
+                          const href = item.request_id ? `/tickets?id=${item.request_id}` : '';
+                          const unread = !item.read_at;
+                          const body = (
+                            <>
+                              <strong>{notifyKindLabel(item.kind)}</strong>
+                              <span>{item.message}</span>
+                              <small>
+                                {unread ? 'Unread' : 'Read'}
+                                {item.project_name ? ` · ${item.project_name}` : ''}
+                                {item.created_at ? ` · ${formatTime(item.created_at)}` : ''}
+                              </small>
+                            </>
+                          );
+                          if (href) {
+                            return (
+                              <Link
+                                key={item.id}
+                                href={href}
+                                className={`devops-navbar__notify-ticket ${unread ? 'is-unread' : 'is-read'}`}
+                                onClick={() => {
+                                  markInboxRead([item.id]);
+                                  setNotifyOpen(false);
+                                }}
+                              >
+                                {body}
+                              </Link>
+                            );
+                          }
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`devops-navbar__notify-ticket ${unread ? 'is-unread' : 'is-read'}`}
+                              onClick={() => markInboxRead([item.id])}
+                            >
+                              {body}
+                            </button>
+                          );
+                        })
+                      )}
+                      {isManager ? (
+                        <>
+                          <h4 className="devops-navbar__notify-heading">Action required</h4>
+                          {pendingApprovalsLoading ? (
+                            <p className="devops-navbar__notify-empty" role="status">Loading approvals…</p>
+                          ) : pendingApprovals.length === 0 ? (
+                            <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
+                          ) : (
+                            groupNotify(pendingApprovals, (request) => request.service || request.project_name || 'Unassigned').map((group) => (
+                              <div key={group.key} className="devops-navbar__notify-group">
+                                <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length} waiting</p>
+                                {group.items.map((request) => (
+                                  <Link
+                                    key={request.id}
+                                    href={`/tickets?id=${request.id}`}
+                                    className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
+                                    onClick={() => {
+                                      setSeenNotifyIds((current) => {
+                                        if (current.includes(String(request.id))) return current;
+                                        const next = [...current, String(request.id)];
+                                        window.localStorage.setItem('opstrellis-notify-read', next.join(','));
+                                        return next;
+                                      });
+                                      setNotifyOpen(false);
+                                    }}
+                                  >
+                                    <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
+                                    {request.project_name ? (
+                                      <span>
+                                        {request.project_name}
+                                        {request.project_code ? ` (${request.project_code})` : ''}
+                                      </span>
+                                    ) : null}
+                                    <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
+                                    <small>Waiting for approval · {formatTime(request.created_at)} · Open the ticket to approve or reject it.</small>
+                                  </Link>
+                                ))}
+                              </div>
+                            ))
+                          )}
+                          <h4 className="devops-navbar__notify-heading">Updates</h4>
+                          {(() => {
+                            const updates = notifyItems.filter((item) => item.actionable === false);
+                            if (!updates.length) {
+                              return <p className="devops-navbar__notify-empty">No informational updates in this window.</p>;
+                            }
+                            return groupNotify(updates, (item) => item.group || item.project_name || 'Updates').map((group) => (
+                              <div key={group.key} className="devops-navbar__notify-group">
+                                <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length}</p>
+                                {group.items.map((item) => (
+                                  <div key={item.id} className="devops-navbar__notify-ticket is-read">
+                                    <strong>{item.title}</strong>
+                                    <span>{item.message}</span>
+                                    <small>Informational · {formatTime(item.created_at)} · Routed with signal settings, not emailed from this list.</small>
+                                  </div>
+                                ))}
+                              </div>
+                            ));
+                          })()}
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="devops-navbar__notify-links">
+                      <Link href="/tickets" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Open tickets
+                      </Link>
+                      <Link href="/profile/notifications" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
+                        Signal routing
+                      </Link>
+                      {isManager ? (
                         <Link href="/notification-settings" className="devops-navbar__notify-link" onClick={() => setNotifyOpen(false)}>
                           Notification settings
                         </Link>
-                      </div>
-                      <div className="devops-navbar__notify-list">
-                        <h4 className="devops-navbar__notify-heading">Action required</h4>
-                        {pendingApprovalsLoading ? (
-                          <p className="devops-navbar__notify-empty" role="status">Loading approvals…</p>
-                        ) : pendingApprovals.length === 0 ? (
-                          <p className="devops-navbar__notify-empty">No pending approval tickets.</p>
-                        ) : (
-                          groupNotify(pendingApprovals, (request) => request.service || request.project_name || 'Unassigned').map((group) => (
-                            <div key={group.key} className="devops-navbar__notify-group">
-                              <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length} waiting</p>
-                              {group.items.slice(0, 4).map((request) => (
-                                <Link
-                                  key={request.id}
-                                  href={`/tickets?id=${request.id}`}
-                                  className={`devops-navbar__notify-ticket ${seenNotifyIds.includes(String(request.id)) ? 'is-read' : 'is-unread'}`}
-                                  onClick={() => {
-                                    setSeenNotifyIds((current) => {
-                                      if (current.includes(String(request.id))) return current;
-                                      const next = [...current, String(request.id)];
-                                      window.localStorage.setItem('opstrellis-notify-read', next.join(','));
-                                      return next;
-                                    });
-                                    setNotifyOpen(false);
-                                  }}
-                                >
-                                  <strong>Ticket #{request.id} · {request.service || 'Service unknown'}</strong>
-                                  {request.project_name ? (
-                                    <span>
-                                      {request.project_name}
-                                      {request.project_code ? ` (${request.project_code})` : ''}
-                                    </span>
-                                  ) : null}
-                                  <span>{request.team || 'Team'} / {request.cloud || 'Cloud'} / {request.service || 'Service'}</span>
-                                  <small>Waiting for approval · {formatTime(request.created_at)} · Open the ticket to approve or reject it.</small>
-                                </Link>
-                              ))}
-                            </div>
-                          ))
-                        )}
-                        <h4 className="devops-navbar__notify-heading">Updates</h4>
-                        {(() => {
-                          const updates = notifyItems.filter((item) => item.actionable === false);
-                          if (!updates.length) {
-                            return <p className="devops-navbar__notify-empty">No informational updates in this window.</p>;
-                          }
-                          return groupNotify(updates, (item) => item.group || item.project_name || 'Updates').map((group) => (
-                            <div key={group.key} className="devops-navbar__notify-group">
-                              <p className="devops-navbar__notify-group-label">{group.key} · {group.items.length}</p>
-                              {group.items.slice(0, 4).map((item) => (
-                                <div key={item.id} className="devops-navbar__notify-ticket is-read">
-                                  <strong>{item.title}</strong>
-                                  <span>{item.message}</span>
-                                  <small>Informational · {formatTime(item.created_at)} · Routed with signal settings, not emailed from this list.</small>
-                                </div>
-                              ))}
-                            </div>
-                          ));
-                        })()}
-                      </div>
+                      ) : null}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="devops-navbar__profile-wrap" ref={profileRef}>
               <button

@@ -53,6 +53,7 @@ export default function NewCertificateAssetPage() {
     if (!router.isReady) return;
     const query = router.query;
     if (typeof query.hostname === 'string' && query.hostname) setInput(query.hostname);
+    if (query.asset_type === 'certificate' || query.asset_type === 'domain') setAssetType(query.asset_type);
     if (typeof query.project_id === 'string' && query.project_id) setProjectId(query.project_id);
     if (typeof query.service === 'string' && query.service) setService(query.service);
     if (typeof query.environment === 'string' && query.environment) setEnvironment(query.environment);
@@ -178,15 +179,17 @@ export default function NewCertificateAssetPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Register asset</h1>
-            <p className="portal-page__subtitle">Hosted checks reach approved public targets only. Internal names use a private collector. There is no private-key upload. Issued inventory is not a served-endpoint observation.</p>
+            <p className="portal-page__subtitle">Certificate leaf expiry and domain registration expiry are different records. Hosted checks reach approved public targets only. There is no private-key upload.</p>
           </div>
           <Link href="/certificates" className="btn btn-secondary">Back</Link>
         </div>
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <form className="portal-surface" onSubmit={submit}>
+        <form className="portal-surface expiry-panel" onSubmit={submit}>
           {step === 1 ? (
             <>
               <h2 className="portal-surface__title">Scope and asset</h2>
+              <p className="access-hint">{assetType === 'certificate' ? 'Tracks the TLS leaf NotAfter on the served endpoint.' : 'Tracks registrar/registry expiry from RDAP. That is not the HTTPS certificate.'}</p>
+              <div className="portal-field-grid portal-field-grid--two">
               <label className="label">Asset type
                 <select className="input" value={assetType} onChange={(event) => setAssetType(event.target.value)}>
                   <option value="certificate">Certificate endpoint</option>
@@ -196,6 +199,27 @@ export default function NewCertificateAssetPage() {
               <label className="label">{assetType === 'certificate' ? 'Hostname' : 'Domain'}
                 <input className="input" value={input} onChange={(event) => setInput(event.target.value)} placeholder={assetType === 'certificate' ? 'app.example.com' : 'example.com'} required />
               </label>
+              {assetType === 'certificate' ? (
+                <label className="label">Port
+                  <select className="input" value={port} onChange={(event) => setPort(event.target.value)}>
+                    <option value="443">443</option>
+                    <option value="8443">8443</option>
+                  </select>
+                </label>
+              ) : null}
+              <label className="label">Project
+                <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <option value="">Select a project</option>
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </label>
+              <label className="label">Environment
+                <input className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="production" />
+              </label>
+              <label className="label">Service
+                <input className="input" value={service} onChange={(event) => setService(event.target.value)} />
+              </label>
+              </div>
               {assetType === 'certificate' && suggestions.length ? (
                 <div>
                   <p className="access-hint">Suggested from Kubernetes ingress, cert-manager, and certificate-manager inventory. Registering is still a choice. Issued is not served.</p>
@@ -223,47 +247,27 @@ export default function NewCertificateAssetPage() {
                   </ul>
                 </div>
               ) : null}
-              {assetType === 'certificate' ? (
-                <label className="label">Port
-                  <select className="input" value={port} onChange={(event) => setPort(event.target.value)}>
-                    <option value="443">443</option>
-                    <option value="8443">8443</option>
-                  </select>
-                </label>
-              ) : null}
-              <label className="label">Project
-                <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                  <option value="">Select a project</option>
-                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                </select>
-              </label>
-              <label className="label">Environment
-                <input className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="production" />
-              </label>
-              <label className="label">Service
-                <input className="input" value={service} onChange={(event) => setService(event.target.value)} />
-              </label>
-              <button type="button" className="btn btn-primary" onClick={() => setStep(2)} disabled={!input.trim()}>Continue</button>
+              <div className="portal-form-actions">
+                <button type="button" className="btn btn-primary" onClick={() => setStep(2)} disabled={!input.trim()}>Continue</button>
+              </div>
             </>
           ) : null}
           {step === 2 ? (
             <>
               <h2 className="portal-surface__title">Ownership and policy</h2>
+              <div className="portal-field-grid portal-field-grid--two">
               <label className="label">Team
                 <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }} disabled={teamsLoading}>
                   <option value="">{teamsLoading ? 'Loading teams…' : 'Select a team'}</option>
                   {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                 </select>
               </label>
-              {!teamsLoading && !teams.length ? <p className="access-hint">No teams were returned for this workspace.</p> : null}
               <label className="label">Owner
                 <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId || membersLoading}>
                   <option value="">{!teamId ? 'Select a team first' : membersLoading ? 'Loading members…' : 'Select an owner'}</option>
                   {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
                 </select>
               </label>
-              <p className="access-hint">Owner is a team member name only. Emails are not shown.</p>
-              {teamId && !membersLoading && !members.length ? <p className="access-hint">This team has no members.</p> : null}
               <label className="label">Reminder windows
                 <select className="input" value={warnPolicy} onChange={(event) => setWarnPolicy(event.target.value)}>
                   <option value="standard">Standard: 30, 14, 7, 3, and 1 days</option>
@@ -281,16 +285,21 @@ export default function NewCertificateAssetPage() {
                   </select>
                 </label>
               ) : null}
+              </div>
+              {!teamsLoading && !teams.length ? <p className="access-hint">No teams were returned for this workspace.</p> : null}
+              <p className="access-hint">Owner is a team member name only. Emails are not shown.</p>
+              {teamId && !membersLoading && !members.length ? <p className="access-hint">This team has no members.</p> : null}
               <p className="access-hint">
                 {collector === 'private'
                   ? `Private collector: ${input || 'hostname'}:${port}. Hosted checks will not reach this target. Coverage stays Unknown until the collector posts an observation. Private keys are not accepted.`
                   : `Hosted collector: public ${assetType === 'certificate' ? `${input || 'hostname'}:${port}` : input || 'domain'}. Private ranges are rejected.`}
               </p>
-              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
-              {' '}
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Registering…' : collector === 'private' ? 'Register for private collector' : 'Register and check'}
-              </button>
+              <div className="portal-form-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Registering…' : collector === 'private' ? 'Register for private collector' : 'Register and check'}
+                </button>
+              </div>
             </>
           ) : null}
         </form>

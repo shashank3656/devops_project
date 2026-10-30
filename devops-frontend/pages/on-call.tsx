@@ -13,12 +13,14 @@ import {
   monthTitle,
   nextDateKeys,
   nextSevenDateKeys,
+  onCallTeamHref,
   shiftMonth,
   timezoneAbbrev,
   timezoneCompactLabel,
   weekdayShort,
 } from '../lib/onCallMonth';
-import { InspectorDrawer, useWorkspaceScope } from '@infragate/ui';
+import { InspectorDrawer, SavedViews, useSavedFilterViews, useWorkspaceScope } from '@infragate/ui';
+import { OPERATIONS_SCOPE, OPERATIONS_STORAGE_KEY, OPERATIONS_VIEW_PRESETS, asOperationalView, type OperationalView } from '../lib/operationalViews';
 
 const TOKEN_KEY = 'devops_token';
 const USER_KEY = 'devops_user';
@@ -39,6 +41,7 @@ interface TeamShift {
   cover_user_id?: number;
   cover_name?: string;
   from_name?: string;
+  cover_end_date?: string;
 }
 
 interface DutyDay {
@@ -136,8 +139,7 @@ function rowKey(row: RosterRow): string {
 }
 
 function assignCoverageHref(projectId: number, teamId: number, date: string, timezone: string): string {
-  const params = new URLSearchParams({ date, timezone });
-  return `/on-call/project/${projectId}/team/${teamId}?${params.toString()}`;
+  return onCallTeamHref(projectId, teamId, date, timezone);
 }
 
 function WarningIcon() {
@@ -166,6 +168,9 @@ export default function OnCallPage() {
   const [me, setMe] = useState(0);
   const [isManager, setIsManager] = useState(false);
   const [coverUserId, setCoverUserId] = useState('');
+  const [coverUntilDate, setCoverUntilDate] = useState('');
+  const [coverHistory, setCoverHistory] = useState<{ id: number; cover_date: string; cover_end_date: string; from_name: string; to_name: string; status: string; created_at: string }[]>([]);
+  const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [calendarView, setCalendarView] = useState<CalendarView>('week');
@@ -177,9 +182,9 @@ export default function OnCallPage() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(USER_KEY);
-      const parsed = stored ? JSON.parse(stored) as { id?: number; devops_profile?: { is_manager?: boolean } } : null;
+      const parsed = stored ? JSON.parse(stored) as { id?: number; role?: string; devops_profile?: { is_manager?: boolean } } : null;
       if (typeof parsed?.id === 'number') setMe(parsed.id);
-      setIsManager(Boolean(parsed?.devops_profile?.is_manager));
+      setIsManager(Boolean(parsed?.devops_profile?.is_manager) || String(parsed?.role || '').toLowerCase() === 'admin');
     } catch {
       setIsManager(false);
     }
@@ -256,6 +261,34 @@ export default function OnCallPage() {
       .finally(() => setLoading(false));
   }, [apiUrl, month, periodStart, refresh, timezone]);
 
+  const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+  const { remoteViews, ready: savedViewsReady, saveRemote, deleteRemote } = useSavedFilterViews<OperationalView>({
+    apiUrl,
+    token,
+    scope: OPERATIONS_SCOPE,
+    storageKey: OPERATIONS_STORAGE_KEY,
+    portal: 'devops',
+  });
+
+  useEffect(() => {
+    if (!panel?.projectId || !panel?.teamId) {
+      setCoverHistory([]);
+      return;
+    }
+    const auth = localStorage.getItem(TOKEN_KEY);
+    if (!auth) return;
+    fetch(`${apiUrl}/api/oncall/covers?project_id=${panel.projectId}&team_id=${panel.teamId}`, {
+      headers: { Authorization: `Bearer ${auth}` },
+    })
+      .then(async (res) => (res.ok ? res.json() : {}))
+      .then((data) => setCoverHistory(Array.isArray(data?.covers) ? data.covers : []))
+      .catch(() => setCoverHistory([]));
+  }, [apiUrl, panel?.projectId, panel?.teamId, refresh]);
+
+  useEffect(() => {
+    if (panel?.date) setCoverUntilDate((current) => current && current >= panel.date ? current : panel.date);
+  }, [panel?.date]);
+
   const scopedProjects = useMemo(() => {
     if (!scope.projectId) return projects;
     return projects.filter((project) => String(project.id) === scope.projectId);
@@ -275,15 +308,19 @@ export default function OnCallPage() {
 
   const matches = (project: RosterProject, shift: TeamShift) => {
     if (projectId && String(project.id) !== projectId) return false;
-    if (team && shift.team_name !== team) return false;
+    if (team === 'mine') {
+      const onTeam = (project.rosters[shift.team_id] || []).some((person) => person.userId === me);
+      if (!onTeam && !(me > 0 && (shift.user_id === me || shift.backup_user_id === me || shift.cover_user_id === me))) return false;
+    } else if (team && shift.team_name !== team) return false;
     return true;
   };
   const isMine = (shift: TeamShift) => me > 0 && (shift.user_id === me || shift.backup_user_id === me || shift.cover_user_id === me);
   const scopedRows = scopedProjects.flatMap((project) => project.days.flatMap((day) => (
     day.teams.filter((shift) => matches(project, shift)).map((shift) => ({ project, day, shift }))
   )));
-  const rows = mineOnly ? scopedRows.filter((row) => isMine(row.shift)) : scopedRows;
+  const assignedRows = mineOnly ? scopedRows.filter((row) => isMine(row.shift)) : scopedRows;
   const kindOf = (row: RosterRow) => coverageOf(row.shift, teamIsCritical(catalogServices, row.project.id, row.shift.team_name));
+  const rows = unassignedOnly ? assignedRows.filter((row) => kindOf(row) === 'primary') : assignedRows;
 
   const todayDate = todayKey(timezone);
   const todayRows = scopedRows.filter((row) => row.day.date === todayDate);
@@ -413,6 +450,7 @@ export default function OnCallPage() {
           project_id: row.project.id,
           team_id: row.shift.team_id,
           date: row.day.date,
+          until_date: coverUntilDate && coverUntilDate >= row.day.date ? coverUntilDate : row.day.date,
           cover_user_id: cover,
           timezone,
         }),
@@ -423,7 +461,7 @@ export default function OnCallPage() {
         return;
       }
       setCoverUserId('');
-      setNote('Request sent. The day changes after that person approves.');
+      setNote('Request sent. The covering person must accept. The original weekly rotation is not rewritten.');
       setRefresh((value) => value + 1);
     } catch {
       setError('The cover request could not be saved.');
@@ -482,7 +520,7 @@ export default function OnCallPage() {
         setError(typeof data?.error === 'string' ? data.error : 'The decision could not be saved.');
         return;
       }
-      setNote(decision === 'approve' ? 'Approved. This day now shows the covering person.' : 'Declined. The original person stays on this day.');
+      setNote(decision === 'approve' ? 'Approved. This interval now shows the covering person. The original rotation is unchanged.' : 'Declined. The original person stays on this interval.');
       setRefresh((value) => value + 1);
     } catch {
       setError('The decision could not be saved.');
@@ -569,8 +607,8 @@ export default function OnCallPage() {
           </strong>
         </div>
         <p className="oncall-shift-detail__hours">24-hour coverage · {zoneLabel}</p>
-        {row.shift.status === 'covered' ? <p>{known(row.shift.name)} is covering for {known(row.shift.from_name)}.</p> : null}
-        {row.shift.status === 'pending' ? <p>Waiting for {known(row.shift.cover_name)} to accept a temporary override.</p> : null}
+        {row.shift.status === 'covered' ? <p>{known(row.shift.name)} is covering for {known(row.shift.from_name)}. The original weekly rotation is unchanged.</p> : null}
+        {row.shift.status === 'pending' ? <p>Waiting for {known(row.shift.cover_name)} to accept a temporary override{row.shift.cover_end_date && row.shift.cover_end_date !== row.day.date ? ` through ${formatCompactDay(row.shift.cover_end_date)}` : ''}.</p> : null}
         <div className="oncall-shift-services">
           <span>Affected services</span>
           {affected.length ? (
@@ -593,6 +631,16 @@ export default function OnCallPage() {
           <form className="oncall-ask" onSubmit={(event) => sendRequest(event, row)}>
             {others.length ? (
               <>
+                <div className="oncall-ask__interval">
+                  <label>
+                    Cover from
+                    <input className="input" type="date" value={row.day.date} readOnly />
+                  </label>
+                  <label>
+                    Cover until
+                    <input className="input" type="date" min={row.day.date} value={coverUntilDate || row.day.date} onChange={(event) => setCoverUntilDate(event.target.value)} />
+                  </label>
+                </div>
                 <label>
                   Temporary override
                   <select className="input" value={coverUserId} onChange={(event) => setCoverUserId(event.target.value)}>
@@ -600,10 +648,26 @@ export default function OnCallPage() {
                     {others.map((person) => <option key={person.userId} value={person.userId}>{person.name}</option>)}
                   </select>
                 </label>
+                <p className="access-hint">Acceptance overlays this interval only. The published weekly rotation stays as it is.</p>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Sending...' : 'Send override'}</button>
               </>
             ) : <p>Add another person on this team before a temporary override can be requested.</p>}
           </form>
+        ) : null}
+        {coverHistory.length ? (
+          <div className="oncall-shift-services">
+            <span>Change history</span>
+            <ul>
+              {coverHistory.slice(0, 12).map((item) => (
+                <li key={item.id}>
+                  {formatCompactDay(item.cover_date)}
+                  {item.cover_end_date && item.cover_end_date !== item.cover_date ? ` – ${formatCompactDay(item.cover_end_date)}` : ''}
+                  {' · '}
+                  {known(item.from_name)} → {known(item.to_name)} · {item.status}
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
       </article>
     );
@@ -651,6 +715,22 @@ export default function OnCallPage() {
         ) : null}
         {note ? <div className="alert alert-success">{note}</div> : null}
 
+        <SavedViews<OperationalView>
+          storageKey={OPERATIONS_STORAGE_KEY}
+          current={{ team, environment: '', mine: mineOnly ? '1' : '', unassigned: unassignedOnly ? '1' : '' }}
+          onApply={(next) => {
+            const view = asOperationalView(next);
+            setTeam(view.team);
+            setMineOnly(view.mine === '1' || view.team === 'mine');
+            setUnassignedOnly(view.unassigned === '1');
+          }}
+          presets={OPERATIONS_VIEW_PRESETS}
+          canSave={Boolean(team || mineOnly || unassignedOnly)}
+          serverViews={savedViewsReady ? remoteViews : undefined}
+          onServerSave={saveRemote}
+          onServerDelete={deleteRemote}
+        />
+
         <section className="portal-stat-grid portal-stat-grid--three oncall-summary" aria-label="On-call summary">
           <button type="button" className="portal-stat-card" onClick={goToday}>
             <span className="portal-stat-card__label">Teams covered</span>
@@ -684,6 +764,7 @@ export default function OnCallPage() {
               Team
               <select className="input" value={team} onChange={(event) => setTeam(event.target.value)}>
                 <option value="">All teams</option>
+                {me > 0 ? <option value="mine">My team</option> : null}
                 {teamNames.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
@@ -697,6 +778,14 @@ export default function OnCallPage() {
                 My shifts
               </button>
             ) : null}
+            <button
+              type="button"
+              className={`btn btn-sm ${unassignedOnly ? 'btn-primary' : 'btn-secondary'}`}
+              aria-pressed={unassignedOnly}
+              onClick={() => setUnassignedOnly((value) => !value)}
+            >
+              Unassigned
+            </button>
             <div className="oncall-toolbar__view" role="group" aria-label="Schedule period">
               <button
                 type="button"
@@ -759,7 +848,13 @@ export default function OnCallPage() {
               <strong>Temporary shift overrides</strong>
               {pending.map((row) => (
                 <div key={rowKey(row)} className="oncall-requests__row">
-                  <span>{row.day.label} · {hideProjectFilter ? '' : `${known(row.project.name)} · `}{known(row.shift.team_name)} · {known(row.shift.from_name)} asked {known(row.shift.cover_name)}</span>
+                  <span>
+                    {row.day.label}
+                    {row.shift.cover_end_date && row.shift.cover_end_date !== row.day.date ? ` – ${formatCompactDay(row.shift.cover_end_date)}` : ''}
+                    {' · '}
+                    {hideProjectFilter ? '' : `${known(row.project.name)} · `}
+                    {known(row.shift.team_name)} · {known(row.shift.from_name)} asked {known(row.shift.cover_name)}
+                  </span>
                   {me > 0 && me === row.shift.cover_user_id ? (
                     <span>
                       <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={() => void decide(row.shift.request_id || 0, 'approve')}>Approve</button>
@@ -917,7 +1012,7 @@ export default function OnCallPage() {
       </div>
       <InspectorDrawer
         open={Boolean(panel)}
-        onClose={() => { setPanel(null); setCoverUserId(''); }}
+        onClose={() => { setPanel(null); setCoverUserId(''); setCoverUntilDate(''); }}
         resetKey={panel ? `${panel.date}-${panel.projectId || 0}-${panel.teamId || 0}` : ''}
         label="Shift details"
         eyebrow="On-call"
