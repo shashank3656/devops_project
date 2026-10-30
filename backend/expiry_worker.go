@@ -62,7 +62,7 @@ func attachExpiryDomainDNS(ctx context.Context, obs expiryObservation, domain st
 		obs.ResolvedIPs = strings.Join(public, ", ")
 	}
 	if obs.DNSOK && obs.Detail != "" && !strings.Contains(strings.ToLower(obs.Detail), "dns") {
-		obs.Detail = obs.Detail + " DNS resolved for the hosted check."
+		obs.Detail = obs.Detail + " DNS resolved; it is not the registration expiry."
 	}
 	if !obs.DNSOK && strings.TrimSpace(obs.Detail) == "" {
 		obs.Detail = "The hostname could not be resolved."

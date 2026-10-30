@@ -112,6 +112,72 @@ func TestRDAPKeepsRegistrarAndRegistryDistinct(t *testing.T) {
 	if registrar.Equal(*registry) {
 		t.Fatal("registrar and registry expiry must stay distinct")
 	}
+	registrar, registry, note := capturePublishedDomainExpiry(registrar, registry)
+	if note != "" || !registrar.Equal(time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC)) {
+		t.Fatal("a published registrar date must not be replaced")
+	}
+	_ = registry
+}
+
+func TestRDAPExpirationCapturesRegistrarWhenOnlyRegistryPublished(t *testing.T) {
+	registrar, registry := rdapExpiryDates([]rdapEvent{
+		{Action: "expiration", Date: "2028-08-01T07:39:10.014Z"},
+		{Action: "last changed", Date: "2025-08-15T18:02:55.682Z"},
+	})
+	if registrar != nil {
+		t.Fatal("lone expiration is registry, not a registrar-specific event")
+	}
+	if registry == nil || !registry.Equal(time.Date(2028, 8, 1, 7, 39, 10, 14_000_000, time.UTC)) {
+		t.Fatalf("registry = %v", registry)
+	}
+	registrar, registry, note := capturePublishedDomainExpiry(registrar, registry)
+	if registrar == nil || registry == nil || !registrar.Equal(*registry) {
+		t.Fatal("published registry expiration must fill registrar expiry in the portal")
+	}
+	if note == "" {
+		t.Fatal("capture note is required when the registrar did not publish a separate date")
+	}
+}
+
+func TestRDAPNestedRegistrarEntityExpiration(t *testing.T) {
+	events := collectRDAPEvents(rdapResponse{
+		Events: []rdapEvent{{Action: "expiration", Date: "2027-01-01T00:00:00Z"}},
+		Entities: []rdapEntity{{
+			Roles:  []string{"registrar"},
+			Events: []rdapEvent{{Action: "registrar expiration date", Date: "2026-12-15T00:00:00Z"}},
+		}},
+	})
+	registrar, registry := rdapExpiryDates(events)
+	if registrar == nil || registry == nil {
+		t.Fatal("nested registrar events must be read")
+	}
+	if registrar.Equal(*registry) {
+		t.Fatal("nested registrar expiry must stay distinct from registry")
+	}
+}
+
+func TestWHOISExpiryLinesSkipContacts(t *testing.T) {
+	registrar, registry := parseWHOISExpiryLines("" +
+		"Registry Expiry Date: 2028-08-01T07:39:10Z\n" +
+		"Registrar Registration Expiration Date: 2028-07-31T07:39:10Z\n" +
+		"Registrant Email: someone@example.com\n" +
+		"Updated Date: 2025-08-15T18:02:55Z\n" +
+		"Creation Date: 2019-08-01T07:39:10Z\n")
+	if registry == nil || !registry.Equal(time.Date(2028, 8, 1, 7, 39, 10, 0, time.UTC)) {
+		t.Fatalf("registry = %v", registry)
+	}
+	if registrar == nil || !registrar.Equal(time.Date(2028, 7, 31, 7, 39, 10, 0, time.UTC)) {
+		t.Fatalf("registrar = %v", registrar)
+	}
+}
+
+func TestIANAWHOISServerIgnoresEmpty(t *testing.T) {
+	if got := ianaWHOISServer("domain: APP\nwhois:\nnserver: ns.example"); got != "" {
+		t.Fatalf("empty whois = %s", got)
+	}
+	if got := ianaWHOISServer("domain: COM\nwhois: whois.verisign-grs.com"); got != "whois.verisign-grs.com" {
+		t.Fatalf("com whois = %s", got)
+	}
 }
 
 func TestAutoRenewFlagIsNotVerification(t *testing.T) {

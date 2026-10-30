@@ -1,3 +1,12 @@
+export function publishedDomainExpiry(registrar?: string | null, registry?: string | null): string {
+  const dates = [registrar, registry]
+    .map((value) => (value || '').trim())
+    .filter(Boolean)
+    .filter((value) => !Number.isNaN(new Date(value).getTime()))
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  return dates[0] || '';
+}
+
 export function formatExpiryOn(value?: string | null): string {
   if (!value) return 'Unknown';
   const date = new Date(value);

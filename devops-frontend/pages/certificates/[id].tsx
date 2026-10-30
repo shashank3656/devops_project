@@ -10,7 +10,7 @@ import {
   type CertificateMemberOption,
   type CertificateTeamOption,
 } from '../../lib/certificateOwnership';
-import { expiryZoneLabel, formatExpiryOn, remainingExpiryCopy } from '../../lib/expiryDisplay';
+import { expiryZoneLabel, formatExpiryOn, publishedDomainExpiry, remainingExpiryCopy } from '../../lib/expiryDisplay';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -77,7 +77,10 @@ function certificateExpiry(item: Asset): string {
 }
 
 function domainExpiry(item: Asset): string {
-  return item.registrar_expires_at || item.latest?.registrar_expires_at || item.registry_expires_at || item.latest?.registry_expires_at || '';
+  return publishedDomainExpiry(
+    item.registrar_expires_at || item.latest?.registrar_expires_at,
+    item.registry_expires_at || item.latest?.registry_expires_at,
+  );
 }
 
 function dnsCheckCopy(item: Asset): string {
@@ -202,7 +205,14 @@ export default function CertificateAssetDetailPage() {
       }
       if (data.asset) setItem(data.asset);
       if (path === 'check') {
-        const observed = Boolean(data.asset?.certificate_expires_at || data.asset?.latest?.not_after || data.asset?.registrar_expires_at || data.asset?.latest?.registrar_expires_at);
+        const observed = Boolean(
+          data.asset?.certificate_expires_at
+          || data.asset?.latest?.not_after
+          || data.asset?.registrar_expires_at
+          || data.asset?.latest?.registrar_expires_at
+          || data.asset?.registry_expires_at
+          || data.asset?.latest?.registry_expires_at,
+        );
         setNote(observed
           ? 'Check stored. Expiry is taken from the observed evidence.'
           : 'Check stored. Expiry stays Unknown until a date is observed.');
@@ -315,18 +325,12 @@ export default function CertificateAssetDetailPage() {
                           <dt>DNS check</dt>
                           <dd>{dnsCheckCopy(item)}</dd>
                         </div>
-                        <div>
-                          <dt>Registrar expiry</dt>
-                          <dd>{formatExpiryOn(item.registrar_expires_at || item.latest?.registrar_expires_at)}</dd>
-                        </div>
-                        <div>
-                          <dt>Registry expiry</dt>
-                          <dd>{formatExpiryOn(item.registry_expires_at || item.latest?.registry_expires_at)}</dd>
-                        </div>
-                        <div>
-                          <dt>Auto-renew</dt>
-                          <dd>{item.latest?.auto_renew ? 'Reported. Not verified.' : 'Unknown'}</dd>
-                        </div>
+                        {item.latest?.auto_renew ? (
+                          <div>
+                            <dt>Auto-renew</dt>
+                            <dd>Reported. Not verified.</dd>
+                          </div>
+                        ) : null}
                       </>
                     )}
                     <div>
@@ -337,6 +341,7 @@ export default function CertificateAssetDetailPage() {
                   {assetKind(item) === 'domain' ? (
                     <p className="access-hint">
                       This date is the domain registration, not the TLS certificate served on HTTPS.
+                      DNS confirms the name resolves; it is not the expiry date.
                       Register a certificate endpoint to track leaf expiry.
                       {' '}
                       <Link href={`/certificates/new?asset_type=certificate&hostname=${encodeURIComponent(item.registered_domain || item.display_name || '')}${item.project_id ? `&project_id=${item.project_id}` : ''}${item.environment ? `&environment=${encodeURIComponent(item.environment)}` : ''}${item.service_name ? `&service=${encodeURIComponent(item.service_name)}` : ''}`}>
@@ -416,6 +421,12 @@ export default function CertificateAssetDetailPage() {
                       <div className="expiry-facts__expires">
                         <dt>Leaf expires on</dt>
                         <dd>{formatExpiryOn(item.latest.not_after)} · {expiryZoneLabel()}</dd>
+                      </div>
+                    ) : null}
+                    {assetKind(item) === 'domain' && domainExpiry(item) ? (
+                      <div className="expiry-facts__expires">
+                        <dt>Registration expires on</dt>
+                        <dd>{formatExpiryOn(domainExpiry(item))} · {expiryZoneLabel()}</dd>
                       </div>
                     ) : null}
                     <div>

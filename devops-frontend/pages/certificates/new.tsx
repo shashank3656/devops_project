@@ -179,7 +179,7 @@ export default function NewCertificateAssetPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Register asset</h1>
-            <p className="portal-page__subtitle">Registering a hosted certificate resolves DNS, connects to the public endpoint, and stores leaf expiry on this record. Domain registration expiry is a separate RDAP date. There is no private-key upload.</p>
+            <p className="portal-page__subtitle">Registering a hosted certificate resolves DNS, connects to the public endpoint, and stores leaf expiry on this record. Domain registration queries RDAP, then WHOIS if needed, resolves DNS, and stores the published expiry. There is no private-key upload.</p>
           </div>
           <Link href="/certificates" className="btn btn-secondary">Back</Link>
         </div>
@@ -188,7 +188,7 @@ export default function NewCertificateAssetPage() {
           {step === 1 ? (
             <>
               <h2 className="portal-surface__title">Scope and asset</h2>
-              <p className="access-hint">{assetType === 'certificate' ? 'Tracks the TLS leaf NotAfter on the served endpoint.' : 'Tracks registrar/registry expiry from RDAP. That is not the HTTPS certificate.'}</p>
+              <p className="access-hint">{assetType === 'certificate' ? 'Tracks the TLS leaf NotAfter on the served endpoint.' : 'Tracks one domain registration expiry from RDAP and WHOIS. DNS confirms the name resolves. That is not the HTTPS certificate.'}</p>
               <div className="portal-field-grid portal-field-grid--two">
               <label className="label">Asset type
                 <select className="input" value={assetType} onChange={(event) => setAssetType(event.target.value)}>
@@ -292,12 +292,20 @@ export default function NewCertificateAssetPage() {
               <p className="access-hint">
                 {collector === 'private'
                   ? `Private collector: ${input || 'hostname'}:${port}. Hosted checks will not reach this target. Coverage stays Unknown until the collector posts an observation. Private keys are not accepted.`
-                  : `Hosted collector: public ${assetType === 'certificate' ? `${input || 'hostname'}:${port}` : input || 'domain'}. DNS is resolved, the endpoint is connected, and expiry is stored on this record. Private ranges are rejected.`}
+                  : assetType === 'domain'
+                    ? `Hosted collector: public ${input || 'domain'}. RDAP/WHOIS captures registration expiry. DNS is resolved separately. Private ranges are rejected.`
+                    : `Hosted collector: public ${input || 'hostname'}:${port}. DNS is resolved, the endpoint is connected, and expiry is stored on this record. Private ranges are rejected.`}
               </p>
               <div className="portal-form-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? (collector === 'private' ? 'Registering…' : 'Connecting and checking DNS…') : collector === 'private' ? 'Register for private collector' : 'Register, connect, and store expiry'}
+                  {saving
+                    ? (collector === 'private' ? 'Registering…' : assetType === 'domain' ? 'Querying WHOIS and DNS…' : 'Connecting and checking DNS…')
+                    : collector === 'private'
+                      ? 'Register for private collector'
+                      : assetType === 'domain'
+                        ? 'Register, query expiry, and store'
+                        : 'Register, connect, and store expiry'}
                 </button>
               </div>
             </>

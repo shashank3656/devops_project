@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { downloadCSV } from '../lib/csv';
-import { formatExpiryOn } from '../lib/expiryDisplay';
+import { formatExpiryOn, publishedDomainExpiry } from '../lib/expiryDisplay';
 
 const TOKEN_KEY = 'devops_token';
 
@@ -198,7 +198,7 @@ export default function CertificatesPage() {
       item.environment,
       item.assessment,
       item.owner_name,
-      item.asset_type === 'domain' ? (item.registrar_expires_at || item.registry_expires_at || '') : (item.certificate_expires_at || ''),
+      item.asset_type === 'domain' ? publishedDomainExpiry(item.registrar_expires_at, item.registry_expires_at) : (item.certificate_expires_at || ''),
       item.remaining_days ?? '',
       item.paused ? 'paused' : '',
       item.collector || 'hosted',
@@ -330,8 +330,7 @@ export default function CertificatesPage() {
                       <td>
                         {row.asset_type === 'domain' ? (
                           <>
-                            <div>Registrar {formatExpiryOn(row.registrar_expires_at)}</div>
-                            <div>Registry {formatExpiryOn(row.registry_expires_at)}</div>
+                            <div>{formatExpiryOn(publishedDomainExpiry(row.registrar_expires_at, row.registry_expires_at))}</div>
                             {row.auto_renew ? <div>Auto-renew reported. Not verified.</div> : null}
                           </>
                         ) : formatExpiryOn(row.certificate_expires_at)}
