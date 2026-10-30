@@ -307,7 +307,7 @@ export default function CertificatesPage() {
                     <th>{tab === 'domain' ? 'Registered domain' : 'Endpoint'}</th>
                     <th>Service</th>
                     <th>Assessment</th>
-                    <th>{tab === 'domain' ? 'Registration expiry' : 'Expires on'}</th>
+                    <th>{tab === 'domain' ? 'Expiry date' : 'Expires on'}</th>
                     <th>Owner</th>
                     <th>Last verified</th>
                     <th></th>

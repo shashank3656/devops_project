@@ -286,7 +286,7 @@ export default function CertificateAssetDetailPage() {
                   <h2 className="portal-surface__title">{assetKind(item) === 'certificate' ? 'Certificate expiry' : 'Domain registration expiry'}</h2>
                   <dl className="expiry-facts">
                     <div className="expiry-facts__expires">
-                      <dt>Expires on</dt>
+                      <dt>{assetKind(item) === 'certificate' ? 'Expires on' : 'Expiry date'}</dt>
                       <dd>
                         {formatExpiryOn(assetKind(item) === 'certificate' ? certificateExpiry(item) : domainExpiry(item))}
                         {assetKind(item) === 'certificate' || domainExpiry(item) ? ` · ${expiryZoneLabel()}` : ''}
@@ -324,6 +324,13 @@ export default function CertificateAssetDetailPage() {
                         <div>
                           <dt>DNS check</dt>
                           <dd>{dnsCheckCopy(item)}</dd>
+                        </div>
+                        <div>
+                          <dt>Expiry date</dt>
+                          <dd>
+                            {formatExpiryOn(domainExpiry(item))}
+                            {domainExpiry(item) ? ` · ${expiryZoneLabel()}` : ''}
+                          </dd>
                         </div>
                         {item.latest?.auto_renew ? (
                           <div>
@@ -423,10 +430,13 @@ export default function CertificateAssetDetailPage() {
                         <dd>{formatExpiryOn(item.latest.not_after)} · {expiryZoneLabel()}</dd>
                       </div>
                     ) : null}
-                    {assetKind(item) === 'domain' && domainExpiry(item) ? (
+                    {assetKind(item) === 'domain' ? (
                       <div className="expiry-facts__expires">
-                        <dt>Registration expires on</dt>
-                        <dd>{formatExpiryOn(domainExpiry(item))} · {expiryZoneLabel()}</dd>
+                        <dt>Expiry date</dt>
+                        <dd>
+                          {formatExpiryOn(domainExpiry(item))}
+                          {domainExpiry(item) ? ` · ${expiryZoneLabel()}` : ''}
+                        </dd>
                       </div>
                     ) : null}
                     <div>
