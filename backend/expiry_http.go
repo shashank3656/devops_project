@@ -83,7 +83,16 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			item, err := createExpiryAsset(userID, body.AssetType, body.Input, body.ServiceName, body.Environment, body.RunbookURL, body.Collector, body.ProjectID, body.TeamID, body.OwnerUserID, body.Port, body.WarnDays, body.CheckEveryMinutes)
 			if err != nil {
-				writeAPIError(w, r, http.StatusBadRequest, "That endpoint or domain could not be registered.", err)
+				status := http.StatusBadRequest
+				msg := "That endpoint or domain could not be registered."
+				switch err {
+				case errExpiryDenied, errHandoverDenied:
+					status = http.StatusForbidden
+					msg = "This project is not available for certificate registration."
+				case errExpiryInvalid:
+					msg = "Owner must be a member of the selected team."
+				}
+				writeAPIError(w, r, status, msg, err)
 				return
 			}
 			writeJSON(w, http.StatusAccepted, map[string]any{"asset": item, "status": "ok"})
@@ -290,7 +299,7 @@ func writeExpiryMutation(w http.ResponseWriter, r *http.Request, item expiryAsse
 	if err != nil {
 		status := http.StatusBadRequest
 		switch err {
-		case errHandoverDenied:
+		case errHandoverDenied, errExpiryDenied:
 			status = http.StatusForbidden
 		case errHandoverNotFound:
 			status = http.StatusNotFound

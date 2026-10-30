@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -67,9 +68,27 @@ type expirySummary struct {
 	Domains        int `json:"domains"`
 }
 
+var (
+	errExpiryDenied  = errors.New("expiry asset not available")
+	errExpiryInvalid = errors.New("expiry asset invalid")
+)
+
+func loadExpiryProjectVisibility(userID int) map[int]struct{} {
+	if userID <= 0 || callerSeesEveryProject(userID) {
+		return nil
+	}
+	return projectIDSet(visibleProjectIDsForUser(userID))
+}
+
 func expiryAssetVisible(projectID, userID int, visible map[int]struct{}) bool {
+	if userID <= 0 {
+		return false
+	}
+	if callerSeesEveryProject(userID) {
+		return true
+	}
 	if projectID <= 0 {
-		return userID > 0
+		return true
 	}
 	_, ok := visible[projectID]
 	return ok
@@ -237,7 +256,7 @@ func listExpiryAssets(userID int, assetType, assessment, service string) ([]expi
 	}
 	defer cancel()
 	defer rows.Close()
-	visible := projectIDSet(visibleProjectIDsForUser(userID))
+	visible := loadExpiryProjectVisibility(userID)
 	out := []expiryAssetView{}
 	for rows.Next() {
 		row, err := scanExpiryAsset(rows)
@@ -333,9 +352,8 @@ func getExpiryAsset(id, userID int, includeHistory bool) (expiryAssetView, error
 		}
 		return expiryAssetView{}, err
 	}
-	visible := projectIDSet(visibleProjectIDsForUser(userID))
-	if !expiryAssetVisible(row.ProjectID, userID, visible) {
-		return expiryAssetView{}, errHandoverDenied
+	if !expiryAssetVisible(row.ProjectID, userID, loadExpiryProjectVisibility(userID)) {
+		return expiryAssetView{}, errExpiryDenied
 	}
 	attachLatestObservation(&row)
 	attachSharedForAsset(&row)
@@ -400,7 +418,7 @@ func resolveExpiryOwner(teamID, ownerUserID int) (int, string, error) {
 	if teamID > 0 {
 		allowed, err := teamMemberIDs(teamID)
 		if err == nil && len(allowed) > 0 && !allowed[ownerUserID] {
-			return 0, "", errOncallInvalid
+			return 0, "", errExpiryInvalid
 		}
 	}
 	names := oncallUserNames([]int{ownerUserID})
@@ -453,6 +471,9 @@ func createExpiryAsset(userID int, assetType, input, service, env, runbook, coll
 	}
 	if expiryCollectorIsPrivate(collector) && assetType != "certificate" {
 		return expiryAssetView{}, errOncallInvalid
+	}
+	if projectID > 0 && !expiryAssetVisible(projectID, userID, loadExpiryProjectVisibility(userID)) {
+		return expiryAssetView{}, errExpiryDenied
 	}
 	ownerUserID, owner, err := resolveExpiryOwner(teamID, ownerUserID)
 	if err != nil {

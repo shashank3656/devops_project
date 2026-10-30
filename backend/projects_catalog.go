@@ -1773,6 +1773,9 @@ func getVisibleProjectsForUser(userID int) ([]ProjectCatalog, error) {
 }
 
 func callerSeesEveryProject(userID int) bool {
+	if DB == nil || userID <= 0 {
+		return false
+	}
 	user, err := GetUserByID(userID)
 	return err == nil && user != nil && strings.EqualFold(strings.TrimSpace(user.Role), "admin")
 }

@@ -6,6 +6,21 @@ import (
 	"time"
 )
 
+func TestExpiryAssetVisibleAllowsUnscopedAndAssignedProjects(t *testing.T) {
+	if expiryAssetVisible(0, 0, nil) {
+		t.Fatal("signed-out caller cannot see unscoped assets")
+	}
+	if !expiryAssetVisible(0, 7, nil) {
+		t.Fatal("authenticated caller can see unscoped assets")
+	}
+	if expiryAssetVisible(12, 7, nil) {
+		t.Fatal("unknown project must stay hidden")
+	}
+	if !expiryAssetVisible(12, 7, map[int]struct{}{12: {}}) {
+		t.Fatal("assigned project should be visible")
+	}
+}
+
 func TestExpiryOwnerNameNeverUsesEmail(t *testing.T) {
 	if got := expiryPersonName(""); got != "Unknown" {
 		t.Fatalf("blank = %s", got)
