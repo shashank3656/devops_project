@@ -753,95 +753,105 @@ export default function OnCallPage() {
 
         <section className="portal-surface oncall-roster">
           <div className="oncall-toolbar">
-            {hideProjectFilter ? null : (
-              <label className="oncall-toolbar__grow">
-                Project
-                <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                  <option value="">All projects</option>
-                  {scopedProjects.map((project) => <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : known(project.name)}</option>)}
+            <div className="oncall-toolbar__filters">
+              {hideProjectFilter ? null : (
+                <label className="oncall-toolbar__field">
+                  Project
+                  <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                    <option value="">All projects</option>
+                    {scopedProjects.map((project) => <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : known(project.name)}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="oncall-toolbar__field">
+                Team
+                <select className="input" value={team} onChange={(event) => setTeam(event.target.value)}>
+                  <option value="">All teams</option>
+                  {me > 0 ? <option value="mine">My team</option> : null}
+                  {teamNames.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
               </label>
-            )}
-            <label className="oncall-toolbar__grow">
-              Team
-              <select className="input" value={team} onChange={(event) => setTeam(event.target.value)}>
-                <option value="">All teams</option>
-                {me > 0 ? <option value="mine">My team</option> : null}
-                {teamNames.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-            </label>
-            {me > 0 ? (
-              <button
-                type="button"
-                className={`btn btn-sm ${mineOnly ? 'btn-primary' : 'btn-secondary'}`}
-                aria-pressed={mineOnly}
-                onClick={() => setMineOnly((value) => !value)}
-              >
-                My shifts
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={`btn btn-sm ${unassignedOnly ? 'btn-primary' : 'btn-secondary'}`}
-              aria-pressed={unassignedOnly}
-              onClick={() => setUnassignedOnly((value) => !value)}
-            >
-              Unassigned
-            </button>
-            <div className="oncall-toolbar__view" role="group" aria-label="Schedule period">
-              <button
-                type="button"
-                className={`btn btn-sm ${calendarView === 'week' ? 'btn-primary' : 'btn-secondary'}`}
-                aria-label="Week"
-                aria-pressed={calendarView === 'week'}
-                onClick={() => setCalendarView('week')}
-              >
-                Week
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${calendarView === 'month' ? 'btn-primary' : 'btn-secondary'}`}
-                aria-label="Month"
-                aria-pressed={calendarView === 'month'}
-                onClick={() => {
-                  setCalendarView('month');
-                  setMonth(periodStart.slice(0, 7) || currentMonth(timezone));
-                }}
-              >
-                Month
-              </button>
             </div>
-            <div className="oncall-toolbar__period">
-              <button type="button" className="oncall-month__step" aria-label={calendarView === 'month' ? 'Previous month' : 'Previous week'} onClick={() => shiftPeriod(-1)}>
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </button>
-              <span className="oncall-toolbar__range" aria-live="polite">{rangeLabel}</span>
-              <button type="button" className="oncall-month__step" aria-label={calendarView === 'month' ? 'Next month' : 'Next week'} onClick={() => shiftPeriod(1)}>
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </button>
-            </div>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={goToday}>Today</button>
-            <label className="oncall-tz">
-              <span className="ig-sr-only">Timezone</span>
-              <select className="input" aria-label="Roster timezone" title={timezone} value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
-                {TIMEZONES.map((zone) => <option key={zone} value={zone}>{timezoneCompactLabel(zone)}</option>)}
-              </select>
-            </label>
-            <details className="oncall-help">
-              <summary aria-label="On-call help">?</summary>
-              <div className="oncall-help__panel">
-                <p>
-                  {scope.projectId
-                    ? 'The workspace filter at the top limits this page to that project. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'
-                    : 'The workspace filter at the top limits this page. Project below further filters the roster. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'}
-                  {' '}Do not page from this page. Assign coverage to enable incident escalation.
-                </p>
-                <div className="oncall-help__links">
-                  <Link href="/on-call/onboard">Onboard project</Link>
-                  <Link href="/on-call/projects">Projects</Link>
-                </div>
+            <div className="oncall-toolbar__controls">
+              <div className="oncall-toolbar__cluster" role="group" aria-label="Shift filters">
+                {me > 0 ? (
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${mineOnly ? 'btn-primary' : 'btn-secondary'}`}
+                    aria-pressed={mineOnly}
+                    onClick={() => setMineOnly((value) => !value)}
+                  >
+                    My shifts
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={`btn btn-sm ${unassignedOnly ? 'btn-primary' : 'btn-secondary'}`}
+                  aria-pressed={unassignedOnly}
+                  onClick={() => setUnassignedOnly((value) => !value)}
+                >
+                  Unassigned
+                </button>
               </div>
-            </details>
+              <div className="oncall-toolbar__cluster oncall-toolbar__cluster--calendar" role="group" aria-label="Schedule period">
+                <div className="oncall-toolbar__view">
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${calendarView === 'week' ? 'btn-primary' : 'btn-secondary'}`}
+                    aria-label="Week"
+                    aria-pressed={calendarView === 'week'}
+                    onClick={() => setCalendarView('week')}
+                  >
+                    Week
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${calendarView === 'month' ? 'btn-primary' : 'btn-secondary'}`}
+                    aria-label="Month"
+                    aria-pressed={calendarView === 'month'}
+                    onClick={() => {
+                      setCalendarView('month');
+                      setMonth(periodStart.slice(0, 7) || currentMonth(timezone));
+                    }}
+                  >
+                    Month
+                  </button>
+                </div>
+                <div className="oncall-toolbar__period">
+                  <button type="button" className="oncall-month__step" aria-label={calendarView === 'month' ? 'Previous month' : 'Previous week'} onClick={() => shiftPeriod(-1)}>
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </button>
+                  <span className="oncall-toolbar__range" aria-live="polite">{rangeLabel}</span>
+                  <button type="button" className="oncall-month__step" aria-label={calendarView === 'month' ? 'Next month' : 'Next week'} onClick={() => shiftPeriod(1)}>
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </button>
+                </div>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={goToday}>Today</button>
+              </div>
+              <div className="oncall-toolbar__cluster oncall-toolbar__cluster--meta">
+                <label className="oncall-tz">
+                  <span className="ig-sr-only">Timezone</span>
+                  <select className="input" aria-label="Roster timezone" title={timezone} value={timezone} onChange={(event) => { setTimezone(event.target.value); setMonth(currentMonth(event.target.value)); }}>
+                    {TIMEZONES.map((zone) => <option key={zone} value={zone}>{timezoneCompactLabel(zone)}</option>)}
+                  </select>
+                </label>
+                <details className="oncall-help">
+                  <summary aria-label="On-call help">?</summary>
+                  <div className="oncall-help__panel">
+                    <p>
+                      {scope.projectId
+                        ? 'The workspace filter at the top limits this page to that project. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'
+                        : 'The workspace filter at the top limits this page. Project below further filters the roster. A day starts at 00:00 in the timezone. Today, week changes, and handover use that boundary.'}
+                      {' '}Do not page from this page. Assign coverage to enable incident escalation.
+                    </p>
+                    <div className="oncall-help__links">
+                      <Link href="/on-call/onboard">Onboard project</Link>
+                      <Link href="/on-call/projects">Projects</Link>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
           </div>
           {mineOnly && me > 0 ? <p className="oncall-mine-hint">{myNextHandover}</p> : null}
 

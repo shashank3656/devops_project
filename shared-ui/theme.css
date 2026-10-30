@@ -5159,39 +5159,83 @@ html[data-theme] .devops-layout .oncall-page .oncall-summary .portal-stat-card__
 }
 
 .oncall-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px 10px;
-  margin-bottom: 12px;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
-.oncall-toolbar label {
+.oncall-toolbar__filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 16rem));
+  gap: 10px 12px;
+  align-items: end;
+}
+
+.oncall-toolbar__field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   font-size: 12px;
+  font-weight: 650;
   color: var(--ig-muted);
 }
 
-.oncall-toolbar__grow {
-  flex: 1 1 180px;
+.oncall-toolbar__field .input,
+.oncall-tz .input {
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  padding: 0 32px 0 12px;
+  color: var(--ig-text);
+  background: var(--ig-surface-2);
+  border: 1px solid var(--ig-border);
+  border-radius: 10px;
 }
 
-.oncall-toolbar .input {
-  min-width: 0;
+.oncall-toolbar__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.oncall-toolbar__cluster {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.oncall-toolbar__cluster--calendar {
+  gap: 8px;
+}
+
+.oncall-toolbar__cluster--meta {
+  margin-left: auto;
+}
+
+@media (max-width: 960px) {
+  .oncall-toolbar__cluster--meta {
+    margin-left: 0;
+  }
+}
+
+.oncall-toolbar__controls .btn-sm {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
 }
 
 .oncall-tz {
   flex: 0 0 auto;
+  margin: 0;
+  color: var(--ig-text);
 }
 
 .oncall-tz .input {
-  width: 8.75rem;
-  min-width: 0;
-  height: 36px;
-  padding: 0 28px 0 12px;
+  width: 9.5rem;
+  padding: 0 32px 0 12px;
   border-radius: 999px;
 }
 
@@ -5201,28 +5245,37 @@ html[data-theme] .devops-layout .oncall-page .oncall-summary .portal-stat-card__
   align-items: center;
   gap: 2px;
   min-height: 36px;
-}
-
-.oncall-toolbar__period {
-  padding: 2px;
+  padding: 3px;
   border: 1px solid var(--ig-border);
   border-radius: 999px;
   background: var(--ig-surface-2);
 }
 
+.oncall-toolbar__view .btn-sm {
+  min-width: 4.25rem;
+  border: 0;
+  box-shadow: none;
+}
+
+.oncall-toolbar__view .btn-secondary {
+  background: transparent;
+  color: var(--ig-text);
+}
+
 .oncall-toolbar__period .oncall-month__step {
   border: 0;
   background: transparent;
+  color: var(--ig-text);
 }
 
 .oncall-toolbar__range {
   min-width: 7.5rem;
   margin: 0;
-  padding: 0 6px;
+  padding: 0 8px;
   color: var(--ig-text);
   font-size: 13px;
   font-weight: 650;
-  line-height: 32px;
+  line-height: 30px;
   text-align: center;
   white-space: nowrap;
 }
@@ -5243,11 +5296,12 @@ html[data-theme] .devops-layout .oncall-page .oncall-summary .portal-stat-card__
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--ig-border);
   border-radius: 999px;
   color: var(--ig-muted);
+  background: var(--ig-surface-2);
   cursor: pointer;
 }
 
@@ -5477,30 +5531,25 @@ html[data-theme] .devops-layout .oncall-gaps > summary {
 }
 
 html[data-theme] .devops-layout .oncall-page .oncall-toolbar__range,
-html[data-theme] .devops-layout .oncall-page .oncall-toolbar__period .oncall-month__step {
+html[data-theme] .devops-layout .oncall-page .oncall-toolbar__period .oncall-month__step,
+html[data-theme] .devops-layout .oncall-page .oncall-toolbar__field .input,
+html[data-theme] .devops-layout .oncall-page .oncall-tz .input {
   color: var(--ig-text);
 }
 
-html[data-theme] .devops-layout .oncall-page .oncall-tz .input {
+html[data-theme] .devops-layout .oncall-page .oncall-toolbar__field .input,
+html[data-theme] .devops-layout .oncall-page .oncall-tz .input,
+html[data-theme] .devops-layout .oncall-page .oncall-toolbar__view,
+html[data-theme] .devops-layout .oncall-page .oncall-toolbar__period {
   background: var(--ig-surface-2);
   border-color: var(--ig-border);
-  color: var(--ig-text);
 }
 
-html[data-theme='dark'] .devops-layout .oncall-page .oncall-toolbar__period {
-  background: #f4f6fa;
-  border-color: transparent;
-}
-
-html[data-theme='dark'] .devops-layout .oncall-page .oncall-toolbar__range,
-html[data-theme='dark'] .devops-layout .oncall-page .oncall-toolbar__period .oncall-month__step {
-  color: #1c2433;
-}
-
+html[data-theme='dark'] .devops-layout .oncall-page .oncall-toolbar__field .input,
 html[data-theme='dark'] .devops-layout .oncall-page .oncall-tz .input {
-  background: #f4f6fa;
-  border-color: transparent;
-  color: #1c2433;
+  background-color: #222633;
+  color: #f2f4f8;
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 html[data-theme] .devops-layout .oncall-gaps {
