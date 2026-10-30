@@ -5159,26 +5159,19 @@ html[data-theme] .devops-layout .oncall-page .oncall-summary .portal-stat-card__
 }
 
 .oncall-toolbar {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 16px;
-}
-
-.oncall-toolbar__filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 16rem));
-  gap: 10px 12px;
-  align-items: end;
+  overflow-x: auto;
 }
 
 .oncall-toolbar__field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--ig-muted);
+  flex: 0 1 11rem;
+  min-width: 9rem;
+  max-width: 13rem;
+  margin: 0;
 }
 
 .oncall-toolbar__field .input,
@@ -5190,58 +5183,31 @@ html[data-theme] .devops-layout .oncall-page .oncall-summary .portal-stat-card__
   color: var(--ig-text);
   background: var(--ig-surface-2);
   border: 1px solid var(--ig-border);
-  border-radius: 10px;
+  border-radius: 999px;
 }
 
-.oncall-toolbar__controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-}
-
-.oncall-toolbar__cluster {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.oncall-toolbar__cluster--calendar {
-  gap: 8px;
-}
-
-.oncall-toolbar__cluster--meta {
-  margin-left: auto;
-}
-
-@media (max-width: 960px) {
-  .oncall-toolbar__cluster--meta {
-    margin-left: 0;
-  }
-}
-
-.oncall-toolbar__controls .btn-sm {
+.oncall-toolbar .btn-sm {
+  flex: 0 0 auto;
   height: 36px;
   padding: 0 14px;
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .oncall-tz {
   flex: 0 0 auto;
-  margin: 0;
+  margin: 0 0 0 auto;
   color: var(--ig-text);
 }
 
 .oncall-tz .input {
-  width: 9.5rem;
-  padding: 0 32px 0 12px;
-  border-radius: 999px;
+  width: 8.75rem;
 }
 
 .oncall-toolbar__view,
 .oncall-toolbar__period {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 2px;
   min-height: 36px;
@@ -5288,6 +5254,7 @@ html[data-theme] .devops-layout .oncall-page .oncall-summary .portal-stat-card__
 
 .oncall-help {
   position: relative;
+  flex: 0 0 auto;
   margin: 0;
 }
 
