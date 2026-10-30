@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 )
@@ -23,23 +24,50 @@ func runExpiryCheckJob(jobID, assetID int) {
 		_, _ = execContext(`UPDATE expiry_check_jobs SET state = 'failed', error_message = $2, finished_at = CURRENT_TIMESTAMP WHERE id = $1`, jobID, "asset missing")
 		return
 	}
+	checkExpiryAssetNow(row)
+	_, _ = execContext(`UPDATE expiry_check_jobs SET state = 'succeeded', finished_at = CURRENT_TIMESTAMP WHERE id = $1`, jobID)
+}
+
+func checkExpiryAssetNow(row expiryAssetView) {
+	if row.ID <= 0 {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	var obs expiryObservation
 	if expiryCollectorIsPrivate(row.Collector) {
 		attachLatestObservation(&row)
 		if row.Latest != nil && (row.Latest.NotAfter != nil || row.Latest.RegistrarExpires != nil) {
-			_, _ = execContext(`UPDATE expiry_check_jobs SET state = 'succeeded', finished_at = CURRENT_TIMESTAMP WHERE id = $1`, jobID)
 			return
 		}
 		obs = expiryWaitingPrivateObservation()
 	} else if row.AssetType == "domain" {
 		obs = lookupExpiryRDAP(ctx, row.RegisteredDomain)
+		obs = attachExpiryDomainDNS(ctx, obs, row.RegisteredDomain)
 	} else {
 		obs = observeExpiryTLS(ctx, row.Hostname, row.Port)
 	}
 	applyExpiryObservation(row, obs)
-	_, _ = execContext(`UPDATE expiry_check_jobs SET state = 'succeeded', finished_at = CURRENT_TIMESTAMP WHERE id = $1`, jobID)
+}
+
+func attachExpiryDomainDNS(ctx context.Context, obs expiryObservation, domain string) expiryObservation {
+	host := strings.TrimSpace(domain)
+	if host == "" {
+		return obs
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	ok, public := expiryResolvedPublicIPs(addrs)
+	obs.DNSOK = err == nil && ok
+	if len(public) > 0 {
+		obs.ResolvedIPs = strings.Join(public, ", ")
+	}
+	if obs.DNSOK && obs.Detail != "" && !strings.Contains(strings.ToLower(obs.Detail), "dns") {
+		obs.Detail = obs.Detail + " DNS resolved for the hosted check."
+	}
+	if !obs.DNSOK && strings.TrimSpace(obs.Detail) == "" {
+		obs.Detail = "The hostname could not be resolved."
+	}
+	return obs
 }
 
 func drainExpiryCheckJobs() {

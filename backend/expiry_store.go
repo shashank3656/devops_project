@@ -183,7 +183,8 @@ func staleExpiryAge(assetType string, every int) time.Duration {
 func latestExpiryObservation(assetID int) (*expiryObservation, error) {
 	row := queryRowContext(`
 		SELECT source, observed_at, observation_point, leaf_fingerprint, issuer, sans, not_before, not_after, chain_not_after,
-		       hostname_ok, chain_ok, assessment, error_class, detail, registrar_expires_at, registry_expires_at, auto_renew, manual, raw_summary
+		       hostname_ok, chain_ok, assessment, error_class, detail, registrar_expires_at, registry_expires_at, auto_renew, manual, raw_summary,
+		       COALESCE(dns_ok, FALSE), COALESCE(resolved_ips, '')
 		FROM expiry_observations WHERE asset_id = $1 ORDER BY observed_at DESC, id DESC LIMIT 1
 	`, assetID)
 	obs, err := scanExpiryObservation(row)
@@ -203,7 +204,7 @@ func scanExpiryObservation(scanner interface{ Scan(dest ...any) error }) (expiry
 	err := scanner.Scan(
 		&obs.Source, &obs.ObservedAt, &obs.ObservationPoint, &obs.LeafFingerprint, &obs.Issuer, &obs.SANs,
 		&notBefore, &notAfter, &chain, &obs.HostnameOK, &obs.ChainOK, &obs.Assessment, &obs.ErrorClass, &obs.Detail,
-		&registrar, &registry, &auto, &obs.Manual, &obs.RawSummary,
+		&registrar, &registry, &auto, &obs.Manual, &obs.RawSummary, &obs.DNSOK, &obs.ResolvedIPs,
 	)
 	if err != nil {
 		return expiryObservation{}, err
@@ -371,7 +372,8 @@ func getExpiryAsset(id, userID int, includeHistory bool) (expiryAssetView, error
 func listExpiryObservations(assetID int) ([]expiryObservation, error) {
 	rows, cancel, err := queryRowsWithTimeout(`
 		SELECT source, observed_at, observation_point, leaf_fingerprint, issuer, sans, not_before, not_after, chain_not_after,
-		       hostname_ok, chain_ok, assessment, error_class, detail, registrar_expires_at, registry_expires_at, auto_renew, manual, raw_summary
+		       hostname_ok, chain_ok, assessment, error_class, detail, registrar_expires_at, registry_expires_at, auto_renew, manual, raw_summary,
+		       COALESCE(dns_ok, FALSE), COALESCE(resolved_ips, '')
 		FROM expiry_observations WHERE asset_id = $1 ORDER BY observed_at DESC, id DESC LIMIT 50
 	`, assetID)
 	if err != nil {
@@ -507,10 +509,11 @@ func createExpiryAsset(userID int, assetType, input, service, env, runbook, coll
 		return expiryAssetView{}, err
 	}
 	if !expiryCollectorIsPrivate(collector) {
-		_, _ = queueExpiryCheck(id)
-		go drainExpiryCheckJobs()
+		if row, scanErr := scanExpiryAsset(queryRowContext(expiryAssetSelect+` WHERE id = $1`, id)); scanErr == nil {
+			checkExpiryAssetNow(row)
+		}
 	}
-	return getExpiryAsset(id, userID, false)
+	return getExpiryAsset(id, userID, true)
 }
 
 func pauseExpiryAsset(assetID, userID int, paused bool, reason string) (expiryAssetView, error) {
@@ -574,7 +577,8 @@ func listExpiryHistory(userID int) ([]expiryHistoryRow, error) {
 		SELECT o.asset_id, a.asset_type, a.display_name, a.hostname, a.project_id,
 		       o.source, o.observed_at, o.observation_point, o.leaf_fingerprint, o.issuer, o.sans,
 		       o.not_before, o.not_after, o.chain_not_after, o.hostname_ok, o.chain_ok, o.assessment, o.error_class, o.detail,
-		       o.registrar_expires_at, o.registry_expires_at, o.auto_renew, o.manual, o.raw_summary
+		       o.registrar_expires_at, o.registry_expires_at, o.auto_renew, o.manual, o.raw_summary,
+		       COALESCE(o.dns_ok, FALSE), COALESCE(o.resolved_ips, '')
 		FROM expiry_observations o
 		INNER JOIN expiry_assets a ON a.id = o.asset_id
 		WHERE a.state <> 'archived'
@@ -597,7 +601,7 @@ func listExpiryHistory(userID int) ([]expiryHistoryRow, error) {
 			&row.AssetID, &row.AssetType, &row.DisplayName, &row.Hostname, &projectID,
 			&row.Source, &row.ObservedAt, &row.ObservationPoint, &row.LeafFingerprint, &row.Issuer, &row.SANs,
 			&notBefore, &notAfter, &chain, &row.HostnameOK, &row.ChainOK, &row.Assessment, &row.ErrorClass, &row.Detail,
-			&registrar, &registry, &auto, &row.Manual, &row.RawSummary,
+			&registrar, &registry, &auto, &row.Manual, &row.RawSummary, &row.DNSOK, &row.ResolvedIPs,
 		); err != nil {
 			return nil, err
 		}
@@ -648,11 +652,13 @@ func insertExpiryObservation(assetID int, obs expiryObservation) (int, error) {
 	err := queryRowContext(`
 		INSERT INTO expiry_observations (
 			asset_id, source, observed_at, observation_point, leaf_fingerprint, issuer, sans, not_before, not_after, chain_not_after,
-			hostname_ok, chain_ok, assessment, error_class, detail, registrar_expires_at, registry_expires_at, auto_renew, manual, raw_summary
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+			hostname_ok, chain_ok, assessment, error_class, detail, registrar_expires_at, registry_expires_at, auto_renew, manual, raw_summary,
+			dns_ok, resolved_ips
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
 		RETURNING id
 	`, assetID, obs.Source, obs.ObservedAt, obs.ObservationPoint, obs.LeafFingerprint, obs.Issuer, obs.SANs, obs.NotBefore, obs.NotAfter, obs.ChainNotAfter,
-		obs.HostnameOK, obs.ChainOK, obs.Assessment, obs.ErrorClass, obs.Detail, obs.RegistrarExpires, obs.RegistryExpires, auto, obs.Manual, obs.RawSummary).Scan(&id)
+		obs.HostnameOK, obs.ChainOK, obs.Assessment, obs.ErrorClass, obs.Detail, obs.RegistrarExpires, obs.RegistryExpires, auto, obs.Manual, obs.RawSummary,
+		obs.DNSOK, obs.ResolvedIPs).Scan(&id)
 	return id, err
 }
 

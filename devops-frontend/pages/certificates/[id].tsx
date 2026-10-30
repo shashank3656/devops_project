@@ -27,6 +27,8 @@ type Observation = {
   detail: string;
   hostname_ok?: boolean;
   chain_ok?: boolean;
+  dns_ok?: boolean;
+  resolved_ips?: string;
   auto_renew?: boolean | null;
   manual?: boolean;
 };
@@ -76,6 +78,15 @@ function certificateExpiry(item: Asset): string {
 
 function domainExpiry(item: Asset): string {
   return item.registrar_expires_at || item.latest?.registrar_expires_at || item.registry_expires_at || item.latest?.registry_expires_at || '';
+}
+
+function dnsCheckCopy(item: Asset): string {
+  const obs = item.latest;
+  if (!obs) return 'Unknown until a check stores evidence';
+  if (obs.dns_ok && obs.resolved_ips) return `Resolved · ${obs.resolved_ips}`;
+  if (obs.dns_ok) return 'Resolved. No public address for a hosted check.';
+  if ((obs.detail || '').toLowerCase().includes('could not be resolved')) return 'Could not resolve';
+  return 'Unknown';
 }
 
 function headerExpiry(item: Asset): string {
@@ -190,10 +201,14 @@ export default function CertificateAssetDetailPage() {
         return;
       }
       if (data.asset) setItem(data.asset);
-      setNote(success);
       if (path === 'check') {
-        setTimeout(load, 2500);
+        const observed = Boolean(data.asset?.certificate_expires_at || data.asset?.latest?.not_after || data.asset?.registrar_expires_at || data.asset?.latest?.registrar_expires_at);
+        setNote(observed
+          ? 'Check stored. Expiry is taken from the observed evidence.'
+          : 'Check stored. Expiry stays Unknown until a date is observed.');
+        return;
       }
+      setNote(success);
     } catch {
       setError(success);
     } finally {
@@ -274,6 +289,10 @@ export default function CertificateAssetDetailPage() {
                           <dd>{known(item.hostname)}:{item.port || 443}</dd>
                         </div>
                         <div>
+                          <dt>DNS check</dt>
+                          <dd>{dnsCheckCopy(item)}</dd>
+                        </div>
+                        <div>
                           <dt>Issuer</dt>
                           <dd>{known(item.latest?.issuer)}</dd>
                         </div>
@@ -291,6 +310,10 @@ export default function CertificateAssetDetailPage() {
                         <div>
                           <dt>Registered domain</dt>
                           <dd>{known(item.registered_domain || item.display_name)}</dd>
+                        </div>
+                        <div>
+                          <dt>DNS check</dt>
+                          <dd>{dnsCheckCopy(item)}</dd>
                         </div>
                         <div>
                           <dt>Registrar expiry</dt>
@@ -363,7 +386,7 @@ export default function CertificateAssetDetailPage() {
                 <section className="portal-surface expiry-panel">
                   <h2 className="portal-surface__title">Checks</h2>
                   <div className="portal-form-actions">
-                    <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void post('check', {}, 'Check queued. The page will refresh from saved evidence.')}>Check now</button>
+                    <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void post('check', {}, 'The check could not be completed.')}>Check now</button>
                     {item.paused ? (
                       <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void post('pause', { paused: false }, 'Scheduled checks resumed. Check now still works while paused.')}>Resume scheduled checks</button>
                     ) : null}
@@ -402,6 +425,10 @@ export default function CertificateAssetDetailPage() {
                     <div>
                       <dt>Fingerprint</dt>
                       <dd>{known(item.latest?.leaf_fingerprint)}</dd>
+                    </div>
+                    <div>
+                      <dt>DNS check</dt>
+                      <dd>{dnsCheckCopy(item)}</dd>
                     </div>
                     <div>
                       <dt>Observation point</dt>

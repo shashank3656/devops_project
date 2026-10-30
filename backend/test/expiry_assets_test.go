@@ -42,6 +42,24 @@ func TestExpiryRejectsPrivateAndMetadataIPs(t *testing.T) {
 	}
 }
 
+func TestExpiryResolvedPublicIPsSkipsInternal(t *testing.T) {
+	ok, public := expiryResolvedPublicIPs(nil)
+	if ok || len(public) != 0 {
+		t.Fatal("empty lookup is not a DNS success")
+	}
+	ok, public = expiryResolvedPublicIPs([]net.IPAddr{{IP: net.ParseIP("10.1.2.3")}, {IP: net.ParseIP("192.168.0.8")}})
+	if !ok {
+		t.Fatal("internal names still resolved")
+	}
+	if len(public) != 0 {
+		t.Fatalf("internal addresses must not be stored = %v", public)
+	}
+	ok, public = expiryResolvedPublicIPs([]net.IPAddr{{IP: net.ParseIP("10.1.2.3")}, {IP: net.ParseIP("1.1.1.1")}})
+	if !ok || len(public) != 1 || public[0] != "1.1.1.1" {
+		t.Fatalf("public = %v ok=%v", public, ok)
+	}
+}
+
 func TestExpiryPortAllowlist(t *testing.T) {
 	if !expiryPortAllowed(443) || !expiryPortAllowed(8443) || expiryPortAllowed(22) || expiryPortAllowed(80) {
 		t.Fatal("hosted checks only allow 443 and 8443")

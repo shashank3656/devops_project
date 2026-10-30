@@ -95,7 +95,7 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, r, status, msg, err)
 				return
 			}
-			writeJSON(w, http.StatusAccepted, map[string]any{"asset": item, "status": "ok"})
+			writeJSON(w, http.StatusOK, map[string]any{"asset": item, "status": "ok"})
 		default:
 			writeMethodNotAllowed(w, r)
 		}
@@ -140,13 +140,9 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"asset": item, "status": "ok", "note": "Hosted checks do not reach private collector targets."})
 			return
 		}
-		jobID, queueErr := queueExpiryCheck(id)
-		if queueErr != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "The check could not be queued.", queueErr)
-			return
-		}
-		go drainExpiryCheckJobs()
-		writeJSON(w, http.StatusAccepted, map[string]any{"job_id": jobID, "status": "queued"})
+		checkExpiryAssetNow(item)
+		item, _ = getExpiryAsset(id, userID, true)
+		writeJSON(w, http.StatusOK, map[string]any{"asset": item, "status": "ok"})
 	case action == "observations" && r.Method == http.MethodGet:
 		if _, getErr := getExpiryAsset(id, userID, false); getErr != nil {
 			writeExpiryMutation(w, r, expiryAssetView{}, getErr, "That asset is not available.")
