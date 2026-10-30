@@ -74,6 +74,7 @@ export default function IntegrationHealthPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<{ family: string; connector: HealthConnector } | null>(null);
+  const [stateFilter, setStateFilter] = useState<CollectionState | ''>('');
 
   const projectId = scope.projectId || (typeof router.query.project_id === 'string' ? router.query.project_id : '');
 
@@ -118,6 +119,20 @@ export default function IntegrationHealthPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!router.isReady || loading) return;
+    const connectorId = typeof router.query.connector === 'string' ? router.query.connector : '';
+    if (!connectorId) return;
+    for (const family of families) {
+      const connector = (family.connectors || []).find((item) => item.id === connectorId);
+      if (connector) {
+        setSelected({ family: family.label, connector });
+        setStateFilter(connector.state);
+        return;
+      }
+    }
+  }, [families, loading, router.isReady, router.query.connector]);
+
   const counts = useMemo(() => {
     const tally = emptyCounts();
     families.forEach((family) => {
@@ -130,6 +145,13 @@ export default function IntegrationHealthPage() {
   const headline = headlineState(families.map((item) => item.state));
   const latest = families.map((item) => item.last_success_at || '').filter(Boolean).sort().at(-1) || null;
   const source = families.map((item) => item.source).filter(Boolean).slice(0, 3).join(' · ') || 'Connectors';
+  const visibleFamilies = families.map((family) => {
+    if (!stateFilter) return family;
+    const connectors = (family.connectors || []).filter((item) => item.state === stateFilter);
+    if (connectors.length) return { ...family, connectors };
+    if (!family.connectors?.length && family.state === stateFilter) return family;
+    return null;
+  }).filter((family): family is HealthFamily => Boolean(family));
 
   return (
     <DevOpsLayout>
@@ -164,23 +186,35 @@ export default function IntegrationHealthPage() {
 
         <section className="portal-surface" aria-label="Connector counts">
           <h2 className="portal-surface__title">Connector counts</h2>
-          <p className="access-hint">{note || 'Counts are individual connectors, not integration categories.'}{loading ? '' : ` Total ${connectorTotal}.`}</p>
-          <ul className="svc-tree">
+          <p className="access-hint">{note || 'Counts are individual connectors, not integration categories.'}{loading ? '' : ` Total ${connectorTotal}.`}{stateFilter ? ` Showing ${collectionStateLabel(stateFilter)}.` : ''}</p>
+          <div className="integration-count-tiles" role="group" aria-label="Filter connectors by status">
             {CONNECTOR_STATES.map((state) => (
-              <li key={state} className="svc-tree__row">
-                <span>{collectionStateLabel(state)}</span>
+              <button
+                key={state}
+                type="button"
+                className={`integration-count-tile integration-count-tile--${state}${stateFilter === state ? ' is-active' : ''}`}
+                aria-pressed={stateFilter === state}
+                onClick={() => setStateFilter((current) => (current === state ? '' : state))}
+              >
+                <span className="integration-count-tile__icon" aria-hidden="true">
+                  {state === 'ok' ? '✓' : state === 'failed' ? '!' : state === 'stale' ? '⏱' : state === 'partial' ? '◑' : state === 'no_findings' ? '○' : '–'}
+                </span>
                 <strong>{loading ? '…' : counts[state]}</strong>
-              </li>
+                <span>{collectionStateLabel(state)}</span>
+              </button>
             ))}
-          </ul>
+          </div>
         </section>
 
         {loading ? <div className="empty-state">Loading integration health...</div> : null}
         {!loading && !families.length && !error ? (
           <div className="empty-state">No connector families are included for your group.</div>
         ) : null}
+        {!loading && families.length && !visibleFamilies.length ? (
+          <div className="empty-state">No connectors match this status. Click the tile again to show every connector.</div>
+        ) : null}
 
-        {!loading ? families.map((family) => (
+        {!loading ? visibleFamilies.map((family) => (
           <section key={family.id} className="portal-surface integration-health">
             <div className="integration-health__head">
               <div>

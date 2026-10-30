@@ -87,4 +87,15 @@ export function previewSummary(days: PreviewDay[]): string {
   return `${uncovered} uncovered · ${backups} missing backups · ${overlapping} overlapping`;
 }
 
+export function weekdayCoverageIssue(primaryId: number, backupId: number, missionCritical: boolean): string {
+  if (!primaryId) return 'Uncovered';
+  if (backupId && backupId === primaryId) return 'Primary and backup must be different people';
+  if (missionCritical && !backupId) return 'Backup required';
+  return '';
+}
+
+export function rotationCanPublish(days: Record<string, string>, backupDays: Record<string, string>, weekdays: string[], missionCritical: boolean): boolean {
+  return weekdays.every((day) => !weekdayCoverageIssue(Number(days[day] || 0), Number(backupDays[day] || 0), missionCritical));
+}
+
 export { addCalendarDays };

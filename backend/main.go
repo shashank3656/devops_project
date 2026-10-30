@@ -880,6 +880,7 @@ func main() {
 	http.HandleFunc("/api/oncall/covers/", oncallCoverHandler)
 	http.HandleFunc("/api/oncall/handovers", oncallHandoverHandler)
 	http.HandleFunc("/api/oncall/handovers/", oncallHandoverHandler)
+	http.HandleFunc("/api/oncall/workload", oncallWorkloadHandler)
 	http.HandleFunc("/api/cost/collector/", costK8sCollectorHandler)
 	http.HandleFunc("/api/cost/", costAPIHandler)
 	http.HandleFunc("/api/expiry/assets", expiryAssetsHandler)

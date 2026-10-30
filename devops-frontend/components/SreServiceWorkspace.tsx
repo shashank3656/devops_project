@@ -783,10 +783,10 @@ export default function SreServiceWorkspace({
             <div className="portal-surface__header">
               <div>
                 <h2 className="portal-surface__title">Service activity</h2>
-                <p className="portal-surface__subtitle">Pull requests, approvals, deployments, alerts, and incidents. Nearby timestamps are correlation, not proven cause.</p>
+                <p className="portal-surface__subtitle">Deployments, configuration changes, incidents, and SLO breaches for this service and environment. Each event links to source evidence. Nearby timestamps are correlation, not proven cause.</p>
               </div>
             </div>
-            <ServiceActivityTimeline apiUrl={apiUrl} token={token} serviceId={serviceId} />
+            <ServiceActivityTimeline apiUrl={apiUrl} token={token} serviceId={serviceId} environment={environment} />
           </section>
         </div>
       ) : null}

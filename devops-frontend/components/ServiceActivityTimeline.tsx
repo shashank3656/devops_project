@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatOperationalTime } from '@infragate/ui';
 
 type TimelineEvent = {
@@ -10,6 +10,8 @@ type TimelineEvent = {
   detail?: string;
   at?: string;
   href?: string;
+  evidence_href?: string;
+  evidence_label?: string;
   environment?: string;
   correlation_note?: string;
   tone?: string;
@@ -21,25 +23,48 @@ type TimelinePayload = {
   events?: TimelineEvent[];
 };
 
+const KIND_FILTERS = [
+  { id: '', label: 'All events' },
+  { id: 'deployment', label: 'Deployments' },
+  { id: 'configuration', label: 'Configuration' },
+  { id: 'incident', label: 'Incidents' },
+  { id: 'slo', label: 'SLO breaches' },
+];
+
+function evidenceHref(event: TimelineEvent): string {
+  return (event.evidence_href || event.href || '').trim();
+}
+
 export default function ServiceActivityTimeline({
   apiUrl,
   token,
   serviceId,
+  environment,
 }: {
   apiUrl: string;
   token: string;
   serviceId: number;
+  environment?: string;
 }) {
   const [timeline, setTimeline] = useState<TimelinePayload | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [kind, setKind] = useState('');
+  const [envFilter, setEnvFilter] = useState(environment || '');
+
+  useEffect(() => {
+    setEnvFilter(environment || '');
+  }, [environment]);
 
   useEffect(() => {
     if (!token || !serviceId) return;
     let cancelled = false;
     setLoading(true);
     setError('');
-    fetch(`${apiUrl}/api/devops/services/${serviceId}/activity`, {
+    const params = new URLSearchParams();
+    if (envFilter) params.set('environment', envFilter);
+    const query = params.toString();
+    fetch(`${apiUrl}/api/devops/services/${serviceId}/activity${query ? `?${query}` : ''}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (res) => {
@@ -59,18 +84,42 @@ export default function ServiceActivityTimeline({
     return () => {
       cancelled = true;
     };
-  }, [apiUrl, serviceId, token]);
+  }, [apiUrl, envFilter, serviceId, token]);
 
   const events = Array.isArray(timeline?.events) ? timeline.events : [];
+  const visible = useMemo(() => (kind ? events.filter((item) => item.kind === kind) : events), [events, kind]);
 
   return (
     <div className="service-timeline">
+      <div className="service-timeline__filters" role="group" aria-label="Timeline filters">
+        {KIND_FILTERS.map((item) => (
+          <button
+            key={item.id || 'all'}
+            type="button"
+            className={`btn btn-sm ${kind === item.id ? 'btn-primary' : 'btn-secondary'}`}
+            aria-pressed={kind === item.id}
+            onClick={() => setKind(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+        {environment ? (
+          <label className="service-timeline__env">
+            <span className="ig-sr-only">Environment</span>
+            <select className="input" aria-label="Environment" value={envFilter} onChange={(event) => setEnvFilter(event.target.value)}>
+              <option value={environment}>{environment}</option>
+              <option value="">All environments</option>
+            </select>
+          </label>
+        ) : null}
+      </div>
       {error ? <div className="alert alert-error">{error}</div> : null}
       {loading ? <p className="work-empty">Loading activity…</p> : null}
-      {!loading && !events.length ? <p className="work-empty">No recorded pull requests, approvals, deployments, alerts, or incidents yet.</p> : null}
-      {!loading && events.length ? (
+      {!loading && !visible.length ? <p className="work-empty">No recorded deployments, configuration changes, incidents, or SLO breaches for this selection. Missing telemetry stays Unknown.</p> : null}
+      {!loading && visible.length ? (
         <ul className="request-timeline">
-          {events.map((event) => {
+          {visible.map((event) => {
+            const href = evidenceHref(event);
             const inner = (
               <>
                 <strong>{event.summary || event.label || 'Event'}</strong>
@@ -80,10 +129,10 @@ export default function ServiceActivityTimeline({
                   {event.at ? ` · ${formatOperationalTime(event.at)}` : ''}
                 </span>
                 {event.detail ? <small>{event.detail}</small> : null}
+                {href ? <small>Evidence: {event.evidence_label || 'Source record'}</small> : <small>Evidence: Unknown</small>}
                 {event.correlation_note ? <small className="service-timeline__note">{event.correlation_note}</small> : null}
               </>
             );
-            const href = (event.href || '').trim();
             const external = href.startsWith('http');
             return (
               <li key={event.id || `${event.kind}-${event.at}`} className={event.tone ? `is-${event.tone}` : undefined}>

@@ -20,10 +20,11 @@ import (
 const oncallMaxSteps = 5
 
 var (
-	errOncallHidden     = errors.New("on-call hidden")
-	errOncallDenied     = errors.New("on-call denied")
-	errOncallInvalid    = errors.New("on-call invalid")
-	errOncallNeedBackup = errors.New("mission-critical teams need a primary and a different backup")
+	errOncallHidden       = errors.New("on-call hidden")
+	errOncallDenied       = errors.New("on-call denied")
+	errOncallInvalid      = errors.New("on-call invalid")
+	errOncallNeedBackup   = errors.New("mission-critical teams need a primary and a different backup")
+	errOncallNeedCoverage = errors.New("required coverage is not valid")
 )
 
 type oncallShift struct {

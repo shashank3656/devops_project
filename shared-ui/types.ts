@@ -152,6 +152,7 @@ export interface QueueItem {
   action?: string;
   tone?: Tone;
   at?: string;
+  environment?: string;
 }
 
 export interface PipelineStage {

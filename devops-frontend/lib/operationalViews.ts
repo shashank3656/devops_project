@@ -32,6 +32,20 @@ export function environmentMatches(actual: string | undefined, wanted: string): 
   const env = (actual || '').trim().toLowerCase();
   const filter = wanted.trim().toLowerCase();
   if (!filter) return true;
-  if (filter === 'prod') return env.startsWith('prod');
+  if (!env) return true;
+  if (filter === 'prod' || filter === 'production') return env.startsWith('prod');
+  if (filter === 'dev' || filter === 'development') return env === 'dev' || env.startsWith('dev');
   return env === filter;
+}
+
+export function operationalViewLabels(view: OperationalView): string[] {
+  const labels: string[] = [];
+  if (view.team === 'mine') labels.push('My team');
+  else if (view.team) labels.push(view.team);
+  const env = view.environment.trim().toLowerCase();
+  if (env === 'prod' || env === 'production') labels.push('Production');
+  else if (view.environment) labels.push(view.environment);
+  if (view.mine === '1') labels.push('My shifts');
+  if (view.unassigned === '1') labels.push('Unassigned');
+  return labels;
 }

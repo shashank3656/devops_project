@@ -56,6 +56,7 @@ type oncallScheduleInput struct {
 	HandoverRemindMinutes   int            `json:"handover_remind_minutes"`
 	HandoverEscalateMinutes int            `json:"handover_escalate_minutes"`
 	ReassignIncidentsOnAck  bool           `json:"reassign_incidents_on_ack"`
+	Publish                 bool           `json:"publish"`
 }
 
 func migrateOncallScheduleSchema() {
@@ -370,9 +371,24 @@ func requireMissionCriticalOncallCoverage(teamID, projectID int, primary, backup
 	return nil
 }
 
+func requireOncallPublishCoverage(primary, backup map[string]int) error {
+	for _, day := range oncallWeekdays {
+		if primary[day] <= 0 {
+			return errOncallNeedCoverage
+		}
+		if backup[day] > 0 && backup[day] == primary[day] {
+			return errOncallNeedCoverage
+		}
+	}
+	return nil
+}
+
 func oncallScheduleSaveError(err error) string {
 	if err == errOncallNeedBackup {
 		return "Mission-critical teams need a primary and a different backup for every day. Confirm the handover reminder and overdue minutes."
+	}
+	if err == errOncallNeedCoverage {
+		return "Required coverage is not valid. Save a draft or assign a primary for every day."
 	}
 	return "That rotation could not be saved."
 }
@@ -397,8 +413,13 @@ func saveOncallSchedule(id int, input oncallScheduleInput) (*oncallSchedule, int
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := requireMissionCriticalOncallCoverage(input.TeamID, input.ProjectID, input.Days, input.BackupDays); err != nil {
-		return nil, 0, err
+	if input.Publish {
+		if err := requireOncallPublishCoverage(input.Days, input.BackupDays); err != nil {
+			return nil, 0, err
+		}
+		if err := requireMissionCriticalOncallCoverage(input.TeamID, input.ProjectID, input.Days, input.BackupDays); err != nil {
+			return nil, 0, err
+		}
 	}
 	var existingID int
 	err = DB.QueryRow(`SELECT id FROM oncall_schedules WHERE team_id = $1 AND project_id = $2`, input.TeamID, input.ProjectID).Scan(&existingID)

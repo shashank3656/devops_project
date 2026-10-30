@@ -20,7 +20,7 @@ import {
   weekdayShort,
 } from '../lib/onCallMonth';
 import { InspectorDrawer, SavedViews, useSavedFilterViews, useWorkspaceScope } from '@infragate/ui';
-import { OPERATIONS_SCOPE, OPERATIONS_STORAGE_KEY, OPERATIONS_VIEW_PRESETS, asOperationalView, type OperationalView } from '../lib/operationalViews';
+import { OPERATIONS_SCOPE, OPERATIONS_STORAGE_KEY, OPERATIONS_VIEW_PRESETS, asOperationalView, operationalViewLabels, type OperationalView } from '../lib/operationalViews';
 
 const TOKEN_KEY = 'devops_token';
 const USER_KEY = 'devops_user';
@@ -154,7 +154,7 @@ function WarningIcon() {
 export default function OnCallPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
-  const { scope } = useWorkspaceScope();
+  const { scope, updateScope } = useWorkspaceScope();
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [periodStart, setPeriodStart] = useState(() => todayKey('Asia/Kolkata'));
   const [month, setMonth] = useState(currentMonth('Asia/Kolkata'));
@@ -416,6 +416,25 @@ export default function OnCallPage() {
     });
     return order;
   }, [weekRows]);
+
+  const appliedView = asOperationalView({
+    team,
+    environment: scope.environment,
+    mine: mineOnly ? '1' : '',
+    unassigned: unassignedOnly ? '1' : '',
+  });
+  const appliedFilterLabels = operationalViewLabels(appliedView);
+  const pageFiltersActive = Boolean(team || mineOnly || unassignedOnly);
+  const noMatchingTeams = !loading && pageFiltersActive && scheduleTeams.length === 0;
+  const resetFilters = () => {
+    setTeam('');
+    setMineOnly(false);
+    setUnassignedOnly(false);
+  };
+  const chooseTeam = () => {
+    const field = document.getElementById('oncall-team-filter');
+    if (field instanceof HTMLSelectElement) field.focus();
+  };
 
   const myNextHandover = useMemo(() => {
     if (me <= 0) return '';
@@ -719,35 +738,47 @@ export default function OnCallPage() {
 
         <SavedViews<OperationalView>
           storageKey={OPERATIONS_STORAGE_KEY}
-          current={{ team, environment: '', mine: mineOnly ? '1' : '', unassigned: unassignedOnly ? '1' : '' }}
+          current={{ team, environment: scope.environment, mine: mineOnly ? '1' : '', unassigned: unassignedOnly ? '1' : '' }}
           onApply={(next) => {
             const view = asOperationalView(next);
             setTeam(view.team);
-            setMineOnly(view.mine === '1' || view.team === 'mine');
+            setMineOnly(view.mine === '1');
             setUnassignedOnly(view.unassigned === '1');
+            if (view.environment) updateScope({ environment: view.environment });
           }}
           presets={OPERATIONS_VIEW_PRESETS}
-          canSave={Boolean(team || mineOnly || unassignedOnly)}
+          canSave={Boolean(team || mineOnly || unassignedOnly || scope.environment)}
           serverViews={savedViewsReady ? remoteViews : undefined}
           onServerSave={saveRemote}
           onServerDelete={deleteRemote}
         />
+        <div className="oncall-applied-filters" aria-label="Applied filters">
+          <span className="oncall-applied-filters__label">Applied</span>
+          {appliedFilterLabels.length ? appliedFilterLabels.map((label) => (
+            <span key={label} className="oncall-applied-filters__chip">{label}</span>
+          )) : (
+            <span className="oncall-applied-filters__chip">All teams</span>
+          )}
+          {pageFiltersActive ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={resetFilters}>Reset filters</button>
+          ) : null}
+        </div>
 
         <section className="portal-stat-grid portal-stat-grid--three oncall-summary" aria-label="On-call summary">
           <button type="button" className="portal-stat-card" onClick={goToday}>
             <span className="portal-stat-card__label">Teams covered</span>
-            <span className="portal-stat-card__value">{loading ? '…' : `${teamsCoveredNow}/${teamsToday.size || 0}`}</span>
-            <p className="portal-stat-card__copy">Primary and backup in place today</p>
+            <span className="portal-stat-card__value">{loading ? '…' : noMatchingTeams ? '—' : `${teamsCoveredNow}/${teamsToday.size || 0}`}</span>
+            <p className="portal-stat-card__copy">{noMatchingTeams ? 'No teams match these filters—coverage not evaluated' : 'Primary and backup in place today'}</p>
           </button>
           <button type="button" className="portal-stat-card" onClick={reviewGaps} aria-label="Review gaps. Critical services uncovered">
             <span className="portal-stat-card__label">Critical services uncovered</span>
-            <span className="portal-stat-card__value">{loading ? '…' : criticalWithoutPrimary.length}</span>
-            <p className="portal-stat-card__copy">Review gaps</p>
+            <span className="portal-stat-card__value">{loading ? '…' : noMatchingTeams ? '—' : criticalWithoutPrimary.length}</span>
+            <p className="portal-stat-card__copy">{noMatchingTeams ? 'Coverage not evaluated' : 'Review gaps'}</p>
           </button>
           <button type="button" className="portal-stat-card" onClick={reviewGaps} aria-label={`Review gaps. Upcoming gaps ${loading ? '' : scoreCopy}`}>
             <span className="portal-stat-card__label">Upcoming gaps</span>
-            <span className="portal-stat-card__value">{loading ? '…' : affectedDates.size}</span>
-            <p className="portal-stat-card__copy">{loading ? 'Review gaps' : `Review gaps · ${scoreCopy}`}</p>
+            <span className="portal-stat-card__value">{loading ? '…' : noMatchingTeams ? '—' : affectedDates.size}</span>
+            <p className="portal-stat-card__copy">{noMatchingTeams ? 'Coverage not evaluated' : loading ? 'Review gaps' : `Review gaps · ${scoreCopy}`}</p>
           </button>
         </section>
 
@@ -764,7 +795,7 @@ export default function OnCallPage() {
             )}
             <label className="oncall-toolbar__field">
               <span className="ig-sr-only">Team</span>
-              <select className="input" aria-label="Team" value={team} onChange={(event) => setTeam(event.target.value)}>
+              <select id="oncall-team-filter" className="input" aria-label="Team" value={team} onChange={(event) => setTeam(event.target.value)}>
                 <option value="">All teams</option>
                 {me > 0 ? <option value="mine">My team</option> : null}
                 {teamNames.map((name) => <option key={name} value={name}>{name}</option>)}
@@ -895,7 +926,17 @@ export default function OnCallPage() {
                   </div>
                 ))}
               </div>
-              {!scheduleTeams.length ? <div className="empty-state">{mineOnly ? 'No shifts assigned to you in this week.' : 'No teams match this filter in this week.'}</div> : null}
+              {!scheduleTeams.length ? (
+                <div className="empty-state" role="status">
+                  <p>{noMatchingTeams ? 'No teams match these filters—coverage not evaluated' : mineOnly ? 'No shifts assigned to you in this week.' : 'No teams match this filter in this week.'}</p>
+                  {noMatchingTeams ? (
+                    <div className="portal-form-actions">
+                      <button type="button" className="btn btn-secondary" onClick={resetFilters}>Clear filters</button>
+                      <button type="button" className="btn btn-primary" onClick={chooseTeam}>Choose team</button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="oncall-agenda" aria-label="Weekly agenda">
                 {weekDates.map((date) => {
                   const dayRows = weekRows.filter((row) => row.day.date === date);
@@ -917,6 +958,15 @@ export default function OnCallPage() {
 
           {!loading && calendarView === 'month' ? (
             <>
+              {noMatchingTeams ? (
+                <div className="empty-state" role="status">
+                  <p>No teams match these filters—coverage not evaluated</p>
+                  <div className="portal-form-actions">
+                    <button type="button" className="btn btn-secondary" onClick={resetFilters}>Clear filters</button>
+                    <button type="button" className="btn btn-primary" onClick={chooseTeam}>Choose team</button>
+                  </div>
+                </div>
+              ) : null}
               <div className="oncall-month-grid" role="grid" aria-label={monthTitle(month)}>
                 {WEEK_LETTERS.map((letter) => <span key={letter} className="oncall-month-grid__dow">{letter}</span>)}
                 {calendarCells(month).map((cell, index) => {

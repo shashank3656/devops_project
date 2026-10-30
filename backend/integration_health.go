@@ -392,12 +392,18 @@ func integrationGitHubFamily() integrationFamily {
 		itemAction := &integrationAction{Label: "Open repository", Href: href}
 		if state == "not_connected" || failed {
 			itemAction = action
+		} else if state == "stale" {
+			itemAction = &integrationAction{Label: "View sync diagnostics", Href: "/integrations?connector=github-" + itoa(repo.ID)}
 		}
 		name := strings.Trim(repo.Owner+"/"+repo.Name, "/")
+		recovery := ""
+		if state == "stale" {
+			recovery = "View sync diagnostics."
+		}
 		connectors = append(connectors, integrationConnector{
 			ID: "github-" + itoa(repo.ID), Name: firstNonEmpty(name, "Repository"),
 			State: state, Source: "GitHub", LastAttemptAt: last, LastSuccessAt: last, FailedJobs: boolToCount(failed),
-			Detail: integrationGitHubDetail(state), Action: itemAction, AffectedServices: []string{firstNonEmpty(name, "GitHub")},
+			Detail: integrationGitHubDetail(state), Recovery: recovery, Action: itemAction, AffectedServices: []string{firstNonEmpty(name, "GitHub")},
 		})
 		states = append(states, state)
 		latest = integrationLatest(latest, last)
@@ -412,6 +418,7 @@ func integrationGitHubFamily() integrationFamily {
 		familyAction = &integrationAction{Label: "Open repositories", Href: "/deploy-intelligence"}
 		detail = integrationFailedJobsDetail(failedJobs)
 	} else if familyState == "stale" {
+		familyAction = &integrationAction{Label: "View sync diagnostics", Href: "/integrations"}
 		detail = "Stale. Last successful collection is older than 24 hours."
 	}
 	return integrationFamily{
@@ -559,13 +566,12 @@ func billingFamilyFrom(conns []costConnection, projectID int) integrationFamily 
 	source := billingFamilySource(providers, orgWide)
 	if len(connectors) == 0 {
 		detail := "Not connected."
-		if projectID > 0 {
-			detail = "No billed account is linked to this project."
-		}
-		var emptyAction *integrationAction
+		emptyAction := &integrationAction{Label: "Link billing account", Href: "/cloud-accounts"}
 		if awsSeen || projectID == 0 {
 			emptyAction = curAction
 			detail = "Not connected. Enable Cost, then import a labelled CUR 2.0 export. Collection is manual."
+		} else if projectID > 0 {
+			detail = "No billed account is linked to this project."
 		}
 		return integrationFamily{
 			ID: "billing", Label: "Billing", Source: source, State: "not_connected",

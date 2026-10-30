@@ -16,6 +16,8 @@ type serviceTimelineEvent struct {
 	Detail          string `json:"detail,omitempty"`
 	At              string `json:"at"`
 	Href            string `json:"href,omitempty"`
+	EvidenceHref    string `json:"evidence_href,omitempty"`
+	EvidenceLabel   string `json:"evidence_label,omitempty"`
 	Environment     string `json:"environment,omitempty"`
 	CorrelationNote string `json:"correlation_note,omitempty"`
 	Tone            string `json:"tone,omitempty"`
@@ -29,7 +31,7 @@ type serviceActivityTimeline struct {
 }
 
 const (
-	serviceTimelineNote      = "This timeline connects recorded pull requests, approvals, deployments, alerts, and incidents. Nearby timestamps are labelled as correlation, not proven cause."
+	serviceTimelineNote      = "This timeline combines deployments, configuration changes, incidents, and SLO breaches for the selected service and environment. Each event links to its source evidence. Nearby timestamps are correlation, not proven cause."
 	serviceTimelineProximity = 30 * time.Minute
 	serviceTimelineMaxEvents = 40
 )
@@ -66,6 +68,10 @@ func timelineTone(kind, status string) string {
 			return "danger"
 		}
 		return "info"
+	case "configuration":
+		return "info"
+	case "slo":
+		return "danger"
 	case "approval":
 		return "ok"
 	default:
@@ -73,7 +79,35 @@ func timelineTone(kind, status string) string {
 	}
 }
 
-func buildServiceActivityTimeline(service serviceMapEntry, changes []changeRequestRecord, incidents []requestIncident, findings []monitorFindingView, attempts []deploymentAttempt) serviceActivityTimeline {
+func changeLooksLikeConfiguration(item changeRequestRecord) bool {
+	if normalizeChangeType(item.ChangeType) == "flag" {
+		return true
+	}
+	for _, file := range item.Files {
+		lower := strings.ToLower(strings.TrimSpace(file))
+		if lower == "" {
+			continue
+		}
+		if strings.Contains(lower, "config") || strings.Contains(lower, "values.") || strings.Contains(lower, "kustomization") {
+			return true
+		}
+		for _, suffix := range []string{".yaml", ".yml", ".toml", ".tf", ".env", ".ini", ".conf"} {
+			if strings.HasSuffix(lower, suffix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func withTimelineEvidence(event serviceTimelineEvent, href, label string) serviceTimelineEvent {
+	event.Href = firstNonEmpty(event.Href, href)
+	event.EvidenceHref = firstNonEmpty(href, event.Href)
+	event.EvidenceLabel = firstNonEmpty(label, "Source evidence")
+	return event
+}
+
+func buildServiceActivityTimeline(service serviceMapEntry, changes []changeRequestRecord, incidents []requestIncident, findings []monitorFindingView, attempts []deploymentAttempt, slos []serviceSLOBudget, environment string) serviceActivityTimeline {
 	now := time.Now().UTC()
 	events := make([]serviceTimelineEvent, 0, 32)
 
@@ -82,36 +116,51 @@ func buildServiceActivityTimeline(service serviceMapEntry, changes []changeReque
 		if env == "" || strings.EqualFold(env, "unspecified") {
 			env = "Unknown"
 		}
+		changeHref := fmt.Sprintf("/changes/%d", item.ID)
 		if item.PRNumber > 0 {
 			href := item.PRURL
 			if strings.TrimSpace(href) == "" {
-				href = fmt.Sprintf("/changes/%d", item.ID)
+				href = changeHref
 			}
 			at := item.CreatedAt
-			events = append(events, serviceTimelineEvent{
+			events = append(events, withTimelineEvidence(serviceTimelineEvent{
 				ID:          fmt.Sprintf("pr-%d", item.ID),
 				Kind:        "pr",
 				Label:       "Pull request",
 				Summary:     firstNonEmpty(item.Title, fmt.Sprintf("PR #%d", item.PRNumber)),
 				Detail:      fmt.Sprintf("%s · PR #%d", firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)), item.PRNumber),
 				At:          at.UTC().Format(time.RFC3339),
-				Href:        href,
 				Environment: env,
 				Tone:        "info",
-			})
+			}, href, "Pull request"))
 		}
 		if item.CABApprovedAt != nil && !item.CABApprovedAt.IsZero() {
-			events = append(events, serviceTimelineEvent{
+			events = append(events, withTimelineEvidence(serviceTimelineEvent{
 				ID:          fmt.Sprintf("approval-%d", item.ID),
 				Kind:        "approval",
 				Label:       "Approval",
 				Summary:     firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)) + " approved",
 				Detail:      firstNonEmpty(item.CABApprovedByUsername, "Recorded change approval"),
 				At:          item.CABApprovedAt.UTC().Format(time.RFC3339),
-				Href:        fmt.Sprintf("/changes/%d", item.ID),
 				Environment: env,
 				Tone:        "ok",
-			})
+			}, changeHref, "Change record"))
+		}
+		if changeLooksLikeConfiguration(item) {
+			at := item.UpdatedAt
+			if at.IsZero() {
+				at = item.CreatedAt
+			}
+			events = append(events, withTimelineEvidence(serviceTimelineEvent{
+				ID:          fmt.Sprintf("config-%d", item.ID),
+				Kind:        "configuration",
+				Label:       "Configuration change",
+				Summary:     firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)) + " configuration",
+				Detail:      firstNonEmpty(item.Title, "Recorded configuration or flag change."),
+				At:          at.UTC().Format(time.RFC3339),
+				Environment: env,
+				Tone:        "info",
+			}, changeHref, "Change record"))
 		}
 		status := normalizeChangeStatus(item.Status)
 		if status == "implementing" || status == "implemented" || status == "monitoring" || status == "resolved" || status == "failed" {
@@ -122,17 +171,16 @@ func buildServiceActivityTimeline(service serviceMapEntry, changes []changeReque
 			if at.IsZero() {
 				at = item.CreatedAt
 			}
-			events = append(events, serviceTimelineEvent{
+			events = append(events, withTimelineEvidence(serviceTimelineEvent{
 				ID:          fmt.Sprintf("change-deploy-%d", item.ID),
 				Kind:        "deployment",
 				Label:       "Deployment",
 				Summary:     firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)) + " " + strings.ReplaceAll(status, "_", " "),
 				Detail:      "Recorded on the change. Commit " + shortRevision(item.SHA) + ".",
 				At:          at.UTC().Format(time.RFC3339),
-				Href:        fmt.Sprintf("/changes/%d", item.ID),
 				Environment: env,
 				Tone:        timelineTone("deployment", status),
-			})
+			}, changeHref, "Change record"))
 		}
 	}
 
@@ -141,16 +189,17 @@ func buildServiceActivityTimeline(service serviceMapEntry, changes []changeReque
 		if observed == "" || !strings.EqualFold(strings.TrimSpace(attempt.State), "success") {
 			continue
 		}
-		events = append(events, serviceTimelineEvent{
+		env := firstNonEmpty(attempt.Environment, "Unknown")
+		events = append(events, withTimelineEvidence(serviceTimelineEvent{
 			ID:          fmt.Sprintf("attempt-%d", attempt.ID),
 			Kind:        "deployment",
 			Label:       "Runtime observation",
 			Summary:     "Observed " + shortRevision(attempt.CommitSHA),
 			Detail:      "Image " + shortRevision(attempt.ImageDigest) + ". This is an observation, not a proven cause of later alerts.",
 			At:          observed,
-			Environment: firstNonEmpty(attempt.Environment, "Unknown"),
+			Environment: env,
 			Tone:        "info",
-		})
+		}, "/pipelines?environment="+env, "Pipeline observation"))
 	}
 
 	for _, finding := range findings {
@@ -158,17 +207,17 @@ func buildServiceActivityTimeline(service serviceMapEntry, changes []changeReque
 		if at == "" {
 			continue
 		}
-		events = append(events, serviceTimelineEvent{
+		href := fmt.Sprintf("/services/%d?tab=findings&finding_id=%d", service.ID, finding.ID)
+		events = append(events, withTimelineEvidence(serviceTimelineEvent{
 			ID:          fmt.Sprintf("alert-%d", finding.ID),
 			Kind:        "alert",
 			Label:       "Alert",
 			Summary:     firstNonEmpty(finding.Title, "Monitor finding"),
 			Detail:      firstNonEmpty(finding.Explanation, finding.Observed),
 			At:          at,
-			Href:        fmt.Sprintf("/services/%d?tab=findings&finding_id=%d", service.ID, finding.ID),
 			Environment: firstNonEmpty(finding.Environment, "Unknown"),
 			Tone:        "warn",
-		})
+		}, href, "Monitor finding"))
 	}
 
 	for _, incident := range incidents {
@@ -180,17 +229,47 @@ func buildServiceActivityTimeline(service serviceMapEntry, changes []changeReque
 		if strings.TrimSpace(incident.SuspectedChangeNumber) != "" {
 			detail += ". Suspected change " + incident.SuspectedChangeNumber + ". That link is not a confirmed cause."
 		}
-		events = append(events, serviceTimelineEvent{
+		href := fmt.Sprintf("/incidents/%d/edit", incident.ID)
+		events = append(events, withTimelineEvidence(serviceTimelineEvent{
 			ID:          fmt.Sprintf("incident-%d", incident.ID),
 			Kind:        "incident",
 			Label:       "Incident",
 			Summary:     firstNonEmpty(incident.IncidentNumber, fmt.Sprintf("INC%d", incident.ID)),
 			Detail:      detail,
 			At:          at.UTC().Format(time.RFC3339),
-			Href:        fmt.Sprintf("/incidents/%d/edit", incident.ID),
-			Environment: firstNonEmpty(incident.Environment, "Unknown"),
+			Environment: firstNonEmpty(incident.Environment, incident.RequestEnv, "Unknown"),
 			Tone:        timelineTone("incident", incident.Status),
-		})
+		}, href, "Incident record"))
+	}
+
+	for _, budget := range slos {
+		if budget.Samples <= 0 || (budget.Breaching <= 0 && !budget.Burned) {
+			continue
+		}
+		windowDays := budget.WindowDays
+		if windowDays <= 0 {
+			windowDays = 30
+		}
+		samples, _ := listWatchSamplesForService(budget.Service, budget.Environment, time.Now().AddDate(0, 0, -windowDays))
+		at := latestSLOBreachAt(budget.serviceSLO, samples)
+		if at.IsZero() {
+			continue
+		}
+		summary := firstNonEmpty(budget.FreezeReason, "Error budget burning")
+		if !budget.Burned {
+			summary = fmt.Sprintf("%d of %d samples breached the SLO", budget.Breaching, budget.Samples)
+		}
+		href := "/slos?q=" + budget.Service
+		events = append(events, withTimelineEvidence(serviceTimelineEvent{
+			ID:          fmt.Sprintf("slo-%d", budget.ID),
+			Kind:        "slo",
+			Label:       "SLO breach",
+			Summary:     summary,
+			Detail:      "Missing telemetry stays Unknown. A burned budget is not a proven cause of an incident.",
+			At:          at.UTC().Format(time.RFC3339),
+			Environment: firstNonEmpty(budget.Environment, "Unknown"),
+			Tone:        timelineTone("slo", ""),
+		}, href, "SLO object"))
 	}
 
 	sort.SliceStable(events, func(i, j int) bool {
@@ -200,6 +279,7 @@ func buildServiceActivityTimeline(service serviceMapEntry, changes []changeReque
 		}
 		return left.After(right)
 	})
+	events = filterTimelineByEnvironment(events, environment)
 	if len(events) > serviceTimelineMaxEvents {
 		events = events[:serviceTimelineMaxEvents]
 	}
@@ -211,6 +291,36 @@ func buildServiceActivityTimeline(service serviceMapEntry, changes []changeReque
 		EvaluatedAt: now.Format(time.RFC3339),
 		Events:      events,
 	}
+}
+
+func latestSLOBreachAt(slo serviceSLO, samples []serviceMetrics) time.Time {
+	var latest time.Time
+	for _, sample := range samples {
+		breach := false
+		if slo.ErrorRatio > 0 && sample.ErrorRatio > slo.ErrorRatio {
+			breach = true
+		}
+		if slo.LatencyP95Ms > 0 && sample.P95Ms > slo.LatencyP95Ms {
+			breach = true
+		}
+		if breach && sample.TakenAt.After(latest) {
+			latest = sample.TakenAt
+		}
+	}
+	return latest
+}
+
+func filterTimelineByEnvironment(events []serviceTimelineEvent, environment string) []serviceTimelineEvent {
+	if strings.TrimSpace(environment) == "" {
+		return events
+	}
+	out := make([]serviceTimelineEvent, 0, len(events))
+	for _, event := range events {
+		if workspaceEnvironmentMatches(event.Environment, environment) {
+			out = append(out, event)
+		}
+	}
+	return out
 }
 
 func labelTimelineCorrelations(events []serviceTimelineEvent) {
@@ -309,7 +419,12 @@ func serveServiceActivityTimeline(w http.ResponseWriter, r *http.Request, servic
 	incidents := listIncidentsForService(service.Service, projectID)
 	findings, _ := listMonitorFindings(service.ID, "", "", "")
 	attempts := listObservedAttemptsForService(*service, siblings)
-	timeline := buildServiceActivityTimeline(*service, changes, incidents, findings, attempts)
+	environment := strings.TrimSpace(r.URL.Query().Get("environment"))
+	if environment == "" {
+		environment = strings.TrimSpace(service.Environment)
+	}
+	slos, _ := listServiceSLOBudgets(projectID, environment)
+	timeline := buildServiceActivityTimeline(*service, changes, incidents, findings, attempts, slos, environment)
 	_ = writeJSONResponse(w, http.StatusOK, map[string]any{
 		"timeline": timeline,
 		"status":   "ok",

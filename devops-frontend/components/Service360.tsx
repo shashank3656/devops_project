@@ -422,7 +422,7 @@ export default function Service360({
       ) : null}
       {tab === 'activity' && !loading ? (
         serviceId ? (
-          <ServiceActivityTimeline apiUrl={apiUrl} token={token} serviceId={serviceId} />
+          <ServiceActivityTimeline apiUrl={apiUrl} token={token} serviceId={serviceId} environment={environment} />
         ) : (
           <p className="work-empty">Activity needs a saved service record.</p>
         )

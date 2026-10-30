@@ -1854,6 +1854,10 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		serveRecordDocuments(w, r, "incident", id, managerID, parts[2:])
 		return
 	}
+	if len(parts) >= 2 && strings.EqualFold(parts[1], "actions") {
+		handleIncidentImprovementActions(w, r, managerID, id, parts[2:])
+		return
+	}
 	if len(parts) == 2 && strings.EqualFold(parts[1], "journal") {
 		handleITSMJournal(w, r, "incident", id, managerID)
 		return
@@ -1965,8 +1969,9 @@ func devopsIncidentDetailHandler(w http.ResponseWriter, r *http.Request) {
 		attachRollbackPlan(item)
 		review, postmortem := incidentReviewPayload(item)
 		journal, _ := listITSMJournal("incident", id)
+		actions, _ := listIncidentImprovementActions(id)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "rollback": item.RollbackPlan, "review": review, "postmortem": postmortem, "journal": journal, "status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"incident": item, "rollback": item.RollbackPlan, "review": review, "postmortem": postmortem, "journal": journal, "actions": actions, "status": "ok"})
 		return
 	}
 	if r.Method != "PATCH" {

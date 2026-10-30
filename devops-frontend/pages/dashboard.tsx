@@ -5,6 +5,7 @@ import Link from 'next/link';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { useWorkspaceScope, WORKSPACE_SCOPE_EVENT, WorkQueue, readWorkspaceScope, type QueueItem, type WorkspacePayload } from '@infragate/ui';
+import { environmentMatches } from '../lib/operationalViews';
 import { loadTicketAudience } from '../lib/ticketAudience';
 import { readRecentServices, type RecentService } from '../lib/recentServices';
 import ServiceSetupChecklist from '../components/ServiceSetupChecklist';
@@ -48,8 +49,12 @@ export default function DevOpsDashboard() {
     setError(null);
     const current = readWorkspaceScope();
     const headers = { Authorization: `Bearer ${token}` };
-    const workspaceUrl = current.projectId.trim()
-      ? `${apiUrl}/api/devops/workspace?project_id=${encodeURIComponent(current.projectId)}`
+    const workspaceParams = new URLSearchParams();
+    if (current.projectId.trim()) workspaceParams.set('project_id', current.projectId);
+    if (current.environment.trim()) workspaceParams.set('environment', current.environment);
+    const workspaceQuery = workspaceParams.toString();
+    const workspaceUrl = workspaceQuery
+      ? `${apiUrl}/api/devops/workspace?${workspaceQuery}`
       : `${apiUrl}/api/devops/workspace`;
     const serviceUrl = current.projectId.trim()
       ? `${apiUrl}/api/devops/services?view=summary&project_id=${encodeURIComponent(current.projectId)}`
@@ -119,8 +124,6 @@ export default function DevOpsDashboard() {
   }, [apiUrl, setupService?.project_id]);
 
   const allProjects = scope.projectId.trim() === '';
-  const incidentCount = (workspace.needs_you || []).filter((item) => String(item.kind || '').toLowerCase().includes('incident')).length;
-  const waitingCount = (workspace.needs_you || []).length + (workspace.failed?.length || 0);
   const envLabel = scope.environment || 'all environments';
   const freshness = updatedAt ? `Updated ${updatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
   const countText = (value: number) => (loading || error ? 'Unknown' : String(value));
@@ -135,7 +138,11 @@ export default function DevOpsDashboard() {
   const actionItems: QueueItem[] = [
     ...(workspace.needs_you || []),
     ...(workspace.failed || []),
-  ].map((item) => ({ ...item, href: scoped(item.href) }));
+  ]
+    .filter((item) => environmentMatches(item.environment, scope.environment))
+    .map((item) => ({ ...item, href: scoped(item.href) }));
+  const incidentCount = actionItems.filter((item) => String(item.kind || '').toLowerCase().includes('incident')).length;
+  const waitingCount = actionItems.length;
   const setupHref = setupService?.id ? `/services/${setupService.id}` : scoped('/services');
   const setupSteps = setupService ? buildServiceSetupSteps(setupService, onCallReady) : [];
 

@@ -115,6 +115,16 @@ func TestIntegrationBillingUsesSelectedProjectProvider(t *testing.T) {
 	}
 }
 
+func TestIntegrationBillingEmptyProjectOffersLinkAccount(t *testing.T) {
+	family := billingFamilyFrom(nil, 20)
+	if family.Action == nil || family.Action.Label != "Link billing account" || family.Action.Href != "/cloud-accounts" {
+		t.Fatalf("action = %+v", family.Action)
+	}
+	if !strings.Contains(family.Detail, "No billed account is linked") {
+		t.Fatalf("detail = %s", family.Detail)
+	}
+}
+
 func TestIntegrationBillingOrgWideLabelsAWSAccount(t *testing.T) {
 	family := billingFamilyFrom([]costConnection{
 		{ID: 1, ProjectID: 10, AccountID: "123456789012", Provider: "aws", DisplayName: "Prod"},

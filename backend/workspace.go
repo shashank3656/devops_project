@@ -12,15 +12,16 @@ import (
 )
 
 type workspaceQueueItem struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind,omitempty"`
-	Title  string `json:"title"`
-	Meta   string `json:"meta"`
-	Ref    string `json:"ref,omitempty"`
-	Href   string `json:"href"`
-	Action string `json:"action,omitempty"`
-	Tone   string `json:"tone,omitempty"`
-	At     string `json:"at,omitempty"`
+	ID          string `json:"id"`
+	Kind        string `json:"kind,omitempty"`
+	Title       string `json:"title"`
+	Meta        string `json:"meta"`
+	Ref         string `json:"ref,omitempty"`
+	Href        string `json:"href"`
+	Action      string `json:"action,omitempty"`
+	Tone        string `json:"tone,omitempty"`
+	At          string `json:"at,omitempty"`
+	Environment string `json:"environment,omitempty"`
 }
 
 type workspacePipelineStage struct {
@@ -102,12 +103,12 @@ func writeWorkspace(w http.ResponseWriter, r *http.Request, portal string, viewe
 		writeMethodNotAllowed(w, r, http.MethodGet)
 		return
 	}
-	payload := buildWorkspacePayload(portal, r.URL.Query().Get("project_id"), viewerID)
+	payload := buildWorkspacePayload(portal, r.URL.Query().Get("project_id"), r.URL.Query().Get("environment"), viewerID)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "workspace": payload})
 }
 
-func buildWorkspacePayload(portal, projectID string, viewerID int) workspacePayload {
+func buildWorkspacePayload(portal, projectID, environment string, viewerID int) workspacePayload {
 	payload := workspacePayload{
 		Title:    "What needs attention",
 		Subtitle: "Your requests, reviews, and the environment path for your latest project.",
@@ -117,8 +118,8 @@ func buildWorkspacePayload(portal, projectID string, viewerID int) workspacePayl
 			payload.Viewer = user.Username
 		}
 	}
-	payload.NeedsYou = workspaceNeedsYou(portal, projectID, viewerID)
-	payload.Failed = workspaceFailedDeliveries(portal, projectID, viewerID)
+	payload.NeedsYou = workspaceNeedsYou(portal, projectID, environment, viewerID)
+	payload.Failed = workspaceFailedDeliveries(portal, projectID, environment, viewerID)
 	if gap := workspaceCoverageGap(projectID); gap.ID != "" {
 		payload.NeedsYou = append([]workspaceQueueItem{gap}, payload.NeedsYou...)
 	}
@@ -196,7 +197,7 @@ func workspaceCoverageGap(projectID string) workspaceQueueItem {
 	}
 }
 
-func workspaceNeedsYou(portal, projectID string, viewerID int) []workspaceQueueItem {
+func workspaceNeedsYou(portal, projectID, environment string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 12)
 	if DB == nil {
 		return items
@@ -220,20 +221,21 @@ func workspaceNeedsYou(portal, projectID string, viewerID int) []workspaceQueueI
 		items = append(envFreezes, items...)
 	} else if reason := activeFreezeReason(); reason != "" {
 		items = append([]workspaceQueueItem{{
-			ID:     "freeze-active",
-			Kind:   "freeze",
-			Title:  "Production freeze is active",
-			Meta:   reason,
-			Href:   portalFreezeHref(portal),
-			Action: "View",
-			Tone:   "danger",
+			ID:          "freeze-active",
+			Kind:        "freeze",
+			Title:       "Production freeze is active",
+			Meta:        reason,
+			Href:        portalFreezeHref(portal),
+			Action:      "View",
+			Tone:        "danger",
+			Environment: "prod",
 		}}, items...)
 	}
 
-	return capWorkspaceQueue(items, 12)
+	return capWorkspaceQueue(filterWorkspaceQueueByEnvironment(items, environment), 12)
 }
 
-func workspaceFailedDeliveries(portal, projectID string, viewerID int) []workspaceQueueItem {
+func workspaceFailedDeliveries(portal, projectID, environment string, viewerID int) []workspaceQueueItem {
 	items := make([]workspaceQueueItem, 0, 8)
 	if DB == nil {
 		return items
@@ -258,7 +260,38 @@ func workspaceFailedDeliveries(portal, projectID string, viewerID int) []workspa
 			items = append(items, item)
 		}
 	}
-	return capWorkspaceQueue(items, 8)
+	return capWorkspaceQueue(filterWorkspaceQueueByEnvironment(items, environment), 8)
+}
+
+func workspaceEnvironmentMatches(actual, wanted string) bool {
+	want := strings.ToLower(strings.TrimSpace(wanted))
+	if want == "" {
+		return true
+	}
+	env := strings.ToLower(strings.TrimSpace(actual))
+	if env == "" {
+		return true
+	}
+	if want == "prod" || want == "production" {
+		return strings.HasPrefix(env, "prod")
+	}
+	if want == "dev" || want == "development" {
+		return env == "dev" || strings.HasPrefix(env, "dev")
+	}
+	return env == want
+}
+
+func filterWorkspaceQueueByEnvironment(items []workspaceQueueItem, environment string) []workspaceQueueItem {
+	if strings.TrimSpace(environment) == "" {
+		return items
+	}
+	out := make([]workspaceQueueItem, 0, len(items))
+	for _, item := range items {
+		if workspaceEnvironmentMatches(item.Environment, environment) {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func workspaceApprovalQueue(portal, projectID string) []workspaceQueueItem {
@@ -288,15 +321,16 @@ func workspaceApprovalQueue(portal, projectID string) []workspaceQueueItem {
 			continue
 		}
 		items = append(items, workspaceQueueItem{
-			ID:     fmt.Sprintf("approval-%d", id),
-			Kind:   "approval",
-			Title:  fmt.Sprintf("%s · %s (%s)", service, strings.ToUpper(cloud), env),
-			Meta:   strings.Join([]string{team, workspaceStatusPhrase(status)}, " · "),
-			Ref:    workspaceRequestRef(id),
-			Href:   workspaceRequestHref(portal, id, true),
-			Action: "Review",
-			Tone:   toneFromPriority(priority),
-			At:     workspaceTime(updated),
+			ID:          fmt.Sprintf("approval-%d", id),
+			Kind:        "approval",
+			Title:       fmt.Sprintf("%s · %s (%s)", service, strings.ToUpper(cloud), env),
+			Meta:        strings.Join([]string{team, workspaceStatusPhrase(status)}, " · "),
+			Ref:         workspaceRequestRef(id),
+			Href:        workspaceRequestHref(portal, id, true),
+			Action:      "Review",
+			Tone:        toneFromPriority(priority),
+			At:          workspaceTime(updated),
+			Environment: env,
 		})
 	}
 	return items
@@ -339,15 +373,16 @@ func workspaceUserQueue(viewerID int) []workspaceQueueItem {
 				meta = requester + " · " + meta
 			}
 			items = append(items, workspaceQueueItem{
-				ID:     fmt.Sprintf("manager-%d", id),
-				Kind:   "approval",
-				Title:  fmt.Sprintf("%s (%s)", service, env),
-				Meta:   meta,
-				Ref:    workspaceRequestRef(id),
-				Href:   workspaceRequestHref("user", id, false),
-				Action: "Review",
-				Tone:   "medium",
-				At:     workspaceTime(updated),
+				ID:          fmt.Sprintf("manager-%d", id),
+				Kind:        "approval",
+				Title:       fmt.Sprintf("%s (%s)", service, env),
+				Meta:        meta,
+				Ref:         workspaceRequestRef(id),
+				Href:        workspaceRequestHref("user", id, false),
+				Action:      "Review",
+				Tone:        "medium",
+				At:          workspaceTime(updated),
+				Environment: env,
 			})
 		}
 		_ = rows.Close()
@@ -369,15 +404,16 @@ func workspaceUserQueue(viewerID int) []workspaceQueueItem {
 				continue
 			}
 			item := workspaceQueueItem{
-				ID:     fmt.Sprintf("mine-%d", id),
-				Kind:   "waiting",
-				Title:  fmt.Sprintf("%s (%s)", service, env),
-				Meta:   workspaceStatusPhrase(status),
-				Ref:    workspaceRequestRef(id),
-				Href:   workspaceRequestHref("user", id, false),
-				Action: "View",
-				Tone:   "info",
-				At:     workspaceTime(updated),
+				ID:          fmt.Sprintf("mine-%d", id),
+				Kind:        "waiting",
+				Title:       fmt.Sprintf("%s (%s)", service, env),
+				Meta:        workspaceStatusPhrase(status),
+				Ref:         workspaceRequestRef(id),
+				Href:        workspaceRequestHref("user", id, false),
+				Action:      "View",
+				Tone:        "info",
+				At:          workspaceTime(updated),
+				Environment: env,
 			}
 			if status == "draft" {
 				item.Kind = "draft"
@@ -418,15 +454,16 @@ func workspaceIncidentQueue(portal, projectID string, viewerID int) []workspaceQ
 		}
 		href := workspaceIncidentHref(item.ID)
 		items = append(items, workspaceQueueItem{
-			ID:     fmt.Sprintf("incident-%d", item.ID),
-			Kind:   "incident",
-			Title:  truncateWorkspaceText(title, 90),
-			Meta:   item.Severity + " severity · " + strings.ReplaceAll(item.Status, "_", " "),
-			Ref:    firstNonEmpty(item.IncidentNumber, formatIncidentNumber(item.ID)),
-			Href:   href,
-			Action: "Open",
-			Tone:   "high",
-			At:     item.UpdatedAt.UTC().Format(time.RFC3339),
+			ID:          fmt.Sprintf("incident-%d", item.ID),
+			Kind:        "incident",
+			Title:       truncateWorkspaceText(title, 90),
+			Meta:        item.Severity + " severity · " + strings.ReplaceAll(item.Status, "_", " "),
+			Ref:         firstNonEmpty(item.IncidentNumber, formatIncidentNumber(item.ID)),
+			Href:        href,
+			Action:      "Open",
+			Tone:        "high",
+			At:          item.UpdatedAt.UTC().Format(time.RFC3339),
+			Environment: firstNonEmpty(item.Environment, item.RequestEnv),
 		})
 		if len(items) >= 4 {
 			break
@@ -478,15 +515,16 @@ func workspaceChangeQueue(portal, projectID string, viewerID int, failedOnly boo
 			action = "Inspect"
 		}
 		items = append(items, workspaceQueueItem{
-			ID:     fmt.Sprintf("change-%d", item.ID),
-			Kind:   kind,
-			Title:  truncateWorkspaceText(title, 90),
-			Meta:   strings.Join(nonEmptyStrings(item.Environment, item.Status, item.ChangeType), " · "),
-			Ref:    firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)),
-			Href:   href,
-			Action: action,
-			Tone:   workspaceChangeTone(status),
-			At:     item.UpdatedAt.UTC().Format(time.RFC3339),
+			ID:          fmt.Sprintf("change-%d", item.ID),
+			Kind:        kind,
+			Title:       truncateWorkspaceText(title, 90),
+			Meta:        strings.Join(nonEmptyStrings(item.Environment, item.Status, item.ChangeType), " · "),
+			Ref:         firstNonEmpty(item.ChangeNumber, formatChangeNumber(item.ID)),
+			Href:        href,
+			Action:      action,
+			Tone:        workspaceChangeTone(status),
+			At:          item.UpdatedAt.UTC().Format(time.RFC3339),
+			Environment: item.Environment,
 		})
 		if len(items) >= 3 {
 			break
@@ -604,15 +642,16 @@ func workspaceFailedTicketQueue(portal, projectID string, viewerID int) []worksp
 			kind = "blocked"
 		}
 		items = append(items, workspaceQueueItem{
-			ID:     fmt.Sprintf("ticket-%d", id),
-			Kind:   kind,
-			Title:  fmt.Sprintf("%s (%s)", service, env),
-			Meta:   meta,
-			Ref:    workspaceRequestRef(id),
-			Href:   workspaceRequestHref(portal, id, false),
-			Action: action,
-			Tone:   "danger",
-			At:     workspaceTime(updated),
+			ID:          fmt.Sprintf("ticket-%d", id),
+			Kind:        kind,
+			Title:       fmt.Sprintf("%s (%s)", service, env),
+			Meta:        meta,
+			Ref:         workspaceRequestRef(id),
+			Href:        workspaceRequestHref(portal, id, false),
+			Action:      action,
+			Tone:        "danger",
+			At:          workspaceTime(updated),
+			Environment: env,
 		})
 		if len(items) >= 4 {
 			break

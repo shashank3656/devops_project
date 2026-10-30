@@ -1553,6 +1553,7 @@ func MigrateDatabase() error {
 	migrateOncallScheduleSchema()
 	migrateOncallDutySchema()
 	migrateOncallHandoverSchema()
+	migrateIncidentImprovementSchema()
 	migrateExpiryAssetSchema()
 	migrateMaintenanceNoticeSchema()
 	migrateMaintenanceWindowSchema()
