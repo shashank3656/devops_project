@@ -13940,6 +13940,25 @@ html[data-theme] .delivery-shell .delivery-table th {
   color: var(--color-text-muted);
 }
 
+.incident-create-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.incident-create-head .portal-surface__title {
+  margin: 0;
+}
+
+.incident-service-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .incident-suggest {
   display: grid;
   gap: 12px;
@@ -13948,6 +13967,12 @@ html[data-theme] .delivery-shell .delivery-table th {
   border: 1px solid var(--ig-border);
   border-radius: 12px;
   background: var(--ig-surface-2);
+}
+
+.incident-suggest__reason {
+  display: block;
+  color: var(--ig-muted, #58677F);
+  font-size: 0.85rem;
 }
 .incident-suggest__list {
   list-style: none;
