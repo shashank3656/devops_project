@@ -873,6 +873,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/on-call', label: 'On-call', Icon: IconBell, children: [
           { href: '/on-call', label: 'Roster' },
           { href: '/on-call/handovers', label: 'Handovers' },
+          { href: '/on-call/projects', label: 'Schedules' },
         ] },
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
@@ -898,6 +899,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
         { href: '/on-call', label: 'On-call', Icon: IconBell, children: [
           { href: '/on-call', label: 'Roster' },
           { href: '/on-call/handovers', label: 'Handovers' },
+          { href: '/on-call/projects', label: 'Schedules' },
         ] },
         { href: '/certificates', label: 'Certificates & domains', Icon: IconShield },
         { href: '/maintenance', label: 'Maintenance', Icon: IconAlertTriangle },
@@ -966,7 +968,7 @@ export default function DevOpsLayout({ children }: { children: ReactNode }) {
     dailyNavItems.push({ href: '/scorecards', label: 'Scorecards', Icon: IconFileText });
   }
   if ((grants.portalAccess || grants.manager) && grants.operations && pathAllowed('/on-call', grants)) {
-    dailyNavItems.push({ href: '/on-call', label: 'On-call', Icon: IconBell });
+    dailyNavItems.push({ href: '/on-call', label: "Today's roster", Icon: IconBell });
   }
   if ((grants.portalAccess || grants.manager) && grants.cost && pathAllowed('/cost', grants)) {
     dailyNavItems.push({ href: '/cost', label: 'Cost overview', Icon: IconFileText });

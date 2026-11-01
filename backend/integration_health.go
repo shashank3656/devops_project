@@ -239,7 +239,7 @@ func decorateConnector(item integrationConnector, familyLabel string) integratio
 	if item.LastAttemptAt == nil {
 		item.LastAttemptAt = item.LastSuccessAt
 	}
-	if len(item.AffectedServices) == 0 && strings.TrimSpace(familyLabel) != "" {
+	if len(item.AffectedServices) == 0 && strings.TrimSpace(familyLabel) != "" && !looksLikeGitHubRepoName(item.Name) {
 		item.AffectedServices = []string{familyLabel}
 	}
 	if item.FailureReason == "" {
@@ -388,22 +388,22 @@ func integrationGitHubFamily() integrationFamily {
 		}
 		connected := access == "connected" || (!failed && last != nil)
 		state := integrationCollectionState(connected, failed, false, last, integrationStaleHours)
-		href := "/deploy-intelligence/" + repo.Owner + "/" + repo.Name
-		itemAction := &integrationAction{Label: "Open repository", Href: href}
+		itemAction := &integrationAction{Label: "Open repository", Href: "/deploy-intelligence/" + repo.Owner + "/" + repo.Name}
 		if state == "not_connected" || failed {
 			itemAction = action
 		} else if state == "stale" {
-			itemAction = &integrationAction{Label: "View sync diagnostics", Href: "/integrations?connector=github-" + itoa(repo.ID)}
+			itemAction = githubConnectorConfigAction(repo.Owner, repo.Name)
 		}
 		name := strings.Trim(repo.Owner+"/"+repo.Name, "/")
 		recovery := ""
 		if state == "stale" {
-			recovery = "View sync diagnostics."
+			recovery = githubStaleRecovery()
 		}
 		connectors = append(connectors, integrationConnector{
 			ID: "github-" + itoa(repo.ID), Name: firstNonEmpty(name, "Repository"),
 			State: state, Source: "GitHub", LastAttemptAt: last, LastSuccessAt: last, FailedJobs: boolToCount(failed),
-			Detail: integrationGitHubDetail(state), Recovery: recovery, Action: itemAction, AffectedServices: []string{firstNonEmpty(name, "GitHub")},
+			Detail: integrationGitHubDetail(state), Recovery: recovery, Action: itemAction,
+			AffectedServices: serviceNamesForGitHubRepo(repo.Owner, repo.Name),
 		})
 		states = append(states, state)
 		latest = integrationLatest(latest, last)
@@ -418,13 +418,81 @@ func integrationGitHubFamily() integrationFamily {
 		familyAction = &integrationAction{Label: "Open repositories", Href: "/deploy-intelligence"}
 		detail = integrationFailedJobsDetail(failedJobs)
 	} else if familyState == "stale" {
-		familyAction = &integrationAction{Label: "View sync diagnostics", Href: "/integrations"}
-		detail = "Stale. Last successful collection is older than 24 hours."
+		familyAction = &integrationAction{Label: "Open connector configuration", Href: "/deploy-intelligence"}
+		detail = "Stale. Last successful collection is older than 24 hours. Open connector configuration to inspect catalog sync."
 	}
 	return integrationFamily{
 		ID: "github", Label: "GitHub", Source: "GitHub", State: familyState,
 		LastSuccessAt: latest, FailedJobs: failedJobs, Detail: detail, Action: familyAction, Connectors: connectors,
 	}
+}
+
+func looksLikeGitHubRepoName(name string) bool {
+	name = strings.TrimSpace(name)
+	owner, repo, ok := strings.Cut(name, "/")
+	return ok && owner != "" && repo != "" && !strings.Contains(repo, "/")
+}
+
+func githubRepoMatches(mapped, owner, name string) bool {
+	mapped = strings.ToLower(strings.TrimSpace(mapped))
+	mapped = strings.TrimPrefix(mapped, "https://")
+	mapped = strings.TrimPrefix(mapped, "http://")
+	mapped = strings.TrimPrefix(mapped, "git@github.com:")
+	mapped = strings.TrimPrefix(mapped, "github.com/")
+	mapped = strings.TrimSuffix(mapped, ".git")
+	mapped = strings.Trim(mapped, "/")
+	owner = strings.ToLower(strings.TrimSpace(owner))
+	name = strings.ToLower(strings.TrimSpace(name))
+	if owner == "" || name == "" {
+		return false
+	}
+	return mapped == owner+"/"+name
+}
+
+func serviceNamesForGitHubRepo(owner, name string) []string {
+	if DB == nil || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
+		return nil
+	}
+	rows, err := DB.Query(`SELECT COALESCE(service,''), COALESCE(repo,'') FROM service_map`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	out := []string{}
+	for rows.Next() {
+		var service, repo string
+		if err := rows.Scan(&service, &repo); err != nil {
+			return out
+		}
+		if !githubRepoMatches(repo, owner, name) {
+			continue
+		}
+		label := strings.TrimSpace(service)
+		if label == "" || looksLikeGitHubRepoName(label) {
+			continue
+		}
+		key := strings.ToLower(label)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, label)
+	}
+	return out
+}
+
+func githubConnectorConfigAction(owner, name string) *integrationAction {
+	owner = strings.TrimSpace(owner)
+	name = strings.TrimSpace(name)
+	if owner == "" || name == "" {
+		return &integrationAction{Label: "Open connector configuration", Href: "/deploy-intelligence"}
+	}
+	return &integrationAction{Label: "Open connector configuration", Href: "/deploy-intelligence/" + owner + "/" + name}
+}
+
+func githubStaleRecovery() string {
+	return "Last successful collection is older than 24 hours. Open connector configuration to inspect catalog sync. This page does not collect newer GitHub data. Merge tracking stays a separate setup step."
 }
 
 func githubAccessFromCache(owner, name string) (string, *time.Time) {

@@ -113,6 +113,18 @@ export function formatCompactDay(dateKey: string): string {
   return `${parts.day} ${MONTHS[parts.month - 1] || 'Unknown'}`;
 }
 
+export function formatGapRange(startKey: string, endKey: string): string {
+  const start = dateParts(startKey);
+  const end = dateParts(endKey);
+  if (!start || !end) return formatDateRange(startKey, endKey);
+  const month = MONTHS[end.month - 1] || 'Unknown';
+  if (start.year === end.year && start.month === end.month) {
+    if (start.day === end.day) return `${start.day} ${month}`;
+    return `${start.day}–${end.day} ${month}`;
+  }
+  return formatDateRange(startKey, endKey);
+}
+
 export function formatDateRange(startKey: string, endKey: string): string {
   const start = dateParts(startKey);
   const end = dateParts(endKey);

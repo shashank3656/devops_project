@@ -5015,12 +5015,48 @@ html[data-theme] .portal-surface.oncall-roster,
 
 .integration-count-tile.is-active {
   border-color: var(--ig-accent, #6D4AFF);
-  box-shadow: inset 0 0 0 1px var(--ig-accent, #6D4AFF);
+  outline: 1px solid var(--ig-accent, #6D4AFF);
 }
 
 .integration-count-tile__icon {
   font-size: 1rem;
   line-height: 1;
+}
+
+.integration-count-tile--ok,
+.integration-count-tile--no_findings {
+  box-shadow: inset 4px 0 0 #0F766E;
+}
+
+.integration-count-tile--ok .integration-count-tile__icon,
+.integration-count-tile--no_findings .integration-count-tile__icon {
+  color: #0F766E;
+}
+
+.integration-count-tile--stale,
+.integration-count-tile--partial {
+  box-shadow: inset 4px 0 0 #B45309;
+}
+
+.integration-count-tile--stale .integration-count-tile__icon,
+.integration-count-tile--partial .integration-count-tile__icon {
+  color: #B45309;
+}
+
+.integration-count-tile--failed {
+  box-shadow: inset 4px 0 0 #B91C1C;
+}
+
+.integration-count-tile--failed .integration-count-tile__icon {
+  color: #B91C1C;
+}
+
+.integration-count-tile--not_connected {
+  box-shadow: inset 4px 0 0 #58677F;
+}
+
+.integration-count-tile--not_connected .integration-count-tile__icon {
+  color: #58677F;
 }
 
 .oncall-applied-filters {
@@ -5050,6 +5086,64 @@ html[data-theme] .portal-surface.oncall-roster,
 .oncall-day-error {
   color: #c2410c;
   display: block;
+}
+
+.oncall-day-note {
+  color: var(--ig-muted);
+  display: block;
+}
+
+.oncall-preview {
+  margin-top: 16px;
+}
+
+.oncall-preview__list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oncall-preview-gap summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.oncall-preview-gap ul {
+  margin: 8px 0 0;
+  padding-left: 1.1rem;
+}
+
+.oncall-preview__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.oncall-project-skeleton {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.oncall-project-skeleton__line {
+  display: block;
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--ig-border) 25%, var(--ig-surface, #F5F7FC) 50%, var(--ig-border) 75%);
+  background-size: 200% 100%;
+  animation: oncall-skeleton 1.2s ease-in-out infinite;
+}
+
+.oncall-project-skeleton p {
+  margin: 0;
+  color: var(--ig-muted);
+}
+
+@keyframes oncall-skeleton {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .integration-health .collection-status {

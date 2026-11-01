@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DevOpsLayout from './DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 import { currentMonth, formatLongDay, shiftMonth, timezoneCompactLabel, weekdayLong } from '../lib/onCallMonth';
-import { previewKindLabel, previewRotation, previewSummary, rotationCanPublish, weekdayCoverageIssue, type OccupiedShift } from '../lib/onCallPreview';
+import { previewGapHeading, previewKindLabel, previewRotation, previewSummary, rotationCanPublish, summarizePreviewGaps, weekdayCoverageHint, type OccupiedShift } from '../lib/onCallPreview';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -72,6 +72,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
   const [existingId, setExistingId] = useState(0);
   const [isManager, setIsManager] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [attemptedPublish, setAttemptedPublish] = useState(false);
   const [occupied, setOccupied] = useState<OccupiedShift[]>([]);
   const [workload, setWorkload] = useState<{
     people: { user_id: number; name: string; assigned_hours: number; overnight_hours: number; weekend_hours: number; incident_count: number; primary_days: number }[];
@@ -287,6 +288,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
       payloadBackup[day] = backupDays[day] ? Number(backupDays[day]) : 0;
     });
     if (publish && !rotationCanPublish(days, backupDays, WEEKDAYS, missionCritical)) {
+      setAttemptedPublish(true);
       setError('Required coverage is not valid. Assign a primary for every day, or save a draft.');
       return;
     }
@@ -329,6 +331,11 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
       setPreviewing(true);
       return;
     }
+    if (!rotationCanPublish(days, backupDays, WEEKDAYS, missionCritical)) {
+      setAttemptedPublish(true);
+      setError('Required coverage is not valid. Assign a primary for every day, or save a draft.');
+      return;
+    }
     await persist(true);
   };
 
@@ -343,6 +350,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
   const needsSecondPerson = Boolean(teamId) && membersReady && members.length === 1;
   const assignmentReady = canAssign && (!teamId || membersReady) && !needsPeople;
   const canPublish = rotationCanPublish(days, backupDays, WEEKDAYS, missionCritical);
+  const showCoverageErrors = previewing || attemptedPublish;
   const fromDate = focusDate || new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const previewDays = useMemo(() => previewRotation({
     fromDate,
@@ -352,6 +360,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
     missionCritical,
     occupied,
   }), [backupDays, days, fromDate, members, missionCritical, occupied]);
+  const gapRanges = useMemo(() => summarizePreviewGaps(previewDays), [previewDays]);
 
   return (
     <DevOpsLayout>
@@ -436,7 +445,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
               </label>
               <ul className="svc-tree">
                 {WEEKDAYS.map((day) => {
-                  const dayIssue = weekdayCoverageIssue(Number(days[day] || 0), Number(backupDays[day] || 0), missionCritical);
+                  const dayHint = weekdayCoverageHint(Number(days[day] || 0), Number(backupDays[day] || 0), missionCritical, showCoverageErrors);
                   return (
                   <li key={day} className={`svc-tree__row${focusWeekday === day ? ' oncall-focus-day' : ''}`}>
                     <span className="svc-tree__folder">
@@ -444,7 +453,9 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
                         {dayLabel(day)}
                         {today === day ? <small className="svc-tree__meta">Today</small> : null}
                         {focusWeekday === day ? <small className="svc-tree__meta">Opened shift</small> : null}
-                        {dayIssue ? <small className="svc-tree__meta oncall-day-error" role="alert">{dayIssue}</small> : null}
+                        {dayHint.text ? (
+                          <small className={`svc-tree__meta${dayHint.error ? ' oncall-day-error' : ' oncall-day-note'}`} role={dayHint.error ? 'alert' : undefined}>{dayHint.text}</small>
+                        ) : null}
                       </span>
                     </span>
                     {assignmentReady ? (
@@ -453,7 +464,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
                           id={`oncall-day-${day}`}
                           className="input"
                           aria-label={`${dayLabel(day)} primary`}
-                          aria-invalid={Boolean(dayIssue)}
+                          aria-invalid={dayHint.error}
                           value={days[day] || ''}
                           disabled={!teamId}
                           onChange={(event) => setDays((current) => ({ ...current, [day]: event.target.value }))}
@@ -466,7 +477,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
                         <select
                           className="input"
                           aria-label={`${dayLabel(day)} backup`}
-                          aria-invalid={Boolean(dayIssue && days[day])}
+                          aria-invalid={Boolean(dayHint.error && days[day])}
                           value={backupDays[day] || ''}
                           disabled={!teamId}
                           onChange={(event) => setBackupDays((current) => ({ ...current, [day]: event.target.value }))}
@@ -479,7 +490,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
                       </>
                     ) : (
                       <small>
-                        {days[day] ? `Primary ${known(members.find((member) => String(member.user_id) === days[day])?.name)}` : 'Uncovered'}
+                        {days[day] ? `Primary ${known(members.find((member) => String(member.user_id) === days[day])?.name)}` : (showCoverageErrors ? 'Uncovered' : 'Not assigned')}
                         {backupDays[day] ? ` · Backup ${known(members.find((member) => String(member.user_id) === backupDays[day])?.name)}` : ''}
                         {needsPeople ? ' · Add team members first' : canAssign ? '' : ' · A manager assigns coverage'}
                       </small>
@@ -491,21 +502,37 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
               {assignmentReady && previewing ? (
                 <section className="oncall-preview" aria-label="Schedule preview">
                   <h2 className="portal-surface__title">Preview next 30 days</h2>
-                  <p className="access-hint">{previewSummary(previewDays)}. Uncovered, overlapping, and missing backups are listed before this rotation is published. Cover requests do not rewrite the weekly rotation.</p>
-                  <ul className="oncall-preview__list">
-                    {previewDays.filter((item) => item.kinds.some((kind) => kind !== 'covered')).map((item) => (
-                      <li key={item.date}>
-                        <strong>{item.label}</strong>
-                        {' · '}
-                        {item.kinds.map(previewKindLabel).join(', ')}
-                        {item.primaryName ? ` · Primary ${item.primaryName}` : ' · No primary'}
-                        {item.backupName ? ` · Backup ${item.backupName}` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                  {!previewDays.some((item) => item.kinds.some((kind) => kind !== 'covered')) ? (
+                  <p className="access-hint">{previewSummary(previewDays)}. Consecutive uncovered dates are grouped. Cover requests do not rewrite the weekly rotation.</p>
+                  {gapRanges.length ? (
+                    <ul className="oncall-preview__list">
+                      {gapRanges.map((range) => (
+                        <li key={`${range.start}-${range.end}-${range.kinds.join('-')}`}>
+                          <details className="oncall-preview-gap">
+                            <summary>
+                              {previewGapHeading(range)}
+                              {range.days.length > 1 ? ` · ${range.days.length} days` : ''}
+                            </summary>
+                            <ul>
+                              {range.days.map((item) => (
+                                <li key={item.date}>
+                                  <strong>{item.label}</strong>
+                                  {' · '}
+                                  {item.kinds.map(previewKindLabel).join(', ')}
+                                  {item.primaryName ? ` · Primary ${item.primaryName}` : ' · No primary'}
+                                  {item.backupName ? ` · Backup ${item.backupName}` : ''}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
                     <p className="access-hint">No uncovered periods, overlapping shifts, or missing backups in the next 30 days.</p>
-                  ) : null}
+                  )}
+                  <div className="oncall-preview__actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setPreviewing(false)}>Edit assignments</button>
+                  </div>
                   {workload ? (
                     <div className="oncall-workload">
                       <h3 className="portal-surface__title">Workload balance</h3>
@@ -559,7 +586,7 @@ export default function OnCallScheduleForm({ scheduleId }: { scheduleId: number 
               {assignmentReady ? (
                 <div className="portal-form-actions">
                   {previewing ? (
-                    <button type="button" className="btn btn-secondary" onClick={() => setPreviewing(false)}>Edit rotation</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => setPreviewing(false)}>Edit assignments</button>
                   ) : null}
                   <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void persist(false)}>
                     {saving ? 'Saving...' : 'Save draft'}

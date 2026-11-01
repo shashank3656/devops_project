@@ -1,4 +1,4 @@
-import { addCalendarDays, formatCompactDay, nextDateKeys, weekdayLong } from './onCallMonth';
+import { addCalendarDays, formatCompactDay, formatGapRange, nextDateKeys, weekdayLong } from './onCallMonth';
 
 export type PreviewKind = 'covered' | 'uncovered' | 'missing_backup' | 'overlapping';
 
@@ -92,6 +92,53 @@ export function weekdayCoverageIssue(primaryId: number, backupId: number, missio
   if (backupId && backupId === primaryId) return 'Primary and backup must be different people';
   if (missionCritical && !backupId) return 'Backup required';
   return '';
+}
+
+export function weekdayCoverageHint(primaryId: number, backupId: number, missionCritical: boolean, showErrors: boolean): { text: string; error: boolean } {
+  const issue = weekdayCoverageIssue(primaryId, backupId, missionCritical);
+  if (!issue) return { text: '', error: false };
+  if (issue !== 'Uncovered' && issue !== 'Backup required') return { text: issue, error: true };
+  if (showErrors) return { text: issue, error: true };
+  return { text: 'Not assigned', error: false };
+}
+
+export interface PreviewGapRange {
+  start: string;
+  end: string;
+  days: PreviewDay[];
+  kinds: PreviewKind[];
+}
+
+function problemKinds(day: PreviewDay): PreviewKind[] {
+  return day.kinds.filter((kind) => kind !== 'covered');
+}
+
+function kindsKey(kinds: PreviewKind[]): string {
+  return [...kinds].sort().join('|');
+}
+
+export function summarizePreviewGaps(days: PreviewDay[]): PreviewGapRange[] {
+  const ranges: PreviewGapRange[] = [];
+  days.forEach((day) => {
+    const kinds = problemKinds(day);
+    if (!kinds.length) return;
+    const last = ranges[ranges.length - 1];
+    if (last && addCalendarDays(last.end, 1) === day.date && kindsKey(last.kinds) === kindsKey(kinds)) {
+      last.end = day.date;
+      last.days.push(day);
+      return;
+    }
+    ranges.push({ start: day.date, end: day.date, days: [day], kinds: [...kinds] });
+  });
+  return ranges;
+}
+
+export function previewGapHeading(range: PreviewGapRange): string {
+  const span = formatGapRange(range.start, range.end);
+  if (range.kinds.includes('uncovered')) return `${span}: no primary assigned`;
+  if (range.kinds.includes('missing_backup')) return `${span}: missing backup`;
+  if (range.kinds.includes('overlapping')) return `${span}: overlapping`;
+  return span;
 }
 
 export function rotationCanPublish(days: Record<string, string>, backupDays: Record<string, string>, weekdays: string[], missionCritical: boolean): boolean {

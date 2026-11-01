@@ -64,6 +64,45 @@ function headlineState(states: CollectionState[]): CollectionState {
   return order.find((state) => states.includes(state)) || 'not_connected';
 }
 
+function looksLikeRepo(name: string): boolean {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(name.trim());
+}
+
+function isSelfDiagnosticsHref(href: string): boolean {
+  return href === '/integrations' || href.startsWith('/integrations?connector=');
+}
+
+function resolvedAction(action?: HealthAction | null): HealthAction | null {
+  if (!action?.href) return null;
+  if (isSelfDiagnosticsHref(action.href)) {
+    return { label: 'Open connector configuration', href: '/deploy-intelligence' };
+  }
+  return action;
+}
+
+function resolvedConnectorAction(connector: HealthConnector): HealthAction | null {
+  return resolvedAction(connector.action);
+}
+
+function connectorScope(family: string, connector: HealthConnector): { label: string; value: string } {
+  const services = (connector.affected_services || []).filter((item) => item && !looksLikeRepo(item) && item !== connector.name);
+  if (services.length) return { label: 'Affected services', value: services.join(', ') };
+  if (looksLikeRepo(connector.name)) return { label: 'Repository', value: connector.name };
+  const fallback = (connector.affected_services || []).filter(Boolean);
+  if (fallback.length) return { label: 'Affected services', value: fallback.join(', ') };
+  return { label: 'Source', value: family };
+}
+
+function recoveryInstruction(connector: HealthConnector): string {
+  const recovery = (connector.recovery || '').trim();
+  if (/view sync diagnostics/i.test(recovery) || isSelfDiagnosticsHref(connector.action?.href || '')) {
+    return 'Last successful collection is older than 24 hours. Open connector configuration to inspect catalog sync. This page does not collect newer GitHub data. Merge tracking stays a separate setup step.';
+  }
+  if (recovery) return recovery;
+  const action = resolvedConnectorAction(connector);
+  return action ? `${action.label}.` : 'No recovery action.';
+}
+
 export default function IntegrationHealthPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
@@ -145,6 +184,8 @@ export default function IntegrationHealthPage() {
   const headline = headlineState(families.map((item) => item.state));
   const latest = families.map((item) => item.last_success_at || '').filter(Boolean).sort().at(-1) || null;
   const source = families.map((item) => item.source).filter(Boolean).slice(0, 3).join(' · ') || 'Connectors';
+  const selectedAction = selected ? resolvedConnectorAction(selected.connector) : null;
+  const selectedScope = selected ? connectorScope(selected.family, selected.connector) : null;
   const visibleFamilies = families.map((family) => {
     if (!stateFilter) return family;
     const connectors = (family.connectors || []).filter((item) => item.state === stateFilter);
@@ -214,7 +255,9 @@ export default function IntegrationHealthPage() {
           <div className="empty-state">No connectors match this status. Click the tile again to show every connector.</div>
         ) : null}
 
-        {!loading ? visibleFamilies.map((family) => (
+        {!loading ? visibleFamilies.map((family) => {
+          const familyAction = resolvedAction(family.action);
+          return (
           <section key={family.id} className="portal-surface integration-health">
             <div className="integration-health__head">
               <div>
@@ -225,7 +268,7 @@ export default function IntegrationHealthPage() {
                   state={family.state}
                 />
               </div>
-              {family.action ? <Link className="btn btn-primary" href={family.action.href}>{family.action.label}</Link> : null}
+              {familyAction ? <Link className="btn btn-primary" href={familyAction.href}>{familyAction.label}</Link> : null}
             </div>
             {family.detail ? <p className="access-hint">{family.detail}</p> : null}
             {family.failed_jobs ? <p className="access-hint">{family.failed_jobs} failed job{family.failed_jobs === 1 ? '' : 's'}.</p> : null}
@@ -242,7 +285,9 @@ export default function IntegrationHealthPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {family.connectors.map((connector) => (
+                    {family.connectors.map((connector) => {
+                      const action = resolvedConnectorAction(connector);
+                      return (
                       <tr
                         key={connector.id}
                         className="integration-health__row"
@@ -263,16 +308,22 @@ export default function IntegrationHealthPage() {
                         <td>{connector.state === 'not_connected' || connector.state === 'failed' ? 'Unknown' : lastLabel(connector.last_success_at)}</td>
                         <td>{connector.failed_jobs || 0}</td>
                         <td>
-                          {connector.action ? <Link href={connector.action.href} onClick={(event) => event.stopPropagation()}>{connector.action.label}</Link> : 'None'}
+                          {action ? (
+                            <Link href={action.href} onClick={(event) => event.stopPropagation()}>
+                              {action.label}
+                            </Link>
+                          ) : 'None'}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
           </section>
-        )) : null}
+          );
+        }) : null}
       </div>
       <InspectorDrawer
         open={Boolean(selected)}
@@ -282,9 +333,13 @@ export default function IntegrationHealthPage() {
         eyebrow="Integration health"
         title={selected?.connector.name || 'Connector'}
         subtitle={selected ? `${selected.family} · ${collectionStateLabel(selected.connector.state)}` : undefined}
-        footer={selected?.connector.action ? <Link className="btn btn-primary" href={selected.connector.action.href}>{selected.connector.action.label}</Link> : null}
+        footer={selectedAction ? (
+          <Link className="btn btn-primary" href={selectedAction.href}>
+            {selectedAction.label}
+          </Link>
+        ) : null}
       >
-        {selected ? (
+        {selected && selectedScope ? (
           <dl className="expiry-facts">
             <div>
               <dt>Last attempt</dt>
@@ -299,12 +354,12 @@ export default function IntegrationHealthPage() {
               <dd>{selected.connector.failure_reason || selected.connector.detail || 'None'}</dd>
             </div>
             <div>
-              <dt>Affected services</dt>
-              <dd>{(selected.connector.affected_services || []).filter(Boolean).join(', ') || selected.family}</dd>
+              <dt>{selectedScope.label}</dt>
+              <dd>{selectedScope.value}</dd>
             </div>
             <div>
               <dt>Recommended recovery</dt>
-              <dd>{selected.connector.recovery || (selected.connector.action ? `${selected.connector.action.label}.` : 'No recovery action.')}</dd>
+              <dd>{recoveryInstruction(selected.connector)}</dd>
             </div>
           </dl>
         ) : null}

@@ -148,6 +148,48 @@ func integrationBillingFamilyFromConnections(conns []costConnection) integration
 	return billingFamilyFrom(conns, 0)
 }
 
+func TestGitHubRepoMatchesServiceMapping(t *testing.T) {
+	if !githubRepoMatches("github.com/acme/api", "acme", "api") {
+		t.Fatal("github.com path must match owner/name")
+	}
+	if !githubRepoMatches("acme/api", "acme", "api") {
+		t.Fatal("owner/name must match")
+	}
+	if githubRepoMatches("acme/web", "acme", "api") {
+		t.Fatal("a different repository must not match")
+	}
+	if looksLikeGitHubRepoName("Company Jira") {
+		t.Fatal("family labels must not look like repositories")
+	}
+	if !looksLikeGitHubRepoName("acme/api") {
+		t.Fatal("owner/name must look like a repository")
+	}
+}
+
+func TestGitHubStaleActionOpensConfiguration(t *testing.T) {
+	action := githubConnectorConfigAction("acme", "api")
+	if action == nil || action.Label != "Open connector configuration" || action.Href != "/deploy-intelligence/acme/api" {
+		t.Fatalf("action = %+v", action)
+	}
+	if strings.Contains(strings.ToLower(action.Href), "connector=") {
+		t.Fatal("stale action must not reopen the diagnostics drawer")
+	}
+	recovery := githubStaleRecovery()
+	if strings.Contains(strings.ToLower(recovery), "view sync diagnostics") {
+		t.Fatal("recovery must not loop back to the same drawer")
+	}
+	if !strings.Contains(recovery, "Open connector configuration") {
+		t.Fatalf("recovery = %s", recovery)
+	}
+	item := decorateConnector(integrationConnector{
+		ID: "github-1", Name: "acme/api", State: "stale", Source: "GitHub",
+		Action: action, Recovery: recovery,
+	}, "GitHub")
+	if len(item.AffectedServices) != 0 {
+		t.Fatalf("unmapped repo must not fill affected services with the repository name: %+v", item.AffectedServices)
+	}
+}
+
 func TestDecorateConnectorFillsDiagnosticsWithoutSecrets(t *testing.T) {
 	now := time.Now().UTC()
 	item := decorateConnector(integrationConnector{
