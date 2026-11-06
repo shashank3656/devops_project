@@ -5,6 +5,7 @@ import { useConfirm } from '@infragate/ui';
 import DeliveryHubNav from '../../components/DeliveryHubNav';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import {
   canManageDeliveryRepos,
   formatWhen,
@@ -108,10 +109,44 @@ export default function DeployIntelligenceIndexPage() {
     }
   };
 
+  const enableMergeTracking = async (repo: RepoSummary) => {
+    const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
+    if (!token) return;
+    const key = repoKey(repo);
+    setSavingKey(key);
+    setError('');
+    setNotice('');
+    try {
+      const res = await fetch(`${apiUrl}/api/devops/deploy-intelligence/repos`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner: repo.owner, name: repo.name, enable_merge_tracking: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(typeof data?.error === 'string' ? data.error : 'Merge tracking could not be enabled');
+        return;
+      }
+      setNotice(`Merge tracking enabled for ${repo.owner}/${repo.name}. GitHub was not changed.`);
+      await load();
+    } catch {
+      setError('Merge tracking could not be enabled');
+    } finally {
+      setSavingKey('');
+    }
+  };
+
   const connectedCount = repos.filter((repo) => repo.github_access === 'connected').length;
   const failedCount = repos.filter((repo) => repo.github_access === 'failed').length;
   const setupCount = repos.filter((repo) => repo.merge_tracking !== 'configured').length;
   const reviewCount = repos.reduce((sum, repo) => sum + (repo.open_pr_count || 0), 0);
+  const lastRepoSync = repos.map((repo) => repo.last_sync_at || repo.last_merged_at || '').filter(Boolean).sort().at(-1) || '';
+  const repoCollection = collectionStateFromSync({
+    connected: repos.some((repo) => repo.github_access === 'connected') || repos.length > 0,
+    failed: Boolean(error) || repos.some((repo) => repo.github_access === 'failed'),
+    lastSuccess: lastRepoSync,
+    empty: repos.length === 0,
+  });
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -135,6 +170,14 @@ export default function DeployIntelligenceIndexPage() {
             <p className="delivery-kicker">Delivery</p>
             <h1 className="delivery-title">Repositories</h1>
             <p className="delivery-lede">Review code changes, track checks and follow delivery outcomes.</p>
+            {!loading ? (
+              <CollectionStatus
+                source="GitHub"
+                lastSuccess={lastRepoSync}
+                state={repoCollection}
+                detail={repos.length ? `${repos.length} catalog ${repos.length === 1 ? 'repository' : 'repositories'}` : 'Connect a GitHub repository that already exists.'}
+              />
+            ) : null}
           </div>
           <Link href="/deploy-intelligence/onboard" className="btn btn-primary">
             Connect repository
@@ -233,7 +276,13 @@ export default function DeployIntelligenceIndexPage() {
                           {needsSetup ? (
                             <div className="delivery-setup">
                               <span className={`delivery-status delivery-status--${tracking.tone}`}>Merge tracking not configured</span>
-                              <Link href={settingsHref} className="delivery-setup__action">Complete setup</Link>
+                              {canManage ? (
+                                <button type="button" className="delivery-setup__action" disabled={busy} onClick={() => void enableMergeTracking(repo)}>
+                                  {busy ? 'Enabling…' : 'Complete setup'}
+                                </button>
+                              ) : (
+                                <Link href={settingsHref} className="delivery-setup__action">Open settings</Link>
+                              )}
                             </div>
                           ) : (
                             <span className={`delivery-status delivery-status--${tracking.tone}`}>{tracking.label}</span>
@@ -251,7 +300,11 @@ export default function DeployIntelligenceIndexPage() {
                               <summary aria-label={`Actions for ${repo.name}`}>⋯</summary>
                               <div className="delivery-menu__panel">
                                 <Link href={`${settingsHref}&edit=1`}>Edit catalog</Link>
-                                {needsSetup ? <Link href={settingsHref}>Complete setup</Link> : null}
+                                {needsSetup ? (
+                                  <button type="button" disabled={busy} onClick={() => void enableMergeTracking(repo)}>
+                                    Complete setup
+                                  </button>
+                                ) : null}
                                 <button type="button" disabled={busy} onClick={() => void disconnectRepo(repo)}>Disconnect</button>
                               </div>
                             </details>

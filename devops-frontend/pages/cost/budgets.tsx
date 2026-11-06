@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import CostEmpty from '../../components/CostEmpty';
 import CostFirstRun from '../../components/CostFirstRun';
 import CostNav from '../../components/CostNav';
@@ -90,6 +91,18 @@ export default function CostBudgetsPage() {
           ) : null}
         </div>
         <CostNav current="budgets" />
+        {!loading ? (
+          <CollectionStatus
+            source="CUR 2.0"
+            lastSuccess={anomalies?.prior_window_end || null}
+            state={collectionStateFromSync({
+              connected: Boolean(data?.coverage && data.coverage !== 'none'),
+              failed: Boolean(error),
+              empty: tab === 'alerts' ? !(anomalies?.anomalies || []).length : !(data?.budgets || []).length,
+            })}
+            detail={tab === 'alerts' ? 'An empty alert list is No findings, not a $0 bill.' : 'Budgets use their own calendar period.'}
+          />
+        ) : null}
         <CostPageTabs
           tabs={[{ id: 'budgets', label: 'Budgets' }, { id: 'alerts', label: 'Alerts' }]}
           current={tab}

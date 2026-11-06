@@ -69,14 +69,8 @@ func createExpiryCollector(userID, projectID int, name string) (expiryCollectorV
 	if name == "" {
 		return expiryCollectorView{}, "", errOncallInvalid
 	}
-	if projectID > 0 {
-		visible := map[int]struct{}{}
-		for _, id := range visibleProjectIDsForUser(userID) {
-			visible[id] = struct{}{}
-		}
-		if !expiryAssetVisible(projectID, userID, visible) {
-			return expiryCollectorView{}, "", errHandoverDenied
-		}
+	if projectID > 0 && !expiryAssetVisible(projectID, userID, loadExpiryProjectVisibility(userID)) {
+		return expiryCollectorView{}, "", errExpiryDenied
 	}
 	token, err := randomVulnToken("ost_expiry_")
 	if err != nil {
@@ -267,7 +261,7 @@ func serveExpiryCollectors(w http.ResponseWriter, r *http.Request, userID int) {
 		item, token, err := createExpiryCollector(userID, body.ProjectID, body.Name)
 		if err != nil {
 			status := http.StatusBadRequest
-			if err == errHandoverDenied {
+			if err == errHandoverDenied || err == errExpiryDenied {
 				status = http.StatusForbidden
 			}
 			writeAPIError(w, r, status, "The private collector could not be created.", err)

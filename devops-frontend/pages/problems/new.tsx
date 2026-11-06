@@ -1,7 +1,8 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useConfirm } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { FALLBACK_ITSM_CATEGORIES, ITSMCategory, ITSM_PRIORITIES, PROBLEM_STATES, normalizeCategories, subcategoriesFor } from '../../lib/itsm';
@@ -50,6 +51,23 @@ interface ExistingProblem {
   project_id?: number;
 }
 
+interface Runbook {
+  id: number;
+  project_id: number;
+  service: string;
+  title: string;
+  link_url: string;
+}
+
+function suggestionTokens(value: string): string[] {
+  return value.toLowerCase().split(/[^a-z0-9]+/).filter((part) => part.length > 2);
+}
+
+function tokenOverlap(left: string[], right: string[]): number {
+  const set = new Set(left);
+  return right.filter((item) => set.has(item)).length;
+}
+
 function clearSessionAndRedirect() {
   expireSession();
 }
@@ -57,6 +75,7 @@ function clearSessionAndRedirect() {
 export default function NewProblemPage() {
   const apiUrl = useApiUrl();
   const router = useRouter();
+  const confirm = useConfirm();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [users, setUsers] = useState<PortalUserOption[]>([]);
@@ -80,6 +99,7 @@ export default function NewProblemPage() {
   const [knownError, setKnownError] = useState(false);
   const [relatedIncidentId, setRelatedIncidentId] = useState('');
   const [existingProblems, setExistingProblems] = useState<ExistingProblem[]>([]);
+  const [runbooks, setRunbooks] = useState<Runbook[]>([]);
   const [problemQuery, setProblemQuery] = useState('');
   const [causeState, setCauseState] = useState<'suspected' | 'confirmed'>('suspected');
   const [fixVerified, setFixVerified] = useState(false);
@@ -116,9 +136,10 @@ export default function NewProblemPage() {
       loadJson('/api/devops/problems?mode=preview'),
       loadJson('/api/devops/problems'),
       loadJson('/api/devops/itsm-catalog'),
+      loadJson('/api/devops/runbooks'),
     ])
-      .then(([projectRes, serviceRes, userRes, incidentRes, previewRes, problemRes, catalogRes]) => {
-        if ([projectRes, serviceRes, userRes, incidentRes, previewRes, problemRes, catalogRes].every((item) => item.unauthorized)) {
+      .then(([projectRes, serviceRes, userRes, incidentRes, previewRes, problemRes, catalogRes, runbookRes]) => {
+        if ([projectRes, serviceRes, userRes, incidentRes, previewRes, problemRes, catalogRes, runbookRes].every((item) => item.unauthorized)) {
           clearSessionAndRedirect();
           return;
         }
@@ -155,6 +176,14 @@ export default function NewProblemPage() {
         })));
         const number = getString(previewRes.data.problem_number);
         if (number) setPreviewNumber(number);
+        const runbookList = Array.isArray(runbookRes.data.runbooks) ? runbookRes.data.runbooks : [];
+        setRunbooks(runbookList.filter((item: { id?: number }) => typeof item.id === 'number').map((item: { id: number; project_id?: number; service?: string; title?: string; link_url?: string }) => ({
+          id: item.id,
+          project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+          service: item.service || '',
+          title: item.title || '',
+          link_url: item.link_url || '',
+        })));
       })
       .catch(() => setError('Some dropdowns could not load. You can still create the problem.'))
       .finally(() => setLoading(false));
@@ -275,6 +304,38 @@ export default function NewProblemPage() {
   const scopedServices = projectId
     ? services.filter((item) => !item.project_id || String(item.project_id) === projectId)
     : [];
+  const relatedIncidents = useMemo(() => {
+    const words = suggestionTokens([title, service].filter(Boolean).join(' '));
+    return scopedIncidents
+      .filter((item) => {
+        if (relatedIncidentId && String(item.id) === relatedIncidentId) return false;
+        if (!words.length) return Boolean(projectId || service);
+        return tokenOverlap(words, suggestionTokens(`${item.summary || ''} ${item.incident_number || ''}`)) > 0;
+      })
+      .slice(0, 4);
+  }, [projectId, relatedIncidentId, scopedIncidents, service, title]);
+  const suggestedServices = useMemo(() => {
+    const words = suggestionTokens(title);
+    return scopedServices
+      .filter((item) => {
+        if (service && item.service.toLowerCase() === service.toLowerCase()) return false;
+        if (!words.length) return Boolean(projectId);
+        return tokenOverlap(words, suggestionTokens(item.service)) > 0;
+      })
+      .slice(0, 4);
+  }, [projectId, scopedServices, service, title]);
+  const suggestedRunbooks = useMemo(() => {
+    const words = suggestionTokens([title, service].filter(Boolean).join(' '));
+    return runbooks
+      .filter((item) => {
+        if (projectId && item.project_id && String(item.project_id) !== projectId) return false;
+        if (service && item.service && item.service.toLowerCase() !== service.toLowerCase()) {
+          return tokenOverlap(words, suggestionTokens(`${item.title} ${item.service}`)) > 0;
+        }
+        return !service || item.service.toLowerCase() === service.toLowerCase() || tokenOverlap(words, suggestionTokens(`${item.title} ${item.service}`)) > 0;
+      })
+      .slice(0, 4);
+  }, [projectId, runbooks, service, title]);
 
   return (
     <DevOpsLayout>
@@ -368,6 +429,99 @@ export default function NewProblemPage() {
                   Short description<span className="form-req" aria-hidden="true"> *</span>
                   <input id="problem-title" className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Recurring 5xx on checkout after deploy" required />
                 </label>
+                {(relatedIncidents.length || suggestedServices.length || suggestedRunbooks.length) ? (
+                  <div className="incident-suggest">
+                    <p className="form-section__copy">Suggestions from existing records. Confirm before applying. Nothing is changed until you confirm.</p>
+                    {relatedIncidents.length ? (
+                      <div>
+                        <p className="form-section__title">Related incidents</p>
+                        <ul className="incident-suggest__list">
+                          {relatedIncidents.map((item) => (
+                            <li key={item.id}>
+                              <span>{item.incident_number || `INC${String(item.id).padStart(7, '0')}`} · {item.summary || 'No summary'}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Link this incident?',
+                                    message: `${item.incident_number || `INC${String(item.id).padStart(7, '0')}`} stays in its current state. This form does not close it.`,
+                                    confirmLabel: 'Link incident',
+                                    cancelLabel: 'Keep current',
+                                  }).then((ok) => {
+                                    if (ok) setRelatedIncidentId(String(item.id));
+                                  });
+                                }}
+                              >
+                                Use incident
+                              </button>
+                              <Link href={`/incidents/${item.id}/edit`} className="btn btn-ghost btn-sm">Open</Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {suggestedServices.length ? (
+                      <div>
+                        <p className="form-section__title">Affected services</p>
+                        <ul className="incident-suggest__list">
+                          {suggestedServices.map((item) => (
+                            <li key={`${item.id}-${item.service}`}>
+                              <span>{item.service}{item.environment ? ` · ${item.environment}` : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Use this service?',
+                                    message: `${item.service} will fill the service field. The problem is not submitted yet.`,
+                                    confirmLabel: 'Use service',
+                                    cancelLabel: 'Keep current',
+                                  }).then((ok) => {
+                                    if (ok) applyService(item.service);
+                                  });
+                                }}
+                              >
+                                Use service
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {suggestedRunbooks.length ? (
+                      <div>
+                        <p className="form-section__title">Guides</p>
+                        <ul className="incident-suggest__list">
+                          {suggestedRunbooks.map((item) => (
+                            <li key={item.id}>
+                              <span>{item.title || 'Untitled guide'}{item.service ? ` · ${item.service}` : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Add this guide to the cause note?',
+                                    message: `${item.title || 'This guide'} will be appended to the cause. The problem is not submitted yet.`,
+                                    confirmLabel: 'Add to notes',
+                                    cancelLabel: 'Skip',
+                                  }).then((ok) => {
+                                    if (!ok) return;
+                                    const line = `Guide: ${item.title}${item.link_url ? ` ${item.link_url}` : ''}`;
+                                    setDescription((current) => current.includes(line) ? current : [current.trim(), line].filter(Boolean).join('\n'));
+                                  });
+                                }}
+                              >
+                                Add to notes
+                              </button>
+                              <Link href={`/runbooks/${item.id}/edit`} className="btn btn-ghost btn-sm">Open guide</Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 <label className="label">
                   Priority
                   <select className="input" value={priority} onChange={(event) => setPriority(event.target.value)}>

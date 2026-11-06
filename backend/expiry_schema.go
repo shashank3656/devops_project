@@ -64,6 +64,8 @@ func migrateExpiryAssetSchema() {
 			raw_summary TEXT NOT NULL DEFAULT ''
 		)
 	`)
+	_, _ = DB.Exec(`ALTER TABLE expiry_observations ADD COLUMN IF NOT EXISTS dns_ok BOOLEAN NOT NULL DEFAULT FALSE`)
+	_, _ = DB.Exec(`ALTER TABLE expiry_observations ADD COLUMN IF NOT EXISTS resolved_ips TEXT NOT NULL DEFAULT ''`)
 	_, _ = DB.Exec(`CREATE INDEX IF NOT EXISTS idx_expiry_observations_asset ON expiry_observations(asset_id, observed_at DESC)`)
 	_, _ = DB.Exec(`
 		CREATE TABLE IF NOT EXISTS expiry_renewal_cases (

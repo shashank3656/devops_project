@@ -31,7 +31,7 @@ export const SERVICE_CLASSES = [
   { value: 'low_impact', label: 'Low Impact' },
 ] as const;
 
-export type ServiceWorkspaceTab = 'overview' | 'observability' | 'findings' | 'configuration';
+export type ServiceWorkspaceTab = 'overview' | 'environments' | 'activity' | 'observability' | 'findings' | 'configuration';
 
 export function serviceClassLabel(value?: string): string {
   const found = SERVICE_CLASSES.find((item) => item.value === value);
@@ -40,7 +40,7 @@ export function serviceClassLabel(value?: string): string {
 
 export function workspaceTab(value: string | string[] | undefined): ServiceWorkspaceTab {
   const text = Array.isArray(value) ? value[0] : value;
-  if (text === 'observability' || text === 'findings' || text === 'configuration') return text;
+  if (text === 'environments' || text === 'activity' || text === 'observability' || text === 'findings' || text === 'configuration') return text;
   return 'overview';
 }
 

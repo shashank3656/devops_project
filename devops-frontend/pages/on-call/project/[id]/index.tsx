@@ -146,15 +146,22 @@ export default function OnCallProjectTeamsPage() {
     }
   }
 
+  const pageTitle = loading ? 'Loading project…' : (projectName.trim() || (error ? 'On-call project' : 'Unknown'));
+  const pageSubtitle = loading
+    ? 'Loading project…'
+    : teams.length
+      ? 'Select a team to configure its rotation.'
+      : 'Project, then teams, then people, then review coverage on On-call. Next: add a team, then open it to choose people.';
+
   return (
     <DevOpsLayout>
-      <Head><title>{known(projectName)} on-call teams</title></Head>
+      <Head><title>{loading ? 'On-call project' : `${pageTitle} on-call teams`}</title></Head>
       <div className="portal-page">
         <div className="portal-page__header">
           <div>
             <span className="portal-page__eyebrow">On-call</span>
-            <h1 className="portal-page__title">{known(projectName)}</h1>
-            <p className="portal-page__subtitle">Project, then teams, then people, then review coverage on On-call. Next: add a team, then open it to choose people.</p>
+            <h1 className="portal-page__title">{pageTitle}</h1>
+            <p className="portal-page__subtitle">{pageSubtitle}</p>
           </div>
           <Link href="/on-call/projects" className="btn btn-secondary">Back to projects</Link>
         </div>
@@ -182,15 +189,22 @@ export default function OnCallProjectTeamsPage() {
           <div className="oncall-controls">
             <label>
               Add team
-              <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)}>
-                <option value="">{catalog.length ? 'Select a team' : 'No teams loaded'}</option>
+              <select className="input" value={teamId} onChange={(event) => setTeamId(event.target.value)} disabled={loading}>
+                <option value="">{loading ? 'Loading teams…' : catalog.length ? 'Select a team' : 'No teams loaded'}</option>
                 {available.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
               </select>
             </label>
             <button type="button" className="btn btn-primary" disabled={saving || !teamId} onClick={() => void addTeam()}>Add team</button>
           </div>
           {!catalog.length && !loading ? <p className="portal-surface__subtitle">The team list did not load. The teams API returned no teams for this sign-in.</p> : null}
-          {loading ? <div className="empty-state">Loading teams...</div> : null}
+          {loading ? (
+            <div className="oncall-project-skeleton" aria-busy="true" aria-live="polite">
+              <span className="oncall-project-skeleton__line" />
+              <span className="oncall-project-skeleton__line" />
+              <span className="oncall-project-skeleton__line" />
+              <p>Loading project…</p>
+            </div>
+          ) : null}
           {!loading && !teams.length ? <div className="empty-state">No teams are on this project call yet.</div> : null}
           {!loading && teams.length && !visibleTeams.length ? <div className="empty-state">No teams match this filter.</div> : null}
           {!loading && visibleTeams.length ? (

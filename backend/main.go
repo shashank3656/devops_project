@@ -742,6 +742,7 @@ func main() {
 		startVulnSecurityWorker()
 		startOncallHandoverWorker()
 		startExpiryAssetWorker()
+		startJiraWorkerScheduler()
 	}
 	InitRuntimeResilience()
 
@@ -837,6 +838,11 @@ func main() {
 	http.HandleFunc("/api/admin/inbound-sources/", adminInboundSourceDetailHandler)
 	http.HandleFunc("/api/devops/inbound-sources", devopsInboundSourcesHandler)
 	http.HandleFunc("/api/devops/inbound-sources/", devopsInboundSourceDetailHandler)
+	http.HandleFunc("/api/devops/integrations/health", integrationHealthHandler)
+	http.HandleFunc("/api/devops/integrations/jira", jiraIntegrationsHandler)
+	http.HandleFunc("/api/devops/integrations/jira/", jiraIntegrationsHandler)
+	http.HandleFunc("/api/integrations/jira/oauth/callback", jiraOAuthCallbackHandler)
+	http.HandleFunc("/api/webhooks/jira", jiraWebhookHandler)
 	http.HandleFunc("/api/admin/changes", adminChangesHandler)
 	http.HandleFunc("/api/admin/changes/", adminChangeDetailHandler)
 	http.HandleFunc("/api/admin/scorecards", adminScorecardsHandler)
@@ -874,6 +880,7 @@ func main() {
 	http.HandleFunc("/api/oncall/covers/", oncallCoverHandler)
 	http.HandleFunc("/api/oncall/handovers", oncallHandoverHandler)
 	http.HandleFunc("/api/oncall/handovers/", oncallHandoverHandler)
+	http.HandleFunc("/api/oncall/workload", oncallWorkloadHandler)
 	http.HandleFunc("/api/cost/collector/", costK8sCollectorHandler)
 	http.HandleFunc("/api/cost/", costAPIHandler)
 	http.HandleFunc("/api/expiry/assets", expiryAssetsHandler)

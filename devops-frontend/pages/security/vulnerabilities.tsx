@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BulkBar, CopyButton, DataTable, EmptyState, formatOperationalTime, type DataTableColumn, type RowKey } from '@infragate/ui';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
 import { downloadCSV } from '../../lib/csv';
@@ -1095,6 +1096,19 @@ export default function GlobalVulnerabilitiesPage() {
                   ? 'Feeds, private agents, and CI inventory. A feed is not repository coverage.'
                   : 'See which services need action and which patches are available. A public advisory is not proof of repository exposure.'}
             </p>
+            {!loading ? (
+              <CollectionStatus
+                source="Advisory feeds · Repository scan"
+                lastSuccess={overview.intelligence_synced_at}
+                state={collectionStateFromSync({
+                  connected: Boolean(overview.github_token_configured || overview.scanned_repositories || hosted),
+                  failed: Boolean(error),
+                  lastSuccess: overview.intelligence_synced_at,
+                  empty: !(overview.critical_findings || overview.high_findings || overview.affected_services),
+                })}
+                detail="A public advisory is not proof of repository exposure. Empty coverage stays Unknown, never Secure."
+              />
+            ) : null}
           </div>
           <div className="runbooks__action-row">
             {isManager && (showScorecards || tab === 'sources') ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void refreshIntelligence()}>Refresh intelligence</button> : null}

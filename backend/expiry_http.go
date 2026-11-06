@@ -32,6 +32,10 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if rest == "ownership" {
+		serveExpiryOwnership(w, r)
+		return
+	}
 	if rest == "collectors" {
 		serveExpiryCollectors(w, r, userID)
 		return
@@ -79,10 +83,21 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			item, err := createExpiryAsset(userID, body.AssetType, body.Input, body.ServiceName, body.Environment, body.RunbookURL, body.Collector, body.ProjectID, body.TeamID, body.OwnerUserID, body.Port, body.WarnDays, body.CheckEveryMinutes)
 			if err != nil {
-				writeAPIError(w, r, http.StatusBadRequest, "That endpoint or domain could not be registered.", err)
+				status := http.StatusBadRequest
+				msg := "That endpoint or domain could not be registered."
+				switch err {
+				case errExpiryDenied, errHandoverDenied:
+					status = http.StatusForbidden
+					msg = "This project is not available for certificate registration."
+				case errExpiryInvalid:
+					msg = "Owner must be a member of the selected team."
+				case errExpiryNotRegistrable:
+					msg = "Enter the domain you registered. Railway hostnames and other hosting names are certificate endpoints, not domain registrations."
+				}
+				writeAPIError(w, r, status, msg, err)
 				return
 			}
-			writeJSON(w, http.StatusAccepted, map[string]any{"asset": item, "status": "ok"})
+			writeJSON(w, http.StatusOK, map[string]any{"asset": item, "status": "ok"})
 		default:
 			writeMethodNotAllowed(w, r)
 		}
@@ -127,13 +142,9 @@ func expiryAssetsHandler(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"asset": item, "status": "ok", "note": "Hosted checks do not reach private collector targets."})
 			return
 		}
-		jobID, queueErr := queueExpiryCheck(id)
-		if queueErr != nil {
-			writeAPIError(w, r, http.StatusInternalServerError, "The check could not be queued.", queueErr)
-			return
-		}
-		go drainExpiryCheckJobs()
-		writeJSON(w, http.StatusAccepted, map[string]any{"job_id": jobID, "status": "queued"})
+		checkExpiryAssetNow(item)
+		item, _ = getExpiryAsset(id, userID, true)
+		writeJSON(w, http.StatusOK, map[string]any{"asset": item, "status": "ok"})
 	case action == "observations" && r.Method == http.MethodGet:
 		if _, getErr := getExpiryAsset(id, userID, false); getErr != nil {
 			writeExpiryMutation(w, r, expiryAssetView{}, getErr, "That asset is not available.")
@@ -254,11 +265,39 @@ func expiryCollectorsRoute(w http.ResponseWriter, r *http.Request) {
 	serveExpiryCollectors(w, r, userID)
 }
 
+func serveExpiryOwnership(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, r)
+		return
+	}
+	projectID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("project_id")))
+	teamID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("team_id")))
+	teams, err := listExpiryAssignableTeams(projectID)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "Teams could not be loaded.", err)
+		return
+	}
+	members := []expiryMemberChoice{}
+	if teamID > 0 {
+		loaded, memberErr := listExpiryTeamMembers(teamID)
+		if memberErr != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "Team members could not be loaded.", memberErr)
+			return
+		}
+		members = loaded
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"teams":   teams,
+		"members": members,
+		"status":  "ok",
+	})
+}
+
 func writeExpiryMutation(w http.ResponseWriter, r *http.Request, item expiryAssetView, err error, fallback string) {
 	if err != nil {
 		status := http.StatusBadRequest
 		switch err {
-		case errHandoverDenied:
+		case errHandoverDenied, errExpiryDenied:
 			status = http.StatusForbidden
 		case errHandoverNotFound:
 			status = http.StatusNotFound

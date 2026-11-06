@@ -4,8 +4,11 @@ import { FormEvent, useCallback, useEffect, useMemo, useState, type ReactNode } 
 import { InspectorDrawer, buildPortalApiUrl, formatOperationalTime } from '@infragate/ui';
 import { useUnsavedChanges } from '../lib/useUnsavedChanges';
 import { CONNECTOR_SOURCES, MEASUREMENT_TYPES, SERVICE_CLASSES, budgetDisplay, formatBps, measurementTypeLabel, previewFindingRule, qualityLabel, scheduleModeCopy, scoreDisplay, serviceClassLabel, sparklineHeights, validSecretRefName, type ServiceWorkspaceTab, workspaceTab } from '../lib/sreMonitoring';
+import ServiceActivityTimeline from './ServiceActivityTimeline';
+import ServiceEnvironmentMatrix from './ServiceEnvironmentMatrix';
 import { serviceTicketHref } from '../lib/scopeHref';
 import { recordReference } from '../lib/recordRef';
+import CollectionStatus, { collectionStateFromSync } from './CollectionStatus';
 
 type Monitor = {
   id: number;
@@ -69,6 +72,8 @@ type Template = { id: string; name: string; source_type: string; measurement_typ
 
 const TABS: { id: ServiceWorkspaceTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'environments', label: 'Environments' },
+  { id: 'activity', label: 'Activity' },
   { id: 'observability', label: 'Observability' },
   { id: 'findings', label: 'Findings' },
   { id: 'configuration', label: 'Configuration' },
@@ -268,6 +273,14 @@ export default function SreServiceWorkspace({
   const trendMonitor = monitors.find((item) => item.id === trendMonitorId) || availability || monitors[0];
   const openFindings = findings.filter((item) => item.lifecycle !== 'resolved');
   const lastEval = monitors.map((item) => item.latest?.evaluated_at || item.latest?.measurement?.observed_at).filter(Boolean).sort().at(-1);
+  const queryFailed = monitors.some((item) => item.latest?.measurement?.state === 'query_failed' || Boolean(item.latest?.source_error));
+  const observabilitySource = connectors.find((item) => item.enabled !== false)?.source_type || connectors[0]?.source_type || 'Observability';
+  const collectionState = collectionStateFromSync({
+    connected: connectors.length > 0 || monitors.length > 0,
+    failed: queryFailed,
+    lastSuccess: lastEval,
+    empty: !findings.length,
+  });
   const scheduledMinutes = monitors.filter((item) => item.enabled && (item.schedule_minutes || 0) > 0).map((item) => item.schedule_minutes || 0);
   const scheduleCopy = scheduledMinutes.length ? scheduleModeCopy(Math.min(...scheduledMinutes)) : 'On-demand';
   const visibleFindings = openFindings.concat(findings.filter((item) => item.lifecycle === 'resolved')).filter((item) => (
@@ -703,6 +716,12 @@ export default function SreServiceWorkspace({
         </div>
         <div className="sre-workspace__tools">
           <p className="sre-workspace__mode">{scheduleCopy}{lastEval ? ` · last evaluation ${formatOperationalTime(lastEval)}` : ' · not evaluated yet'}</p>
+          <CollectionStatus
+            source={observabilitySource}
+            lastSuccess={lastEval}
+            state={collectionState}
+            detail="Missing telemetry stays Unknown, not Healthy."
+          />
           {primaryAction}
         </div>
       </div>
@@ -741,6 +760,34 @@ export default function SreServiceWorkspace({
           </section>
           <p className="form-section__copy">{scheduleCopy}. Missing telemetry stays Unknown, not Healthy.{lastEval ? ` Last evaluation ${formatOperationalTime(lastEval)}.` : ' This service has not been evaluated yet.'}</p>
           {overview}
+        </div>
+      ) : null}
+
+      {tab === 'environments' ? (
+        <div className="sre-panel">
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <h2 className="portal-surface__title">Environment versions</h2>
+                <p className="portal-surface__subtitle">Commit and image actually observed in each recorded environment. Missing stays Unknown.</p>
+              </div>
+            </div>
+            <ServiceEnvironmentMatrix apiUrl={apiUrl} token={token} serviceId={serviceId} />
+          </section>
+        </div>
+      ) : null}
+
+      {tab === 'activity' ? (
+        <div className="sre-panel">
+          <section className="portal-surface">
+            <div className="portal-surface__header">
+              <div>
+                <h2 className="portal-surface__title">Service activity</h2>
+                <p className="portal-surface__subtitle">Deployments, configuration changes, incidents, and SLO breaches for this service and environment. Each event links to source evidence. Nearby timestamps are correlation, not proven cause.</p>
+              </div>
+            </div>
+            <ServiceActivityTimeline apiUrl={apiUrl} token={token} serviceId={serviceId} environment={environment} />
+          </section>
         </div>
       ) : null}
 

@@ -385,17 +385,16 @@ func scorePRImpact(brief *prImpactBrief, req *PRRequest) {
 	attachChangeBrief(brief)
 }
 
+const deliveryAdviceUnconfirmed = "Review required; release readiness is unconfirmed."
+
 func recommendPRImpactAction(brief prImpactBrief) string {
 	if brief.RiskLevel == "high" && envEqualsProd(brief.Environment) {
-		return "Do not promote to production until this brief is acknowledged and blockers are cleared."
+		return "Do not promote to production until blockers are cleared. " + deliveryAdviceUnconfirmed
 	}
 	if brief.RiskLevel == "high" {
-		return "Needs extra approval before merge or promotion."
+		return "Needs extra approval. " + deliveryAdviceUnconfirmed
 	}
-	if brief.RiskLevel == "medium" {
-		return "Review the blast radius, then continue with the normal promotion checks."
-	}
-	return "Safe to merge with standard review."
+	return deliveryAdviceUnconfirmed
 }
 
 func summarizePRImpact(brief prImpactBrief) string {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useWorkspaceScope } from '@infragate/ui';
+import { useApiUrl } from '../context/ApiUrlContext';
 import {
   COST_SCOPE_KEYS,
   CostExplorerFilterOptions,
@@ -8,6 +9,7 @@ import {
   costLastMonth,
   costThisMonth,
   costWindowPreset,
+  fetchVisibleCostProjects,
   formatCostWindowRange,
   freshnessLabel,
   importableLabel,
@@ -31,6 +33,17 @@ type CostFilterBarProps = {
   visibleAccounts?: number;
   totalAccounts?: number;
 };
+
+function formatCostEnvironment(value: string): string {
+  const raw = value.trim();
+  if (!raw) return 'All environments';
+  const key = raw.toLowerCase().replace(/[_-]+/g, ' ');
+  if (key === 'prod' || key === 'production') return 'Production';
+  if (key === 'stg' || key === 'stage' || key === 'staging') return 'Staging';
+  if (key === 'dev' || key === 'development') return 'Development';
+  if (key === 'uat') return 'UAT';
+  return key.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function withCurrent(list: string[] | undefined, current: string) {
   const values = list || [];
@@ -212,6 +225,7 @@ export default function CostFilterBar({
   visibleAccounts,
   totalAccounts,
 }: CostFilterBarProps) {
+  const apiUrl = useApiUrl();
   const { scope } = useWorkspaceScope();
   const { router, from, to, basis, patch } = useCostQuery(hydrateScope);
   const cloud = typeof router.query.cloud === 'string' ? router.query.cloud : '';
@@ -226,9 +240,30 @@ export default function CostFilterBar({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const secondaryOn = extraOn;
   const range = typeof router.query.range === 'string' ? router.query.range : '';
-  const projectName = options?.projects.find((item) => String(item.id) === scope.projectId)?.name
-    || (scope.projectId ? 'Selected project' : 'All projects');
-  const environmentName = scope.environment || 'All environments';
+  const [catalogName, setCatalogName] = useState('');
+  useEffect(() => {
+    const fromOptions = options?.projects.find((item) => String(item.id) === scope.projectId)?.name || '';
+    if (fromOptions) {
+      setCatalogName(fromOptions);
+      return;
+    }
+    if (!scope.projectId) {
+      setCatalogName('');
+      return;
+    }
+    let cancelled = false;
+    fetchVisibleCostProjects(apiUrl)
+      .then((projects) => {
+        const match = projects.find((item) => item.id === scope.projectId);
+        if (!cancelled) setCatalogName(match?.name || '');
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogName('');
+      });
+    return () => { cancelled = true; };
+  }, [apiUrl, options?.projects, scope.projectId]);
+  const projectName = catalogName || (scope.projectId ? 'Selected project' : 'All projects');
+  const environmentName = formatCostEnvironment(scope.environment);
   const chips = [
     cloud ? { key: 'cloud', label: `Cloud ${cloud}` } : null,
     freshness ? { key: 'freshness', label: freshnessLabel(freshness) } : null,

@@ -25,6 +25,8 @@ type expiryObservation struct {
 	ChainNotAfter    *time.Time `json:"chain_not_after,omitempty"`
 	HostnameOK       bool       `json:"hostname_ok"`
 	ChainOK          bool       `json:"chain_ok"`
+	DNSOK            bool       `json:"dns_ok"`
+	ResolvedIPs      string     `json:"resolved_ips,omitempty"`
 	Assessment       string     `json:"assessment"`
 	ErrorClass       string     `json:"error_class,omitempty"`
 	Detail           string     `json:"detail,omitempty"`
@@ -54,19 +56,24 @@ func probeExpiryTLS(ctx context.Context, hostname string, port int) expiryObserv
 	}
 	resolver := net.DefaultResolver
 	addrs, err := resolver.LookupIPAddr(ctx, hostname)
-	if err != nil || len(addrs) == 0 {
+	dnsOK, publicIPs := expiryResolvedPublicIPs(addrs)
+	obs.DNSOK = dnsOK
+	if len(publicIPs) > 0 {
+		obs.ResolvedIPs = strings.Join(publicIPs, ", ")
+	}
+	if err != nil || !dnsOK {
 		obs.ErrorClass = "unreachable"
 		obs.Detail = "The hostname could not be resolved."
 		obs.Assessment = "unknown"
 		return obs
 	}
-	var public net.IP
-	for _, addr := range addrs {
-		if ipIsPublicForProbe(addr.IP) {
-			public = addr.IP
-			break
-		}
+	if len(publicIPs) == 0 {
+		obs.ErrorClass = "denied"
+		obs.Detail = "Internal targets need a private collector. This hosted check only reaches public endpoints."
+		obs.Assessment = "unknown"
+		return obs
 	}
+	public := net.ParseIP(publicIPs[0])
 	if public == nil {
 		obs.ErrorClass = "denied"
 		obs.Detail = "Internal targets need a private collector. This hosted check only reaches public endpoints."
@@ -146,8 +153,31 @@ func probeExpiryTLS(ctx context.Context, hostname string, port int) expiryObserv
 		obs.ErrorClass = ""
 		obs.Detail = "Leaf certificate observed at the hosted collector."
 	}
-	obs.RawSummary = fmt.Sprintf("sni=%s port=%d ip=%s fingerprint=%s", hostname, port, public.String(), obs.LeafFingerprint)
+	obs.RawSummary = fmt.Sprintf("sni=%s port=%d dns=%s ip=%s fingerprint=%s", hostname, port, obs.ResolvedIPs, public.String(), obs.LeafFingerprint)
 	return obs
+}
+
+func expiryResolvedPublicIPs(addrs []net.IPAddr) (bool, []string) {
+	if len(addrs) == 0 {
+		return false, nil
+	}
+	public := []string{}
+	seen := map[string]bool{}
+	for _, addr := range addrs {
+		if !ipIsPublicForProbe(addr.IP) {
+			continue
+		}
+		value := addr.IP.String()
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		public = append(public, value)
+		if len(public) == 5 {
+			break
+		}
+	}
+	return true, public
 }
 
 func joinExpirySANs(cert *x509.Certificate) string {

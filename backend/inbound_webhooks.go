@@ -322,7 +322,7 @@ func normalizeChangeStatus(status string) string {
 	case "cancelled", "canceled":
 		return "cancelled"
 	default:
-		return "implementing"
+		return "new"
 	}
 }
 
@@ -354,7 +354,7 @@ func changeStatusRank(status string) int {
 	case "failed", "cancelled":
 		return 7
 	default:
-		return 2
+		return 0
 	}
 }
 

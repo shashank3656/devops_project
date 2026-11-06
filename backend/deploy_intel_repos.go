@@ -19,14 +19,15 @@ var errGitHubRepoNotFound = errors.New("Repository not found")
 var lookupGitHubRepository = lookupGitHubRepositoryLive
 
 type deployIntelRepo struct {
-	ID          int       `json:"id"`
-	Owner       string    `json:"owner"`
-	Name        string    `json:"name"`
-	BaseBranch  string    `json:"base_branch"`
-	Enabled     bool      `json:"enabled"`
-	Notes       string    `json:"notes,omitempty"`
-	OnboardedAt time.Time `json:"onboarded_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                   int       `json:"id"`
+	Owner                string    `json:"owner"`
+	Name                 string    `json:"name"`
+	BaseBranch           string    `json:"base_branch"`
+	Enabled              bool      `json:"enabled"`
+	Notes                string    `json:"notes,omitempty"`
+	MergeTrackingEnabled bool      `json:"-"`
+	OnboardedAt          time.Time `json:"onboarded_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type deployIntelLastChange struct {
@@ -161,10 +162,10 @@ func getDeployIntelRepo(owner, name string) (*deployIntelRepo, error) {
 	}
 	var item deployIntelRepo
 	err := DB.QueryRow(`
-		SELECT id, repo_owner, repo_name, base_branch, enabled, COALESCE(notes,''), onboarded_at, updated_at
+		SELECT id, repo_owner, repo_name, base_branch, enabled, COALESCE(notes,''), COALESCE(merge_tracking, FALSE), onboarded_at, updated_at
 		  FROM deploy_intel_repos
 		 WHERE lower(repo_owner) = lower($1) AND lower(repo_name) = lower($2)
-	`, owner, name).Scan(&item.ID, &item.Owner, &item.Name, &item.BaseBranch, &item.Enabled, &item.Notes, &item.OnboardedAt, &item.UpdatedAt)
+	`, owner, name).Scan(&item.ID, &item.Owner, &item.Name, &item.BaseBranch, &item.Enabled, &item.Notes, &item.MergeTrackingEnabled, &item.OnboardedAt, &item.UpdatedAt)
 	if err != nil {
 		return nil, nil
 	}
@@ -176,7 +177,7 @@ func listDeployIntelRepos() ([]deployIntelRepo, error) {
 		return []deployIntelRepo{}, nil
 	}
 	rows, err := DB.Query(`
-		SELECT id, repo_owner, repo_name, base_branch, enabled, COALESCE(notes,''), onboarded_at, updated_at
+		SELECT id, repo_owner, repo_name, base_branch, enabled, COALESCE(notes,''), COALESCE(merge_tracking, FALSE), onboarded_at, updated_at
 		  FROM deploy_intel_repos
 		 ORDER BY repo_owner, repo_name
 	`)
@@ -187,7 +188,7 @@ func listDeployIntelRepos() ([]deployIntelRepo, error) {
 	out := make([]deployIntelRepo, 0)
 	for rows.Next() {
 		var item deployIntelRepo
-		if err := rows.Scan(&item.ID, &item.Owner, &item.Name, &item.BaseBranch, &item.Enabled, &item.Notes, &item.OnboardedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Owner, &item.Name, &item.BaseBranch, &item.Enabled, &item.Notes, &item.MergeTrackingEnabled, &item.OnboardedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -294,9 +295,9 @@ func upsertDeployIntelRepo(owner, name, baseBranch, notes string, enabled bool) 
 			enabled = EXCLUDED.enabled,
 			notes = EXCLUDED.notes,
 			updated_at = CURRENT_TIMESTAMP
-		RETURNING id, repo_owner, repo_name, base_branch, enabled, COALESCE(notes,''), onboarded_at, updated_at
+		RETURNING id, repo_owner, repo_name, base_branch, enabled, COALESCE(notes,''), COALESCE(merge_tracking, FALSE), onboarded_at, updated_at
 	`, owner, name, baseBranch, enabled, strings.TrimSpace(notes)).Scan(
-		&item.ID, &item.Owner, &item.Name, &item.BaseBranch, &item.Enabled, &item.Notes, &item.OnboardedAt, &item.UpdatedAt,
+		&item.ID, &item.Owner, &item.Name, &item.BaseBranch, &item.Enabled, &item.Notes, &item.MergeTrackingEnabled, &item.OnboardedAt, &item.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -311,6 +312,9 @@ func deployIntelRepoReady(owner, name string) bool {
 	}
 	if GitHubToken == "" {
 		return false
+	}
+	if rec.MergeTrackingEnabled {
+		return true
 	}
 	if DB == nil {
 		return true
@@ -450,6 +454,10 @@ func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner
 		reqID = &req.ID
 		brief.RequestID = req.ID
 	}
+	headSHA := ""
+	if pr != nil && pr.GetHead() != nil {
+		headSHA = strings.TrimSpace(pr.GetHead().GetSHA())
+	}
 	return repoDeployEvent{
 		RepoOwner:   owner,
 		RepoName:    name,
@@ -459,6 +467,7 @@ func repoDeployEventFromOpenPR(ctx context.Context, client *github.Client, owner
 		Author:      brief.Author,
 		BaseBranch:  brief.BaseBranch,
 		HeadBranch:  brief.HeadBranch,
+		HeadSHA:     headSHA,
 		CommitCount: brief.CommitCount,
 		FileCount:   brief.FileCount,
 		Additions:   brief.Additions,
@@ -615,9 +624,9 @@ func buildDeployIntelRepoSummary(item deployIntelRepo) deployIntelRepoSummary {
 	case access == "failed":
 		summary.SetupSummary = "GitHub access failed. Confirm GITHUB_TOKEN can list pull requests for this repository."
 	case mergeTracking == "needs_setup":
-		summary.SetupSummary = fmt.Sprintf("Merge tracking is not configured. Add a GitOps project so merges into %s are captured automatically.", item.BaseBranch)
+		summary.SetupSummary = fmt.Sprintf("Merge tracking is not configured. Enable it so merges into %s are captured from %s. Then merge one pull request and confirm the analysis appears here.", item.BaseBranch, summary.WebhookPath)
 	default:
-		summary.SetupSummary = fmt.Sprintf("GitHub is connected and merge tracking is configured for %s.", item.BaseBranch)
+		summary.SetupSummary = fmt.Sprintf("GitHub is connected and merge tracking is configured for %s. Merges are captured from %s.", item.BaseBranch, summary.WebhookPath)
 	}
 	return summary
 }
@@ -718,6 +727,7 @@ func listDeliveryOpenPullRequests(limitPerRepo int) []repoDeployEvent {
 			if err != nil || len(events) == 0 {
 				return
 			}
+			attachReviewWait(events)
 			mu.Lock()
 			out = append(out, events...)
 			mu.Unlock()
@@ -765,7 +775,9 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 		}
 		ev := attachOpenPRMeta(ctx, client, owner, name, pr, repoDeployEventFromOpenPR(ctx, client, owner, name, pr, true), true)
 		events := []repoDeployEvent{ev}
+		attachCheapCISummaries(ctx, owner, name, events)
 		attachPipelineLinks(owner, name, events)
+		attachReleaseReadiness(owner, name, events)
 		meta.FetchedAt = time.Now().UTC().Format(time.RFC3339)
 		meta.Listed = 1
 		meta.TotalOpen = 1
@@ -830,6 +842,7 @@ func listOpenPullRequestsAnalyzed(owner, name string, opts openPRListOptions) ([
 	attachSimilarMergesToOpenEvents(owner, name, out)
 	attachCheapCISummaries(ctx, owner, name, out)
 	attachPipelineLinks(owner, name, out)
+	attachReleaseReadiness(owner, name, out)
 	return out, meta, nil
 }
 
@@ -913,10 +926,8 @@ func devopsDeployIntelReposHandler(w http.ResponseWriter, r *http.Request) {
 			writeDeployIntelRepoError(w, r, err)
 			return
 		}
-		if body.ProjectID > 0 {
-			if err := setGitOpsProjectGitHubRepo(body.ProjectID, repo.Owner, repo.Name); err != nil {
-				log.Printf("[deploy-intel] link project %d to %s/%s: %v", body.ProjectID, repo.Owner, repo.Name, err)
-			}
+		if err := enableMergeTrackingForRepo(managerID, repo.Owner, repo.Name, body.ProjectID); err != nil {
+			log.Printf("[deploy-intel] merge tracking for %s/%s: %v", repo.Owner, repo.Name, err)
 		}
 		AppendAuditLog(&managerID, "deploy_intel_repo_onboard", "deploy_intel_repo", fmt.Sprintf("%s/%s", repo.Owner, repo.Name), repo.BaseBranch)
 		w.Header().Set("Content-Type", "application/json")

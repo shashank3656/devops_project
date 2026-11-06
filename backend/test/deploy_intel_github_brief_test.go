@@ -22,7 +22,7 @@ func TestFormatDeployIntelGitHubCommentIncludesMarker(t *testing.T) {
 		RiskLevel:         "high",
 		Score:             72,
 		Summary:           "high risk",
-		RecommendedAction: "Needs extra approval before merge or promotion.",
+		RecommendedAction: "Needs extra approval. Review required; release readiness is unconfirmed.",
 		PRURL:             "https://github.com/acme/infra/pull/9",
 		ChangeBrief: &deployIntelChangeBrief{
 			Headline:    "IAM · Terraform · prod",

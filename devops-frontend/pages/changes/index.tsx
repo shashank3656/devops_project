@@ -2,16 +2,18 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BulkBar, ChangeCatalogTable, CopyButton, InspectorDrawer, SavedViews, type ChangeCatalogRow, type RowKey, type SavedView } from '@infragate/ui';
+import { BulkBar, ChangeCatalogTable, CopyButton, InspectorDrawer, SavedViews, useSavedFilterViews, type ChangeCatalogRow, type RowKey, type SavedView } from '@infragate/ui';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import BlockedAction from '../../components/BlockedAction';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { OPERATIONS_SCOPE, OPERATIONS_STORAGE_KEY, OPERATIONS_VIEW_PRESETS, environmentMatches } from '../../lib/operationalViews';
 
-type ChangeView = { query: string; status: string; type: string; mine: string };
+type ChangeView = { team: string; environment: string; mine: string; unassigned: string; query: string; status: string; type: string };
 
 const CHANGE_VIEW_PRESETS: SavedView<ChangeView>[] = [
-  { name: 'Changes awaiting my approval', filters: { query: '', status: 'new', type: '', mine: '1' } },
-  { name: 'Failed changes', filters: { query: '', status: 'failed', type: '', mine: '' } },
+  ...OPERATIONS_VIEW_PRESETS.map((preset) => ({ name: preset.name, filters: { ...preset.filters, query: '', status: '', type: '' } })),
+  { name: 'Changes awaiting my approval', filters: { team: '', environment: '', mine: '1', unassigned: '', query: '', status: 'new', type: '' } },
+  { name: 'Failed changes', filters: { team: '', environment: '', mine: '', unassigned: '', query: '', status: 'failed', type: '' } },
 ];
 
 function currentUsername(): string {
@@ -160,11 +162,21 @@ export default function ChangesCatalogPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [mine, setMine] = useState(false);
+  const [unassigned, setUnassigned] = useState(false);
+  const [environmentFilter, setEnvironmentFilter] = useState('');
   const [preview, setPreview] = useState<ChangeCatalogRow | null>(null);
   const [filtersReady, setFiltersReady] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<RowKey>>(new Set());
   const [copied, setCopied] = useState(false);
   const webhookUrl = `${apiUrl.replace(/\/$/, '')}/api/webhooks/change`;
+  const token = typeof window !== 'undefined' ? localStorage.getItem(DEVOPS_TOKEN_KEY) : null;
+  const { remoteViews, ready: savedViewsReady, saveRemote, deleteRemote } = useSavedFilterViews<ChangeView>({
+    apiUrl,
+    token,
+    scope: OPERATIONS_SCOPE,
+    storageKey: OPERATIONS_STORAGE_KEY,
+    portal: 'devops',
+  });
 
   const load = useCallback(async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
@@ -214,6 +226,8 @@ export default function ChangesCatalogPage() {
     setTypeFilter(queryValue(router.query.change_type));
     setQuery(queryValue(router.query.q));
     setMine(router.query.mine === '1');
+    setUnassigned(router.query.unassigned === '1');
+    setEnvironmentFilter(queryValue(router.query.environment));
     setFiltersReady(true);
   }, [filtersReady, router.isReady, router.query]);
 
@@ -221,44 +235,44 @@ export default function ChangesCatalogPage() {
     if (!router.isReady || !filtersReady) return;
     const next: Record<string, string> = {};
     const projectId = queryValue(router.query.project_id);
-    const environment = queryValue(router.query.environment);
     if (projectId) next.project_id = projectId;
-    if (environment) next.environment = environment;
+    if (environmentFilter) next.environment = environmentFilter;
     if (statusFilter) next.status = statusFilter;
     if (typeFilter) next.change_type = typeFilter;
     if (query.trim()) next.q = query.trim();
     if (mine) next.mine = '1';
+    if (unassigned) next.unassigned = '1';
     const current = new URLSearchParams();
     Object.entries(next).forEach(([key, value]) => current.set(key, value));
     const existing = new URLSearchParams();
-    ['project_id', 'environment', 'status', 'change_type', 'q', 'mine'].forEach((key) => {
+    ['project_id', 'environment', 'status', 'change_type', 'q', 'mine', 'unassigned'].forEach((key) => {
       const value = queryValue(router.query[key]);
       if (value) existing.set(key, value);
     });
     if (current.toString() === existing.toString()) return;
     void router.replace({ pathname: '/changes', query: next }, undefined, { shallow: true });
-  }, [filtersReady, mine, query, router, statusFilter, typeFilter]);
+  }, [environmentFilter, filtersReady, mine, query, router, statusFilter, typeFilter, unassigned]);
+
+  const environmentOptions = useMemo(() => {
+    return Array.from(new Set(items.map((item) => (item.environment || '').trim()).filter((value) => value && value.toLowerCase() !== 'unspecified'))).sort();
+  }, [items]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const environment = queryValue(router.query.environment).toLowerCase();
     const username = currentUsername().toLowerCase();
     return items.filter((item) => {
-      if (environment) {
-        const env = (item.environment || '').toLowerCase();
-        const matches = environment === 'prod' ? env.startsWith('prod') : env === environment;
-        if (!matches) return false;
-      }
+      if (!environmentMatches(item.environment, environmentFilter)) return false;
       if (mine) {
         const assignee = (item.assignee_username || '').toLowerCase();
         if (!username || assignee !== username) return false;
       }
+      if (unassigned && (item.assignee_username || '').trim()) return false;
       if (!needle) return true;
       return `${item.change_number} ${item.repo} ${item.title} ${item.summary || ''} ${item.service} ${item.sha} ${item.pr_number}`
         .toLowerCase()
         .includes(needle);
     });
-  }, [items, mine, query, router.query.environment]);
+  }, [environmentFilter, items, mine, query, unassigned]);
 
   const implementedCount = items.filter((item) => item.status === 'implemented' || item.status === 'monitoring' || item.status === 'resolved' || item.status === 'closed').length;
   const failedCount = items.filter((item) => item.status === 'failed').length;
@@ -336,16 +350,21 @@ export default function ChangesCatalogPage() {
         </section>
 
         <SavedViews<ChangeView>
-          storageKey="opstrellis.changes.views"
-          current={{ query, status: statusFilter, type: typeFilter, mine: mine ? '1' : '' }}
+          storageKey={OPERATIONS_STORAGE_KEY}
+          current={{ team: '', environment: environmentFilter, mine: mine ? '1' : '', unassigned: unassigned ? '1' : '', query, status: statusFilter, type: typeFilter }}
           onApply={(next) => {
-            setQuery(next.query);
-            setStatusFilter(next.status);
-            setTypeFilter(next.type);
+            setQuery(next.query || '');
+            setStatusFilter(next.status || '');
+            setTypeFilter(next.type || '');
             setMine(next.mine === '1');
+            setUnassigned(next.unassigned === '1');
+            setEnvironmentFilter(next.environment || '');
           }}
           presets={CHANGE_VIEW_PRESETS}
-          canSave={Boolean(query.trim() || statusFilter || typeFilter || mine)}
+          canSave={Boolean(query.trim() || statusFilter || typeFilter || mine || unassigned || environmentFilter)}
+          serverViews={savedViewsReady ? remoteViews : undefined}
+          onServerSave={saveRemote}
+          onServerDelete={deleteRemote}
         />
 
         <BulkBar count={selectedKeys.size} noun="change" onClear={() => setSelectedKeys(new Set())}>
@@ -401,6 +420,15 @@ export default function ChangesCatalogPage() {
                 <option value="preview">Preview</option>
                 <option value="flag">Feature flag</option>
               </select>
+              <select aria-label="Filter by environment" className="input" value={environmentFilter} onChange={(event) => setEnvironmentFilter(event.target.value)}>
+                <option value="">All environments</option>
+                <option value="prod">Production</option>
+                {environmentOptions.filter((environment) => !environment.toLowerCase().startsWith('prod')).map((environment) => (
+                  <option key={environment} value={environment}>{environment}</option>
+                ))}
+              </select>
+              <button type="button" className={`btn btn-sm ${mine ? 'btn-primary' : 'btn-secondary'}`} aria-pressed={mine} onClick={() => setMine((value) => !value)}>Mine</button>
+              <button type="button" className={`btn btn-sm ${unassigned ? 'btn-primary' : 'btn-secondary'}`} aria-pressed={unassigned} onClick={() => setUnassigned((value) => !value)}>Unassigned</button>
             </div>
           </div>
           <ChangeCatalogTable

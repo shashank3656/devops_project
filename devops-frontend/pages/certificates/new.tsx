@@ -4,12 +4,17 @@ import { useRouter } from 'next/router';
 import { FormEvent, useEffect, useState } from 'react';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import {
+  loadCertificateMembers,
+  loadCertificateTeams,
+  type CertificateMemberOption,
+  type CertificateTeamOption,
+} from '../../lib/certificateOwnership';
+import { domainRegisterHost, isHostingHostname } from '../../lib/expiryDisplay';
 
 const TOKEN_KEY = 'devops_token';
 
 type ProjectOption = { id: number; name: string };
-type TeamOption = { id: number; name: string };
-type MemberOption = { user_id: number; name: string };
 type Suggestion = {
   hostname: string;
   registered: boolean;
@@ -35,8 +40,10 @@ export default function NewCertificateAssetPage() {
   const [ownerUserId, setOwnerUserId] = useState('');
   const [runbook, setRunbook] = useState('');
   const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [teams, setTeams] = useState<TeamOption[]>([]);
-  const [members, setMembers] = useState<MemberOption[]>([]);
+  const [teams, setTeams] = useState<CertificateTeamOption[]>([]);
+  const [members, setMembers] = useState<CertificateMemberOption[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -47,6 +54,7 @@ export default function NewCertificateAssetPage() {
     if (!router.isReady) return;
     const query = router.query;
     if (typeof query.hostname === 'string' && query.hostname) setInput(query.hostname);
+    if (query.asset_type === 'certificate' || query.asset_type === 'domain') setAssetType(query.asset_type);
     if (typeof query.project_id === 'string' && query.project_id) setProjectId(query.project_id);
     if (typeof query.service === 'string' && query.service) setService(query.service);
     if (typeof query.environment === 'string' && query.environment) setEnvironment(query.environment);
@@ -56,30 +64,57 @@ export default function NewCertificateAssetPage() {
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
-    const headers = { Authorization: `Bearer ${token}` };
-    fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))).then((data) => {
-      const rows = Array.isArray(data?.projects) ? data.projects : [];
-      setProjects(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: ProjectOption) => row.id > 0));
-    }).catch(() => undefined);
-    fetch(`${apiUrl}/api/devops/my-teams`, { headers }).then((res) => res.json().catch(() => ({}))).then((data) => {
-      const rows = Array.isArray(data?.teams) ? data.teams : [];
-      setTeams(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: TeamOption) => row.id > 0));
-    }).catch(() => undefined);
+    fetch(`${apiUrl}/api/devops/projects`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        const rows = Array.isArray(data?.projects) ? data.projects : [];
+        setProjects(rows.map((row: { id?: number; name?: string }) => ({ id: Number(row.id) || 0, name: String(row.name || 'Unknown') })).filter((row: ProjectOption) => row.id > 0));
+      })
+      .catch(() => undefined);
   }, [apiUrl]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    let cancelled = false;
+    setTeamsLoading(true);
+    loadCertificateTeams(apiUrl, token, projectId)
+      .then((rows) => {
+        if (!cancelled) setTeams(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setTeams([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTeamsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiUrl, projectId]);
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token || !teamId) {
       setMembers([]);
+      setMembersLoading(false);
       return;
     }
-    fetch(`${apiUrl}/api/oncall/team-members?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.json().catch(() => ({})))
-      .then((data) => {
-        const rows = Array.isArray(data?.members) ? data.members : [];
-        setMembers(rows.map((row: { user_id?: number; name?: string }) => ({ user_id: Number(row.user_id) || 0, name: String(row.name || 'Unknown') })).filter((row: MemberOption) => row.user_id > 0));
+    let cancelled = false;
+    setMembersLoading(true);
+    loadCertificateMembers(apiUrl, token, teamId)
+      .then((rows) => {
+        if (!cancelled) setMembers(rows);
       })
-      .catch(() => setMembers([]));
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [apiUrl, teamId]);
 
   useEffect(() => {
@@ -95,10 +130,17 @@ export default function NewCertificateAssetPage() {
       .catch(() => setSuggestions([]));
   }, [apiUrl, assetType, projectId]);
 
+  const hostingBlocked = assetType === 'domain' && isHostingHostname(input);
+  const domainHost = assetType === 'domain' ? domainRegisterHost(input) : '';
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
+    if (assetType === 'domain' && isHostingHostname(input)) {
+      setError('Enter the domain you registered. Railway hostnames are certificate endpoints.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -145,24 +187,53 @@ export default function NewCertificateAssetPage() {
           <div>
             <span className="portal-page__eyebrow">Operations</span>
             <h1 className="portal-page__title">Register asset</h1>
-            <p className="portal-page__subtitle">Hosted checks reach approved public targets only. Internal names use a private collector. There is no private-key upload. Issued inventory is not a served-endpoint observation.</p>
+            <p className="portal-page__subtitle">Registering a hosted certificate resolves DNS, connects to the public endpoint, and stores leaf expiry on this record. Domain registration queries RDAP, then WHOIS if needed, resolves DNS, and stores the published expiry. There is no private-key upload.</p>
           </div>
           <Link href="/certificates" className="btn btn-secondary">Back</Link>
         </div>
         {error ? <div className="alert alert-error" role="alert">{error}</div> : null}
-        <form className="portal-surface" onSubmit={submit}>
+        <form className="portal-surface expiry-panel" onSubmit={submit}>
           {step === 1 ? (
             <>
               <h2 className="portal-surface__title">Scope and asset</h2>
+              <p className="access-hint">{assetType === 'certificate' ? 'Tracks the TLS leaf NotAfter on the served endpoint.' : 'Register the domain you own. The check uses RDAP and WHOIS on that name, then DNS. A Railway hostname is a certificate endpoint, not a domain registration.'}</p>
+              <div className="portal-field-grid portal-field-grid--two">
               <label className="label">Asset type
                 <select className="input" value={assetType} onChange={(event) => setAssetType(event.target.value)}>
                   <option value="certificate">Certificate endpoint</option>
                   <option value="domain">Registered domain</option>
                 </select>
               </label>
-              <label className="label">{assetType === 'certificate' ? 'Hostname' : 'Domain'}
+              <label className="label">{assetType === 'certificate' ? 'Hostname' : 'Domain you registered'}
                 <input className="input" value={input} onChange={(event) => setInput(event.target.value)} placeholder={assetType === 'certificate' ? 'app.example.com' : 'example.com'} required />
               </label>
+              {assetType === 'certificate' ? (
+                <label className="label">Port
+                  <select className="input" value={port} onChange={(event) => setPort(event.target.value)}>
+                    <option value="443">443</option>
+                    <option value="8443">8443</option>
+                  </select>
+                </label>
+              ) : null}
+              <label className="label">Project
+                <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <option value="">Select a project</option>
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </label>
+              <label className="label">Environment
+                <input className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="production" />
+              </label>
+              <label className="label">Service
+                <input className="input" value={service} onChange={(event) => setService(event.target.value)} />
+              </label>
+              </div>
+              {assetType === 'domain' && hostingBlocked ? (
+                <p className="access-hint">That name is a hosting hostname. Register it as a certificate endpoint, or enter the domain you registered with a registrar.</p>
+              ) : null}
+              {assetType === 'domain' && domainHost && !hostingBlocked ? (
+                <p className="access-hint">On register, this portal will check registration expiry and DNS for {domainHost}.</p>
+              ) : null}
               {assetType === 'certificate' && suggestions.length ? (
                 <div>
                   <p className="access-hint">Suggested from Kubernetes ingress, cert-manager, and certificate-manager inventory. Registering is still a choice. Issued is not served.</p>
@@ -190,45 +261,27 @@ export default function NewCertificateAssetPage() {
                   </ul>
                 </div>
               ) : null}
-              {assetType === 'certificate' ? (
-                <label className="label">Port
-                  <select className="input" value={port} onChange={(event) => setPort(event.target.value)}>
-                    <option value="443">443</option>
-                    <option value="8443">8443</option>
-                  </select>
-                </label>
-              ) : null}
-              <label className="label">Project
-                <select className="input" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                  <option value="">Select a project</option>
-                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                </select>
-              </label>
-              <label className="label">Environment
-                <input className="input" value={environment} onChange={(event) => setEnvironment(event.target.value)} placeholder="production" />
-              </label>
-              <label className="label">Service
-                <input className="input" value={service} onChange={(event) => setService(event.target.value)} />
-              </label>
-              <button type="button" className="btn btn-primary" onClick={() => setStep(2)} disabled={!input.trim()}>Continue</button>
+              <div className="portal-form-actions">
+                <button type="button" className="btn btn-primary" onClick={() => setStep(2)} disabled={!input.trim() || hostingBlocked}>Continue</button>
+              </div>
             </>
           ) : null}
           {step === 2 ? (
             <>
               <h2 className="portal-surface__title">Ownership and policy</h2>
+              <div className="portal-field-grid portal-field-grid--two">
               <label className="label">Team
-                <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }}>
-                  <option value="">No team</option>
+                <select className="input" value={teamId} onChange={(event) => { setTeamId(event.target.value); setOwnerUserId(''); }} disabled={teamsLoading}>
+                  <option value="">{teamsLoading ? 'Loading teams…' : 'Select a team'}</option>
                   {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
                 </select>
               </label>
               <label className="label">Owner
-                <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)}>
-                  <option value="">Unknown</option>
+                <select className="input" value={ownerUserId} onChange={(event) => setOwnerUserId(event.target.value)} disabled={!teamId || membersLoading}>
+                  <option value="">{!teamId ? 'Select a team first' : membersLoading ? 'Loading members…' : 'Select an owner'}</option>
                   {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
                 </select>
               </label>
-              <p className="access-hint">Owner is a team member name only. Emails are not shown.</p>
               <label className="label">Reminder windows
                 <select className="input" value={warnPolicy} onChange={(event) => setWarnPolicy(event.target.value)}>
                   <option value="standard">Standard: 30, 14, 7, 3, and 1 days</option>
@@ -246,16 +299,29 @@ export default function NewCertificateAssetPage() {
                   </select>
                 </label>
               ) : null}
+              </div>
+              {!teamsLoading && !teams.length ? <p className="access-hint">No teams were returned for this workspace.</p> : null}
+              <p className="access-hint">Owner is a team member name only. Emails are not shown.</p>
+              {teamId && !membersLoading && !members.length ? <p className="access-hint">This team has no members.</p> : null}
               <p className="access-hint">
                 {collector === 'private'
                   ? `Private collector: ${input || 'hostname'}:${port}. Hosted checks will not reach this target. Coverage stays Unknown until the collector posts an observation. Private keys are not accepted.`
-                  : `Hosted collector: public ${assetType === 'certificate' ? `${input || 'hostname'}:${port}` : input || 'domain'}. Private ranges are rejected.`}
+                  : assetType === 'domain'
+                    ? `Hosted collector: public ${input || 'domain'}. RDAP/WHOIS captures registration expiry. DNS is resolved separately. Private ranges are rejected.`
+                    : `Hosted collector: public ${input || 'hostname'}:${port}. DNS is resolved, the endpoint is connected, and expiry is stored on this record. Private ranges are rejected.`}
               </p>
-              <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
-              {' '}
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Registering…' : collector === 'private' ? 'Register for private collector' : 'Register and check'}
-              </button>
+              <div className="portal-form-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>Back</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving
+                    ? (collector === 'private' ? 'Registering…' : assetType === 'domain' ? 'Querying WHOIS and DNS…' : 'Connecting and checking DNS…')
+                    : collector === 'private'
+                      ? 'Register for private collector'
+                      : assetType === 'domain'
+                        ? 'Register, query expiry, and store'
+                        : 'Register, connect, and store expiry'}
+                </button>
+              </div>
             </>
           ) : null}
         </form>

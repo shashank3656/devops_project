@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { ScorecardTable } from '@infragate/ui';
+import CollectionStatus, { collectionStateFromSync } from '../components/CollectionStatus';
 import DevOpsLayout from '../components/DevOpsLayout';
 import { useApiUrl } from '../context/ApiUrlContext';
 
@@ -71,6 +72,19 @@ export default function ScorecardsPage() {
             <span className="portal-page__eyebrow">Service inventory</span>
             <h1 className="portal-page__title">Scorecards</h1>
             <p className="portal-page__subtitle">Readiness is the share of known checks: owner, SLO, open incidents, runbook, last change, live drift, and 30-day change-failure rate. A missing sample is Unknown and is left out of the percentage. It is never counted as healthy.</p>
+            {!loading ? (
+              <CollectionStatus
+                source="Service scorecards"
+                lastSuccess={items.map((item) => item.last_change || '').filter(Boolean).sort().at(-1)}
+                state={collectionStateFromSync({
+                  connected: !error,
+                  failed: Boolean(error),
+                  lastSuccess: items.map((item) => item.last_change || '').filter(Boolean).sort().at(-1),
+                  empty: items.length === 0,
+                })}
+                detail="A missing sample is Unknown and is left out of the percentage. It is never counted as healthy."
+              />
+            ) : null}
           </div>
           <Link href="/slos" className="btn btn-secondary">Open SLOs</Link>
         </div>

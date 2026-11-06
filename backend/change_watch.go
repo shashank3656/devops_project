@@ -292,6 +292,13 @@ func transitionChangeStatus(id int, next string) (*changeRequestRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := requireChangeScopeForExecution(item, want); err != nil {
+		if changeIsFinished(item.Status) && want == "implementing" {
+			want = "new"
+		} else {
+			return nil, err
+		}
+	}
 	if want == normalizeChangeStatus(item.Status) {
 		return item, nil
 	}

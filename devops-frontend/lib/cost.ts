@@ -852,14 +852,35 @@ export function askCostCopilot(question: string, context?: string) {
 
 export function costLifecycleLabel(value?: string) {
   const key = (value || '').toLowerCase();
-  if (key === 'review' || key === 'reviewing' || key === 'under_review') return 'Reviewing';
-  if (key === 'accepted' || key === 'approved') return 'Approved';
-  if (key === 'linked' || key === 'change_linked') return 'Change linked';
-  if (key === 'verified' || key === 'verification' || key === 'measured') return 'Verification';
+  if (key === 'review' || key === 'reviewing' || key === 'under_review' || key === 'investigating') return 'Investigating';
+  if (key === 'accepted' || key === 'approved' || key === 'linked' || key === 'change_linked') return 'Approved';
+  if (key === 'implemented' || key === 'measuring') return 'Implemented';
+  if (key === 'verified' || key === 'verification' || key === 'measured') return 'Verified';
   if (key === 'inconclusive') return 'Inconclusive';
   if (key === 'dismissed' || key === 'dismiss') return 'Dismissed';
   if (key === 'blocked') return 'Blocked';
   return 'New';
+}
+
+export const COST_LIFECYCLE_STEPS = ['New', 'Investigating', 'Approved', 'Implemented', 'Verified'] as const;
+
+export function costLifecycleStepIndex(value?: string) {
+  switch (costLifecycleLabel(value)) {
+    case 'Investigating': return 1;
+    case 'Approved': return 2;
+    case 'Implemented': return 3;
+    case 'Verified': return 4;
+    default: return 0;
+  }
+}
+
+export function costConfidenceLabel(value?: string) {
+  const key = (value || '').toLowerCase();
+  if (key === 'high') return 'High';
+  if (key === 'medium' || key === 'moderate') return 'Medium';
+  if (key === 'low') return 'Low';
+  if (key === 'unsupported') return 'Unsupported';
+  return 'Unknown';
 }
 
 export function costRiskLabel(value?: string) {

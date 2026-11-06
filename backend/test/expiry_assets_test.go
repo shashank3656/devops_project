@@ -6,6 +6,30 @@ import (
 	"time"
 )
 
+func TestExpiryAssetVisibleAllowsUnscopedAndAssignedProjects(t *testing.T) {
+	if expiryAssetVisible(0, 0, nil) {
+		t.Fatal("signed-out caller cannot see unscoped assets")
+	}
+	if !expiryAssetVisible(0, 7, nil) {
+		t.Fatal("authenticated caller can see unscoped assets")
+	}
+	if expiryAssetVisible(12, 7, nil) {
+		t.Fatal("unknown project must stay hidden")
+	}
+	if !expiryAssetVisible(12, 7, map[int]struct{}{12: {}}) {
+		t.Fatal("assigned project should be visible")
+	}
+}
+
+func TestExpiryOwnerNameNeverUsesEmail(t *testing.T) {
+	if got := expiryPersonName(""); got != "Unknown" {
+		t.Fatalf("blank = %s", got)
+	}
+	if got := expiryPersonName("  alice  "); got != "alice" {
+		t.Fatalf("trimmed = %s", got)
+	}
+}
+
 func TestExpiryRejectsPrivateAndMetadataIPs(t *testing.T) {
 	denied := []string{"127.0.0.1", "10.1.2.3", "192.168.0.8", "172.16.1.1", "169.254.169.254", "::1", "fc00::1"}
 	for _, raw := range denied {
@@ -15,6 +39,24 @@ func TestExpiryRejectsPrivateAndMetadataIPs(t *testing.T) {
 	}
 	if !ipIsPublicForProbe(net.ParseIP("1.1.1.1")) {
 		t.Fatal("public IPv4 should be allowed")
+	}
+}
+
+func TestExpiryResolvedPublicIPsSkipsInternal(t *testing.T) {
+	ok, public := expiryResolvedPublicIPs(nil)
+	if ok || len(public) != 0 {
+		t.Fatal("empty lookup is not a DNS success")
+	}
+	ok, public = expiryResolvedPublicIPs([]net.IPAddr{{IP: net.ParseIP("10.1.2.3")}, {IP: net.ParseIP("192.168.0.8")}})
+	if !ok {
+		t.Fatal("internal names still resolved")
+	}
+	if len(public) != 0 {
+		t.Fatalf("internal addresses must not be stored = %v", public)
+	}
+	ok, public = expiryResolvedPublicIPs([]net.IPAddr{{IP: net.ParseIP("10.1.2.3")}, {IP: net.ParseIP("1.1.1.1")}})
+	if !ok || len(public) != 1 || public[0] != "1.1.1.1" {
+		t.Fatalf("public = %v ok=%v", public, ok)
 	}
 }
 
@@ -31,6 +73,26 @@ func TestNormalizeRegistrableDomainKeepsApex(t *testing.T) {
 	}
 	if got != "example.com" {
 		t.Fatalf("domain = %s", got)
+	}
+	got, err = normalizeRegistrableDomain("www.example.co.uk")
+	if err != nil || got != "example.co.uk" {
+		t.Fatalf("co.uk = %s %v", got, err)
+	}
+}
+
+func TestNormalizeRegistrableDomainRejectsRailwayHosts(t *testing.T) {
+	denied := []string{
+		"railway.app",
+		"https://devopsproject-devops-frontend-production.up.railway.app/health",
+		"backend-api-production-ed.up.railway.app",
+		"foo.railway.app",
+		"github.io",
+		"user.github.io",
+	}
+	for _, raw := range denied {
+		if _, err := normalizeRegistrableDomain(raw); err != errExpiryNotRegistrable {
+			t.Fatalf("%s must not be stored as a registered domain: %v", raw, err)
+		}
 	}
 }
 
@@ -69,6 +131,72 @@ func TestRDAPKeepsRegistrarAndRegistryDistinct(t *testing.T) {
 	}
 	if registrar.Equal(*registry) {
 		t.Fatal("registrar and registry expiry must stay distinct")
+	}
+	registrar, registry, note := capturePublishedDomainExpiry(registrar, registry)
+	if note != "" || !registrar.Equal(time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC)) {
+		t.Fatal("a published registrar date must not be replaced")
+	}
+	_ = registry
+}
+
+func TestRDAPExpirationCapturesRegistrarWhenOnlyRegistryPublished(t *testing.T) {
+	registrar, registry := rdapExpiryDates([]rdapEvent{
+		{Action: "expiration", Date: "2028-08-01T07:39:10.014Z"},
+		{Action: "last changed", Date: "2025-08-15T18:02:55.682Z"},
+	})
+	if registrar != nil {
+		t.Fatal("lone expiration is registry, not a registrar-specific event")
+	}
+	if registry == nil || !registry.Equal(time.Date(2028, 8, 1, 7, 39, 10, 14_000_000, time.UTC)) {
+		t.Fatalf("registry = %v", registry)
+	}
+	registrar, registry, note := capturePublishedDomainExpiry(registrar, registry)
+	if registrar == nil || registry == nil || !registrar.Equal(*registry) {
+		t.Fatal("published registry expiration must fill registrar expiry in the portal")
+	}
+	if note == "" {
+		t.Fatal("capture note is required when the registrar did not publish a separate date")
+	}
+}
+
+func TestRDAPNestedRegistrarEntityExpiration(t *testing.T) {
+	events := collectRDAPEvents(rdapResponse{
+		Events: []rdapEvent{{Action: "expiration", Date: "2027-01-01T00:00:00Z"}},
+		Entities: []rdapEntity{{
+			Roles:  []string{"registrar"},
+			Events: []rdapEvent{{Action: "registrar expiration date", Date: "2026-12-15T00:00:00Z"}},
+		}},
+	})
+	registrar, registry := rdapExpiryDates(events)
+	if registrar == nil || registry == nil {
+		t.Fatal("nested registrar events must be read")
+	}
+	if registrar.Equal(*registry) {
+		t.Fatal("nested registrar expiry must stay distinct from registry")
+	}
+}
+
+func TestWHOISExpiryLinesSkipContacts(t *testing.T) {
+	registrar, registry := parseWHOISExpiryLines("" +
+		"Registry Expiry Date: 2028-08-01T07:39:10Z\n" +
+		"Registrar Registration Expiration Date: 2028-07-31T07:39:10Z\n" +
+		"Registrant Email: someone@example.com\n" +
+		"Updated Date: 2025-08-15T18:02:55Z\n" +
+		"Creation Date: 2019-08-01T07:39:10Z\n")
+	if registry == nil || !registry.Equal(time.Date(2028, 8, 1, 7, 39, 10, 0, time.UTC)) {
+		t.Fatalf("registry = %v", registry)
+	}
+	if registrar == nil || !registrar.Equal(time.Date(2028, 7, 31, 7, 39, 10, 0, time.UTC)) {
+		t.Fatalf("registrar = %v", registrar)
+	}
+}
+
+func TestIANAWHOISServerIgnoresEmpty(t *testing.T) {
+	if got := ianaWHOISServer("domain: APP\nwhois:\nnserver: ns.example"); got != "" {
+		t.Fatalf("empty whois = %s", got)
+	}
+	if got := ianaWHOISServer("domain: COM\nwhois: whois.verisign-grs.com"); got != "whois.verisign-grs.com" {
+		t.Fatalf("com whois = %s", got)
 	}
 }
 

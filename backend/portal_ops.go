@@ -117,7 +117,10 @@ func incidentInScope(subject authzSubject, item requestIncident, action authzAct
 		return true
 	}
 	if item.ProjectID == nil || *item.ProjectID <= 0 {
-		return false
+		if subject.readsEveryRecord() {
+			return true
+		}
+		return action == authzRead && item.OwnerUserID != nil && *item.OwnerUserID == subject.UserID
 	}
 	resourceID := strings.TrimSpace(item.IncidentNumber)
 	if resourceID == "" {

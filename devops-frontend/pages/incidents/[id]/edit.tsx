@@ -12,6 +12,7 @@ import { asRecord, getString } from '../../../lib/payload';
 import { expireSession } from '../../../lib/sessionExpiry';
 import { CopyButton, formatOperationalTime } from '@infragate/ui';
 import { recordReference } from '../../../lib/recordRef';
+import LinkedJiraWork from '../../../components/LinkedJiraWork';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 const DEVOPS_USER_KEY = 'devops_user';
@@ -860,6 +861,15 @@ export default function EditIncidentPage() {
               </div>
               {incidentId ? (
                 <>
+                  <LinkedJiraWork
+                    apiUrl={apiUrl}
+                    source={{
+                      sourceType: 'incident',
+                      sourceId: incidentId,
+                      defaultSummary: summary || currentIncidentNumber,
+                      defaultDescription: summary,
+                    }}
+                  />
                   <RecordDocuments apiUrl={apiUrl} kind="incidents" recordId={incidentId} />
                   <ITSMJournal
                     apiUrl={apiUrl}

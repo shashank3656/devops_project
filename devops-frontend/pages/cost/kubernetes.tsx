@@ -2,6 +2,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import CostDrawer from '../../components/CostDrawer';
 import CostFirstRun from '../../components/CostFirstRun';
 import CostKpiStrip from '../../components/CostKpiStrip';
@@ -220,6 +221,17 @@ export default function CostKubernetesPage() {
           </div>
         </div>
         <CostNav current="kubernetes" />
+        <CollectionStatus
+          source="Kubernetes collector"
+          lastSuccess={health?.last_ingested_at}
+          state={collectionStateFromSync({
+            connected: Boolean(health?.collector_health === 'current' || data?.clusters?.length),
+            failed: Boolean(error) || (health?.collector_health || '').toLowerCase() === 'failed',
+            lastSuccess: health?.last_ingested_at,
+            empty: !(data?.clusters || []).length,
+          })}
+          detail="Mapped cluster cost is a breakdown of the cloud bill, never an extra line. Collector failure stays Unknown, never Healthy."
+        />
         <section className="cost-first-run" aria-label="Kubernetes Cost pilot">
           <h2>One nonproduction cluster</h2>
           <ol className="cost-first-run__steps">

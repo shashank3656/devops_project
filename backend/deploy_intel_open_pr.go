@@ -53,9 +53,21 @@ type deployIntelPipelineLink struct {
 	Href         string `json:"href"`
 }
 
+type githubPRSnapshot struct {
+	CI                 deployIntelCISummary
+	Checks             []deployIntelRequiredCheck
+	SHA                string
+	ReviewDecision     string
+	ReviewDetail       string
+	Owner              string
+	Assignees          []string
+	RequestedReviewers []string
+	FirstApprovedAt    *time.Time
+}
+
 type githubCICache struct {
-	States map[int]string
-	At     time.Time
+	Items map[int]githubPRSnapshot
+	At    time.Time
 }
 
 var githubCIStore sync.Map
@@ -67,9 +79,14 @@ type deployIntelOpenPRMeta struct {
 	CreatedAt           *time.Time                 `json:"created_at,omitempty"`
 	AgeDays             int                        `json:"age_days"`
 	ReviewSLA           string                     `json:"review_sla"` // ok, warning, breach
+	ReviewDecision      string                     `json:"review_decision,omitempty"`
 	ReviewDetail        string                     `json:"review_detail,omitempty"`
 	Assignees           []string                   `json:"assignees,omitempty"`
 	RequestedReviewers  []string                   `json:"requested_reviewers,omitempty"`
+	AwaitingOwner       bool                       `json:"awaiting_owner,omitempty"`
+	ApprovalDelayDays   int                        `json:"approval_delay_days,omitempty"`
+	DelayKnown          bool                       `json:"delay_known,omitempty"`
+	FirstApprovedAt     *time.Time                 `json:"first_approved_at,omitempty"`
 	Checks              []deployIntelRequiredCheck `json:"checks,omitempty"`
 	CI                  deployIntelCISummary       `json:"ci"`
 	PreviewEnvironments []deployIntelPreviewLink   `json:"preview_environments,omitempty"`
@@ -165,10 +182,10 @@ func computeReviewSLA(createdAt time.Time, reviewState string) (status, detail s
 	}
 	age := int(time.Since(createdAt).Hours() / 24)
 	if age >= deployIntelReviewSLABreachDays {
-		return "breach", fmt.Sprintf("Open %d days without merge.", age)
+		return "breach", fmt.Sprintf("Open %d days. Review required; release readiness is unconfirmed.", age)
 	}
 	if age >= deployIntelReviewSLAWarnDays {
-		return "warning", fmt.Sprintf("Open %d days — consider review or merge.", age)
+		return "warning", fmt.Sprintf("Open %d days. Review required; release readiness is unconfirmed.", age)
 	}
 	if strings.EqualFold(reviewState, "changes_requested") {
 		return "warning", "Changes were requested on this PR."
@@ -197,10 +214,35 @@ func githubCheckOutcome(conclusion, status string) string {
 	}
 }
 
+func addCIOutcome(summary *deployIntelCISummary, outcome string) {
+	if summary == nil {
+		return
+	}
+	switch outcome {
+	case "ok":
+		summary.Passed++
+	case "failed":
+		summary.Failed++
+	case "pending":
+		summary.Pending++
+	case "skipped":
+		summary.Skipped++
+	}
+}
+
+func ciSummaryFromChecks(checks []deployIntelRequiredCheck) deployIntelCISummary {
+	summary := deployIntelCISummary{}
+	for _, check := range checks {
+		addCIOutcome(&summary, check.Status)
+	}
+	summary.Label = formatCISummaryLabel(summary)
+	return summary
+}
+
 func ciSummaryFromRollup(state string) deployIntelCISummary {
+	// GitHub rollup SUCCESS includes skipped/neutral checks. Without per-check
+	// conclusions this is not a pass. Empty coverage stays unknown.
 	switch strings.ToUpper(strings.TrimSpace(state)) {
-	case "SUCCESS":
-		return deployIntelCISummary{Passed: 1, Label: "Passing"}
 	case "FAILURE", "ERROR":
 		return deployIntelCISummary{Failed: 1, Label: "Failing"}
 	case "PENDING", "EXPECTED":
@@ -238,60 +280,72 @@ func attachCheapCISummaries(ctx context.Context, owner, name string, events []re
 		if ev.PRNumber <= 0 {
 			continue
 		}
-		if ev.OpenPR != nil && strings.TrimSpace(ev.OpenPR.CI.Label) != "" && ev.OpenPR.CI.Label != "No checks yet" {
-			continue
-		}
 		need = append(need, ev.PRNumber)
 	}
-	if len(need) == 0 {
-		return
-	}
-	states := loadCheapCIStates(ctx, owner, name, need)
-	if len(states) == 0 {
-		return
-	}
+	snapshots := loadGitHubPRSnapshots(ctx, owner, name, need)
 	for i := range events {
-		if events[i].OpenPR == nil {
-			continue
-		}
-		if strings.TrimSpace(events[i].OpenPR.CI.Label) != "" && events[i].OpenPR.CI.Label != "No checks yet" {
-			continue
-		}
-		state, ok := states[events[i].PRNumber]
+		snap, ok := snapshots[events[i].PRNumber]
 		if !ok {
 			continue
 		}
-		events[i].OpenPR.CI = ciSummaryFromRollup(state)
+		if events[i].HeadSHA == "" {
+			events[i].HeadSHA = snap.SHA
+		}
+		if events[i].OpenPR == nil {
+			continue
+		}
+		if len(events[i].OpenPR.Checks) == 0 {
+			events[i].OpenPR.Checks = snap.Checks
+			events[i].OpenPR.CI = snap.CI
+		} else {
+			events[i].OpenPR.CI = ciSummaryFromChecks(events[i].OpenPR.Checks)
+		}
+		if events[i].OpenPR.ReviewDetail == "" && snap.ReviewDetail != "" {
+			events[i].OpenPR.ReviewDetail = snap.ReviewDetail
+		}
+		if events[i].OpenPR.ReviewDecision == "" {
+			events[i].OpenPR.ReviewDecision = snap.ReviewDecision
+		}
+		if len(events[i].OpenPR.Assignees) == 0 && len(snap.Assignees) > 0 {
+			events[i].OpenPR.Assignees = snap.Assignees
+		}
+		if len(events[i].OpenPR.RequestedReviewers) == 0 && len(snap.RequestedReviewers) > 0 {
+			events[i].OpenPR.RequestedReviewers = snap.RequestedReviewers
+		}
+		if events[i].OpenPR.FirstApprovedAt == nil && snap.FirstApprovedAt != nil {
+			events[i].OpenPR.FirstApprovedAt = snap.FirstApprovedAt
+		}
 	}
+	attachReviewWait(events)
 }
 
-func loadCheapCIStates(ctx context.Context, owner, name string, prNumbers []int) map[int]string {
+func loadGitHubPRSnapshots(ctx context.Context, owner, name string, prNumbers []int) map[int]githubPRSnapshot {
 	owner, name = normalizeRepoIdentity(owner, name)
 	key := githubCICacheKey(owner, name)
 	if cached, ok := githubCIStore.Load(key); ok {
 		item := cached.(githubCICache)
-		if time.Since(item.At) < githubCITTL && item.States != nil {
+		if time.Since(item.At) < githubCITTL && item.Items != nil {
 			hit := true
 			for _, number := range prNumbers {
-				if _, ok := item.States[number]; !ok {
+				if _, ok := item.Items[number]; !ok {
 					hit = false
 					break
 				}
 			}
 			if hit {
-				return item.States
+				return item.Items
 			}
 		}
 	}
-	states, err := fetchGitHubPRCheckRollup(ctx, owner, name, prNumbers)
-	if err != nil || len(states) == 0 {
-		return map[int]string{}
+	items, err := fetchGitHubPRSnapshots(ctx, owner, name, prNumbers)
+	if err != nil || len(items) == 0 {
+		return map[int]githubPRSnapshot{}
 	}
-	githubCIStore.Store(key, githubCICache{States: states, At: time.Now().UTC()})
-	return states
+	githubCIStore.Store(key, githubCICache{Items: items, At: time.Now().UTC()})
+	return items
 }
 
-func fetchGitHubPRCheckRollup(ctx context.Context, owner, name string, prNumbers []int) (map[int]string, error) {
+func fetchGitHubPRSnapshots(ctx context.Context, owner, name string, prNumbers []int) (map[int]githubPRSnapshot, error) {
 	if GitHubToken == "" || owner == "" || name == "" || len(prNumbers) == 0 {
 		return nil, fmt.Errorf("github query is incomplete")
 	}
@@ -302,10 +356,10 @@ func fetchGitHubPRCheckRollup(ctx context.Context, owner, name string, prNumbers
 			continue
 		}
 		seen[number] = true
-		aliases = append(aliases, fmt.Sprintf("pr%d: pullRequest(number: %d) { number commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }", number, number))
+		aliases = append(aliases, fmt.Sprintf(`pr%d: pullRequest(number: %d) { number reviewDecision assignees(first: 5) { nodes { login } } reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } } } } reviews(last: 20) { nodes { state submittedAt author { login } } } commits(last: 1) { nodes { commit { oid statusCheckRollup { state contexts(first: 40) { nodes { __typename ... on CheckRun { name conclusion status } ... on StatusContext { context state } } } } } } } }`, number, number))
 	}
 	if len(aliases) == 0 {
-		return map[int]string{}, nil
+		return map[int]githubPRSnapshot{}, nil
 	}
 	query := fmt.Sprintf("query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { %s } }", strings.Join(aliases, " "))
 	var parsed struct {
@@ -316,33 +370,155 @@ func fetchGitHubPRCheckRollup(ctx context.Context, owner, name string, prNumbers
 	if err := githubGraphQL(ctx, query, map[string]interface{}{"owner": owner, "name": name}, &parsed); err != nil {
 		return nil, err
 	}
-	out := map[int]string{}
+	out := map[int]githubPRSnapshot{}
 	for _, raw := range parsed.Data.Repository {
-		if len(raw) == 0 || string(raw) == "null" {
+		snap, number, ok := parseGitHubPRSnapshot(raw)
+		if !ok {
 			continue
 		}
-		var node struct {
-			Number  int `json:"number"`
-			Commits struct {
-				Nodes []struct {
-					Commit struct {
-						StatusCheckRollup *struct {
-							State string `json:"state"`
-						} `json:"statusCheckRollup"`
-					} `json:"commit"`
-				} `json:"nodes"`
-			} `json:"commits"`
-		}
-		if json.Unmarshal(raw, &node) != nil || node.Number <= 0 {
-			continue
-		}
-		state := ""
-		if len(node.Commits.Nodes) > 0 && node.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
-			state = node.Commits.Nodes[0].Commit.StatusCheckRollup.State
-		}
-		out[node.Number] = state
+		out[number] = snap
 	}
 	return out, nil
+}
+
+func parseGitHubPRSnapshot(raw json.RawMessage) (githubPRSnapshot, int, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return githubPRSnapshot{}, 0, false
+	}
+	var node struct {
+		Number         int    `json:"number"`
+		ReviewDecision string `json:"reviewDecision"`
+		Assignees      struct {
+			Nodes []struct {
+				Login string `json:"login"`
+			} `json:"nodes"`
+		} `json:"assignees"`
+		ReviewRequests struct {
+			Nodes []struct {
+				RequestedReviewer struct {
+					Typename string `json:"__typename"`
+					Login    string `json:"login"`
+				} `json:"requestedReviewer"`
+			} `json:"nodes"`
+		} `json:"reviewRequests"`
+		Reviews struct {
+			Nodes []struct {
+				State       string `json:"state"`
+				SubmittedAt string `json:"submittedAt"`
+				Author      struct {
+					Login string `json:"login"`
+				} `json:"author"`
+			} `json:"nodes"`
+		} `json:"reviews"`
+		Commits struct {
+			Nodes []struct {
+				Commit struct {
+					OID               string `json:"oid"`
+					StatusCheckRollup *struct {
+						State    string `json:"state"`
+						Contexts struct {
+							Nodes []struct {
+								Typename   string `json:"__typename"`
+								Name       string `json:"name"`
+								Conclusion string `json:"conclusion"`
+								Status     string `json:"status"`
+								Context    string `json:"context"`
+								State      string `json:"state"`
+							} `json:"nodes"`
+						} `json:"contexts"`
+					} `json:"statusCheckRollup"`
+				} `json:"commit"`
+			} `json:"nodes"`
+		} `json:"commits"`
+	}
+	if json.Unmarshal(raw, &node) != nil || node.Number <= 0 {
+		return githubPRSnapshot{}, 0, false
+	}
+	snap := githubPRSnapshot{
+		ReviewDecision: strings.TrimSpace(node.ReviewDecision),
+		CI:             deployIntelCISummary{Label: "No checks yet"},
+	}
+	for _, nodeUser := range node.Assignees.Nodes {
+		login := strings.TrimSpace(nodeUser.Login)
+		if login != "" {
+			snap.Assignees = append(snap.Assignees, login)
+		}
+	}
+	for _, req := range node.ReviewRequests.Nodes {
+		login := strings.TrimSpace(req.RequestedReviewer.Login)
+		if login != "" {
+			snap.RequestedReviewers = append(snap.RequestedReviewers, login)
+		}
+	}
+	approved := 0
+	changes := 0
+	for _, rev := range node.Reviews.Nodes {
+		switch strings.ToUpper(strings.TrimSpace(rev.State)) {
+		case "APPROVED":
+			approved++
+			if snap.Owner == "" {
+				snap.Owner = strings.TrimSpace(rev.Author.Login)
+			}
+			if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(rev.SubmittedAt)); err == nil {
+				stamp := parsed.UTC()
+				if snap.FirstApprovedAt == nil || stamp.Before(*snap.FirstApprovedAt) {
+					snap.FirstApprovedAt = &stamp
+				}
+			}
+		case "CHANGES_REQUESTED":
+			changes++
+		}
+	}
+	switch strings.ToUpper(snap.ReviewDecision) {
+	case "APPROVED":
+		snap.ReviewDetail = fmt.Sprintf("%d approval(s) on GitHub.", approved)
+	case "CHANGES_REQUESTED":
+		snap.ReviewDetail = "Changes were requested on GitHub."
+	case "REVIEW_REQUIRED":
+		snap.ReviewDetail = "Awaiting approval on GitHub."
+	default:
+		if approved > 0 {
+			snap.ReviewDetail = fmt.Sprintf("%d approval(s) on GitHub.", approved)
+		} else if changes > 0 {
+			snap.ReviewDetail = "Changes were requested on GitHub."
+		} else {
+			snap.ReviewDetail = "No GitHub reviews yet."
+		}
+	}
+	if len(node.Commits.Nodes) == 0 {
+		return snap, node.Number, true
+	}
+	commit := node.Commits.Nodes[0].Commit
+	snap.SHA = strings.TrimSpace(commit.OID)
+	if commit.StatusCheckRollup == nil {
+		return snap, node.Number, true
+	}
+	seen := map[string]bool{}
+	for _, ctxNode := range commit.StatusCheckRollup.Contexts.Nodes {
+		label := strings.TrimSpace(ctxNode.Name)
+		if label == "" {
+			label = strings.TrimSpace(ctxNode.Context)
+		}
+		key := strings.ToLower(label)
+		if label == "" || seen[key] || isOpsTrellisCheckName(label) {
+			continue
+		}
+		seen[key] = true
+		outcome := githubCheckOutcome(ctxNode.Conclusion, firstNonEmpty(ctxNode.Status, ctxNode.State))
+		snap.Checks = append(snap.Checks, deployIntelRequiredCheck{
+			Key:     key,
+			Label:   label,
+			Present: true,
+			Status:  outcome,
+			Detail:  githubCheckDetail(outcome),
+		})
+	}
+	if len(snap.Checks) > 0 {
+		snap.CI = ciSummaryFromChecks(snap.Checks)
+	} else {
+		snap.CI = ciSummaryFromRollup(commit.StatusCheckRollup.State)
+	}
+	return snap, node.Number, true
 }
 
 func githubGraphQL(ctx context.Context, query string, variables map[string]interface{}, out interface{}) error {
@@ -399,6 +575,7 @@ func attachPipelineLinks(owner, name string, events []repoDeployEvent) {
 			if link.Label == "" || link.Label == "Unknown" {
 				link.Label = "Pipelines"
 			}
+			events[i].Verification = buildListedDeploymentVerification(change)
 		}
 		events[i].Pipeline = &link
 	}
@@ -517,16 +694,7 @@ func listGitHubChecksOnRef(ctx context.Context, client *github.Client, owner, na
 		}
 		seen[key] = true
 		outcome := githubCheckOutcome(run.GetConclusion(), run.GetStatus())
-		switch outcome {
-		case "ok":
-			summary.Passed++
-		case "failed":
-			summary.Failed++
-		case "pending":
-			summary.Pending++
-		case "skipped":
-			summary.Skipped++
-		}
+		addCIOutcome(&summary, outcome)
 		if len(out) < 24 {
 			out = append(out, deployIntelRequiredCheck{
 				Key:     key,
@@ -622,10 +790,8 @@ func buildOpenPRMeta(ctx context.Context, client *github.Client, owner, name str
 		if deep && client != nil {
 			reviewNote = summarizePRReviews(ctx, client, owner, name, pr.GetNumber())
 		}
-		meta.ReviewSLA, meta.ReviewDetail = computeReviewSLA(created, "")
-		if reviewNote != "" && meta.ReviewDetail != "" {
-			meta.ReviewDetail = meta.ReviewDetail + " " + reviewNote
-		} else if reviewNote != "" {
+		meta.ReviewSLA, _ = computeReviewSLA(created, "")
+		if reviewNote != "" {
 			meta.ReviewDetail = reviewNote
 		}
 	}

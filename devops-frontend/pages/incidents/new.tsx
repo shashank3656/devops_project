@@ -11,7 +11,7 @@ import { FALLBACK_ITSM_CATEGORIES, IMPACT_URGENCY, INCIDENT_STATES, ITSM_PRIORIT
 import { asRecord, getString } from '../../lib/payload';
 import { expireSession } from '../../lib/sessionExpiry';
 import { forgetAttempt, outcomeForFailedSubmit, rememberAttempt } from '../../lib/submitAttempt';
-import { inventoryServicesPath } from '../../lib/sreMonitoring';
+import { defaultEnvironmentForProject, useConfirm, useWorkspaceScope } from '@infragate/ui';
 
 const INCIDENT_ATTEMPT_KEY = 'opstrellis-incident-attempt';
 const DEVOPS_TOKEN_KEY = 'devops_token';
@@ -37,6 +37,51 @@ interface Incident {
   id: number;
   incident_number?: string;
   request_id: number;
+  project_id?: number | null;
+  summary?: string;
+  status?: string;
+  request_service?: string;
+  request_env?: string;
+}
+
+interface Runbook {
+  id: number;
+  project_id: number;
+  service: string;
+  title: string;
+  link_url: string;
+}
+
+function suggestionTokens(value: string): string[] {
+  return value.toLowerCase().split(/[^a-z0-9]+/).filter((part) => part.length > 2);
+}
+
+function tokenOverlap(left: string[], right: string[]): number {
+  const set = new Set(left);
+  return right.filter((item) => set.has(item)).length;
+}
+
+type ScopeLoadState = 'loading' | 'ready' | 'failed';
+
+function serviceMatchesEnvironment(item: ScopeService, environment: string): boolean {
+  if (!environment) return true;
+  const env = (item.environment || '').toLowerCase();
+  const wanted = environment.toLowerCase();
+  if (!env || env === wanted) return true;
+  return wanted.startsWith('prod') && env.startsWith('prod');
+}
+
+function describeIncidentMatch(item: Incident, input: { summary: string; service: string; projectChoice: string }): { reasons: string[]; related: boolean } | null {
+  const sameProject = Boolean(input.projectChoice && input.projectChoice !== 'cross' && item.project_id && String(item.project_id) === input.projectChoice);
+  const sameService = Boolean(input.service && item.request_service && item.request_service.toLowerCase() === input.service.toLowerCase());
+  const words = suggestionTokens(input.summary);
+  const matchingDescription = words.length > 0 && tokenOverlap(words, suggestionTokens(`${item.summary || ''} ${item.request_service || ''}`)) > 0;
+  if (!sameService && !matchingDescription && !sameProject) return null;
+  const reasons: string[] = [];
+  if (sameService) reasons.push('Same service');
+  if (matchingDescription) reasons.push('Matching description');
+  if (sameProject) reasons.push('Same project');
+  return { reasons, related: sameService || matchingDescription };
 }
 
 interface ScopeProject {
@@ -59,6 +104,11 @@ function normalizeIncident(incident: unknown): Incident {
     id: typeof item.id === 'number' ? item.id : 0,
     incident_number: typeof item.incident_number === 'string' ? item.incident_number : '',
     request_id: typeof item.request_id === 'number' ? item.request_id : 0,
+    project_id: typeof item.project_id === 'number' ? item.project_id : null,
+    summary: typeof item.summary === 'string' ? item.summary : '',
+    status: typeof item.status === 'string' ? item.status : '',
+    request_service: typeof item.request_service === 'string' ? item.request_service : '',
+    request_env: typeof item.request_env === 'string' ? item.request_env : '',
   };
 }
 
@@ -106,6 +156,18 @@ function clearSessionAndRedirect() {
   expireSession();
 }
 
+function matchProjectEnvironment(options: string[], wanted: string): string {
+  const names = options.map((item) => item.trim()).filter(Boolean);
+  const needle = wanted.trim().toLowerCase();
+  if (!needle) return '';
+  const exact = names.find((item) => item.toLowerCase() === needle);
+  if (exact) return exact;
+  if (needle.startsWith('prod')) {
+    return names.find((item) => item.toLowerCase().startsWith('prod')) || '';
+  }
+  return names.includes(wanted.trim()) ? wanted.trim() : '';
+}
+
 function parsePositiveIntQuery(value: string | string[] | undefined): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== 'string') return null;
@@ -135,6 +197,8 @@ function resolveIncidentReferenceInput(value: string, incidents: Incident[]): nu
 export default function NewIncidentPage() {
   const router = useRouter();
   const apiUrl = useApiUrl();
+  const { scope } = useWorkspaceScope();
+  const confirm = useConfirm();
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [membersByTeam, setMembersByTeam] = useState<Record<number, TeamMemberOption[]>>({});
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -189,10 +253,12 @@ export default function NewIncidentPage() {
   const returnPath = safeReturnPath(router.query.return);
   const [scopeProjects, setScopeProjects] = useState<ScopeProject[]>([]);
   const [scopeServices, setScopeServices] = useState<ScopeService[]>([]);
+  const [servicesStatus, setServicesStatus] = useState<ScopeLoadState>('loading');
+  const [runbooks, setRunbooks] = useState<Runbook[]>([]);
   const [projectChoice, setProjectChoice] = useState('');
   const [incidentEnvironment, setIncidentEnvironment] = useState('');
   const [incidentService, setIncidentService] = useState('');
-  const scopeReady = useRef(false);
+  const appliedWorkspace = useRef(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('opstrellis-incident-draft');
@@ -321,40 +387,85 @@ export default function NewIncidentPage() {
   };
 
   useEffect(() => {
-    if (!router.isReady || scopeReady.current) return;
-    scopeReady.current = true;
-    if (scopedProjectId) setProjectChoice(String(scopedProjectId));
-    if (scopedEnvironment) setIncidentEnvironment(scopedEnvironment);
-  }, [router.isReady, scopedEnvironment, scopedProjectId]);
+    if (!router.isReady || appliedWorkspace.current) return;
+    if (projectChoice) {
+      appliedWorkspace.current = true;
+      return;
+    }
+    const fromQuery = scopedProjectId;
+    const fromScope = Number(scope.projectId) || 0;
+    const projectId = fromQuery || fromScope;
+    if (!projectId) return;
+    setProjectChoice(String(projectId));
+    appliedWorkspace.current = true;
+  }, [projectChoice, router.isReady, scopedProjectId, scope.projectId]);
+
+  useEffect(() => {
+    if (!projectChoice || projectChoice === 'cross') return;
+    const project = scopeProjects.find((item) => String(item.id) === projectChoice);
+    if (!project) return;
+    setIncidentEnvironment((current) => {
+      if (current && project.environments.includes(current)) return current;
+      const wanted = scopedEnvironment || scope.environment;
+      return matchProjectEnvironment(project.environments, wanted) || defaultEnvironmentForProject(scopeProjects, projectChoice, wanted);
+    });
+  }, [projectChoice, scope.environment, scopeProjects, scopedEnvironment]);
 
   useEffect(() => {
     void loadData();
     void loadPreviewIncidentNumber();
   }, [apiUrl]);
 
-  useEffect(() => {
+  const loadScopeOptions = async () => {
     const token = localStorage.getItem(DEVOPS_TOKEN_KEY);
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}` };
-    Promise.all([
-      fetch(`${apiUrl}/api/devops/projects`, { headers }).then((res) => res.json().catch(() => ({}))),
-      fetch(`${apiUrl}${inventoryServicesPath()}`, { headers }).then((res) => res.json().catch(() => ({}))),
-    ]).then(([projectBody, serviceBody]) => {
-      const projectRows = Array.isArray(projectBody?.projects) ? projectBody.projects : [];
-      setScopeProjects(projectRows.map((item: { id?: number; name?: string; code?: string; environments?: unknown }) => ({
+    setServicesStatus('loading');
+    try {
+      const [projectRes, serviceRes, runbookRes] = await Promise.all([
+        fetch(`${apiUrl}/api/devops/projects`, { headers }),
+        fetch(`${apiUrl}/api/devops/services`, { headers }),
+        fetch(`${apiUrl}/api/devops/runbooks`, { headers }),
+      ]);
+      const projectBody = asRecord(await projectRes.json().catch(() => ({})));
+      const serviceBody = asRecord(await serviceRes.json().catch(() => ({})));
+      const runbookBody = asRecord(await runbookRes.json().catch(() => ({})));
+      const projectRows = Array.isArray(projectBody.projects) ? (projectBody.projects as { id?: number; name?: string; code?: string; environments?: unknown }[]) : [];
+      setScopeProjects(projectRows.map((item) => ({
         id: typeof item.id === 'number' ? item.id : 0,
         name: item.name || 'Project',
         code: item.code || '',
         environments: Array.isArray(item.environments) ? item.environments.map((value) => String(value)) : [],
-      })).filter((item: ScopeProject) => item.id > 0));
-      const serviceRows = Array.isArray(serviceBody?.services) ? serviceBody.services : [];
-      setScopeServices(serviceRows.map((item: { id?: number; project_id?: number; service?: string; environment?: string }) => ({
+      })).filter((item) => item.id > 0));
+      if (!serviceRes.ok) {
+        setScopeServices([]);
+        setServicesStatus('failed');
+      } else {
+        const serviceRows = Array.isArray(serviceBody.services) ? (serviceBody.services as { id?: number; project_id?: number; service?: string; environment?: string }[]) : [];
+        setScopeServices(serviceRows.map((item) => ({
+          id: typeof item.id === 'number' ? item.id : 0,
+          project_id: typeof item.project_id === 'number' ? item.project_id : 0,
+          service: item.service || '',
+          environment: item.environment || '',
+        })).filter((item) => item.service));
+        setServicesStatus('ready');
+      }
+      const runbookRows = Array.isArray(runbookBody.runbooks) ? (runbookBody.runbooks as { id?: number; project_id?: number; service?: string; title?: string; link_url?: string }[]) : [];
+      setRunbooks(runbookRows.map((item) => ({
         id: typeof item.id === 'number' ? item.id : 0,
         project_id: typeof item.project_id === 'number' ? item.project_id : 0,
         service: item.service || '',
-        environment: item.environment || '',
-      })).filter((item: ScopeService) => item.service));
-    }).catch(() => undefined);
+        title: item.title || '',
+        link_url: item.link_url || '',
+      })).filter((item) => item.id > 0));
+    } catch {
+      setScopeServices([]);
+      setServicesStatus('failed');
+    }
+  };
+
+  useEffect(() => {
+    void loadScopeOptions();
   }, [apiUrl]);
 
   useEffect(() => {
@@ -376,6 +487,51 @@ export default function NewIncidentPage() {
       setIncidentEnvironment((current) => current || match.environment || 'production');
     }
   }, [incidentEnvironment, projectChoice, scopeServices, scopedService, scopedServiceId]);
+
+  const incidentMatches = useMemo(() => (
+    incidents
+      .filter((item) => item.id > 0 && (item.status || '').toLowerCase() !== 'closed')
+      .map((incident) => {
+        const match = describeIncidentMatch(incident, { summary, service: incidentService, projectChoice });
+        return match ? { incident, ...match } : null;
+      })
+      .filter((item): item is { incident: Incident; reasons: string[]; related: boolean } => Boolean(item))
+  ), [incidentService, incidents, projectChoice, summary]);
+  const relatedIncidents = useMemo(() => incidentMatches.filter((item) => item.related).slice(0, 4), [incidentMatches]);
+  const recentProjectIncidents = useMemo(
+    () => (relatedIncidents.length ? [] : incidentMatches.filter((item) => !item.related).slice(0, 4)),
+    [incidentMatches, relatedIncidents.length],
+  );
+  const scopedInventory = useMemo(() => {
+    if (!projectChoice || projectChoice === 'cross') return [];
+    return scopeServices.filter((item) => String(item.project_id) === projectChoice && serviceMatchesEnvironment(item, incidentEnvironment));
+  }, [incidentEnvironment, projectChoice, scopeServices]);
+
+  const suggestedServices = useMemo(() => {
+    const words = suggestionTokens(summary);
+    return scopeServices
+      .filter((item) => {
+        if (projectChoice && projectChoice !== 'cross' && String(item.project_id) !== projectChoice) return false;
+        if (incidentEnvironment && item.environment && item.environment.toLowerCase() !== incidentEnvironment.toLowerCase()) return false;
+        if (incidentService && item.service.toLowerCase() === incidentService.toLowerCase()) return false;
+        if (!words.length) return Boolean(incidentEnvironment || projectChoice);
+        return tokenOverlap(words, suggestionTokens(item.service)) > 0;
+      })
+      .slice(0, 4);
+  }, [incidentEnvironment, incidentService, projectChoice, scopeServices, summary]);
+
+  const suggestedRunbooks = useMemo(() => {
+    const words = suggestionTokens([summary, incidentService].filter(Boolean).join(' '));
+    return runbooks
+      .filter((item) => {
+        if (projectChoice && projectChoice !== 'cross' && item.project_id && String(item.project_id) !== projectChoice) return false;
+        if (incidentService && item.service && item.service.toLowerCase() !== incidentService.toLowerCase()) {
+          return tokenOverlap(words, suggestionTokens(`${item.title} ${item.service}`)) > 0;
+        }
+        return !incidentService || item.service.toLowerCase() === incidentService.toLowerCase() || tokenOverlap(words, suggestionTokens(`${item.title} ${item.service}`)) > 0;
+      })
+      .slice(0, 4);
+  }, [incidentService, projectChoice, runbooks, summary]);
 
   useEffect(() => {
     if (!teamId || !ownerUserId) return;
@@ -408,7 +564,8 @@ export default function NewIncidentPage() {
       throw new Error('Select the affected project, or Unknown / cross-project.');
     }
     if (mode !== 'draft' && (normalizedStatus === 'resolved' || normalizedStatus === 'closed') && !notes.trim()) {
-      throw new Error('Resolve needs a recovery note before this incident can close.');
+      focusField('incident-recovery-note', 'Resolved and Closed need a recovery note in this work note field.');
+      throw new Error('Resolved and Closed need a recovery note before this incident can close.');
     }
       const payload = {
           request_id: linkedRequestID || 0,
@@ -495,6 +652,20 @@ export default function NewIncidentPage() {
     }
   };
 
+  const recoveryRequired = status === 'resolved' || status === 'closed';
+  const servicePrompt = !projectChoice
+    ? 'Select a project first'
+    : projectChoice === 'cross'
+      ? 'Not tied to one service'
+      : servicesStatus === 'loading'
+        ? 'Loading services…'
+        : servicesStatus === 'failed'
+          ? 'Services could not be loaded'
+          : scopedInventory.length
+            ? 'Select a service from inventory'
+            : 'No services available for this project/environment';
+  const shownIncidentMatches = relatedIncidents.length ? relatedIncidents : recentProjectIncidents;
+
   return (
     <DevOpsLayout>
       <Head>
@@ -506,14 +677,12 @@ export default function NewIncidentPage() {
             <span className="portal-page__eyebrow">Incident Editor</span>
             <h1 className="portal-page__title">Create incident</h1>
             <p className="portal-page__subtitle">
-              {returnPath
-                ? 'Project, environment, and service are filled from the service you opened. Change any of them if this incident belongs somewhere else.'
-                : 'Record what broke, who is affected, and how urgent it is.'}
+              {currentIncidentNumber
+                ? `Reference ${currentIncidentNumber}${status === 'draft' ? ' (draft)' : ''}`
+                : returnPath
+                  ? 'Scope is filled from the service you opened.'
+                  : 'Reference assigned on save.'}
             </p>
-            <details className="onboard-advanced">
-              <summary>How an incident moves</summary>
-              <p className="form-section__copy">Impact and urgency suggest a priority. States run from New to In Progress, On Hold, Resolved, and Closed. A number is assigned when you save.</p>
-            </details>
           </div>
           <div className="portal-page__actions">
             <Link href={returnPath || scopeListHref('/incidents', router.query)} className="btn btn-secondary">
@@ -526,17 +695,8 @@ export default function NewIncidentPage() {
         {notice ? <div className="alert alert-success">{notice}</div> : null}
 
         <section className="portal-surface">
-          <div className="portal-surface__header">
-            <div>
-              <span className="portal-surface__eyebrow">New incident</span>
-              <h2 className="portal-surface__title">Incident details</h2>
-              {currentIncidentNumber ? (
-                <p className="portal-surface__subtitle">
-                  Incident reference: <strong>{currentIncidentNumber}</strong>
-                  {status === 'draft' ? ' (draft)' : ''}
-                </p>
-              ) : null}
-            </div>
+          <div className="portal-surface__header incident-create-head">
+            <h2 className="portal-surface__title">Incident details</h2>
           </div>
 
           {loading ? (
@@ -546,11 +706,6 @@ export default function NewIncidentPage() {
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
                 <legend className="form-section__title">Affected scope</legend>
-                <p className="form-section__copy">
-                  {returnPath
-                    ? 'These values came from Service inventory. You can change the project or the service.'
-                    : 'Choose the project first. The service list is Service inventory for that project (production). Use Unknown / cross-project when it is not one project.'}
-                </p>
                 <div className="portal-form-grid">
                   <label className="label">
                     Project<span className="form-req" aria-hidden="true"> *</span>
@@ -571,33 +726,71 @@ export default function NewIncidentPage() {
                         <option key={project.id} value={project.id}>{project.code ? `${project.name} (${project.code})` : project.name}</option>
                       ))}
                     </select>
+                    <small>Changing project resets environment and service. Use Unknown / cross-project when it is not one project.</small>
                   </label>
                   <label className="label">
-                    Service
+                    Environment
                     <select
+                      id="incident-environment"
                       className="input"
-                      value={incidentService}
+                      value={incidentEnvironment}
                       onChange={(event) => {
-                        const name = event.target.value;
-                        setIncidentService(name);
-                        const mapped = scopeServices.find((item) => item.service === name && String(item.project_id) === projectChoice);
-                        setIncidentEnvironment(mapped?.environment || (name ? 'production' : ''));
+                        setIncidentEnvironment(event.target.value);
+                        setIncidentService('');
                       }}
                       disabled={!projectChoice || projectChoice === 'cross'}
                     >
-                      <option value="">{projectChoice === 'cross' ? 'Not tied to one service' : projectChoice ? 'Select a service from inventory' : 'Select a project first'}</option>
+                      <option value="">{projectChoice === 'cross' ? 'Not tied to one environment' : projectChoice ? 'Select an environment' : 'Select a project first'}</option>
                       {projectChoice && projectChoice !== 'cross'
-                        ? scopeServices
-                          .filter((item) => String(item.project_id) === projectChoice)
-                          .map((item) => (
-                            <option key={item.id} value={item.service}>{item.service}</option>
-                          ))
+                        ? (() => {
+                          const listed = scopeProjects.find((item) => String(item.id) === projectChoice)?.environments || [];
+                          return (listed.length ? listed : ['dev', 'uat', 'prod']).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ));
+                        })()
                         : null}
                     </select>
                   </label>
                   <label className="label">
-                    Monitored environment
-                    <input className="input" value={incidentService ? 'Production' : incidentEnvironment || ''} readOnly placeholder={projectChoice === 'cross' ? 'Not tied to one service' : 'Filled from the service'} />
+                    Service
+                    <select
+                      id="incident-service"
+                      className="input"
+                      value={incidentService}
+                      onChange={(event) => setIncidentService(event.target.value)}
+                      disabled={!projectChoice || projectChoice === 'cross' || servicesStatus === 'loading' || (servicesStatus === 'ready' && !scopedInventory.length)}
+                    >
+                      <option value="">{servicePrompt}</option>
+                      {scopedInventory.map((item) => (
+                        <option key={item.id} value={item.service}>{item.service}</option>
+                      ))}
+                    </select>
+                    {projectChoice && projectChoice !== 'cross' && servicesStatus === 'loading' ? (
+                      <small>Loading services…</small>
+                    ) : null}
+                    {projectChoice && projectChoice !== 'cross' && servicesStatus === 'failed' ? (
+                      <small>
+                        Service inventory could not be loaded.{' '}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void loadScopeOptions()}>Retry</button>
+                      </small>
+                    ) : null}
+                    {projectChoice && projectChoice !== 'cross' && servicesStatus === 'ready' && !scopedInventory.length ? (
+                      <>
+                        <small>No services available for this project/environment.</small>
+                        <span className="incident-service-next">
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => document.getElementById('incident-environment')?.focus()}
+                          >
+                            Change environment
+                          </button>
+                          <Link href={`/services?project_id=${encodeURIComponent(projectChoice)}`} className="btn btn-ghost btn-sm">
+                            Open service inventory
+                          </Link>
+                        </span>
+                      </>
+                    ) : null}
                   </label>
                 </div>
               </fieldset>
@@ -607,6 +800,105 @@ export default function NewIncidentPage() {
                   Short description<span className="form-req" aria-hidden="true"> *</span>
                   <input id="incident-summary" className="input" required value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="Production checkout is returning 5xx" />
                 </label>
+                {(shownIncidentMatches.length || suggestedServices.length || suggestedRunbooks.length) ? (
+                  <div className="incident-suggest">
+                    <p className="form-section__copy">Suggestions from existing records. Confirm before applying. Nothing is changed until you confirm.</p>
+                    {shownIncidentMatches.length ? (
+                      <div>
+                        <p className="form-section__title">{relatedIncidents.length ? 'Related incidents' : 'Recent incidents in this project'}</p>
+                        <ul className="incident-suggest__list">
+                          {shownIncidentMatches.map((item) => (
+                            <li key={item.incident.id}>
+                              <span>
+                                {getIncidentReference(item.incident)} · {item.incident.summary || 'No summary'} · {item.incident.status || 'Unknown'}{item.incident.request_service ? ` · ${item.incident.request_service}` : ''}
+                                <small className="incident-suggest__reason">{item.reasons.join(' · ')}</small>
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Link this incident as parent?',
+                                    message: `${getIncidentReference(item.incident)} stays in its current state. This form does not close it.`,
+                                    confirmLabel: 'Link parent',
+                                    cancelLabel: 'Keep current',
+                                  }).then((ok) => {
+                                    if (ok) setParentIncidentId(String(item.incident.id));
+                                  });
+                                }}
+                              >
+                                Use as parent
+                              </button>
+                              <Link href={`/incidents/${item.incident.id}/edit`} className="btn btn-ghost btn-sm">Open</Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {suggestedServices.length ? (
+                      <div>
+                        <p className="form-section__title">Affected services</p>
+                        <ul className="incident-suggest__list">
+                          {suggestedServices.map((item) => (
+                            <li key={`${item.id}-${item.service}`}>
+                              <span>{item.service}{item.environment ? ` · ${item.environment}` : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Use this service?',
+                                    message: `${item.service} will fill the service field. The incident is not submitted yet.`,
+                                    confirmLabel: 'Use service',
+                                    cancelLabel: 'Keep current',
+                                  }).then((ok) => {
+                                    if (!ok) return;
+                                    if (item.project_id) setProjectChoice(String(item.project_id));
+                                    if (item.environment) setIncidentEnvironment(item.environment);
+                                    setIncidentService(item.service);
+                                  });
+                                }}
+                              >
+                                Use service
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {suggestedRunbooks.length ? (
+                      <div>
+                        <p className="form-section__title">Guides</p>
+                        <ul className="incident-suggest__list">
+                          {suggestedRunbooks.map((item) => (
+                            <li key={item.id}>
+                              <span>{item.title || 'Untitled guide'}{item.service ? ` · ${item.service}` : ''}</span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  void confirm({
+                                    title: 'Add this guide to the work note?',
+                                    message: `${item.title || 'This guide'} will be appended to the internal note. The incident is not submitted yet.`,
+                                    confirmLabel: 'Add to notes',
+                                    cancelLabel: 'Skip',
+                                  }).then((ok) => {
+                                    if (!ok) return;
+                                    const line = `Guide: ${item.title}${item.link_url ? ` ${item.link_url}` : ''}`;
+                                    setNotes((current) => current.includes(line) ? current : [current.trim(), line].filter(Boolean).join('\n'));
+                                  });
+                                }}
+                              >
+                                Add to notes
+                              </button>
+                              <Link href={`/runbooks/${item.id}/edit`} className="btn btn-ghost btn-sm">Open guide</Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="portal-form-grid">
                   <label className="label">
                     Impact
@@ -695,16 +987,13 @@ export default function NewIncidentPage() {
                         <option key={item.value} value={item.value}>{item.label}</option>
                       ))}
                     </select>
+                    <small>Resolved and Closed need a recovery note in the work note field below.</small>
                   </label>
                 </div>
               </fieldset>
               <details className="onboard-advanced" open={Boolean(requestId || callerUserId || subcategory || parentIncidentId) || undefined}>
                 <summary>More details <span className="onboard-optional">Optional</span></summary>
                 <div className="portal-form-grid">
-                  <label className="label">
-                    Incident reference
-                    <input className="input" value={currentIncidentNumber || 'Will be generated when you save'} readOnly />
-                  </label>
                   {requestedRequestId ? (
                     <label className="label">
                       Linked request
@@ -761,15 +1050,39 @@ export default function NewIncidentPage() {
                 </div>
               </details>
               <fieldset className="form-section">
-                <legend className="form-section__title">Notes <span className="onboard-optional">Optional</span></legend>
+                <legend className="form-section__title">
+                  {recoveryRequired ? (
+                    <>Recovery note — required</>
+                  ) : (
+                    <>Notes <span className="onboard-optional">Optional</span></>
+                  )}
+                </legend>
                 <label className="label">
-                  Work note (internal)
-                  <textarea className="input" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Internal investigation note" />
-                  <small>A draft stays in this browser. The timeline records provenance after save. Resolve or close needs a recovery note.</small>
+                  {recoveryRequired ? (
+                    <>Recovery note<span className="form-req" aria-hidden="true"> *</span></>
+                  ) : (
+                    'Work note (internal)'
+                  )}
+                  <textarea
+                    id="incident-recovery-note"
+                    className="input"
+                    rows={4}
+                    required={recoveryRequired}
+                    aria-required={recoveryRequired}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder={recoveryRequired ? 'What restored service' : 'Internal investigation note'}
+                  />
+                  <small>
+                    {recoveryRequired
+                      ? 'This work note is the recovery note required for Resolved and Closed. Customer comment does not satisfy that requirement.'
+                      : 'A draft stays in this browser. The timeline records provenance after save. Resolve or close needs a recovery note here.'}
+                  </small>
                 </label>
                 <label className="label">
                   Customer comment
                   <textarea className="input" rows={3} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Visible update for the caller" />
+                  {recoveryRequired ? <small>Optional. This is not the recovery note.</small> : null}
                 </label>
               </fieldset>
 
@@ -785,7 +1098,7 @@ export default function NewIncidentPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={saving || !summary.trim()}
+                  disabled={saving || !summary.trim() || (recoveryRequired && !notes.trim())}
                   onClick={() => void submit('submit')}
                 >
                   {saving ? 'Saving...' : 'Submit Incident'}

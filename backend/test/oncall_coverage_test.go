@@ -133,3 +133,23 @@ func TestAdvanceStopsAfterAcknowledgement(t *testing.T) {
 		t.Fatal("acknowledgement still advanced")
 	}
 }
+
+func TestRequireOncallPublishCoverage(t *testing.T) {
+	empty := map[string]int{}
+	if err := requireOncallPublishCoverage(empty, empty); err != errOncallNeedCoverage {
+		t.Fatalf("empty rotation must not publish: %v", err)
+	}
+	filled := map[string]int{}
+	backup := map[string]int{}
+	for _, day := range oncallWeekdays {
+		filled[day] = 2
+		backup[day] = 3
+	}
+	if err := requireOncallPublishCoverage(filled, backup); err != nil {
+		t.Fatalf("complete rotation must publish: %v", err)
+	}
+	backup["monday"] = 2
+	if err := requireOncallPublishCoverage(filled, backup); err != errOncallNeedCoverage {
+		t.Fatalf("same primary and backup must not publish: %v", err)
+	}
+}

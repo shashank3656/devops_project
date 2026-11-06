@@ -459,6 +459,10 @@ func handleServiceMonitoringRoutes(w http.ResponseWriter, r *http.Request, userI
 		handleServiceGuardrail(w, r, userID, item, rest[1:])
 	case "routing":
 		handleServiceRouting(w, r, userID, item)
+	case "environments":
+		serveServiceEnvironmentMatrix(w, r, item)
+	case "activity":
+		serveServiceActivityTimeline(w, r, item)
 	default:
 		writeAPIError(w, r, http.StatusNotFound, "not found", nil)
 	}

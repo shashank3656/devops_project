@@ -486,7 +486,13 @@ export default function NewChangeRequestPage() {
               <p className="form-req-note"><span aria-hidden="true">*</span> Required</p>
               <fieldset className="form-section">
                 <legend className="form-section__title">Scope</legend>
-                <p className="form-section__copy">{returnPath ? 'These values came from Service inventory. You can change the project or the service.' : 'Pick the project first. The service list is Service inventory for that project (production).'}</p>
+                <p className="form-section__copy">{returnPath ? 'These values came from Service inventory. You can change the project or the service.' : 'Pick the project first, then the service.'}</p>
+                {returnPath ? null : (
+                  <details className="onboard-advanced">
+                    <summary>Where the service list comes from</summary>
+                    <p className="form-section__copy">The service list is Service inventory for that project. Environment stays the service’s recorded environment; the title is not used as scope.</p>
+                  </details>
+                )}
                 <div className="portal-form-grid">
                   <label className="label">
                     Project<span className="form-req" aria-hidden="true"> *</span>
@@ -542,7 +548,11 @@ export default function NewChangeRequestPage() {
               </fieldset>
               <fieldset className="form-section">
                 <legend className="form-section__title">Create from pull request</legend>
-                <p className="form-section__copy">Repo is filled from the selected service. A commit SHA is entered separately and is never generated here. Submitting still creates a change request, not a deploy.</p>
+                <p className="form-section__copy">Repo is filled from the selected service.</p>
+                <details className="onboard-advanced">
+                  <summary>How this relates to a deploy</summary>
+                  <p className="form-section__copy">A commit SHA is entered separately and is never generated here. Submitting still creates a change request, not a deploy.</p>
+                </details>
                 <div className="portal-form-grid">
                   <label className="label">
                     Repo

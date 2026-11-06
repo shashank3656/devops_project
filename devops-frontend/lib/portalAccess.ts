@@ -104,6 +104,8 @@ const PAGE_PATHS: { prefix: string; key: string }[] = [
   { prefix: '/certificates', key: 'certificates' },
   { prefix: '/cost', key: 'cost' },
   { prefix: '/operations/webhooks', key: 'webhooks' },
+  { prefix: '/integrations/jira', key: 'jira' },
+  { prefix: '/integrations', key: 'integrations' },
   { prefix: '/maintenance', key: 'maintenance' },
   { prefix: '/reports-automation', key: 'reports' },
   { prefix: '/security/vulnerabilities', key: 'vulnerabilities' },
@@ -195,6 +197,7 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
     if (pageOn(grants, 'maintenance', true)) prefixes.push('/maintenance');
     if (pageOn(grants, 'reports', true)) prefixes.push('/reports-automation');
     if (pageOn(grants, 'webhooks', true)) prefixes.push('/operations/webhooks');
+    if (pageOn(grants, 'jira', true)) prefixes.push('/integrations/jira');
     if (grants.manager) prefixes.push('/runbooks', '/notification-settings', '/retry-center', '/approval-notification-analytics', '/approval-center', '/approval-sla');
   }
   if (grants.infrastructure) {
@@ -231,6 +234,9 @@ export function pathAllowed(pathname: string, grants: PortalGrants): boolean {
       '/project-operations',
     );
   }
+  if (pathname === '/integrations') {
+    return (grants.operations || grants.cost || grants.security || grants.infrastructure || grants.daily) && pageOn(grants, 'integrations', true);
+  }
   return prefixes.some((prefix) => matches(pathname, prefix)) && pageAllowed(pathname, grants);
 }
 
@@ -252,6 +258,9 @@ export function accessRequirement(pathname: string): string {
   }
   if (matches(pathname, '/scorecards')) return 'Needs Records access.';
   if (matches(pathname, '/slos')) return 'Needs Daily access, including services.';
+  if (matches(pathname, '/integrations') && !matches(pathname, '/integrations/jira')) {
+    return 'Needs Operations, Cost, Security, Infrastructure, or Daily access.';
+  }
   if (matches(pathname, '/cost')) return 'Needs the Cost grant.';
   if (matches(pathname, '/portal-access')) return 'Needs portal administrator access.';
   return 'This page is not included for your group.';

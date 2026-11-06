@@ -118,23 +118,26 @@ func TestPrepareManualChangeRequiresTitle(t *testing.T) {
 	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Impact: "   ", BackoutPlan: "Revert"}, "ops"); err == nil {
 		t.Fatal("whitespace-only impact should fail")
 	}
-	got, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Impact: "Checkout latency", BackoutPlan: "Revert the tag"}, "ops")
+	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Impact: "Checkout latency", BackoutPlan: "Revert the tag"}, "ops"); err == nil {
+		t.Fatal("manual change without project and environment should fail")
+	}
+	got, err := prepareManualChange(parsedChangeWebhook{Title: "Cutover", Impact: "Checkout latency", BackoutPlan: "Revert the tag", ProjectID: 1, Environment: "production"}, "ops")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Repo != "manual" || !strings.HasPrefix(got.SHA, "manual-") || got.Author != "ops" {
 		t.Fatalf("expected generated repo/sha and author, got %#v", got)
 	}
-	if got.Environment != "unspecified" {
-		t.Fatalf("manual change should default environment, got %q", got.Environment)
+	if got.Environment != "production" || got.ProjectID != 1 {
+		t.Fatalf("manual change should keep catalog scope, got %#v", got)
 	}
 }
 
 func TestPrepareManualChangeEmergencyNeedsIncident(t *testing.T) {
-	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency"}, "ops"); err == nil {
+	if _, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency", ProjectID: 1, Impact: "Payments down", BackoutPlan: "Fail back"}, "ops"); err == nil {
 		t.Fatal("emergency without incident should fail")
 	}
-	got, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency", LinkedIncidentNumber: "INC0000001", Impact: "Payments down", BackoutPlan: "Fail back to previous revision"}, "ops")
+	got, err := prepareManualChange(parsedChangeWebhook{Title: "Break fix", Environment: "prod", ChangeType: "emergency", ProjectID: 1, LinkedIncidentNumber: "INC0000001", Impact: "Payments down", BackoutPlan: "Fail back to previous revision"}, "ops")
 	if err != nil || got.ChangeType != "emergency" {
 		t.Fatalf("linked emergency should pass: %v %#v", err, got)
 	}

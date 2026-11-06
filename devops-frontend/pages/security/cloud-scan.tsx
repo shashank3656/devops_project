@@ -1,6 +1,7 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import CollectionStatus, { collectionStateFromSync } from '../../components/CollectionStatus';
 import DevOpsLayout from '../../components/DevOpsLayout';
 import { deskCall, sessionRole } from '../../components/deskClient';
 import { useApiUrl } from '../../context/ApiUrlContext';
@@ -162,6 +163,16 @@ export default function CloudScanPage() {
             <span className="portal-page__eyebrow">Security / cloud posture</span>
             <h1 className="portal-page__title">Scan with a clear scope.</h1>
             <p className="portal-page__subtitle">Choose a connected account and review exactly what will be scanned. Coverage stays unknown until a scan finishes.</p>
+            <CollectionStatus
+              source="Cloud scan"
+              lastSuccess={null}
+              state={collectionStateFromSync({
+                connected: connections.length > 0 && sources === 'ready',
+                failed: sources === 'error' || Boolean(error),
+                empty: !job,
+              })}
+              detail="Coverage stays Unknown until a scan finishes. An exception is not cloud access."
+            />
           </div>
         </header>
         {sources === 'error' ? <div className="alert alert-error">Project scope could not be loaded. Coverage stays unknown.</div> : null}

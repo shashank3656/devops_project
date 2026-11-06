@@ -29,36 +29,48 @@ export function formatRisk(score?: number, level?: string) {
   };
 }
 
+function ciTone(failed: number, pending: number, passed: number, skipped: number) {
+  if (failed > 0) return 'failed';
+  if (pending > 0) return 'pending';
+  if (passed > 0) return 'ok';
+  if (skipped > 0) return 'skipped';
+  return 'unknown';
+}
+
 export function formatCI(summary?: DeliveryCISummary | null, checks?: DeliveryCheck[] | null) {
-  if (summary?.label && summary.label !== 'No checks yet') {
-    const failed = summary.failed || 0;
-    const pending = summary.pending || 0;
-    const passed = summary.passed || 0;
-    const tone = failed > 0 ? 'failed' : pending > 0 ? 'pending' : passed > 0 ? 'ok' : 'unknown';
-    return { label: summary.label, tone };
-  }
   const list = Array.isArray(checks) ? checks : [];
-  if (!list.length) return { label: '—', tone: 'unknown' };
-  let failed = 0;
-  let pending = 0;
-  let passed = 0;
-  let skipped = 0;
-  list.forEach((check) => {
-    const status = (check.status || '').toLowerCase();
-    if (status === 'failed' || status === 'missing') failed += 1;
-    else if (status === 'pending') pending += 1;
-    else if (status === 'ok' || status === 'passed') passed += 1;
-    else if (status === 'skipped') skipped += 1;
-  });
+  let failed = summary?.failed || 0;
+  let pending = summary?.pending || 0;
+  let passed = summary?.passed || 0;
+  let skipped = summary?.skipped || 0;
+  if (!failed && !pending && !passed && !skipped && list.length) {
+    list.forEach((check) => {
+      const status = (check.status || '').toLowerCase();
+      if (status === 'failed' || status === 'missing') failed += 1;
+      else if (status === 'pending') pending += 1;
+      else if (status === 'ok' || status === 'passed') passed += 1;
+      else if (status === 'skipped') skipped += 1;
+    });
+  }
   const parts: string[] = [];
   if (failed) parts.push(`${failed} failed`);
   if (pending) parts.push(`${pending} pending`);
   if (skipped) parts.push(`${skipped} skipped`);
   if (passed) parts.push(`${passed} passed`);
-  return {
-    label: parts.join(' · ') || 'Checks unknown',
-    tone: failed ? 'failed' : pending ? 'pending' : passed ? 'ok' : 'unknown',
-  };
+  const countedLabel = parts.join(' · ');
+  const rawLabel = (summary?.label || '').trim();
+  const passingWithoutPassed = rawLabel.toLowerCase() === 'passing' && passed === 0;
+  const label = countedLabel || (!passingWithoutPassed && rawLabel && rawLabel !== 'No checks yet' ? rawLabel : '—');
+  return { label, tone: ciTone(failed, pending, passed, skipped) };
+}
+
+export function assignedReviewer(author?: string, assignees?: string[] | null, requested?: string[] | null) {
+  const skip = (author || '').trim().toLowerCase();
+  for (const login of [...(assignees || []), ...(requested || [])]) {
+    const value = (login || '').trim();
+    if (value && value.toLowerCase() !== skip) return value;
+  }
+  return '';
 }
 
 export function formatReviewAge(ageDays?: number, sla?: string) {
@@ -83,6 +95,16 @@ export function githubAccessLabel(access?: GitHubAccess) {
 export function mergeTrackingLabel(tracking?: MergeTracking) {
   if (tracking === 'configured') return { label: 'Merge tracking configured', tone: 'ok' as const };
   return { label: 'Merge tracking needs setup', tone: 'setup' as const };
+}
+
+export function formatVerification(state?: string, label?: string) {
+  const value = (state || '').toLowerCase();
+  if (value === 'healthy' || value === 'passed') return { label: label || 'Healthy', tone: 'ok' as const };
+  if (value === 'degraded' || value === 'failed') return { label: label || 'Degraded', tone: 'failed' as const };
+  if (value === 'inconclusive' || value === 'unavailable' || value === 'pending') {
+    return { label: label || 'Inconclusive', tone: 'pending' as const };
+  }
+  return { label: label || 'Unknown', tone: 'unknown' as const };
 }
 
 export function formatWhen(value?: string) {

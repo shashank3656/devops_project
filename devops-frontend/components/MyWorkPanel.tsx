@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import LinkedJiraWork from './LinkedJiraWork';
 import {
   DeskError,
   DeskStateChip,
@@ -535,6 +536,7 @@ export function MyWorkDesk({
           </ul>
         )}
       </section> : null}
+      {!block ? <LinkedJiraWork apiUrl={apiUrl} browseAll allowActions={false} /> : null}
     </div>
   );
 }

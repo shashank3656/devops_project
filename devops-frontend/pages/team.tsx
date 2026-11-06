@@ -213,7 +213,7 @@ export default function DevOpsTeamPage() {
             {teams.map((team) => {
               const members = membersByTeam[team.id] || [];
               return (
-                <section key={team.id} className="portal-surface">
+                <section key={team.id} id={`team-${team.id}`} className="portal-surface">
                   <div className="portal-surface__header">
                     <div>
                       <span className="portal-surface__eyebrow">Squad</span>

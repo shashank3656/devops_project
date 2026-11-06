@@ -9,6 +9,7 @@ import { ServiceClassBadge } from '../../components/SreServiceWorkspace';
 import { SERVICE_CLASSES, catalogueSliTone, inventoryServicesPath, scheduleModeCopy, scoreDisplay } from '../../lib/sreMonitoring';
 import { serviceDetailHref, serviceTicketHref } from '../../lib/scopeHref';
 import { useApiUrl } from '../../context/ApiUrlContext';
+import { serviceNeedsSetup } from '../../lib/serviceSetup';
 
 const DEVOPS_TOKEN_KEY = 'devops_token';
 
@@ -27,6 +28,10 @@ interface ServiceRow {
   schedule_minutes?: number;
   last_availability_bps?: number;
   last_sli_state?: string;
+  grafana_uid?: string;
+  dashboard_url?: string;
+  metrics_url?: string;
+  promql?: string;
 }
 
 interface ProjectOption {
@@ -83,7 +88,7 @@ function teamMatches(serviceTeam: string, team: OwnerTeam | undefined): boolean 
 }
 
 function needsSetup(item: ServiceRow): boolean {
-  return !(item.repo || '').trim() || label(item.team || '') === 'Unknown';
+  return serviceNeedsSetup(item, true);
 }
 
 function openFindingCount(item: ServiceRow): number {
@@ -237,7 +242,7 @@ export default function ServiceInventoryPage() {
       cell: (item) => (
         <Link className="ig-cell-stack ig-cell-link" href={serviceDetailHref(item.id, router.query)}>
           <span className="ig-cell-title">{item.service || 'Unknown'}</span>
-          <span className="ig-cell-meta">{(item.repo || '').trim() || 'Repository not connected'}</span>
+          <span className="ig-cell-meta">{needsSetup(item) ? 'Setup incomplete — resume from the service' : ((item.repo || '').trim() || 'Repository not connected')}</span>
         </Link>
       ),
     },
@@ -270,31 +275,34 @@ export default function ServiceInventoryPage() {
     {
       id: 'evaluation',
       header: 'Last evaluation',
-      cell: (item) => (
-        <div className="ig-cell-stack">
-          <span className={`sre-sli sre-sli--${catalogueSliTone(item.last_sli_state)}`}>
-            {scoreDisplay({ state: item.last_sli_state, availability_bps: item.last_availability_bps })}
-          </span>
-          <span className="ig-cell-title">{item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : 'Unknown'}</span>
-          <span className="ig-cell-meta">{scheduleModeCopy(item.schedule_minutes)}</span>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={evaluatingId === item.id}
-            onClick={(event) => {
-              event.stopPropagation();
-              void evaluateService(item);
-            }}
-          >
-            {evaluatingId === item.id ? 'Evaluating…' : 'Evaluate now'}
-          </button>
-        </div>
-      ),
+      width: '11rem',
+      cell: (item) => {
+        const score = scoreDisplay({ state: item.last_sli_state, availability_bps: item.last_availability_bps });
+        const when = item.last_evaluated_at ? formatOperationalTime(item.last_evaluated_at) : '';
+        return (
+          <div className="svc-eval">
+            <span className={`sre-sli sre-sli--${catalogueSliTone(item.last_sli_state)}`}>{score}</span>
+            {when ? <span className="ig-cell-meta">{when}</span> : null}
+            <button
+              type="button"
+              className="svc-eval__run"
+              disabled={evaluatingId === item.id}
+              title={scheduleModeCopy(item.schedule_minutes)}
+              onClick={(event) => {
+                event.stopPropagation();
+                void evaluateService(item);
+              }}
+            >
+              {evaluatingId === item.id ? 'Evaluating…' : 'Evaluate'}
+            </button>
+          </div>
+        );
+      },
     },
     {
       id: 'tickets',
       header: 'Tickets',
-      className: 'ig-cell-actions',
+      width: '10.5rem',
       cell: (item) => (
         <div className="runbooks__action-row">
           <Link className="btn btn-secondary btn-sm" href={serviceTicketHref('/changes/new', item)}>Change</Link>
@@ -328,7 +336,7 @@ export default function ServiceInventoryPage() {
           <article className="ops-mini ops-mini--lilac">
             <span>Needs setup</span>
             <strong>{loading || error ? 'Unknown' : incompleteCount}</strong>
-            <small>Owner and repository missing</small>
+            <small>Owner, repository, environment, or monitoring missing</small>
           </article>
           <Link href="/security/findings?open=1" className="ops-mini ops-mini--blue">
             <span>Open findings</span>

@@ -48,6 +48,22 @@ func TestListPipelineCatalogWithoutDB(t *testing.T) {
 	}
 }
 
+func TestPipelineCatalogIncludesVerification(t *testing.T) {
+	item := changeRequestRecord{
+		ID:            8,
+		ChangeNumber:  "CHG8",
+		Status:        "monitoring",
+		PipelineURL:   "https://example.invalid/run/8",
+		Environment:   "prod",
+		Baseline:      &serviceMetrics{P95Ms: 100, ErrorRatio: 0.01, Saturation: 0.2},
+		LatestMetrics: &serviceMetrics{P95Ms: 400, ErrorRatio: 0.012, Saturation: 0.2},
+	}
+	got := buildListedDeploymentVerification(item)
+	if got.State != "degraded" {
+		t.Fatalf("listed verification should still surface degraded latency, got %s", got.State)
+	}
+}
+
 func TestPipelineMatchesRepo(t *testing.T) {
 	if !pipelineMatchesRepo("acme/infra-live", "acme/infra-live") {
 		t.Fatal("exact owner/name")

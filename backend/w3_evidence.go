@@ -49,6 +49,7 @@ func buildEvidencePack(projectID int, from, to time.Time) (*evidencePack, error)
 		if item.CreatedAt.Before(from) || item.CreatedAt.After(to) {
 			continue
 		}
+		attachReleaseEvidence(&item)
 		inRangeChanges = append(inRangeChanges, item)
 	}
 	inRangeIncidents := []requestIncident{}
@@ -150,8 +151,15 @@ func evidenceMarkdown(pack evidencePack) string {
 	b.WriteString("## Changes\n")
 	for _, item := range pack.Changes {
 		approver := firstNonEmpty(item.CABApprovedByUsername, item.Author, "none")
-		b.WriteString(fmt.Sprintf("- %s sha=%s watch=%s approved_by=%s policy=%s cost=%s%.2f status=%s\n",
-			item.ChangeNumber, item.SHA, firstNonEmpty(item.WatchResult, changeWatchResult(item)), approver, firstNonEmpty(item.PolicyStatus, "none"), firstNonEmpty(item.CostCurrency, "USD"), item.CostDeltaUSD, item.Status))
+		evidenceNote := "no snapshot"
+		if item.ReleaseEvidence != nil {
+			evidenceNote = "snapshot=" + firstNonEmpty(item.ReleaseEvidence.SHA, "unknown")
+			if item.ReleaseEvidence.Invalidated {
+				evidenceNote += " invalidated"
+			}
+		}
+		b.WriteString(fmt.Sprintf("- %s sha=%s watch=%s approved_by=%s policy=%s cost=%s%.2f status=%s evidence=%s\n",
+			item.ChangeNumber, item.SHA, firstNonEmpty(item.WatchResult, changeWatchResult(item)), approver, firstNonEmpty(item.PolicyStatus, "none"), firstNonEmpty(item.CostCurrency, "USD"), item.CostDeltaUSD, item.Status, evidenceNote))
 	}
 	b.WriteString("\n## Incidents\n")
 	for _, item := range pack.Incidents {

@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCategorizeChangedPath(t *testing.T) {
 	tests := map[string]string{
@@ -61,5 +64,19 @@ func TestScorePRImpactDocsOnly(t *testing.T) {
 	scorePRImpact(&brief, &PRRequest{Env: "dev", Priority: "low"})
 	if brief.RiskLevel == "high" {
 		t.Fatalf("docs-only PR should not be high risk, got score %d", brief.Score)
+	}
+}
+
+func TestRecommendPRImpactActionDoesNotCallSafeToMerge(t *testing.T) {
+	got := recommendPRImpactAction(prImpactBrief{RiskLevel: "low", Score: 12})
+	if got != deliveryAdviceUnconfirmed {
+		t.Fatalf("got %q", got)
+	}
+	if recommendPRImpactAction(prImpactBrief{RiskLevel: "medium", Score: 40}) != deliveryAdviceUnconfirmed {
+		t.Fatal("medium advice still invited promotion")
+	}
+	high := recommendPRImpactAction(prImpactBrief{RiskLevel: "high", Score: 80, Environment: "prod"})
+	if !strings.Contains(high, deliveryAdviceUnconfirmed) || strings.Contains(strings.ToLower(high), "safe to merge") || strings.Contains(strings.ToLower(high), "consider review or merge") {
+		t.Fatalf("high advice drifted: %q", high)
 	}
 }
